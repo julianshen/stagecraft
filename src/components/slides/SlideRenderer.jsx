@@ -227,21 +227,17 @@ export function Slide({ slide, deck, sectionName, num, total }) {
       return (
         <div className={`slide ${slide.bg || ''}`}>
           <div style={{ position:'absolute', top:60, left:80, right:80, display:'flex', justifyContent:'space-between', fontFamily:'var(--f-mono)', fontSize:18, opacity:0.5 }}>
-            <span>ATLAS</span>
-            <span>CONFIDENTIAL · OCTOBER 2025</span>
+            <span>{(deck?.title || 'DECK').toUpperCase()}</span>
+            <span>{slide.kicker || 'CONFIDENTIAL'}</span>
           </div>
           <div style={{ position:'absolute', left:80, bottom:160 }}>
-            <div style={{ fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.6, marginBottom:28 }}>Q3 · FY26 · SCORECARD</div>
+            {slide.eyebrow && <div style={{ fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.6, marginBottom:28 }}>{slide.eyebrow}</div>}
             <h1 style={{ fontSize:140, fontWeight:600, lineHeight:0.95, letterSpacing:'-0.04em', margin:0, maxWidth:1500 }}>
-              Quarterly<br/>Business Review
+              {slide.title || deck?.title || 'Untitled'}
             </h1>
           </div>
           <div style={{ position:'absolute', left:80, bottom:80, display:'flex', gap:40, fontFamily:'var(--f-mono)', fontSize:18, opacity:0.55 }}>
-            <span>Atlas Leadership</span>
-            <span>·</span>
-            <span>Oct 2025</span>
-            <span>·</span>
-            <span>Rev 03</span>
+            <span>{slide.subtitle || deck?.subtitle || deck?.author || ''}</span>
           </div>
           <div style={{ position:'absolute', right:100, top:'50%', transform:'translateY(-50%)', width:340, height:340, border:'2px solid rgba(255,255,255,0.15)', borderRadius:'50%' }}/>
           <div style={{ position:'absolute', right:180, top:'50%', transform:'translateY(-50%)', width:180, height:180, background:'oklch(0.62 0.17 265)', borderRadius:'50%', opacity:0.9 }}/>
@@ -253,7 +249,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:200, left:80, right:80 }}>
-            <div className="slide-eyebrow">Agenda · 4 parts</div>
+            <div className="slide-eyebrow">{slide.eyebrow || 'Agenda · 4 parts'}</div>
             <h1 style={{ fontSize:96, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 80px', lineHeight:1 }}>What we'll cover</h1>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'40px 80px', maxWidth:1700 }}>
               {slide.items.map(it => (
@@ -290,7 +286,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:140, left:80, right:80 }}>
-            <div className="slide-eyebrow">Scorecard</div>
+            <div className="slide-eyebrow">{slide.eyebrow || 'Scorecard'}</div>
             <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:60 }}>
               <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:0 }}>{slide.title}</h1>
               <div style={{ fontFamily:'var(--f-mono)', fontSize:20, color:'#888' }}>{slide.note}</div>
@@ -322,7 +318,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:140, left:80, right:80 }}>
-            <div className="slide-eyebrow">Scorecard</div>
+            <div className="slide-eyebrow">{slide.eyebrow || 'Scorecard'}</div>
             <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 8px' }}>{slide.title}</h1>
             <div style={{ fontFamily:'var(--f-mono)', fontSize:22, color:'#888', marginBottom:40 }}>{slide.sub || `${typeLabel} chart`}</div>
             <div style={{ background:'white', border:'1px solid #eee', borderRadius:10, padding:30 }}>
@@ -338,7 +334,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:160, left:80, right:80, display:'grid', gridTemplateColumns:'1fr 1fr', gap:80 }}>
             <div>
-              <div className="slide-eyebrow">Scorecard</div>
+              <div className="slide-eyebrow">{slide.eyebrow || 'Scorecard'}</div>
               <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 40px', lineHeight:1 }}>{slide.title}</h1>
               <p style={{ fontSize:28, lineHeight:1.5, color:'#333', maxWidth:760 }}>{slide.body}</p>
             </div>
@@ -362,7 +358,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:140, left:80, right:80 }}>
-            <div className="slide-eyebrow">Segments</div>
+            <div className="slide-eyebrow">{slide.eyebrow || 'Segments'}</div>
             <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px' }}>{slide.title}</h1>
             <div style={{ border:'1px solid #eee', borderRadius:12, overflow:'hidden', background:'white' }}>
               <div style={{ display:'grid', gridTemplateColumns:gridCols, padding:'22px 30px', background:'oklch(0.97 0.01 85)', fontFamily:'var(--f-mono)', fontSize:18, color:'#666', letterSpacing:'0.05em', textTransform:'uppercase', borderBottom:'1px solid #eee' }}>
@@ -404,7 +400,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:140, left:80, right:80 }}>
-            <div className="slide-eyebrow">Product</div>
+            <div className="slide-eyebrow">{slide.eyebrow || 'Product'}</div>
             <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px' }}>{slide.title}</h1>
             <RoadmapGraphic/>
             <div style={{ display:'flex', gap:28, marginTop:24, fontFamily:'var(--f-mono)', fontSize:18 }}>
@@ -421,7 +417,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:160, left:80, right:80 }}>
-            <div className="slide-eyebrow">Outlook</div>
+            <div className="slide-eyebrow">{slide.eyebrow || 'Outlook'}</div>
             <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 60px' }}>{slide.title}</h1>
             <div style={{ display:'flex', flexDirection:'column', gap:28 }}>
               {slide.items.map((it,i)=>{
@@ -445,7 +441,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:160, left:80, right:80 }}>
-            <div className="slide-eyebrow">Outlook</div>
+            <div className="slide-eyebrow">{slide.eyebrow || 'Outlook'}</div>
             <h1 style={{ fontSize:84, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 70px' }}>{slide.title}</h1>
             <div style={{ display:'flex', flexDirection:'column', gap:28, maxWidth:1500 }}>
               {slide.items.map((it,i)=>(

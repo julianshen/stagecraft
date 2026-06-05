@@ -99,7 +99,7 @@ export default function App() {
             <span style={{ fontSize: 12.5, color: 'var(--ink-2)', fontWeight: 500 }}>Settings</span>
           ) : (
             <>
-              <span className="doc-name">Q3 Business Review — Atlas</span>
+              <span className="doc-name">Meet Stagecraft</span>
               <span className="saved">Saved · 12s</span>
             </>
           )}
