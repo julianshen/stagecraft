@@ -1,0 +1,49 @@
+import { describe, it, expect } from 'vitest';
+import { ACCENTS, DECKS, SAMPLE_DECK, SPEAKER_NOTES, TEMPLATES } from './deck.js';
+import { flattenDeck } from '../lib/deckOrder.js';
+
+const KNOWN_LAYOUTS = new Set([
+  'cover', 'agenda', 'divider', 'kpi', 'chart', 'split', 'table', 'text', 'list', 'roadmap', 'risks', 'thanks',
+]);
+
+describe('SAMPLE_DECK integrity', () => {
+  it('every section slide id resolves to a real slide', () => {
+    const ids = new Set(SAMPLE_DECK.slides.map((s) => s.id));
+    for (const sec of SAMPLE_DECK.sections) {
+      for (const sid of sec.slides) expect(ids.has(sid)).toBe(true);
+    }
+  });
+
+  it('every slide uses a known layout', () => {
+    for (const s of SAMPLE_DECK.slides) expect(KNOWN_LAYOUTS.has(s.layout)).toBe(true);
+  });
+
+  it('flattened length equals the sum of section slide counts', () => {
+    const total = SAMPLE_DECK.sections.reduce((n, s) => n + s.slides.length, 0);
+    expect(flattenDeck(SAMPLE_DECK)).toHaveLength(total);
+  });
+
+  it('declares a theme and speaker notes key into real slides', () => {
+    expect(typeof SAMPLE_DECK.theme).toBe('string');
+    const ids = new Set(SAMPLE_DECK.slides.map((s) => s.id));
+    for (const id of Object.keys(SPEAKER_NOTES)) expect(ids.has(id)).toBe(true);
+  });
+});
+
+describe('catalogs', () => {
+  it('defines five accent palettes with hue + chroma', () => {
+    const keys = Object.keys(ACCENTS);
+    expect(keys).toHaveLength(5);
+    for (const k of keys) {
+      expect(typeof ACCENTS[k].hue).toBe('number');
+      expect(typeof ACCENTS[k].chroma).toBe('number');
+    }
+  });
+
+  it('DECKS and TEMPLATES have stable unique ids', () => {
+    const deckIds = DECKS.map((d) => d.id);
+    expect(new Set(deckIds).size).toBe(deckIds.length);
+    const tplIds = TEMPLATES.map((t) => t.id);
+    expect(new Set(tplIds).size).toBe(tplIds.length);
+  });
+});

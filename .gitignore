@@ -5,3 +5,6 @@ dist/
 
 # generated screenshots
 shots/*.png
+
+# coverage reports
+coverage/

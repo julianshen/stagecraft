@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, IconButton, FieldRow, InputGroup, Seg, ScaledSlide, Menu } from '../ui/Primitives.jsx';
 import { callLLM } from '../../lib/llmClient.js';
+import { flattenDeck } from '../../lib/deckOrder.js';
 
 const DEFAULT_TOOLS = [
   { id:'select', icon:'cursor',  title:'Select · V' },
@@ -33,14 +34,6 @@ const PEN_IMAGE_TOOLS = [
   { id:'image',  icon:'image',   title:'Image · I' },
 ];
 
-export function flattenDeck(deck) {
-  const arr = [];
-  deck.sections.forEach(sec => sec.slides.forEach(sid => {
-    const s = deck.slides.find(x => x.id === sid);
-    if (s) arr.push({ ...s, sectionId: sec.id, sectionName: sec.name });
-  }));
-  return arr;
-}
 
 export default function SlideEditor(props) {
   const {

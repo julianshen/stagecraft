@@ -1,0 +1,30 @@
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.js'],
+    css: false,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'text-summary', 'html'],
+      // The 90% gate is enforced against the unit-tested core. As suites are
+      // added for more of the app, widen `include` to bring them under the gate.
+      include: [
+        'src/server/api.js',
+        'src/lib/deckOrder.js',
+        'src/lib/llmClient.js',
+        'src/data/deck.js',
+      ],
+      thresholds: {
+        lines: 90,
+        functions: 90,
+        branches: 90,
+        statements: 90,
+      },
+    },
+  },
+});
