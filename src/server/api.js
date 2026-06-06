@@ -84,14 +84,25 @@ function runTool(store, name, args = {}) {
       const order = args.order;
       const reordered = order.map((id) => store.deck.slides.find((s) => s.id === id)).filter(Boolean);
       store.deck.slides = reordered;
-      // Reorder each section's slides array to match the new global order
-      const orderSet = new Set(order);
+
+      // The deck renders by walking sections[] then each section's slides[], so
+      // honoring a global order across section boundaries means re-sequencing
+      // BOTH the slides within a section AND the sections themselves. Rank each
+      // section by the global index of its first remaining slide; sort slides
+      // within a section the same way. Sections that lose all their slides keep
+      // their original relative order and sink to the end. (Sections render as
+      // contiguous blocks, so a request that would interleave two multi-slide
+      // sections is resolved by keeping each section's slides together.)
       const slideIndex = new Map(reordered.map((s, i) => [s.id, i]));
-      const nextSections = (store.deck.sections || []).map((sec) => ({
-        ...sec,
-        slides: sec.slides.filter((id) => orderSet.has(id)).sort((a, b) => (slideIndex.get(a) ?? 0) - (slideIndex.get(b) ?? 0)),
-      }));
-      store.deck.sections = nextSections;
+      const ranked = (store.deck.sections || []).map((sec, origIdx) => {
+        const slides = (sec && Array.isArray(sec.slides) ? sec.slides : [])
+          .filter((id) => slideIndex.has(id))
+          .sort((a, b) => slideIndex.get(a) - slideIndex.get(b));
+        const rank = slides.length ? slideIndex.get(slides[0]) : Infinity;
+        return { sec, slides, rank, origIdx };
+      });
+      ranked.sort((x, y) => (x.rank - y.rank) || (x.origIdx - y.origIdx));
+      store.deck.sections = ranked.map(({ sec, slides }) => ({ ...(sec || {}), slides }));
       return { status: 200, body: { result: { ok: true } } };
     }
     case 'set_theme': {

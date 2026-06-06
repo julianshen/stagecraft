@@ -12,7 +12,7 @@ function newId(kind) {
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport, onOpenHome }) {
   const [curId, setCurId] = useState(() => {
     const flat = [];
-    (deck.sections || []).forEach(sec => (sec.slides || []).forEach(sid => flat.push(sid)));
+    (deck.sections || []).forEach(sec => (sec?.slides || []).forEach(sid => flat.push(sid)));
     return flat[3] || flat[0] || null;
   });
 
@@ -24,7 +24,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
       deletingRef.current = null;
       if (curId === id) {
         const flat = [];
-        (deck.sections || []).forEach(sec => (sec.slides || []).forEach(sid => flat.push(sid)));
+        (deck.sections || []).forEach(sec => (sec?.slides || []).forEach(sid => flat.push(sid)));
         const fallback = flat[idx] || flat[idx - 1] || flat[0] || null;
         if (fallback) setCurId(fallback);
       }
@@ -74,7 +74,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   }
 
   function changeTheme(theme) {
-    onDeckChange(prev => ({ ...JSON.parse(JSON.stringify(prev)), theme }));
+    onDeckChange(prev => ({ ...prev, theme }));
   }
 
   function addText(style = 'heading') {
@@ -124,7 +124,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   function deleteSlide(slideId) {
     // Capture original position before mutation so we can pick the right fallback after
     const flat = [];
-    (deck.sections || []).forEach(sec => (sec.slides || []).forEach(sid => flat.push(sid)));
+    (deck.sections || []).forEach(sec => (sec?.slides || []).forEach(sid => flat.push(sid)));
     deletingRef.current = { id: slideId, idx: flat.indexOf(slideId) };
 
     onDeckChange(prev => {

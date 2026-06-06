@@ -15,7 +15,9 @@ export default function PresenterView({ deck, onExit }) {
     return arr;
   }, [deck]);
 
-  const [idx, setIdx] = useState(3);
+  // Default to the demo deep-link (slide 4) but never past the last slide —
+  // an edited deck may have fewer slides, which would otherwise render blank.
+  const [idx, setIdx] = useState(() => Math.min(3, Math.max(0, flat.length - 1)));
   const [elapsed, setElapsed] = useState(412); // seconds
   const [laser, setLaser] = useState(false);
 
