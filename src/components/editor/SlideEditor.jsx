@@ -6,6 +6,8 @@ import { flattenDeck } from '../../lib/deckOrder.js';
 import Ruler from './Ruler.jsx';
 import StatusBar from './StatusBar.jsx';
 import CollabLayer from './CollabLayer.jsx';
+import ThumbsPane from './ThumbsPane.jsx';
+import CanvasSlide from './CanvasSlide.jsx';
 
 const DEFAULT_TOOLS = [
   { id:'select', icon:'cursor',  title:'Select · V' },
@@ -230,116 +232,6 @@ export default function SlideEditor(props) {
         )}
       </div>
     </>
-  );
-}
-
-// ============================================================
-// Thumbs pane
-// ============================================================
-function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx, comments, onNewSlide }) {
-  return (
-    <aside className="leftpane">
-      <div className="pane-header">
-        <span>Slides · {flat.length}</span>
-        <div className="actions">
-          <IconButton name="plus" title="New slide · ⌘N" onClick={onNewSlide}/>
-          <IconButton name="outline" title="Outline view"/>
-          <IconButton name="more-h" title="More"/>
-        </div>
-      </div>
-      <div className="thumbs">
-        {sections.map((sec, si) => (
-          <React.Fragment key={sec.id}>
-            <div style={{ padding:'10px 4px 4px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <span style={{ fontFamily:'var(--f-mono)', fontSize:10, letterSpacing:'0.08em', textTransform:'uppercase', color:'var(--ink-4)' }}>
-                <Icon name="chevron-down" size={10} style={{ marginRight:4 }}/>
-                {String(si+1).padStart(2,'0')} · {sec.name}
-              </span>
-              <span style={{ fontFamily:'var(--f-mono)', fontSize:10, color:'var(--ink-4)' }}>{sec.slides.length}</span>
-            </div>
-            {sec.slides.map((sid) => {
-              const idx = flat.findIndex(f => f.id === sid);
-              const s = flat[idx];
-              if (!s) return null;
-              const nComments = comments.filter(c => c.slide === sid).length;
-              return (
-                <div
-                  key={sid}
-                  className={`thumb ${sid === curId ? 'active' : ''}`}
-                  onClick={() => onPick(sid)}
-                >
-                  <div className="thumb-num">{String(idx+1).padStart(2,'0')}</div>
-                  <div className="thumb-slide">
-                    <ScaledSlide>
-                      {renderSlide(s, { ...deckCtx, sectionName: s.sectionName, num: idx+1, total: flat.length })}
-                    </ScaledSlide>
-                    {nComments > 0 && <div className="thumb-comments">{nComments}</div>}
-                  </div>
-                </div>
-              );
-            })}
-          </React.Fragment>
-        ))}
-        <button style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 6px', color:'var(--ink-3)', fontSize:12, width:'100%' }}>
-          <Icon name="plus" size={12}/> New section
-        </button>
-      </div>
-    </aside>
-  );
-}
-
-// ============================================================
-// Canvas slide
-// ============================================================
-function CanvasSlide({ slide, deckCtx, renderSlide, selected, setSelected, zoom }) {
-  const frameRef = useRef(null);
-  const [scale, setScale] = useState(0.5);
-
-  useEffect(() => {
-    function update() {
-      const el = frameRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      setScale(r.width / 1920);
-    }
-    update();
-    const ro = new ResizeObserver(update);
-    if (frameRef.current) ro.observe(frameRef.current);
-    return () => ro.disconnect();
-  }, [zoom]);
-
-  const rect = selected ? {
-    left: selected.x * scale,
-    top: selected.y * scale,
-    width: selected.w * scale,
-    height: selected.h * scale,
-  } : null;
-
-  return (
-    <div className="slide-frame" ref={frameRef} style={{ width:`${Math.min(92, zoom)}%`, aspectRatio:'16/9' }}>
-      <ScaledSlide>
-        {renderSlide(slide, deckCtx)}
-      </ScaledSlide>
-      {rect && (
-        <>
-          <div className="sel-rect" style={rect}>
-            <div className="sel-label">{selected.label} · {selected.w}×{selected.h}</div>
-          </div>
-          {[
-            [rect.left-4, rect.top-4], [rect.left + rect.width/2 -4, rect.top-4], [rect.left + rect.width -4, rect.top-4],
-            [rect.left-4, rect.top + rect.height/2 -4], [rect.left + rect.width -4, rect.top + rect.height/2 -4],
-            [rect.left-4, rect.top + rect.height -4], [rect.left + rect.width/2 -4, rect.top + rect.height -4], [rect.left + rect.width -4, rect.top + rect.height -4],
-          ].map(([x,y],i)=>(
-            <div key={i} className="sel-handle" style={{ left:x, top:y }}/>
-          ))}
-          <div className="guide-line" style={{ left: rect.left, top: 0, bottom: 0, width: 1 }}/>
-          <div className="guide-line" style={{ left: rect.left + rect.width, top: 0, bottom: 0, width: 1 }}/>
-          <div style={{ position:'absolute', left: rect.left + rect.width + 6, top: -18, fontSize:10, fontFamily:'var(--f-mono)', color:'oklch(0.6 0.2 0)' }}>
-            ↔ {Math.round(1920 - selected.x - selected.w)}px
-          </div>
-        </>
-      )}
-    </div>
   );
 }
 
