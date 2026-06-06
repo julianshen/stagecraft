@@ -3,6 +3,9 @@ import Icon from '../ui/Icon.jsx';
 import { Button, IconButton, FieldRow, InputGroup, Seg, ScaledSlide, Menu } from '../ui/Primitives.jsx';
 import { callLLM } from '../../lib/llmClient.js';
 import { flattenDeck } from '../../lib/deckOrder.js';
+import Ruler from './Ruler.jsx';
+import StatusBar from './StatusBar.jsx';
+import CollabLayer from './CollabLayer.jsx';
 
 const DEFAULT_TOOLS = [
   { id:'select', icon:'cursor',  title:'Select · V' },
@@ -337,70 +340,6 @@ function CanvasSlide({ slide, deckCtx, renderSlide, selected, setSelected, zoom 
         </>
       )}
     </div>
-  );
-}
-
-// ============================================================
-// Ruler, StatusBar, CollabLayer, Drawers, Inspector
-// ============================================================
-function Ruler() {
-  const ticks = Array.from({length:21}, (_,i)=> i*100);
-  return (
-    <>
-      <div className="canvas-ruler-h">
-        <div style={{ position:'absolute', inset:0, display:'flex' }}>
-          {ticks.map((t, i) => (
-            <div key={i} style={{ flex:1, borderLeft: i===0?'none':'1px solid var(--line)', paddingLeft:3, paddingTop:4, fontSize:9, color:'var(--ink-4)' }}>{t}</div>
-          ))}
-        </div>
-      </div>
-      <div className="canvas-ruler-v">
-        <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column' }}>
-          {ticks.slice(0, 12).map((t, i) => (
-            <div key={i} style={{ flex:1, borderTop: i===0?'none':'1px solid var(--line)', paddingTop:3, paddingLeft:2, fontSize:9, color:'var(--ink-4)' }}>{t}</div>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
-function StatusBar({ zoom, setZoom, selected }) {
-  return (
-    <div className="statusbar">
-      <span><span className="dot" style={{ background:'var(--success)' }}/>Saved · autosave on</span>
-      <span>1920×1080</span>
-      <span>Grid: 8px</span>
-      <span>Guides: on</span>
-      <span className="spacer"/>
-      {selected && <span style={{ color:'var(--ink-2)' }}>{selected.label} · x {selected.x} y {selected.y} · w {selected.w} h {selected.h}</span>}
-      <span className="spacer"/>
-      <span>en-US</span>
-      <div className="zoom">
-        <button onClick={()=>setZoom(z => Math.max(20, z-8))}><Icon name="minus" size={11}/></button>
-        <span className="val">{zoom}%</span>
-        <button onClick={()=>setZoom(z => Math.min(200, z+8))}><Icon name="plus" size={11}/></button>
-        <button onClick={()=>setZoom(62)} title="Fit"><Icon name="expand" size={11}/></button>
-      </div>
-    </div>
-  );
-}
-
-function CollabLayer({ collaborators }) {
-  const positions = collaborators.length ? collaborators.map((u, i) => ({
-    u, x: u.pos?.x || `${20 + i*25}%`, y: u.pos?.y || `${40 + (i%2)*15}%`
-  })) : [];
-  return (
-    <>
-      {positions.map((p,i)=>(
-        <div key={i} className="cursor" style={{ left: p.x, top: p.y }}>
-          <svg className="cursor-arrow" viewBox="0 0 16 16" fill={p.u.color}>
-            <path d="M2 2l4 11 2-4 5-1z" stroke="white" strokeWidth="1"/>
-          </svg>
-          <span className="cursor-label" style={{ background:p.u.color }}>{p.u.name}</span>
-        </div>
-      ))}
-    </>
   );
 }
 
