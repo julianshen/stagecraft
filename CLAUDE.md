@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Branching & PR workflow (required)
+
+**Never commit to `master` directly.** All work happens on a feature branch and lands via a reviewed PR.
+
+1. **Branch** — before touching code, create a feature branch off `master` (e.g. `feat/...`, `fix/...`).
+2. **Implement** — do the work on that branch following the Testing & TDD policy below.
+3. **Simplify** — run `/simplify` on the diff and apply the cleanups.
+4. **Review** — run `/code-review` on the diff and address its findings.
+5. **PR** — open a PR for review (do not merge yet).
+6. **Address bot review** — wait for automated/bot review comments on the PR, then fix every issue raised in those comments.
+7. **Merge** — only after simplify → review → bot-comment fixes are all resolved and the suite is green.
+
 ## Commands
 
 ```bash
