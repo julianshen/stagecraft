@@ -160,6 +160,13 @@ describe('MCP tools/call', () => {
     expect(store.deck.sections[1].slides).toEqual(['b']);
   });
 
+  it('reorder_slides rejects non-array order', async () => {
+    const store = createDeckStore(deck());
+    const r = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: 'not-an-array' } }));
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/order must be an array/);
+  });
+
   it('set_theme updates the deck theme', async () => {
     const store = createDeckStore(deck());
     await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'set_theme', arguments: { theme: 'emerald' } }));
@@ -254,6 +261,22 @@ describe('LLM proxy', () => {
     const fetch = vi.fn().mockResolvedValue({ json: async () => ({ error: { message: 'bad key' } }) });
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic' }), { fetch });
     expect(r.body.text).toBe('bad key');
+  });
+
+  it('forwards empty-string system prompt to Anthropic (not omitted)', async () => {
+    const fetch = vi.fn().mockResolvedValue({ json: async () => ({ content: [{ text: 'hi' }] }) });
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [], system: '' }), { fetch });
+    const sent = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(sent).toHaveProperty('system', '');
+  });
+
+  it('deduplicates existing system messages for OpenAI-compatible providers', async () => {
+    const fetch = vi.fn().mockResolvedValue({ json: async () => ({ choices: [{ message: { content: 'hi' } }] }) });
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'openai', apiKey: 'k', messages: [{ role: 'system', content: 'old' }, { role: 'user', content: 'test' }], system: 'new' }), { fetch });
+    const sent = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(sent.messages).toHaveLength(2);
+    expect(sent.messages[0]).toEqual({ role: 'system', content: 'new' });
+    expect(sent.messages[1]).toEqual({ role: 'user', content: 'test' });
   });
 
   it('returns 500 when the upstream call throws', async () => {

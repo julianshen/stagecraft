@@ -31,7 +31,7 @@ async function proxyLLM(body, fetchFn) {
   const { messages, provider, model, apiKey, baseUrl, temperature, maxTokens, system } = body || {};
   if (provider === 'anthropic' || !provider) {
     const reqBody = { model: model || 'claude-sonnet-4', max_tokens: maxTokens || 2048, temperature: temperature ?? 0.7, messages: messages || [] };
-    if (system) reqBody.system = system;
+    if (system != null) reqBody.system = system;
     const res = await fetchFn('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey || '', 'anthropic-version': '2023-06-01' },
@@ -42,8 +42,10 @@ async function proxyLLM(body, fetchFn) {
   }
   const apiBase = baseUrl || 'https://api.openai.com/v1';
   const reqBody = { model: model || 'gpt-4o', max_tokens: maxTokens || 2048, temperature: temperature ?? 0.7, messages: messages || [] };
-  if (system) {
-    reqBody.messages = [{ role: 'system', content: system }, ...(messages || [])];
+  if (system != null) {
+    // Avoid duplicate system messages by filtering out any existing ones before prepending
+    const userMessages = (messages || []).filter((m) => m.role !== 'system');
+    reqBody.messages = [{ role: 'system', content: system }, ...userMessages];
   }
   const res = await fetchFn(`${apiBase}/chat/completions`, {
     method: 'POST',
@@ -78,15 +80,18 @@ function runTool(store, name, args = {}) {
       return { status: 200, body: { result: { ok: true } } };
     }
     case 'reorder_slides': {
-      const order = args.order || [];
+      if (!Array.isArray(args.order)) return { status: 400, body: { error: 'order must be an array' } };
+      const order = args.order;
       const reordered = order.map((id) => store.deck.slides.find((s) => s.id === id)).filter(Boolean);
       store.deck.slides = reordered;
       // Reorder each section's slides array to match the new global order
       const orderSet = new Set(order);
       const slideIndex = new Map(reordered.map((s, i) => [s.id, i]));
-      for (const sec of (store.deck.sections || [])) {
-        sec.slides = sec.slides.filter((id) => orderSet.has(id)).sort((a, b) => (slideIndex.get(a) ?? 0) - (slideIndex.get(b) ?? 0));
-      }
+      const nextSections = (store.deck.sections || []).map((sec) => ({
+        ...sec,
+        slides: sec.slides.filter((id) => orderSet.has(id)).sort((a, b) => (slideIndex.get(a) ?? 0) - (slideIndex.get(b) ?? 0)),
+      }));
+      store.deck.sections = nextSections;
       return { status: 200, body: { result: { ok: true } } };
     }
     case 'set_theme': {

@@ -93,7 +93,14 @@ describe('callLLM', () => {
     expect(body.system).toBe('You are a helpful assistant.');
   });
 
-  it('omits system from the body when not provided', async () => {
+  it('forwards empty-string system prompt in the request body', async () => {
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([], { system: '' });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body).toHaveProperty('system', '');
+  });
+
+  it('omits system from the body when undefined', async () => {
     fetchMock.mockResolvedValue(res({ text: 'ok' }));
     await callLLM([]);
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
