@@ -28,21 +28,29 @@ function newSlideId() {
 }
 
 async function proxyLLM(body, fetchFn) {
-  const { messages, provider, model, apiKey, baseUrl, temperature, maxTokens } = body || {};
+  const { messages, provider, model, apiKey, baseUrl, temperature, maxTokens, system } = body || {};
   if (provider === 'anthropic' || !provider) {
+    const reqBody = { model: model || 'claude-sonnet-4', max_tokens: maxTokens || 2048, temperature: temperature ?? 0.7, messages: messages || [] };
+    if (system != null) reqBody.system = system;
     const res = await fetchFn('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey || '', 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: model || 'claude-sonnet-4', max_tokens: maxTokens || 2048, temperature: temperature ?? 0.7, messages: messages || [] }),
+      body: JSON.stringify(reqBody),
     });
     const data = await res.json();
     return data.content?.[0]?.text || data.error?.message || 'No response';
   }
   const apiBase = baseUrl || 'https://api.openai.com/v1';
+  const reqBody = { model: model || 'gpt-4o', max_tokens: maxTokens || 2048, temperature: temperature ?? 0.7, messages: messages || [] };
+  if (system != null) {
+    // Avoid duplicate system messages by filtering out any existing ones before prepending
+    const userMessages = (messages || []).filter((m) => m.role !== 'system');
+    reqBody.messages = [{ role: 'system', content: system }, ...userMessages];
+  }
   const res = await fetchFn(`${apiBase}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey || ''}` },
-    body: JSON.stringify({ model: model || 'gpt-4o', max_tokens: maxTokens || 2048, temperature: temperature ?? 0.7, messages: messages || [] }),
+    body: JSON.stringify(reqBody),
   });
   const data = await res.json();
   return data.choices?.[0]?.message?.content || data.error?.message || 'No response';
@@ -72,8 +80,31 @@ function runTool(store, name, args = {}) {
       return { status: 200, body: { result: { ok: true } } };
     }
     case 'reorder_slides': {
-      const order = args.order || [];
-      store.deck.slides = order.map((id) => store.deck.slides.find((s) => s.id === id)).filter(Boolean);
+      if (!Array.isArray(args.order)) return { status: 400, body: { error: 'order must be an array' } };
+      const order = args.order;
+      const reordered = order.map((id) => store.deck.slides.find((s) => s.id === id)).filter(Boolean);
+      store.deck.slides = reordered;
+
+      // The deck renders by walking sections[] then each section's slides[], so a
+      // section can only ever be a contiguous block of the flat order. To honor an
+      // ARBITRARY global order (including one that interleaves slides from
+      // different sections), reassign membership: each slide follows its
+      // predecessor into the first slide's section. Because that is transitive,
+      // every slide lands in the first slide's original section and the others
+      // empty out — a cross-section reorder collapses the deck into one section,
+      // but the flatten then matches the requested order exactly.
+      const sections = store.deck.sections || [];
+      const sectionOf = new Map();
+      sections.forEach((sec, i) => {
+        if (sec && Array.isArray(sec.slides)) sec.slides.forEach((id) => sectionOf.set(id, i));
+      });
+      const home = reordered.length
+        ? (sectionOf.has(reordered[0].id) ? sectionOf.get(reordered[0].id) : 0)
+        : null;
+      store.deck.sections = sections.map((sec, i) => ({
+        ...(sec || {}),
+        slides: i === home ? reordered.map((s) => s.id) : [],
+      }));
       return { status: 200, body: { result: { ok: true } } };
     }
     case 'set_theme': {

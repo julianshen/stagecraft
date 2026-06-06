@@ -2,10 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { ScaledSlide } from '../ui/Primitives.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
-import { SAMPLE_DECK, SPEAKER_NOTES } from '../../data/deck.js';
+import { SPEAKER_NOTES } from '../../data/deck.js';
 
-export default function PresenterView({ onExit }) {
-  const deck = SAMPLE_DECK;
+export default function PresenterView({ deck, onExit }) {
 
   const flat = useMemo(() => {
     const arr = [];
@@ -16,7 +15,9 @@ export default function PresenterView({ onExit }) {
     return arr;
   }, [deck]);
 
-  const [idx, setIdx] = useState(3);
+  // Default to the demo deep-link (slide 4) but never past the last slide —
+  // an edited deck may have fewer slides, which would otherwise render blank.
+  const [idx, setIdx] = useState(() => Math.min(3, Math.max(0, flat.length - 1)));
   const [elapsed, setElapsed] = useState(412); // seconds
   const [laser, setLaser] = useState(false);
 

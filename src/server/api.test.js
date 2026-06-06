@@ -139,6 +139,82 @@ describe('MCP tools/call', () => {
     expect(store.deck.slides.map((s) => s.id)).toEqual(['c', 'b']);
   });
 
+  // The deck's render order is defined by iterating sections[] then each
+  // section's slides[]. reorder_slides honors an arbitrary global order by
+  // collapsing membership: every slide follows its predecessor into the first
+  // slide's section, so the flatten exactly matches the request.
+  const flatten = (d) => d.sections.flatMap((sec) => sec.slides);
+
+  it('reorder_slides honors a cross-boundary order by collapsing into the first slide section', async () => {
+    const store = createDeckStore(deck());
+    // s1=Intro[a], s2=Body[b,c]; reorder to [c,b,a]. The first slide 'c' lives
+    // in Body, so every slide collapses into Body and Intro empties out.
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['c', 'b', 'a'] } }));
+    expect(store.deck.slides.map((s) => s.id)).toEqual(['c', 'b', 'a']);
+    expect(flatten(store.deck)).toEqual(['c', 'b', 'a']);
+    expect(store.deck.sections.find((s) => s.name === 'Body').slides).toEqual(['c', 'b', 'a']);
+    expect(store.deck.sections.find((s) => s.name === 'Intro').slides).toEqual([]);
+  });
+
+  it('reorder_slides honors an order that interleaves two multi-slide sections', async () => {
+    const d = {
+      id: 'd', title: 'Demo', theme: 'indigo',
+      sections: [
+        { id: 's1', name: 'One', slides: ['a', 'c'] },
+        { id: 's2', name: 'Two', slides: ['b', 'd'] },
+      ],
+      slides: ['a', 'b', 'c', 'd'].map((id) => ({ id, layout: 'text', title: id })),
+    };
+    const store = createDeckStore(d);
+    // Interleaved request [a,b,c,d] would render as [a,c,b,d] under section
+    // grouping; collapsing membership makes it render exactly as requested.
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['a', 'b', 'c', 'd'] } }));
+    expect(flatten(store.deck)).toEqual(['a', 'b', 'c', 'd']);
+    expect(store.deck.sections.find((s) => s.name === 'One').slides).toEqual(['a', 'b', 'c', 'd']);
+    expect(store.deck.sections.find((s) => s.name === 'Two').slides).toEqual([]);
+  });
+
+  it('reorder_slides omits slide IDs not in the order (drops them)', async () => {
+    const store = createDeckStore(deck());
+    // Reorder with only [b] — slides a and c should be dropped from pool
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['b'] } }));
+    expect(store.deck.slides.map((s) => s.id)).toEqual(['b']);
+    expect(flatten(store.deck)).toEqual(['b']);
+    expect(store.deck.sections.find((s) => s.name === 'Body').slides).toEqual(['b']);
+    expect(store.deck.sections.find((s) => s.name === 'Intro').slides).toEqual([]);
+  });
+
+  it('reorder_slides tolerates null or malformed sections without throwing', async () => {
+    const store = createDeckStore(deck());
+    store.deck.sections = [null, { id: 's2', name: 'Body', slides: ['b', 'c'] }, { id: 's3', name: 'Bad' }];
+    const r = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['c', 'b'] } }));
+    expect(r.status).toBe(200);
+    expect(flatten(store.deck)).toEqual(['c', 'b']);
+  });
+
+  it('reorder_slides places an orphan first slide into the first section', async () => {
+    const store = createDeckStore(deck());
+    // 'orphan' exists in the pool but is referenced by no section.
+    store.deck.slides.push({ id: 'orphan', layout: 'text', title: 'O' });
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['orphan', 'a'] } }));
+    expect(flatten(store.deck)).toEqual(['orphan', 'a']);
+    expect(store.deck.sections.find((s) => s.name === 'Intro').slides).toEqual(['orphan', 'a']);
+  });
+
+  it('reorder_slides with only unknown IDs clears the deck', async () => {
+    const store = createDeckStore(deck());
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['zzz'] } }));
+    expect(store.deck.slides).toEqual([]);
+    expect(flatten(store.deck)).toEqual([]);
+  });
+
+  it('reorder_slides rejects non-array order', async () => {
+    const store = createDeckStore(deck());
+    const r = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: 'not-an-array' } }));
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/order must be an array/);
+  });
+
   it('set_theme updates the deck theme', async () => {
     const store = createDeckStore(deck());
     await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'set_theme', arguments: { theme: 'emerald' } }));
@@ -153,6 +229,33 @@ describe('MCP tools/call', () => {
   it('unknown tool → 400', async () => {
     const store = createDeckStore(deck());
     const r = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'frobnicate' }));
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/Unknown tool/);
+  });
+
+  it('add_slide pushes to pool only when sections is empty', async () => {
+    const d = { ...deck(), sections: [] };
+    const store = createDeckStore(d);
+    const r = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'add_slide', arguments: { title: 'Orphan' } }));
+    expect(r.body.result.title).toBe('Orphan');
+    // Slide added to pool but not to any section (sections is empty)
+    expect(store.deck.slides).toHaveLength(4);
+    expect(store.deck.sections).toHaveLength(0);
+  });
+
+  it('DELETE slide with null sections', async () => {
+    const d = { ...deck(), sections: null };
+    const store = createDeckStore(d);
+    const r = await handleApiRequest(store, req('DELETE', '/api/slides/b'));
+    expect(r.body).toEqual({ ok: true });
+    // Should not throw even when sections is null
+    expect(store.deck.slides.map((s) => s.id)).toEqual(['a', 'c']);
+  });
+
+  it('MCP tool call with null body falls back to empty args', async () => {
+    const store = createDeckStore(deck());
+    // body is null → arguments is undefined → args defaults to {}
+    const r = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', null));
     expect(r.status).toBe(400);
     expect(r.body.error).toMatch(/Unknown tool/);
   });
@@ -208,10 +311,49 @@ describe('LLM proxy', () => {
     expect(r.body.text).toBe('bad key');
   });
 
+  it('forwards empty-string system prompt to Anthropic (not omitted)', async () => {
+    const fetch = vi.fn().mockResolvedValue({ json: async () => ({ content: [{ text: 'hi' }] }) });
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [], system: '' }), { fetch });
+    const sent = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(sent).toHaveProperty('system', '');
+  });
+
+  it('deduplicates existing system messages for OpenAI-compatible providers', async () => {
+    const fetch = vi.fn().mockResolvedValue({ json: async () => ({ choices: [{ message: { content: 'hi' } }] }) });
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'openai', apiKey: 'k', messages: [{ role: 'system', content: 'old' }, { role: 'user', content: 'test' }], system: 'new' }), { fetch });
+    const sent = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(sent.messages).toHaveLength(2);
+    expect(sent.messages[0]).toEqual({ role: 'system', content: 'new' });
+    expect(sent.messages[1]).toEqual({ role: 'user', content: 'test' });
+  });
+
   it('returns 500 when the upstream call throws', async () => {
     const fetch = vi.fn().mockRejectedValue(new Error('network down'));
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic' }), { fetch });
     expect(r.status).toBe(500);
     expect(r.body.error).toBe('network down');
+  });
+
+  it('returns 500 with stringified error when thrown value has no message', async () => {
+    const fetch = vi.fn().mockRejectedValue('raw error string');
+    const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic' }), { fetch });
+    expect(r.status).toBe(500);
+    expect(r.body.error).toBe('raw error string');
+  });
+
+  it('forwards system prompt to Anthropic', async () => {
+    const fetch = vi.fn().mockResolvedValue({ json: async () => ({ content: [{ text: 'hi' }] }) });
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [], system: 'You are a slide assistant.' }), { fetch });
+    const sent = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(sent.system).toBe('You are a slide assistant.');
+  });
+
+  it('converts system prompt to a system message for OpenAI-compatible providers', async () => {
+    const fetch = vi.fn().mockResolvedValue({ json: async () => ({ choices: [{ message: { content: 'hi' } }] }) });
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'openai', apiKey: 'k', messages: [{ role: 'user', content: 'test' }], system: 'You are a slide assistant.' }), { fetch });
+    const sent = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(sent.messages[0]).toEqual({ role: 'system', content: 'You are a slide assistant.' });
+    expect(sent.messages[1]).toEqual({ role: 'user', content: 'test' });
+    expect(sent).not.toHaveProperty('system');
   });
 });

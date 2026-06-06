@@ -2,7 +2,6 @@ import { useState } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, IconButton, FieldRow } from '../ui/Primitives.jsx';
 import { exportToPPTX } from '../../lib/pptxExport.js';
-import { SAMPLE_DECK } from '../../data/deck.js';
 
 export default function ExportModal({ onClose, deck }) {
   const [fmt, setFmt] = useState('pptx');
@@ -21,7 +20,7 @@ export default function ExportModal({ onClose, deck }) {
     if (fmt === 'pptx') {
       setExporting(true);
       try {
-        await exportToPPTX(deck || SAMPLE_DECK);
+        await exportToPPTX(deck);
       } catch (err) {
         console.error('PPTX export failed:', err);
       } finally {
@@ -38,7 +37,7 @@ export default function ExportModal({ onClose, deck }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal medium" onClick={e => e.stopPropagation()}>
         <div className="modal-head">
-          <h3>Export · {(deck || SAMPLE_DECK).title || 'Presentation'}</h3>
+          <h3>Export · {deck?.title || 'Presentation'}</h3>
           <IconButton name="x" onClick={onClose}/>
         </div>
         <div className="modal-body">
@@ -56,7 +55,7 @@ export default function ExportModal({ onClose, deck }) {
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 10 }}>Options</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <FieldRow label="RANGE">
-                <div className="input-group"><input value={`All · ${(deck || SAMPLE_DECK).slides?.length || 0} slides`} readOnly/><Icon name="chevron-down" size={11}/></div>
+                <div className="input-group"><input value={`All · ${deck?.slides?.length || 0} slides`} readOnly/><Icon name="chevron-down" size={11}/></div>
               </FieldRow>
               <FieldRow label="QUALITY">
                 <div className="input-group"><input value="High" readOnly/><Icon name="chevron-down" size={11}/></div>
