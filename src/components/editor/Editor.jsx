@@ -1,18 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
+import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
+import { getFlatSlideIds } from '../../lib/deckUtils.js';
 
-let slideSeq = 0;
-
-function newId(kind) {
-  slideSeq += 1;
-  return `${kind}-${Date.now()}-${slideSeq}`;
-}
-
-export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport, onOpenHome }) {
+export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
   const [curId, setCurId] = useState(() => {
-    const flat = [];
-    (deck.sections || []).forEach(sec => (sec?.slides || []).forEach(sid => flat.push(sid)));
+    const flat = getFlatSlideIds(deck);
     return flat[3] || flat[0] || null;
   });
 
@@ -23,8 +17,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
       const { id, idx } = deletingRef.current;
       deletingRef.current = null;
       if (curId === id) {
-        const flat = [];
-        (deck.sections || []).forEach(sec => (sec?.slides || []).forEach(sid => flat.push(sid)));
+        const flat = getFlatSlideIds(deck);
         const fallback = flat[idx] || flat[idx - 1] || flat[0] || null;
         if (fallback) setCurId(fallback);
       }
@@ -50,18 +43,10 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     setCurId(slide.id);
   }
 
-  function addTable(rows = 3, cols = 3) {
-    const columns = Array.from({ length: cols }, (_, i) => `Column ${String.fromCharCode(65 + i)}`);
-    const body = Array.from({ length: rows }, (_, r) =>
-      Array.from({ length: cols }, (_, c) => (c === 0 ? `Row ${r + 1}` : '—'))
-    );
-    pushSlide({ id: newId('table'), layout: 'table', title: 'New table', columns, rows: body });
-  }
-
-  function addChart(type = 'line') {
-    const titleByType = { line: 'Trend', bar: 'Comparison', area: 'Cumulative', donut: 'Composition', pie: 'Composition' };
-    pushSlide({ id: newId('chart'), layout: 'chart', chartType: type, title: titleByType[type] || 'New chart' });
-  }
+  function addTable(rows, cols) { pushSlide(createTableSlide(rows, cols)); }
+  function addChart(type) { pushSlide(createChartSlide(type)); }
+  function addText(style) { pushSlide(createTextSlide(style)); }
+  function addComponent(id) { pushSlide(createComponentSlide(id)); }
 
   function changeLayout(layout) {
     if (!curId) return;
@@ -77,54 +62,8 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     onDeckChange(prev => ({ ...prev, theme }));
   }
 
-  function addText(style = 'heading') {
-    const blocks = {
-      heading:    { layout: 'text', title: 'New heading', body: '' },
-      subheading: { layout: 'text', title: 'Subheading', body: 'Add supporting copy beneath the subheading.' },
-      body:       { layout: 'text', title: '', body: 'Add your body text here. Keep it to a single idea so the slide stays readable from the back of the room.' },
-    };
-    pushSlide({ id: newId('text'), ...(blocks[style] || blocks.heading) });
-  }
-
-  function addComponent(id) {
-    if (id === 'table') return addTable();
-    if (id === 'chart') return addChart('line');
-    const sid = newId(id);
-    const blocks = {
-      agenda: { layout: 'agenda', title: 'Agenda', items: [
-        { n: '01', t: 'First section',  d: 'What this part covers' },
-        { n: '02', t: 'Second section', d: 'What this part covers' },
-        { n: '03', t: 'Third section',  d: 'What this part covers' },
-        { n: '04', t: 'Fourth section', d: 'What this part covers' },
-      ]},
-      text:   { layout: 'text', title: 'Section title', body: 'Add your supporting paragraph here.' },
-      list:   { layout: 'list', title: 'Key points', items: [
-        'First point worth making',
-        'Second point worth making',
-        'Third point worth making',
-      ]},
-      quote:   { layout: 'text', title: '"A sharp, quotable line that frames the whole story."', body: '— Attribution, Role' },
-      divider: { layout: 'divider', chapter: '00', title: 'New section', bg: 'ink' },
-      kpi:     { layout: 'kpi', title: 'Key metrics', note: 'edit values', kpis: [
-        { label: 'Metric one',   val: '00',  delta: '+0%',  target: 'vs target', good: true },
-        { label: 'Metric two',   val: '00%', delta: 'flat', target: 'vs target', good: null },
-        { label: 'Metric three', val: '0.0', delta: '-0',   target: 'vs target', good: false },
-      ]},
-      roadmap: { layout: 'roadmap', title: 'Roadmap' },
-      risks:   { layout: 'risks', title: 'Top risks', items: [
-        { sev: 'high', t: 'First risk',  d: 'Describe the exposure and magnitude' },
-        { sev: 'med',  t: 'Second risk', d: 'Describe the exposure and magnitude' },
-        { sev: 'low',  t: 'Third risk',  d: 'Describe the exposure and magnitude' },
-      ]},
-    };
-    const block = blocks[id] || { layout: 'text', title: 'New slide', body: '' };
-    pushSlide({ id: sid, ...block });
-  }
-
   function deleteSlide(slideId) {
-    // Capture original position before mutation so we can pick the right fallback after
-    const flat = [];
-    (deck.sections || []).forEach(sec => (sec?.slides || []).forEach(sid => flat.push(sid)));
+    const flat = getFlatSlideIds(deck);
     deletingRef.current = { id: slideId, idx: flat.indexOf(slideId) };
 
     onDeckChange(prev => {
@@ -138,20 +77,16 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     });
   }
 
+  const renderSlide = useCallback((slide, ctx) => (
+    <Slide slide={slide} deck={ctx.deck} sectionName={ctx.sectionName} num={ctx.num} total={ctx.total} />
+  ), []);
+
   return (
     <SlideEditor
       deck={deck}
       currentSlideId={curId || undefined}
       onCurrentSlideChange={setCurId}
-      renderSlide={(slide, ctx) => (
-        <Slide
-          slide={slide}
-          deck={ctx.deck}
-          sectionName={ctx.sectionName}
-          num={ctx.num}
-          total={ctx.total}
-        />
-      )}
+      renderSlide={renderSlide}
       layoutVariant={layoutVariant}
       theme={{ accent, density }}
       callbacks={{
@@ -165,7 +100,6 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onChangeTheme: changeTheme,
         onNewSlide: () => addComponent('text'),
         onDeleteSlide: deleteSlide,
-        onDuplicateSlide: () => {},
       }}
     />
   );
