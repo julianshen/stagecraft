@@ -28,21 +28,27 @@ function newSlideId() {
 }
 
 async function proxyLLM(body, fetchFn) {
-  const { messages, provider, model, apiKey, baseUrl, temperature, maxTokens } = body || {};
+  const { messages, provider, model, apiKey, baseUrl, temperature, maxTokens, system } = body || {};
   if (provider === 'anthropic' || !provider) {
+    const reqBody = { model: model || 'claude-sonnet-4', max_tokens: maxTokens || 2048, temperature: temperature ?? 0.7, messages: messages || [] };
+    if (system) reqBody.system = system;
     const res = await fetchFn('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey || '', 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: model || 'claude-sonnet-4', max_tokens: maxTokens || 2048, temperature: temperature ?? 0.7, messages: messages || [] }),
+      body: JSON.stringify(reqBody),
     });
     const data = await res.json();
     return data.content?.[0]?.text || data.error?.message || 'No response';
   }
   const apiBase = baseUrl || 'https://api.openai.com/v1';
+  const reqBody = { model: model || 'gpt-4o', max_tokens: maxTokens || 2048, temperature: temperature ?? 0.7, messages: messages || [] };
+  if (system) {
+    reqBody.messages = [{ role: 'system', content: system }, ...(messages || [])];
+  }
   const res = await fetchFn(`${apiBase}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey || ''}` },
-    body: JSON.stringify({ model: model || 'gpt-4o', max_tokens: maxTokens || 2048, temperature: temperature ?? 0.7, messages: messages || [] }),
+    body: JSON.stringify(reqBody),
   });
   const data = await res.json();
   return data.choices?.[0]?.message?.content || data.error?.message || 'No response';
@@ -73,7 +79,14 @@ function runTool(store, name, args = {}) {
     }
     case 'reorder_slides': {
       const order = args.order || [];
-      store.deck.slides = order.map((id) => store.deck.slides.find((s) => s.id === id)).filter(Boolean);
+      const reordered = order.map((id) => store.deck.slides.find((s) => s.id === id)).filter(Boolean);
+      store.deck.slides = reordered;
+      // Reorder each section's slides array to match the new global order
+      const orderSet = new Set(order);
+      const slideIndex = new Map(reordered.map((s, i) => [s.id, i]));
+      for (const sec of (store.deck.sections || [])) {
+        sec.slides = sec.slides.filter((id) => orderSet.has(id)).sort((a, b) => (slideIndex.get(a) ?? 0) - (slideIndex.get(b) ?? 0));
+      }
       return { status: 200, body: { result: { ok: true } } };
     }
     case 'set_theme': {

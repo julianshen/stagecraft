@@ -23,11 +23,14 @@ export async function callLLM(messages, options = {}) {
   const maxTokens = options.maxTokens || settings.maxTokens  || 2048;
   const temp      = options.temperature ?? settings.temperature ?? 0.6;
 
+  const body = { provider, model, apiKey, messages, maxTokens, temperature: temp };
+  if (options.system) body.system = options.system;
+
   // Route through our own Vite middleware so we never expose keys in the browser
   const res = await fetch('/api/llm', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider, model, apiKey, messages, maxTokens, temperature: temp }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { SAMPLE_DECK } from '../../data/deck.js';
 import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 
@@ -10,11 +9,10 @@ function newId(kind) {
   return `${kind}-${Date.now()}-${slideSeq}`;
 }
 
-export default function Editor({ accent, layoutVariant, density, onPresent, onOpenExport, onOpenHome }) {
-  const [deck, setDeck] = useState(() => JSON.parse(JSON.stringify(SAMPLE_DECK)));
+export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport, onOpenHome }) {
   const [curId, setCurId] = useState(() => {
     const flat = [];
-    SAMPLE_DECK.sections.forEach(sec => sec.slides.forEach(sid => flat.push(sid)));
+    deck.sections.forEach(sec => sec.slides.forEach(sid => flat.push(sid)));
     return flat[3] || flat[0] || null;
   });
 
@@ -28,7 +26,7 @@ export default function Editor({ accent, layoutVariant, density, onPresent, onOp
   }, [deck]);
 
   function pushSlide(slide) {
-    setDeck(prev => {
+    onDeckChange(prev => {
       const next = JSON.parse(JSON.stringify(prev));
       next.slides.push(slide);
       next.sections[next.sections.length - 1].slides.push(slide.id);
@@ -52,7 +50,7 @@ export default function Editor({ accent, layoutVariant, density, onPresent, onOp
 
   function changeLayout(layout) {
     if (!curId) return;
-    setDeck(prev => {
+    onDeckChange(prev => {
       const next = JSON.parse(JSON.stringify(prev));
       const s = next.slides.find(x => x.id === curId);
       if (s) s.layout = layout;
@@ -61,7 +59,7 @@ export default function Editor({ accent, layoutVariant, density, onPresent, onOp
   }
 
   function changeTheme(theme) {
-    setDeck(prev => ({ ...JSON.parse(JSON.stringify(prev)), theme }));
+    onDeckChange(prev => ({ ...JSON.parse(JSON.stringify(prev)), theme }));
   }
 
   function addText(style = 'heading') {
@@ -109,7 +107,18 @@ export default function Editor({ accent, layoutVariant, density, onPresent, onOp
   }
 
   function deleteSlide(slideId) {
-    setDeck(prev => {
+    // Capture cursor info before mutation resolves
+    const prevDeck = deck;
+    let nextCurId = curId;
+    if (curId === slideId) {
+      const flat = [];
+      prevDeck.sections.forEach(sec => sec.slides.forEach(sid => flat.push(sid)));
+      const idx = flat.indexOf(slideId);
+      const fallback = flat[idx + 1] || flat[idx - 1] || flat[0];
+      if (fallback && fallback !== slideId) nextCurId = fallback;
+    }
+
+    onDeckChange(prev => {
       const next = JSON.parse(JSON.stringify(prev));
       next.slides = next.slides.filter(s => s.id !== slideId);
       next.sections = next.sections.map(sec => ({
@@ -118,14 +127,8 @@ export default function Editor({ accent, layoutVariant, density, onPresent, onOp
       }));
       return next;
     });
-    // Move cursor if we deleted the current slide
-    if (curId === slideId) {
-      const flat = [];
-      deck.sections.forEach(sec => sec.slides.forEach(sid => flat.push(sid)));
-      const idx = flat.indexOf(slideId);
-      const next = flat[idx + 1] || flat[idx - 1] || flat[0];
-      if (next && next !== slideId) setCurId(next);
-    }
+
+    if (curId === slideId) setCurId(nextCurId);
   }
 
   return (

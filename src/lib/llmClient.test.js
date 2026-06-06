@@ -5,13 +5,26 @@ function res(body, { ok = true, status = 200 } = {}) {
   return { ok, status, json: async () => body, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) };
 }
 
+// Minimal localStorage mock — jsdom in vitest doesn't expose localStorage
+// unless --localstorage-file is set; stub it ourselves.
+const store = new Map();
+const localStorageMock = {
+  getItem:    (k) => store.has(k) ? store.get(k) : null,
+  setItem:    (k, v) => store.set(k, String(v)),
+  removeItem: (k) => store.delete(k),
+  clear:      () => store.clear(),
+};
+
 let fetchMock;
 beforeEach(() => {
-  localStorage.clear();
+  store.clear();
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('localStorage', localStorageMock);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('callLLM', () => {
   it('posts to /api/llm and returns text from the proxy shape', async () => {
@@ -71,6 +84,32 @@ describe('callLLM', () => {
   it('throws on a non-ok response', async () => {
     fetchMock.mockResolvedValue(res('boom', { ok: false, status: 502 }));
     await expect(callLLM([])).rejects.toThrow(/502/);
+  });
+
+  it('forwards system prompt in the request body', async () => {
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([], { system: 'You are a helpful assistant.' });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.system).toBe('You are a helpful assistant.');
+  });
+
+  it('omits system from the body when not provided', async () => {
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([]);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body).not.toHaveProperty('system');
+  });
+
+  it('falls back to data.text when response has no content or choices', async () => {
+    fetchMock.mockResolvedValue(res({ text: 'plain text' }));
+    expect(await callLLM([])).toBe('plain text');
+  });
+
+  it('falls back to stringifying the entire response when no known shape', async () => {
+    fetchMock.mockResolvedValue(res('just a string'));
+    // The string 'just a string' is valid JSON but not an object with .text or .message
+    // callLLM will parse it, and the final fallback returns String(data || '')
+    expect(await callLLM([])).toBe('just a string');
   });
 });
 

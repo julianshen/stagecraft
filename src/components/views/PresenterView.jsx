@@ -2,10 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { ScaledSlide } from '../ui/Primitives.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
-import { SAMPLE_DECK, SPEAKER_NOTES } from '../../data/deck.js';
+import { SPEAKER_NOTES } from '../../data/deck.js';
 
-export default function PresenterView({ onExit }) {
-  const deck = SAMPLE_DECK;
+export default function PresenterView({ deck, onExit }) {
 
   const flat = useMemo(() => {
     const arr = [];

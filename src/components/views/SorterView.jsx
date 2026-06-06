@@ -2,10 +2,8 @@ import { useState, useMemo } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, IconButton, ScaledSlide } from '../ui/Primitives.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
-import { SAMPLE_DECK } from '../../data/deck.js';
 
-export default function SorterView({ onBack, onOpenSlide }) {
-  const deck = SAMPLE_DECK;
+export default function SorterView({ deck, onBack, onOpenSlide }) {
   const [mode, setMode] = useState('grid'); // grid | outline
 
   const flat = useMemo(() => {

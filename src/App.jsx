@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Icon from './components/ui/Icon.jsx';
 import { Button } from './components/ui/Primitives.jsx';
-import { ACCENTS } from './data/deck.js';
+import { ACCENTS, SAMPLE_DECK } from './data/deck.js';
 
 import HomeView     from './components/views/HomeView.jsx';
 import Editor       from './components/editor/Editor.jsx';
@@ -43,6 +43,9 @@ export default function App() {
   const [modal, setModal] = useState(null);     // 'templates' | 'export' | null
   const [presenting, setPresenting] = useState(false);
 
+  // ---- deck state (lifted from Editor so it persists across view switches) ----
+  const [deck, setDeck] = useState(() => JSON.parse(JSON.stringify(SAMPLE_DECK)));
+
   // ---- apply theme + density + accent ----
   useEffect(() => {
     document.documentElement.setAttribute('data-theme',   tw.theme);
@@ -64,7 +67,7 @@ export default function App() {
   }, []);
 
   if (presenting) {
-    return <PresenterView onExit={() => setPresenting(false)}/>;
+    return <PresenterView deck={deck} onExit={() => setPresenting(false)}/>;
   }
 
   return (
@@ -129,6 +132,8 @@ export default function App() {
 
       {view === 'editor' && (
         <Editor
+          deck={deck}
+          onDeckChange={setDeck}
           accent={tw.accent}
           layoutVariant={tw.layout}
           density={tw.density}
@@ -139,7 +144,7 @@ export default function App() {
       )}
 
       {view === 'sorter' && (
-        <SorterView onBack={() => setView('editor')} onOpenSlide={() => setView('editor')}/>
+        <SorterView deck={deck} onBack={() => setView('editor')} onOpenSlide={() => setView('editor')}/>
       )}
 
       {view === 'settings' && (
@@ -155,7 +160,7 @@ export default function App() {
       )}
 
       {modal === 'export' && (
-        <ExportModal onClose={() => setModal(null)}/>
+        <ExportModal onClose={() => setModal(null)} deck={deck}/>
       )}
 
       {/* ---- tweaks panel (activated via postMessage) ---- */}

@@ -139,6 +139,27 @@ describe('MCP tools/call', () => {
     expect(store.deck.slides.map((s) => s.id)).toEqual(['c', 'b']);
   });
 
+  it('reorder_slides updates section slide order to match global order', async () => {
+    const store = createDeckStore(deck());
+    // deck has sections: s1=[a], s2=[b,c]; reorder to [c,b,a]
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['c', 'b', 'a'] } }));
+    expect(store.deck.slides.map((s) => s.id)).toEqual(['c', 'b', 'a']);
+    // sections should remain intact (s1 still has 'a', s2 still has 'b','c')
+    // but their internal order should match the global order
+    expect(store.deck.sections[0].slides).toEqual(['a']);
+    expect(store.deck.sections[1].slides).toEqual(['c', 'b']);
+  });
+
+  it('reorder_slides omits slide IDs not in the order (drops them)', async () => {
+    const store = createDeckStore(deck());
+    // Reorder with only [b] — slides a and c should be dropped from pool
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['b'] } }));
+    expect(store.deck.slides.map((s) => s.id)).toEqual(['b']);
+    // sections should no longer reference the removed slides
+    expect(store.deck.sections[0].slides).toEqual([]);
+    expect(store.deck.sections[1].slides).toEqual(['b']);
+  });
+
   it('set_theme updates the deck theme', async () => {
     const store = createDeckStore(deck());
     await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'set_theme', arguments: { theme: 'emerald' } }));
@@ -153,6 +174,33 @@ describe('MCP tools/call', () => {
   it('unknown tool → 400', async () => {
     const store = createDeckStore(deck());
     const r = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'frobnicate' }));
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/Unknown tool/);
+  });
+
+  it('add_slide pushes to pool only when sections is empty', async () => {
+    const d = { ...deck(), sections: [] };
+    const store = createDeckStore(d);
+    const r = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'add_slide', arguments: { title: 'Orphan' } }));
+    expect(r.body.result.title).toBe('Orphan');
+    // Slide added to pool but not to any section (sections is empty)
+    expect(store.deck.slides).toHaveLength(4);
+    expect(store.deck.sections).toHaveLength(0);
+  });
+
+  it('DELETE slide with null sections', async () => {
+    const d = { ...deck(), sections: null };
+    const store = createDeckStore(d);
+    const r = await handleApiRequest(store, req('DELETE', '/api/slides/b'));
+    expect(r.body).toEqual({ ok: true });
+    // Should not throw even when sections is null
+    expect(store.deck.slides.map((s) => s.id)).toEqual(['a', 'c']);
+  });
+
+  it('MCP tool call with null body falls back to empty args', async () => {
+    const store = createDeckStore(deck());
+    // body is null → arguments is undefined → args defaults to {}
+    const r = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', null));
     expect(r.status).toBe(400);
     expect(r.body.error).toMatch(/Unknown tool/);
   });
@@ -213,5 +261,28 @@ describe('LLM proxy', () => {
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic' }), { fetch });
     expect(r.status).toBe(500);
     expect(r.body.error).toBe('network down');
+  });
+
+  it('returns 500 with stringified error when thrown value has no message', async () => {
+    const fetch = vi.fn().mockRejectedValue('raw error string');
+    const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic' }), { fetch });
+    expect(r.status).toBe(500);
+    expect(r.body.error).toBe('raw error string');
+  });
+
+  it('forwards system prompt to Anthropic', async () => {
+    const fetch = vi.fn().mockResolvedValue({ json: async () => ({ content: [{ text: 'hi' }] }) });
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [], system: 'You are a slide assistant.' }), { fetch });
+    const sent = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(sent.system).toBe('You are a slide assistant.');
+  });
+
+  it('converts system prompt to a system message for OpenAI-compatible providers', async () => {
+    const fetch = vi.fn().mockResolvedValue({ json: async () => ({ choices: [{ message: { content: 'hi' } }] }) });
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'openai', apiKey: 'k', messages: [{ role: 'user', content: 'test' }], system: 'You are a slide assistant.' }), { fetch });
+    const sent = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(sent.messages[0]).toEqual({ role: 'system', content: 'You are a slide assistant.' });
+    expect(sent.messages[1]).toEqual({ role: 'user', content: 'test' });
+    expect(sent).not.toHaveProperty('system');
   });
 });
