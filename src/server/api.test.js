@@ -140,32 +140,38 @@ describe('MCP tools/call', () => {
   });
 
   // The deck's render order is defined by iterating sections[] then each
-  // section's slides[] — so honoring a global order means reordering BOTH the
-  // slides within a section AND the sections themselves.
+  // section's slides[]. reorder_slides honors an arbitrary global order by
+  // collapsing membership: every slide follows its predecessor into the first
+  // slide's section, so the flatten exactly matches the request.
   const flatten = (d) => d.sections.flatMap((sec) => sec.slides);
 
-  it('reorder_slides reorders sections to honor a cross-boundary global order', async () => {
+  it('reorder_slides honors a cross-boundary order by collapsing into the first slide section', async () => {
     const store = createDeckStore(deck());
-    // deck has sections: s1=Intro[a], s2=Body[b,c]; reorder to [c,b,a].
-    // 'a' must end up LAST even though it lives in the first section.
+    // s1=Intro[a], s2=Body[b,c]; reorder to [c,b,a]. The first slide 'c' lives
+    // in Body, so every slide collapses into Body and Intro empties out.
     await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['c', 'b', 'a'] } }));
     expect(store.deck.slides.map((s) => s.id)).toEqual(['c', 'b', 'a']);
-    // Sections are re-sequenced by the global index of their first slide:
-    // Body (first slide 'c' → index 0) now precedes Intro ('a' → index 2).
-    expect(store.deck.sections.map((s) => s.name)).toEqual(['Body', 'Intro']);
-    expect(store.deck.sections[0].slides).toEqual(['c', 'b']);
-    expect(store.deck.sections[1].slides).toEqual(['a']);
-    // The flattened render order now matches the requested global order exactly.
     expect(flatten(store.deck)).toEqual(['c', 'b', 'a']);
+    expect(store.deck.sections.find((s) => s.name === 'Body').slides).toEqual(['c', 'b', 'a']);
+    expect(store.deck.sections.find((s) => s.name === 'Intro').slides).toEqual([]);
   });
 
-  it('reorder_slides moves a slide across a section boundary', async () => {
-    const store = createDeckStore(deck());
-    // s1=Intro[a], s2=Body[b,c]; move Intro's 'a' to the end → [b, c, a].
-    // 'a' crosses the boundary into last position while Body stays contiguous.
-    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['b', 'c', 'a'] } }));
-    expect(flatten(store.deck)).toEqual(['b', 'c', 'a']);
-    expect(store.deck.sections.map((s) => s.name)).toEqual(['Body', 'Intro']);
+  it('reorder_slides honors an order that interleaves two multi-slide sections', async () => {
+    const d = {
+      id: 'd', title: 'Demo', theme: 'indigo',
+      sections: [
+        { id: 's1', name: 'One', slides: ['a', 'c'] },
+        { id: 's2', name: 'Two', slides: ['b', 'd'] },
+      ],
+      slides: ['a', 'b', 'c', 'd'].map((id) => ({ id, layout: 'text', title: id })),
+    };
+    const store = createDeckStore(d);
+    // Interleaved request [a,b,c,d] would render as [a,c,b,d] under section
+    // grouping; collapsing membership makes it render exactly as requested.
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['a', 'b', 'c', 'd'] } }));
+    expect(flatten(store.deck)).toEqual(['a', 'b', 'c', 'd']);
+    expect(store.deck.sections.find((s) => s.name === 'One').slides).toEqual(['a', 'b', 'c', 'd']);
+    expect(store.deck.sections.find((s) => s.name === 'Two').slides).toEqual([]);
   });
 
   it('reorder_slides omits slide IDs not in the order (drops them)', async () => {
@@ -173,7 +179,6 @@ describe('MCP tools/call', () => {
     // Reorder with only [b] — slides a and c should be dropped from pool
     await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['b'] } }));
     expect(store.deck.slides.map((s) => s.id)).toEqual(['b']);
-    // Only 'b' remains anywhere; the now-empty Intro section sinks to the end.
     expect(flatten(store.deck)).toEqual(['b']);
     expect(store.deck.sections.find((s) => s.name === 'Body').slides).toEqual(['b']);
     expect(store.deck.sections.find((s) => s.name === 'Intro').slides).toEqual([]);
@@ -185,6 +190,22 @@ describe('MCP tools/call', () => {
     const r = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['c', 'b'] } }));
     expect(r.status).toBe(200);
     expect(flatten(store.deck)).toEqual(['c', 'b']);
+  });
+
+  it('reorder_slides places an orphan first slide into the first section', async () => {
+    const store = createDeckStore(deck());
+    // 'orphan' exists in the pool but is referenced by no section.
+    store.deck.slides.push({ id: 'orphan', layout: 'text', title: 'O' });
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['orphan', 'a'] } }));
+    expect(flatten(store.deck)).toEqual(['orphan', 'a']);
+    expect(store.deck.sections.find((s) => s.name === 'Intro').slides).toEqual(['orphan', 'a']);
+  });
+
+  it('reorder_slides with only unknown IDs clears the deck', async () => {
+    const store = createDeckStore(deck());
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['zzz'] } }));
+    expect(store.deck.slides).toEqual([]);
+    expect(flatten(store.deck)).toEqual([]);
   });
 
   it('reorder_slides rejects non-array order', async () => {

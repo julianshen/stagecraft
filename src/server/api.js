@@ -85,24 +85,26 @@ function runTool(store, name, args = {}) {
       const reordered = order.map((id) => store.deck.slides.find((s) => s.id === id)).filter(Boolean);
       store.deck.slides = reordered;
 
-      // The deck renders by walking sections[] then each section's slides[], so
-      // honoring a global order across section boundaries means re-sequencing
-      // BOTH the slides within a section AND the sections themselves. Rank each
-      // section by the global index of its first remaining slide; sort slides
-      // within a section the same way. Sections that lose all their slides keep
-      // their original relative order and sink to the end. (Sections render as
-      // contiguous blocks, so a request that would interleave two multi-slide
-      // sections is resolved by keeping each section's slides together.)
-      const slideIndex = new Map(reordered.map((s, i) => [s.id, i]));
-      const ranked = (store.deck.sections || []).map((sec, origIdx) => {
-        const slides = (sec && Array.isArray(sec.slides) ? sec.slides : [])
-          .filter((id) => slideIndex.has(id))
-          .sort((a, b) => slideIndex.get(a) - slideIndex.get(b));
-        const rank = slides.length ? slideIndex.get(slides[0]) : Infinity;
-        return { sec, slides, rank, origIdx };
+      // The deck renders by walking sections[] then each section's slides[], so a
+      // section can only ever be a contiguous block of the flat order. To honor an
+      // ARBITRARY global order (including one that interleaves slides from
+      // different sections), reassign membership: each slide follows its
+      // predecessor into the first slide's section. Because that is transitive,
+      // every slide lands in the first slide's original section and the others
+      // empty out — a cross-section reorder collapses the deck into one section,
+      // but the flatten then matches the requested order exactly.
+      const sections = store.deck.sections || [];
+      const sectionOf = new Map();
+      sections.forEach((sec, i) => {
+        if (sec && Array.isArray(sec.slides)) sec.slides.forEach((id) => sectionOf.set(id, i));
       });
-      ranked.sort((x, y) => (x.rank - y.rank) || (x.origIdx - y.origIdx));
-      store.deck.sections = ranked.map(({ sec, slides }) => ({ ...(sec || {}), slides }));
+      const home = reordered.length
+        ? (sectionOf.has(reordered[0].id) ? sectionOf.get(reordered[0].id) : 0)
+        : null;
+      store.deck.sections = sections.map((sec, i) => ({
+        ...(sec || {}),
+        slides: i === home ? reordered.map((s) => s.id) : [],
+      }));
       return { status: 200, body: { result: { ok: true } } };
     }
     case 'set_theme': {
