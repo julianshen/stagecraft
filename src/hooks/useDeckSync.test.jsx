@@ -58,6 +58,16 @@ describe('useDeckSync', () => {
     expect(srv.puts).toEqual([]);              // did NOT clobber the agent's deck
   });
 
+  it('adopts a deck the server was preloaded with, even at rev 0', async () => {
+    const preloaded = { id: 'preloaded', theme: 'slate', slides: [], sections: [] };
+    const srv = makeServer({ deck: preloaded, rev: 0 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush();
+    expect(controls.deck).toEqual(preloaded); // adopted, not overwritten
+    expect(srv.puts).toEqual([]);             // did not seed the sample deck over it
+  });
+
   it('adopts an external edit surfaced by polling', async () => {
     const srv = makeServer({ deck: null, rev: 0 });
     const controls = {};

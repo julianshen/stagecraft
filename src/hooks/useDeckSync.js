@@ -60,7 +60,10 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
     (async () => {
       try {
         const data = await (await fetchRef.current('/api/deck/state')).json();
-        if (!cancelled && data && typeof data.rev === 'number' && data.rev > 0 && data.deck) {
+        // Any deck the server already holds wins — including one preloaded at
+        // rev 0 (createDeckStore(initialDeck) or a future durable load). Its
+        // presence, not the rev, distinguishes a loaded server from an empty one.
+        if (!cancelled && data && typeof data.rev === 'number' && data.deck) {
           adopt(data.deck, data.rev);
         }
       } catch {
