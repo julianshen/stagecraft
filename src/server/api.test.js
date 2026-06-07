@@ -261,6 +261,62 @@ describe('MCP tools/call', () => {
   });
 });
 
+describe('deck revisions (round-trip sync)', () => {
+  it('createDeckStore starts at rev 0', () => {
+    expect(createDeckStore(deck()).rev).toBe(0);
+  });
+
+  it('GET /api/deck/state returns the deck and current rev', async () => {
+    const store = createDeckStore(deck());
+    const r = await handleApiRequest(store, req('GET', '/api/deck/state'));
+    expect(r.status).toBe(200);
+    expect(r.body.rev).toBe(0);
+    expect(r.body.deck.id).toBe('d1');
+  });
+
+  it('GET /api/deck/state returns deck:null when no deck is loaded', async () => {
+    const r = await handleApiRequest(createDeckStore(), req('GET', '/api/deck/state'));
+    expect(r.body).toEqual({ deck: null, rev: 0 });
+  });
+
+  it('PUT /api/deck bumps rev and returns it', async () => {
+    const store = createDeckStore(deck());
+    const r1 = await handleApiRequest(store, req('PUT', '/api/deck', { id: 'd2', slides: [], sections: [] }));
+    expect(r1.body).toEqual({ ok: true, rev: 1 });
+    const r2 = await handleApiRequest(store, req('PUT', '/api/deck', { id: 'd3', slides: [], sections: [] }));
+    expect(r2.body.rev).toBe(2);
+    expect(store.rev).toBe(2);
+  });
+
+  it('every mutating tool and REST write bumps the rev by exactly one', async () => {
+    const store = createDeckStore(deck());
+    let rev = 0;
+    const expectBump = async (request) => {
+      await handleApiRequest(store, request);
+      expect(store.rev).toBe(++rev);
+    };
+    await expectBump(req('POST', '/api/mcp/tools/call', { name: 'add_slide', arguments: { title: 'X' } }));
+    await expectBump(req('POST', '/api/mcp/tools/call', { name: 'update_slide', arguments: { id: 'a', updates: { title: 'Y' } } }));
+    await expectBump(req('POST', '/api/mcp/tools/call', { name: 'set_theme', arguments: { theme: 'emerald' } }));
+    await expectBump(req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: ['b', 'a'] } }));
+    await expectBump(req('POST', '/api/mcp/tools/call', { name: 'delete_slide', arguments: { id: 'b' } }));
+    await expectBump(req('POST', '/api/slides', { title: 'Z' }));
+    await expectBump(req('PUT', '/api/slides/a', { title: 'AA' }));
+    await expectBump(req('DELETE', '/api/slides/a'));
+  });
+
+  it('read-only and failed operations leave the rev unchanged', async () => {
+    const store = createDeckStore(deck());
+    await handleApiRequest(store, req('GET', '/api/deck'));
+    await handleApiRequest(store, req('GET', '/api/deck/state'));
+    await handleApiRequest(store, req('GET', '/api/slides'));
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'get_deck' }));
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'update_slide', arguments: { id: 'nope', updates: {} } })); // 404
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'reorder_slides', arguments: { order: 'bad' } })); // 400
+    expect(store.rev).toBe(0);
+  });
+});
+
 describe('LLM proxy', () => {
   it('routes anthropic and extracts content text', async () => {
     const fetch = vi.fn().mockResolvedValue({ json: async () => ({ content: [{ text: 'hi from claude' }] }) });

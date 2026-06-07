@@ -90,7 +90,7 @@ Every slide is authored in a **1920×1080 coordinate space** (absolute px, no vi
 ## Conventions & gotchas
 
 - **ES modules with named exports only.** (The original prototype in `../repo/project` used `window.*` globals and `/* global */` comments — this project deliberately does not. Don't reintroduce that pattern.)
-- **The editor→server sync is one-way.** `Editor.jsx` does `PUT /api/deck` on every change but never reads it back, and `deckState` is in-memory. So MCP/agent edits do **not** appear in a running editor, and a browser reload resets to the bundled `SAMPLE_DECK`. This is a known architectural gap, not a bug to "fix" incidentally.
+- **The editor↔server sync is a two-way round-trip** via `src/hooks/useDeckSync.js` (used in `App.jsx`). The store carries a monotonic `rev`; the hook pushes local edits (`PUT /api/deck`) and polls `GET /api/deck/state` (~1.5 s), adopting the server deck whenever `rev` advances past the one it last wrote. So MCP/agent edits **do** render live now. Caveat: `deckState` is still **in-memory**, so a browser reload reseeds from `SAMPLE_DECK` (durable persistence is the next roadmap item). Conflict policy is last-write-wins (no CRDT/OT merge).
 - **Much of the inspector/canvas is intentionally non-functional** (single mocked selection box; Design/Animate panels and several toolbar buttons have no handlers). Before assuming something is broken, check `SPEC.md`, which tags every feature 🟢 wired / 🟡 partial / 🔴 mocked / ⚪ planned.
 
 ## Adding a slide layout

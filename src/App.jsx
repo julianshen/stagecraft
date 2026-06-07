@@ -12,6 +12,7 @@ import ExportModal  from './components/modals/ExportModal.jsx';
 import TemplatePicker from './components/modals/TemplatePicker.jsx';
 
 import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
+import { useDeckSync } from './hooks/useDeckSync.js';
 
 const VIEW_LABELS = { home: 'Home', editor: 'Editor', sorter: 'Sorter', settings: 'Settings' };
 const VIEW_ORDER = ['home', 'editor', 'sorter', 'settings'];
@@ -47,6 +48,10 @@ export default function App() {
 
   // ---- deck state (lifted from Editor so it persists across view switches) ----
   const [deck, setDeck] = useState(() => JSON.parse(JSON.stringify(SAMPLE_DECK)));
+
+  // Two-way sync with the in-memory MCP server: push local edits and adopt
+  // external (MCP/agent) edits live. Runs app-wide so it works in every view.
+  useDeckSync(deck, setDeck);
 
   // ---- apply theme + density + accent ----
   useEffect(() => {
