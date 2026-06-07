@@ -344,8 +344,8 @@ Returns `{ text }`. Errors return `{ error }` 500.
 ### 11.5 Export trigger
 `POST /api/export/pptx` → acknowledges; real bytes are produced client-side (§12).
 
-### 11.6 Gap: one-way sync ⚪
-The editor **writes** to `/api/deck` but never **reads** it, and server state is in-memory. So MCP/agent edits don't appear in the running UI, and a reload resets to bundled `SAMPLE_DECK`. **Spec:** editor should `GET /api/deck` on mount and poll (or SSE/websocket) to reflect external edits; server should optionally persist.
+### 11.6 Round-trip sync 🟢 (🟡 persistence)
+The store carries a monotonic **`rev`** counter, bumped on every mutation (deck PUT, slide REST writes, and all writing tools). `GET /api/deck/state` → `{ deck, rev }`; `PUT /api/deck` returns the new `rev`. The app-level **`useDeckSync`** hook (`src/hooks/useDeckSync.js`) reconciles on mount (adopt a pre-existing server deck, else seed ours), pushes local edits, and polls `/api/deck/state` (~1.5 s) — adopting the server deck whenever `rev` advances past the one it last wrote, while suppressing the echo PUT. **So MCP/agent edits now render live in the running UI.** 🟡 Remaining: server state is still in-memory, so a reload reseeds (see §17 durable persistence). Last-write-wins; no operational-transform/CRDT merge.
 
 ---
 
@@ -419,7 +419,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 | Inspector Design/Animate, timeline | 🔴 |
 | Home/Sorter secondary controls, drag-reorder | 🔴 → ⚪ |
 | Templates → real starter decks | 🟡 → ⚪ |
-| Editor ↔ server round-trip | ⚪ |
+| Editor ↔ server round-trip | 🟢 (🟡 in-memory only) |
 | Collaboration | 🔴 → ⚪ |
 | Durable persistence | ⚪ |
 
@@ -427,7 +427,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 
 ## 19. Prioritized roadmap (highest impact first)
 
-1. **MCP round-trip** — editor `GET`/polls `/api/deck` so agent edits render live (unlocks the headline feature). _(§11.6)_
+1. ~~**MCP round-trip** — editor `GET`/polls `/api/deck` so agent edits render live.~~ ✅ **Done** — `rev` counter + `/api/deck/state` + `useDeckSync` (§11.6). _Next: durable persistence (§17) so reloads survive._
 2. **Co-pilot applies edits** — parse replies via `generateSlide`/`rewriteText` and commit through editor callbacks. _(§8.2)_
 3. **Real selection & direct manipulation** — element model + click/drag/resize; bind Properties panel. _(§9)_
 4. **Drag-to-reorder** slides/sections in Thumbs + Sorter. _(§7.2.3, §7.3)_

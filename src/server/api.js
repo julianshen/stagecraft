@@ -6,7 +6,13 @@
 // route is unhandled (the caller then falls through to next()).
 
 export function createDeckStore(initialDeck = null) {
-  return { deck: initialDeck };
+  // `rev` is a monotonic revision counter bumped on every mutation. Clients poll
+  // it (GET /api/deck/state) to detect external edits without diffing the deck.
+  return { deck: initialDeck, rev: 0 };
+}
+
+function bump(store) {
+  store.rev = (store.rev || 0) + 1;
 }
 
 export const MCP_MANIFEST = {
@@ -76,17 +82,20 @@ function runTool(store, name, args = {}) {
       const s = { id: newSlideId(), layout: 'text', title: 'New slide', ...args };
       store.deck.slides.push(s);
       if (store.deck.sections?.length) store.deck.sections[store.deck.sections.length - 1].slides.push(s.id);
+      bump(store);
       return { status: 200, body: { result: s } };
     }
     case 'update_slide': {
       const idx = store.deck.slides.findIndex((s) => s.id === args.id);
       if (idx < 0) return { status: 404, body: { error: 'Not found' } };
       store.deck.slides[idx] = { ...store.deck.slides[idx], ...args.updates };
+      bump(store);
       return { status: 200, body: { result: store.deck.slides[idx] } };
     }
     case 'delete_slide': {
       store.deck.slides = store.deck.slides.filter((s) => s.id !== args.id);
       store.deck.sections = (store.deck.sections || []).map((sec) => ({ ...sec, slides: sec.slides.filter((sid) => sid !== args.id) }));
+      bump(store);
       return { status: 200, body: { result: { ok: true } } };
     }
     case 'reorder_slides': {
@@ -115,10 +124,12 @@ function runTool(store, name, args = {}) {
         ...(sec || {}),
         slides: i === home ? reordered.map((s) => s.id) : [],
       }));
+      bump(store);
       return { status: 200, body: { result: { ok: true } } };
     }
     case 'set_theme': {
       store.deck.theme = args.theme;
+      bump(store);
       return { status: 200, body: { result: { ok: true } } };
     }
     default:
@@ -140,9 +151,12 @@ export async function handleApiRequest(store, req, deps = {}) {
 
   if (path === '/api/health' && method === 'GET') return ok({ ok: true, version: '1.0.0' });
 
+  // Round-trip polling endpoint: deck content + revision in one read.
+  if (path === '/api/deck/state' && method === 'GET') return ok({ deck: store.deck ?? null, rev: store.rev });
+
   if (path === '/api/deck') {
     if (method === 'GET') return ok(store.deck || {});
-    if (method === 'PUT') { store.deck = body; return ok({ ok: true }); }
+    if (method === 'PUT') { store.deck = body; bump(store); return ok({ ok: true, rev: store.rev }); }
   }
 
   if (path === '/api/slides') {
@@ -152,6 +166,7 @@ export async function handleApiRequest(store, req, deps = {}) {
       const slide = { id: newSlideId(), layout: 'text', title: 'New slide', ...body };
       store.deck.slides.push(slide);
       if (store.deck.sections?.length) store.deck.sections[store.deck.sections.length - 1].slides.push(slide.id);
+      bump(store);
       return ok(slide);
     }
   }
@@ -164,11 +179,13 @@ export async function handleApiRequest(store, req, deps = {}) {
       const idx = store.deck.slides.findIndex((s) => s.id === id);
       if (idx < 0) return ok({ error: 'Not found' }, 404);
       store.deck.slides[idx] = { ...store.deck.slides[idx], ...body };
+      bump(store);
       return ok(store.deck.slides[idx]);
     }
     if (method === 'DELETE') {
       store.deck.slides = store.deck.slides.filter((s) => s.id !== id);
       store.deck.sections = (store.deck.sections || []).map((sec) => ({ ...sec, slides: sec.slides.filter((sid) => sid !== id) }));
+      bump(store);
       return ok({ ok: true });
     }
   }

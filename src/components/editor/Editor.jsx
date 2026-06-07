@@ -24,15 +24,6 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     }
   }, [deck]);
 
-  // Sync deck state to the Vite MCP server
-  useEffect(() => {
-    fetch('/api/deck', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(deck),
-    }).catch(() => {}); // silently ignore if server isn't running
-  }, [deck]);
-
   function pushSlide(slide) {
     onDeckChange(prev => {
       const next = JSON.parse(JSON.stringify(prev));
