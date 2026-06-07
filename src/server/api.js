@@ -12,7 +12,7 @@ export function createDeckStore(initialDeck = null) {
 }
 
 function bump(store) {
-  store.rev = (store.rev || 0) + 1;
+  store.rev += 1;
 }
 
 export const MCP_MANIFEST = {

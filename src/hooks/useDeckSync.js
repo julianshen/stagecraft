@@ -2,11 +2,13 @@ import { useEffect, useRef } from 'react';
 
 const DEFAULT_POLL_MS = 1500;
 
-const putInit = (deck) => ({
-  method: 'PUT',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(deck),
-});
+function putInit(deck) {
+  return {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(deck),
+  };
+}
 
 /**
  * Two-way sync between the app's deck state and the in-memory MCP server.
@@ -18,7 +20,11 @@ const putInit = (deck) => ({
  *   remembered as "ours".
  * - It polls `GET /api/deck/state`; when the server `rev` differs from the last
  *   one we wrote, an external (MCP/agent) edit happened, so it adopts that deck
- *   via `onExternalDeck` — and suppresses the echo PUT so there's no loop.
+ *   via `onExternalDeck` — skipping the echo PUT for the exact object adopted.
+ *
+ * `onExternalDeck` must be a stable setter that stores the passed deck object
+ * by reference (e.g. a `useState` dispatcher) — the echo guard relies on object
+ * identity, and an unstable callback would also rebuild the poll interval.
  *
  * @param deck            the current deck (app-owned state)
  * @param onExternalDeck  stable setter invoked when an external edit is adopted
@@ -28,27 +34,28 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   const { intervalMs = DEFAULT_POLL_MS, fetchFn } = options;
   const doFetch = fetchFn || ((...a) => globalThis.fetch(...a));
 
-  const lastRev = useRef(null);     // the rev we last wrote or adopted
-  const skipPush = useRef(false);   // set right before adopting, to skip the echo PUT
+  const lastRev = useRef(null);      // the rev we last wrote or saw
+  const adopted = useRef(null);      // the exact deck object we last adopted (skip its echo PUT)
   const initialized = useRef(false); // becomes true after the mount reconcile
-  const deckRef = useRef(deck);
-  deckRef.current = deck;
+
+  // Adopt a deck the server reports as newer than ours.
+  const adopt = (serverDeck, rev) => {
+    lastRev.current = rev;
+    adopted.current = serverDeck;
+    onExternalDeck(serverDeck);
+  };
 
   // Mount reconcile: adopt a pre-existing server deck, else seed with ours.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await doFetch('/api/deck/state');
-        const data = await res.json();
+        const data = await (await doFetch('/api/deck/state')).json();
         if (cancelled) return;
         if (data && typeof data.rev === 'number' && data.rev > 0 && data.deck) {
-          lastRev.current = data.rev;
-          skipPush.current = true;
-          onExternalDeck(data.deck);
+          adopt(data.deck, data.rev);
         } else {
-          const put = await doFetch('/api/deck', putInit(deckRef.current));
-          const body = await put.json();
+          const body = await (await doFetch('/api/deck', putInit(deck))).json();
           if (!cancelled && body && typeof body.rev === 'number') lastRev.current = body.rev;
         }
       } catch {
@@ -59,10 +66,9 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Push local edits (after the mount reconcile, and never the adopted echo).
+  // Push local edits (after the mount reconcile, never the adopted echo).
   useEffect(() => {
-    if (!initialized.current) return;
-    if (skipPush.current) { skipPush.current = false; return; }
+    if (!initialized.current || deck === adopted.current) return;
     let cancelled = false;
     doFetch('/api/deck', putInit(deck))
       .then((r) => r.json())
@@ -76,14 +82,12 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
     let stopped = false;
     const id = setInterval(async () => {
       try {
-        const res = await doFetch('/api/deck/state');
-        const data = await res.json();
-        if (stopped || !data || typeof data.rev !== 'number' || !data.deck) return;
-        if (data.rev !== lastRev.current) {
-          lastRev.current = data.rev;
-          skipPush.current = true;
-          onExternalDeck(data.deck);
-        }
+        const data = await (await doFetch('/api/deck/state')).json();
+        if (stopped || !data || typeof data.rev !== 'number' || data.rev === lastRev.current) return;
+        // rev changed: keep lastRev in step even on a server reset (rev → 0 with
+        // no deck, e.g. a dev-server restart) so later edits aren't missed.
+        lastRev.current = data.rev;
+        if (data.deck) adopt(data.deck, data.rev);
       } catch {
         // transient — try again next tick
       }

@@ -18,6 +18,7 @@ export default defineConfig({
         'src/lib/deckOrder.js',
         'src/lib/deckUtils.js',
         'src/lib/llmClient.js',
+        'src/hooks/useDeckSync.js',
         'src/data/deck.js',
       ],
       thresholds: {
