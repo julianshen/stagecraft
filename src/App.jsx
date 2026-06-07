@@ -13,8 +13,11 @@ import TemplatePicker from './components/modals/TemplatePicker.jsx';
 
 import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
 
-function viewIdx(v) { return v === 'home' ? 1 : v === 'editor' ? 2 : v === 'sorter' ? 3 : v === 'settings' ? 4 : 0; }
-function viewName(v) { return v === 'home' ? 'Home' : v === 'editor' ? 'Editor' : v === 'sorter' ? 'Sorter' : v === 'settings' ? 'Settings' : 'Other'; }
+const VIEW_LABELS = { home: 'Home', editor: 'Editor', sorter: 'Sorter', settings: 'Settings' };
+const VIEW_ORDER = ['home', 'editor', 'sorter', 'settings'];
+
+function viewIdx(v) { const i = VIEW_ORDER.indexOf(v); return i >= 0 ? i + 1 : 0; }
+function viewName(v) { return VIEW_LABELS[v] || 'Other'; }
 
 export default function App() {
   // ---- tweaks state (persisted) ----
@@ -91,7 +94,6 @@ export default function App() {
           density={tw.density}
           onPresent={() => setPresenting(true)}
           onOpenExport={() => setModal('export')}
-          onOpenHome={() => setView('home')}
         />
       )}
 

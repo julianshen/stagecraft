@@ -8,7 +8,7 @@ export default function SorterView({ deck, onBack, onOpenSlide }) {
 
   const flat = useMemo(() => {
     const arr = [];
-    deck.sections.forEach(sec => sec.slides.forEach(sid => {
+    (deck.sections || []).forEach(sec => (sec.slides || []).forEach(sid => {
       const s = deck.slides.find(x => x.id === sid);
       if (s) arr.push({ ...s, sectionId: sec.id, sectionName: sec.name });
     }));
