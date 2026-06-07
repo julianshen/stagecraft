@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function CollabLayer({ collaborators }) {
+export default function CollabLayer({ collaborators = [] }) {
   const positions = collaborators.length ? collaborators.map((u, i) => ({
     u, x: u.pos?.x || `${20 + i * 25}%`, y: u.pos?.y || `${40 + (i % 2) * 15}%`
   })) : [];

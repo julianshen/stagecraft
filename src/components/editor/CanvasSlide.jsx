@@ -16,7 +16,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, selected, set
     const ro = new ResizeObserver(update);
     if (frameRef.current) ro.observe(frameRef.current);
     return () => ro.disconnect();
-  }, [zoom]);
+    // Observe once on mount — the ResizeObserver already catches zoom-driven
+    // size changes, so there's no need to tear it down and rebuild on every zoom.
+  }, []);
 
   const rect = selected ? {
     left: selected.x * scale,

@@ -18,6 +18,7 @@ export default function DefaultAIDrawer({ onClose, slideNum, slide }) {
   async function handleSend(text) {
     const input = text || prompt;
     if (!input.trim()) return;
+    if (!text) setPrompt(''); // clear the typed prompt (suggestion chips pass `text`)
     setLoading(true);
     setResponse('');
     try {

@@ -2,7 +2,7 @@ import React from 'react';
 import Icon from '../ui/Icon.jsx';
 import { IconButton, ScaledSlide } from '../ui/Primitives.jsx';
 
-export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx, comments, onNewSlide }) {
+export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx, comments = [], onNewSlide }) {
   return (
     <aside className="leftpane">
       <div className="pane-header">

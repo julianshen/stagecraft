@@ -39,19 +39,19 @@ export default function TableSizePicker({ onPick }) {
             onMouseDown={() => setDragging(true)}
             onMouseUp={() => { if (hover.r && hover.c) commit(hover.r, hover.c); }}
           >
-            {Array.from({ length: TSP_MAX_R }).map((_, ri) => (
-              Array.from({ length: TSP_MAX_C }).map((_, ci) => {
-                const on = ri < hover.r && ci < hover.c;
-                return (
-                  <div
-                    key={`${ri}-${ci}`}
-                    className={`tsp-cell${on ? ' on' : ''}`}
-                    onMouseEnter={() => setHover({ r: ri + 1, c: ci + 1 })}
-                    onClick={() => commit(ri + 1, ci + 1)}
-                  />
-                );
-              })
-            ))}
+            {Array.from({ length: TSP_MAX_R * TSP_MAX_C }).map((_, i) => {
+              const ri = Math.floor(i / TSP_MAX_C);
+              const ci = i % TSP_MAX_C;
+              const on = ri < hover.r && ci < hover.c;
+              return (
+                <div
+                  key={i}
+                  className={`tsp-cell${on ? ' on' : ''}`}
+                  onMouseEnter={() => setHover({ r: ri + 1, c: ci + 1 })}
+                  onClick={() => commit(ri + 1, ci + 1)}
+                />
+              );
+            })}
           </div>
           <div className="tsp-hint">Drag or click to size · {TSP_MAX_C}×{TSP_MAX_R} max</div>
         </div>
