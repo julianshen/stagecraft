@@ -24,7 +24,7 @@ export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch
     try {
       const patch = await editSlide(slide, input);
       if (patch && onApplyPatch) {
-        onApplyPatch(patch);
+        onApplyPatch(patch, slide?.id); // target the slide this edit was generated for
         setResponse(`✓ Applied changes to: ${Object.keys(patch).join(', ') || 'the slide'}`);
       } else {
         setResponse("I couldn't turn that into a slide edit — try rephrasing the instruction.");

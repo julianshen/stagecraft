@@ -252,7 +252,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
             <div className="slide-eyebrow">{slide.eyebrow || 'Agenda · 4 parts'}</div>
             <h1 style={{ fontSize:96, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 80px', lineHeight:1 }}>What we'll cover</h1>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'40px 80px', maxWidth:1700 }}>
-              {slide.items.map(it => (
+              {(slide.items || []).map(it => (
                 <div key={it.n} style={{ display:'grid', gridTemplateColumns:'80px 1fr', gap:20, paddingBottom:24, borderBottom:'1px solid #eee' }}>
                   <div style={{ fontFamily:'var(--f-mono)', fontSize:36, color:'oklch(0.62 0.17 265)', fontWeight:500 }}>{it.n}</div>
                   <div>
@@ -292,7 +292,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
               <div style={{ fontFamily:'var(--f-mono)', fontSize:20, color:'#888' }}>{slide.note}</div>
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'24px', maxWidth:1760 }}>
-              {slide.kpis.map((k,i)=>(
+              {(slide.kpis || []).map((k,i)=>(
                 <div key={i} style={{ padding:'28px 32px', border:'1px solid #e8e5df', borderRadius:10, background:'white', position:'relative' }}>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
                     <div style={{ fontFamily:'var(--f-mono)', fontSize:16, letterSpacing:'0.08em', textTransform:'uppercase', color:'#888' }}>{k.label}</div>
@@ -339,7 +339,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
               <p style={{ fontSize:28, lineHeight:1.5, color:'#333', maxWidth:760 }}>{slide.body}</p>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
-              {slide.stats.map((st,i)=>(
+              {(slide.stats || []).map((st,i)=>(
                 <div key={i} style={{ padding:'36px 40px', background:'oklch(0.97 0.01 85)', borderRadius:10, display:'flex', alignItems:'baseline', justifyContent:'space-between' }}>
                   <div style={{ fontFamily:'var(--f-mono)', fontSize:20, color:'#555', letterSpacing:'0.05em', textTransform:'uppercase' }}>{st.lbl}</div>
                   <div style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', color: st.val.startsWith('-') ? 'oklch(0.55 0.18 25)' : 'oklch(0.45 0.14 155)' }}>{st.val}</div>
@@ -420,7 +420,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
             <div className="slide-eyebrow">{slide.eyebrow || 'Outlook'}</div>
             <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 60px' }}>{slide.title}</h1>
             <div style={{ display:'flex', flexDirection:'column', gap:28 }}>
-              {slide.items.map((it,i)=>{
+              {(slide.items || []).map((it,i)=>{
                 const sevC = { high:'oklch(0.55 0.2 25)', med:'oklch(0.65 0.15 75)', low:'oklch(0.55 0.1 260)' }[it.sev];
                 return (
                   <div key={i} style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:40, padding:'32px 36px', border:'1px solid #eee', borderLeft:`6px solid ${sevC}`, borderRadius:6, background:'white' }}>
@@ -444,7 +444,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
             <div className="slide-eyebrow">{slide.eyebrow || 'Outlook'}</div>
             <h1 style={{ fontSize:84, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 70px' }}>{slide.title}</h1>
             <div style={{ display:'flex', flexDirection:'column', gap:28, maxWidth:1500 }}>
-              {slide.items.map((it,i)=>(
+              {(slide.items || []).map((it,i)=>(
                 <div key={i} style={{ display:'grid', gridTemplateColumns:'100px 1fr', gap:28, alignItems:'baseline', borderBottom:'1px solid #eee', paddingBottom:28 }}>
                   <div style={{ fontFamily:'var(--f-mono)', fontSize:28, color:'oklch(0.62 0.17 265)', fontWeight:500 }}>{String(i+1).padStart(2,'0')}</div>
                   <div style={{ fontSize:38, fontWeight:500, letterSpacing:'-0.01em' }}>{it}</div>

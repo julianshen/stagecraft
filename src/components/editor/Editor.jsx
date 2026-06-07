@@ -64,10 +64,13 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     });
   }
 
-  // Apply an AI-generated patch to the current slide (Co-pilot edits).
-  function applyAIPatch(patch) {
-    if (!curId || !patch) return;
-    onDeckChange(prev => applySlidePatch(prev, curId, patch));
+  // Apply an AI-generated patch to a specific slide (Co-pilot edits). The target
+  // defaults to the current slide but is passed explicitly by the Co-pilot so an
+  // in-flight edit lands on the slide it was generated for, not whatever is
+  // selected by the time the model responds.
+  function applyAIPatch(patch, targetId = curId) {
+    if (!targetId || !patch) return;
+    onDeckChange(prev => applySlidePatch(prev, targetId, patch));
   }
 
   const renderSlide = useCallback((slide, ctx) => (

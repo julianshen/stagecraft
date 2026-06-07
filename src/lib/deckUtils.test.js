@@ -106,4 +106,11 @@ describe('applySlidePatch', () => {
   it('tolerates a deck with no slides array', () => {
     expect(applySlidePatch({ theme: 'x' }, 'a', { title: 'Y' })).toEqual({ theme: 'x', slides: [] });
   });
+
+  it('drops unsafe keys (id, prototype-pollution vectors) from the patch', () => {
+    const next = applySlidePatch(deck(), 'a', JSON.parse('{"id":"hacked","constructor":"x","title":"Safe"}'));
+    expect(next.slides[0].id).toBe('a');             // id immutable
+    expect(next.slides[0].title).toBe('Safe');       // legit field applied
+    expect(next.slides[0].constructor).toBe(Object); // constructor not overwritten
+  });
 });

@@ -20,16 +20,25 @@ export function getFlatSlideIds(deck) {
  *   edit removed it — fall back to the first slide.
  * - Otherwise leave the selection unchanged.
  */
+// Keys a slide patch may never set: the immutable id and prototype-pollution
+// vectors. The patch is untrusted LLM output, so we sanitize before merging.
+const UNSAFE_PATCH_KEYS = new Set(['id', '__proto__', 'constructor', 'prototype']);
+
 /**
  * Merge a partial-slide `patch` into the slide `curId` (used to apply AI edits).
- * The slide id is immutable; everything else in the patch overrides. Returns a
- * new deck (immutable) or the deck unchanged when there's nothing to do.
+ * The slide id is immutable and unsafe keys are dropped; every other field in
+ * the patch overrides. Returns a new deck (immutable) or the deck unchanged
+ * when there's nothing to do.
  */
 export function applySlidePatch(deck, curId, patch) {
   if (!deck || !curId || !patch) return deck;
+  const safe = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (!UNSAFE_PATCH_KEYS.has(k)) safe[k] = v;
+  }
   return {
     ...deck,
-    slides: (deck.slides || []).map((s) => (s.id === curId ? { ...s, ...patch, id: s.id } : s)),
+    slides: (deck.slides || []).map((s) => (s.id === curId ? { ...s, ...safe } : s)),
   };
 }
 

@@ -55,6 +55,12 @@ export async function callLLM(messages, options = {}) {
   return String(data.text || data.message || data || '');
 }
 
+// Parse a model reply as JSON, tolerating accidental ```json code fences.
+function parseJsonReply(text) {
+  const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  return JSON.parse(clean);
+}
+
 /**
  * Generate a new slide from a prompt.
  * Returns a slide object (JSON parsed from the LLM reply).
@@ -77,9 +83,7 @@ Context deck title: ${context.deckTitle || 'Untitled'}`;
   });
 
   try {
-    // Strip any accidental code fences
-    const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-    return JSON.parse(clean);
+    return parseJsonReply(text);
   } catch {
     // Fallback to a plain text slide
     return { id: `ai-${Date.now()}`, layout: 'text', title: prompt, body: text };
@@ -105,10 +109,9 @@ text, roadmap, risks, list, thanks. Do not include an "id".`;
 
   const text = await callLLM(messages, { system, maxTokens: 1024, temperature: 0.4 });
   try {
-    const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-    const patch = JSON.parse(clean);
+    const patch = parseJsonReply(text);
     if (patch && typeof patch === 'object' && !Array.isArray(patch)) {
-      delete patch.id;
+      delete patch.id; // id is immutable (applySlidePatch also enforces this)
       return patch;
     }
     return null;
