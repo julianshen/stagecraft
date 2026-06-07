@@ -28,4 +28,8 @@ describe('PresenterView', () => {
     render(<PresenterView deck={shortDeck} onExit={vi.fn()} />);
     expect(screen.getByText(/slide [12] of 2/i)).toBeInTheDocument();
   });
+
+  it('renders without crashing when deck is null', () => {
+    expect(() => render(<PresenterView deck={null} onExit={vi.fn()} />)).not.toThrow();
+  });
 });

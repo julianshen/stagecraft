@@ -6,16 +6,20 @@ import LaserPointer from '../presenter/LaserPointer.jsx';
 import PresenterSidePanel from '../presenter/PresenterSidePanel.jsx';
 import PresenterControls from '../presenter/PresenterControls.jsx';
 
+const EMPTY_DECK = { sections: [], slides: [] };
+
 export default function PresenterView({ deck, onExit }) {
+  // Normalize once so a null or partially-populated deck can't crash the view.
+  const safeDeck = deck || EMPTY_DECK;
 
   const flat = useMemo(() => {
     const arr = [];
-    (deck.sections || []).forEach(sec => (sec.slides || []).forEach(sid => {
-      const s = deck.slides.find(x => x.id === sid);
+    (safeDeck.sections || []).forEach(sec => (sec?.slides || []).forEach(sid => {
+      const s = (safeDeck.slides || []).find(x => x.id === sid);
       if (s) arr.push({ ...s, sectionName: sec.name });
     }));
     return arr;
-  }, [deck]);
+  }, [safeDeck]);
 
   // Default to the demo deep-link (slide 4) but never past the last slide —
   // an edited deck may have fewer slides, which would otherwise render blank.
