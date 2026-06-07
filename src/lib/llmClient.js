@@ -5,7 +5,9 @@ function getAISettings() {
   try {
     const raw = localStorage.getItem('stagecraft.ai');
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch {
+    // Corrupt or missing settings — fall back to empty defaults
+  }
   return {};
 }
 

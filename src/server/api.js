@@ -29,8 +29,17 @@ function newSlideId() {
 
 async function proxyLLM(body, fetchFn) {
   const { messages, provider, model, apiKey, baseUrl, temperature, maxTokens, system } = body || {};
-  if (provider === 'anthropic' || !provider) {
-    const reqBody = { model: model || 'claude-sonnet-4', max_tokens: maxTokens || 2048, temperature: temperature ?? 0.7, messages: messages || [] };
+
+  // Common defaults shared by both providers
+  const isAnthropic = provider === 'anthropic' || !provider;
+  const reqBody = {
+    model: model || (isAnthropic ? 'claude-sonnet-4' : 'gpt-4o'),
+    max_tokens: maxTokens || 2048,
+    temperature: temperature ?? 0.7,
+    messages: messages || [],
+  };
+
+  if (isAnthropic) {
     if (system != null) reqBody.system = system;
     const res = await fetchFn('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -40,13 +49,14 @@ async function proxyLLM(body, fetchFn) {
     const data = await res.json();
     return data.content?.[0]?.text || data.error?.message || 'No response';
   }
-  const apiBase = baseUrl || 'https://api.openai.com/v1';
-  const reqBody = { model: model || 'gpt-4o', max_tokens: maxTokens || 2048, temperature: temperature ?? 0.7, messages: messages || [] };
+
+  // OpenAI-compatible
   if (system != null) {
-    // Avoid duplicate system messages by filtering out any existing ones before prepending
+    // Filter existing system messages to prevent duplicates
     const userMessages = (messages || []).filter((m) => m.role !== 'system');
     reqBody.messages = [{ role: 'system', content: system }, ...userMessages];
   }
+  const apiBase = baseUrl || 'https://api.openai.com/v1';
   const res = await fetchFn(`${apiBase}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey || ''}` },
