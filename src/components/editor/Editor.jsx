@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
-import { getFlatSlideIds } from '../../lib/deckUtils.js';
+import { getFlatSlideIds, reconcileCurId } from '../../lib/deckUtils.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
   const [curId, setCurId] = useState(() => {
@@ -10,18 +10,14 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     return flat[3] || flat[0] || null;
   });
 
-  // Reposition cursor when the current slide is deleted
+  // Reconcile the selection whenever the deck changes — both for a local delete
+  // (keep position) and when a live MCP/agent edit removes the selected slide.
   const deletingRef = useRef(null);
   useEffect(() => {
-    if (deletingRef.current) {
-      const { id, idx } = deletingRef.current;
-      deletingRef.current = null;
-      if (curId === id) {
-        const flat = getFlatSlideIds(deck);
-        const fallback = flat[idx] || flat[idx - 1] || flat[0] || null;
-        if (fallback) setCurId(fallback);
-      }
-    }
+    const deleting = deletingRef.current;
+    deletingRef.current = null;
+    const next = reconcileCurId(getFlatSlideIds(deck), curId, deleting);
+    if (next !== curId) setCurId(next);
   }, [deck]);
 
   function pushSlide(slide) {
