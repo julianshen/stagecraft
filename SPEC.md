@@ -286,9 +286,8 @@ Exports:
 - `rewriteText(text, instruction)` — returns rewritten copy.
 - `suggestImprovements(slide)` — returns 2–3 suggestions.
 
-### 8.2 Co-pilot drawer (`DefaultAIDrawer`) 🟡
-In-editor panel: suggestion chips + freeform prompt + Send; shows a spinner then the model's reply.
-🟡 **Reply is display-only — it does not mutate the slide/deck.** Suggestion chips send canned prompts. ⚪ Spec: route replies through `generateSlide`/`rewriteText` and apply the result to the current slide via the editor mutation callbacks; wire "Generate speaker notes" to write `SPEAKER_NOTES`.
+### 8.2 Co-pilot drawer (`DefaultAIDrawer`) 🟢
+In-editor panel: suggestion chips + freeform prompt + Send. **The reply now edits the current slide.** A send (chip or freeform) calls `editSlide(slide, instruction)` (`lib/llmClient.js`), which returns a partial-slide **patch** (JSON, id stripped); the drawer applies it through the `onApplyAIPatch` editor callback → `applySlidePatch(deck, curId, patch)` (`lib/deckUtils.js`), and confirms which fields changed (or falls back gracefully when the model returns no usable JSON). "Generate speaker notes" yields a `{ notes }` patch; the Presenter prefers `slide.notes` over the bundled `SPEAKER_NOTES`.
 
 ### 8.3 Provider matrix 🟢 (config) / availability per key
 Anthropic · OpenAI · Google · OpenRouter · Local (Ollama/LM Studio, no key) · Custom (OpenAI/Anthropic-compatible, `baseUrl`). The middleware currently implements Anthropic and OpenAI-compatible paths (§11.4); Google/OpenRouter/Local resolve through the OpenAI-compatible path or `baseUrl`.
@@ -411,7 +410,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 | Add/delete slides, change layout/theme, navigation | 🟢 |
 | Toolbar insert menus (component/text/table/chart) | 🟢 |
 | MCP API (REST + tools) | 🟢 |
-| LLM proxy + Co-pilot chat | 🟢 (🟡 reply not applied) |
+| LLM proxy + Co-pilot edits the current slide | 🟢 |
 | Settings: AI + Appearance | 🟢 (🟡 top-p) |
 | PPTX export | 🟢 (🟡 charts/roadmap) |
 | Presenter | 🟡 |
@@ -428,7 +427,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 ## 19. Prioritized roadmap (highest impact first)
 
 1. ~~**MCP round-trip** — editor `GET`/polls `/api/deck` so agent edits render live.~~ ✅ **Done** — `rev` counter + `/api/deck/state` + `useDeckSync` (§11.6). _Next: durable persistence (§17) so reloads survive._
-2. **Co-pilot applies edits** — parse replies via `generateSlide`/`rewriteText` and commit through editor callbacks. _(§8.2)_
+2. ~~**Co-pilot applies edits** — parse replies and commit through editor callbacks.~~ ✅ **Done** — `editSlide` → patch → `applySlidePatch` via `onApplyAIPatch` (§8.2).
 3. **Real selection & direct manipulation** — element model + click/drag/resize; bind Properties panel. _(§9)_
 4. **Drag-to-reorder** slides/sections in Thumbs + Sorter. _(§7.2.3, §7.3)_
 5. **Chart-to-image in PPTX** + roadmap timeline; wire export options. _(§12, §13)_

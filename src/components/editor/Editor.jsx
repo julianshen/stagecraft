@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
-import { getFlatSlideIds, reconcileCurId } from '../../lib/deckUtils.js';
+import { getFlatSlideIds, reconcileCurId, applySlidePatch } from '../../lib/deckUtils.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
   const [curId, setCurId] = useState(() => {
@@ -64,6 +64,12 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     });
   }
 
+  // Apply an AI-generated patch to the current slide (Co-pilot edits).
+  function applyAIPatch(patch) {
+    if (!curId || !patch) return;
+    onDeckChange(prev => applySlidePatch(prev, curId, patch));
+  }
+
   const renderSlide = useCallback((slide, ctx) => (
     <Slide slide={slide} deck={ctx.deck} sectionName={ctx.sectionName} num={ctx.num} total={ctx.total} />
   ), []);
@@ -87,6 +93,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onChangeTheme: changeTheme,
         onNewSlide: () => addComponent('text'),
         onDeleteSlide: deleteSlide,
+        onApplyAIPatch: applyAIPatch,
       }}
     />
   );

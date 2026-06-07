@@ -180,7 +180,7 @@ export default function SlideEditor(props) {
           <StatusBar zoom={zoom} setZoom={setZoom} selected={selection}/>
 
           {showTimeline && <TimelineDrawer onClose={()=>setShowTimeline(false)} />}
-          {showAI && (slots.aiDrawer || <DefaultAIDrawer onClose={()=>setShowAI(false)} slideNum={curIdx+1} slide={cur} />)}
+          {showAI && (slots.aiDrawer || <DefaultAIDrawer onClose={()=>setShowAI(false)} slideNum={curIdx+1} slide={cur} onApplyPatch={callbacks.onApplyAIPatch} />)}
           {ctxMenu && (
             <Menu
               style={{ left: ctxMenu.x, top: ctxMenu.y }}

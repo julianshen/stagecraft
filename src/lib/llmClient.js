@@ -87,6 +87,37 @@ Context deck title: ${context.deckTitle || 'Untitled'}`;
 }
 
 /**
+ * Edit the current slide per an instruction. Returns a partial-slide *patch*
+ * (the fields to change) for `applySlidePatch`, or `null` if the model didn't
+ * return usable JSON. Never includes an `id` — the slide's id is immutable.
+ */
+export async function editSlide(slide, instruction) {
+  const system = `You edit a single slide for a presentation app called Stagecraft.
+Given the current slide JSON and an instruction, respond with ONLY a JSON object
+containing the fields to change (a partial "patch") — no markdown, no prose, no
+code fences. Keep the same "layout" unless the instruction clearly calls for a
+different one. Valid layouts: cover, agenda, divider, kpi, chart, split, table,
+text, roadmap, risks, list, thanks. Do not include an "id".`;
+
+  const messages = [
+    { role: 'user', content: `Current slide:\n${JSON.stringify(slide)}\n\nInstruction: ${instruction}\n\nPatch (JSON only):` },
+  ];
+
+  const text = await callLLM(messages, { system, maxTokens: 1024, temperature: 0.4 });
+  try {
+    const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const patch = JSON.parse(clean);
+    if (patch && typeof patch === 'object' && !Array.isArray(patch)) {
+      delete patch.id;
+      return patch;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Rewrite text according to an instruction.
  */
 export async function rewriteText(text, instruction) {

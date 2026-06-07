@@ -20,6 +20,19 @@ export function getFlatSlideIds(deck) {
  *   edit removed it — fall back to the first slide.
  * - Otherwise leave the selection unchanged.
  */
+/**
+ * Merge a partial-slide `patch` into the slide `curId` (used to apply AI edits).
+ * The slide id is immutable; everything else in the patch overrides. Returns a
+ * new deck (immutable) or the deck unchanged when there's nothing to do.
+ */
+export function applySlidePatch(deck, curId, patch) {
+  if (!deck || !curId || !patch) return deck;
+  return {
+    ...deck,
+    slides: (deck.slides || []).map((s) => (s.id === curId ? { ...s, ...patch, id: s.id } : s)),
+  };
+}
+
 export function reconcileCurId(flat, curId, deleting) {
   if (deleting && curId === deleting.id) {
     return flat[deleting.idx] ?? flat[deleting.idx - 1] ?? flat[0] ?? null;
