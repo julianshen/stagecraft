@@ -39,6 +39,15 @@ const SLIDE_LAYOUTS = new Set([
   'cover', 'agenda', 'divider', 'kpi', 'chart', 'split',
   'table', 'text', 'roadmap', 'risks', 'list', 'thanks',
 ]);
+// The slide fields an AI patch may set — exactly what the renderer/exporter
+// read (id is immutable; num/total/sectionName are injected at render time). A
+// plausible-but-unsupported field (speakerNotes, headline, content…) is rejected
+// so it can't persist and be falsely reported as applied while nothing renders.
+const SLIDE_FIELDS = new Set([
+  'layout', 'title', 'subtitle', 'sub', 'body', 'eyebrow', 'kicker',
+  'chapter', 'note', 'notes', 'bg', 'chartType',
+  'items', 'kpis', 'stats', 'rows', 'columns',
+]);
 const isPrimitive = (x) => x === null || typeof x !== 'object';
 // A flat record: a non-array object whose own values are all primitives. Used
 // for agenda/risk items and kpi/stat entries, which the renderer reads field by
@@ -50,6 +59,7 @@ const isFlatRecord = (x) => x !== null && typeof x === 'object' && !Array.isArra
 // table cell of `{ text }`, primitive `kpis`, or object items in a `list`)
 // would crash React or render blank, so it's dropped before it can persist.
 function fieldOk(key, value, layout) {
+  if (!SLIDE_FIELDS.has(key)) return false;
   if (key === 'layout') return typeof value === 'string' && SLIDE_LAYOUTS.has(value);
   if (key === 'rows') return Array.isArray(value) && value.every((row) => Array.isArray(row) && row.every(isPrimitive));
   if (key === 'columns') return Array.isArray(value) && value.every(isPrimitive);

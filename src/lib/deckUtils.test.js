@@ -162,6 +162,18 @@ describe('applySlidePatch', () => {
     expect(next.slides[0].constructor).toBe(Object); // constructor not overwritten
   });
 
+  it('drops unsupported fields that are not part of the slide schema', () => {
+    const next = applySlidePatch(deck(), 'a', { speakerNotes: 'x', headline: 'y', title: 'Real' });
+    expect(next.slides[0].title).toBe('Real');             // supported field applied
+    expect(next.slides[0].speakerNotes).toBeUndefined();   // unsupported alias dropped
+    expect(next.slides[0].headline).toBeUndefined();
+  });
+
+  it('accepts the supported notes field', () => {
+    const next = applySlidePatch(deck(), 'a', { notes: 'Speak to the pain.' });
+    expect(next.slides[0].notes).toBe('Speak to the pain.');
+  });
+
   it('drops a collection field (items/kpis/stats/rows/columns) that is not an array', () => {
     const next = applySlidePatch(deck(), 'a', { items: 'one\ntwo', title: 'Keep' });
     expect(next.slides[0].title).toBe('Keep');       // legit field applied
