@@ -117,22 +117,25 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   // the elements it overlaps on pointer-up. A click (no drag) deselects.
   function startMarquee(e) {
     if (dragCleanup.current) return;
-    if (!frameRef.current) { onSelectElement?.(null); return; }
+    const frame = frameRef.current;
+    if (!frame) { onSelectElement?.(null); return; }
     e.preventDefault();
     e.stopPropagation();
-    // Read the frame rect fresh on every point — the gesture has no pointer
-    // capture, so a scroll/zoom/resize mid-drag must not skew the mapping.
+    // The slide canvas is a fixed, non-scrolling scaled viewport, so the frame
+    // rect is stable for the gesture — cache it once (no per-move layout read).
+    const rect = frame.getBoundingClientRect();
+    const startX = e.clientX, startY = e.clientY;
     const toSlide = (cx, cy) => {
       const s = scaleRef.current || 1;
-      const r = frameRef.current.getBoundingClientRect();
-      return { x: (cx - r.left) / s, y: (cy - r.top) / s };
+      return { x: (cx - rect.left) / s, y: (cy - rect.top) / s };
     };
-    const start = toSlide(e.clientX, e.clientY);
+    const start = toSlide(startX, startY);
     let end = start;
-    let moved = false; // a real sweep past a small threshold, not a jittery click
+    let moved = false; // a real sweep, not a jittery click
     function move(ev) {
+      // Threshold in screen pixels so it doesn't shrink as the canvas zooms out.
+      if (!moved && (Math.abs(ev.clientX - startX) > 3 || Math.abs(ev.clientY - startY) > 3)) moved = true;
       end = toSlide(ev.clientX, ev.clientY);
-      if (!moved && (Math.abs(end.x - start.x) > 2 || Math.abs(end.y - start.y) > 2)) moved = true;
       if (moved) setMarquee({ x1: start.x, y1: start.y, x2: end.x, y2: end.y });
     }
     function removeListeners() {
