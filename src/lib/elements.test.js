@@ -191,4 +191,10 @@ describe('clampElement', () => {
     expect(clampElement({ x: 0, y: 0, w: 100, h: 100, rot: 450 }).rot).toBe(90);
     expect(clampElement({ x: 0, y: 0, w: 100, h: 100, rot: -90 }).rot).toBe(270);
   });
+
+  it('coerces non-numeric opacity/rot to safe defaults (no NaN)', () => {
+    const c = clampElement({ x: 0, y: 0, w: 100, h: 100, opacity: 'oops', rot: 'spin' });
+    expect(c.opacity).toBe(100);
+    expect(c.rot).toBe(0);
+  });
 });

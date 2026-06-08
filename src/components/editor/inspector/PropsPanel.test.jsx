@@ -43,6 +43,14 @@ describe('PropsPanel', () => {
     expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ fill: '#abcdef' }));
   });
 
+  it('normalizes the fill into a lowercase 6-digit hex for the color input', () => {
+    const shorthand = { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#ABC' };
+    const { rerender } = render(<PropsPanel selected={shorthand} setSelected={vi.fn()} />);
+    expect(screen.getByLabelText('Fill color').value).toBe('#aabbcc');
+    rerender(<PropsPanel selected={{ ...shorthand, fill: 'oklch(0.6 0.1 200)' }} setSelected={vi.fn()} />);
+    expect(screen.getByLabelText('Fill color').value).toBe('#4f46e5'); // non-hex → fallback
+  });
+
   it('hides the Content field for non-text elements', () => {
     render(<PropsPanel selected={{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100 }} setSelected={vi.fn()} />);
     expect(screen.queryByText('Content')).not.toBeInTheDocument();

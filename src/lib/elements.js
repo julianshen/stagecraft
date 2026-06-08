@@ -91,7 +91,13 @@ export function clampElement(el, { bounds = { w: SLIDE_W, h: SLIDE_H }, min = MI
     x: clamp(el.x, 0, bounds.w - w),
     y: clamp(el.y, 0, bounds.h - h),
   };
-  if (el.opacity != null) out.opacity = clamp(el.opacity, 0, 100);
-  if (el.rot != null) out.rot = ((el.rot % 360) + 360) % 360;
+  if (el.opacity != null) {
+    const o = Number(el.opacity);
+    out.opacity = Number.isFinite(o) ? clamp(o, 0, 100) : 100;
+  }
+  if (el.rot != null) {
+    const r = Number(el.rot);
+    out.rot = Number.isFinite(r) ? ((r % 360) + 360) % 360 : 0;
+  }
   return out;
 }

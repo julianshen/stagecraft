@@ -2,9 +2,13 @@ import React from 'react';
 import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup, Seg } from '../../ui/Primitives.jsx';
 
-// Normalize a fill value to a #rrggbb hex for the color input (default ink).
+// Normalize a fill to a lowercase #rrggbb hex for <input type=color> (it requires
+// exactly that form). Expands #rgb shorthand; falls back to indigo for non-hex.
 function toHex(fill) {
-  return typeof fill === 'string' && /^#[0-9a-fA-F]{6}$/.test(fill) ? fill : '#4f46e5';
+  if (typeof fill !== 'string') return '#4f46e5';
+  let h = fill.trim().toLowerCase();
+  if (/^#[0-9a-f]{3}$/.test(h)) h = '#' + h.slice(1).split('').map(c => c + c).join('');
+  return /^#[0-9a-f]{6}$/.test(h) ? h : '#4f46e5';
 }
 
 export default function PropsPanel({ selected, setSelected }) {
