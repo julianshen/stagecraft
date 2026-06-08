@@ -89,6 +89,11 @@ export default function SlideEditor(props) {
   const curIdx = flat.findIndex(f => f.id === curId);
   const cur = flat[Math.max(0, curIdx)];
 
+  // Arrange ops act on a multi-selection: align needs 2+, distribute 3+.
+  const selCount = props.selectedElementCount || 0;
+  const canAlign = selCount >= 2;
+  const canDistribute = selCount >= 3;
+
   const deckCtx = useMemo(() => ({
     deck,
     sectionName: cur?.sectionName,
@@ -136,10 +141,13 @@ export default function SlideEditor(props) {
         </div>
 
         <div className="group">
-          <IconButton name="align-left" title="Align left" onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('left')}/>
-          <IconButton name="align-center" title="Align center" onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('hcenter')}/>
-          <IconButton name="align-right" title="Align right" onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('right')}/>
-          <IconButton name="logic" title="Distribute" onClick={() => callbacks.onDistributeElements && callbacks.onDistributeElements()}/>
+          <IconButton name="align-left" title="Align left" disabled={!canAlign} onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('left')}/>
+          <IconButton name="align-center" title="Align center" disabled={!canAlign} onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('hcenter')}/>
+          <IconButton name="align-right" title="Align right" disabled={!canAlign} onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('right')}/>
+          <IconButton name="align-top" title="Align top" disabled={!canAlign} onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('top')}/>
+          <IconButton name="align-middle" title="Align middle" disabled={!canAlign} onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('vmiddle')}/>
+          <IconButton name="align-bottom" title="Align bottom" disabled={!canAlign} onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('bottom')}/>
+          <IconButton name="logic" title="Distribute" disabled={!canDistribute} onClick={() => callbacks.onDistributeElements && callbacks.onDistributeElements()}/>
         </div>
 
         <div className="group">
