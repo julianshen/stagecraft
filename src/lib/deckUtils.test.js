@@ -113,4 +113,23 @@ describe('applySlidePatch', () => {
     expect(next.slides[0].title).toBe('Safe');       // legit field applied
     expect(next.slides[0].constructor).toBe(Object); // constructor not overwritten
   });
+
+  it('drops a collection field (items/kpis/stats/rows/columns) that is not an array', () => {
+    const next = applySlidePatch(deck(), 'a', { items: 'one\ntwo', title: 'Keep' });
+    expect(next.slides[0].title).toBe('Keep');       // legit field applied
+    expect(next.slides[0].items).toBeUndefined();    // malformed collection not persisted
+  });
+
+  it('keeps the existing array when a patch sets a non-array collection', () => {
+    const d = deck();
+    d.slides[1] = { id: 'b', layout: 'kpi', kpis: [{ label: 'X' }] };
+    const next = applySlidePatch(d, 'b', { kpis: { bad: 1 }, title: 'T' });
+    expect(next.slides[1].kpis).toEqual([{ label: 'X' }]); // original kept, malformed dropped
+    expect(next.slides[1].title).toBe('T');
+  });
+
+  it('still accepts a well-formed array collection', () => {
+    const next = applySlidePatch(deck(), 'a', { items: ['a', 'b'] });
+    expect(next.slides[0].items).toEqual(['a', 'b']);
+  });
 });

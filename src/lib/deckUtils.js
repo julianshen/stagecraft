@@ -24,17 +24,24 @@ export function getFlatSlideIds(deck) {
 // vectors. The patch is untrusted LLM output, so we sanitize before merging.
 const UNSAFE_PATCH_KEYS = new Set(['id', '__proto__', 'constructor', 'prototype']);
 
+// Slide fields that must be arrays. A patch that sets one of these to a truthy
+// non-array (e.g. `items: "one\ntwo"`) is dropped so the malformed shape never
+// persists and break a downstream consumer (renderer, PPTX export).
+const ARRAY_SLIDE_FIELDS = new Set(['items', 'kpis', 'stats', 'rows', 'columns']);
+
 /**
  * Merge a partial-slide `patch` into the slide `curId` (used to apply AI edits).
- * The slide id is immutable and unsafe keys are dropped; every other field in
- * the patch overrides. Returns a new deck (immutable) or the deck unchanged
- * when there's nothing to do.
+ * The slide id is immutable, unsafe keys and malformed (non-array) collection
+ * fields are dropped; every other field overrides. Returns a new deck
+ * (immutable) or the deck unchanged when there's nothing to do.
  */
 export function applySlidePatch(deck, curId, patch) {
   if (!deck || !curId || !patch) return deck;
   const safe = {};
   for (const [k, v] of Object.entries(patch)) {
-    if (!UNSAFE_PATCH_KEYS.has(k)) safe[k] = v;
+    if (UNSAFE_PATCH_KEYS.has(k)) continue;
+    if (ARRAY_SLIDE_FIELDS.has(k) && !Array.isArray(v)) continue;
+    safe[k] = v;
   }
   return {
     ...deck,
