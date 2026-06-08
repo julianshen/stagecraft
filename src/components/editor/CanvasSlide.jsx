@@ -45,12 +45,13 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
 
   // Drag `targets` (array): each pointermove maps the screen delta to slide
   // coords and applies `apply(el, dx, dy)`; commits once on pointer-up.
-  function startDrag(e, targets, apply) {
+  function startDrag(e, targets, apply, onClick) {
     if (dragCleanup.current) return;
     e.stopPropagation();
     e.preventDefault();
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* unsupported */ }
     const startX = e.clientX, startY = e.clientY;
+    const origin = new Map(targets.map((t) => [t.id, t]));
     let latest = new Map();
     function move(ev) {
       const s = scaleRef.current || 1;
@@ -66,8 +67,16 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     function up() {
       removeListeners();
       setDrag(null);
-      // One atomic commit for the whole drag (a click with no move is a no-op).
-      if (latest.size) onUpdateElements?.(latest);
+      // One atomic commit, carrying only elements whose geometry actually
+      // changed. A click or a snap-back-to-origin gesture moves nothing, so it
+      // commits nothing and is treated as a click instead.
+      const moved = new Map();
+      latest.forEach((el, id) => {
+        const o = origin.get(id);
+        if (!o || el.x !== o.x || el.y !== o.y || el.w !== o.w || el.h !== o.h) moved.set(id, el);
+      });
+      if (moved.size) onUpdateElements?.(moved);
+      else onClick?.();
     }
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -77,11 +86,15 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   function startMove(e, el) {
     const inSelection = selectedSet.has(el.id);
     const additive = !!e.shiftKey;
+    // Select on pointer-down so a drag has the right targets. Shift-removing an
+    // already-selected element is deferred to pointer-up (only when it's a click,
+    // not a drag) so shift-dragging a selected element still moves the selection.
     if (!inSelection) onSelectElement?.(el.id, additive);
     // Drag the whole selection when the grabbed element is part of it. A
     // shift-grab adds this element, so drag the combined set; otherwise just it.
     const targets = inSelection ? selected : additive ? [...selected, el] : [el];
-    startDrag(e, targets, (t, dx, dy) => moveElement(t, dx, dy));
+    const onClick = additive && inSelection ? () => onSelectElement?.(el.id, true) : undefined;
+    startDrag(e, targets, (t, dx, dy) => moveElement(t, dx, dy), onClick);
   }
   function startResize(e, el, handle) {
     startDrag(e, [el], (t, dx, dy) => resizeElement(t, handle, dx, dy));

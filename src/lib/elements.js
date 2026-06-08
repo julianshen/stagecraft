@@ -63,10 +63,10 @@ export function alignElements(els, edge) {
     switch (edge) {
       case 'left': return { ...e, x: b.x1 };
       case 'right': return { ...e, x: b.x2 - e.w };
-      case 'hcenter': return { ...e, x: b.cx - e.w / 2 };
+      case 'hcenter': return { ...e, x: Math.round(b.cx - e.w / 2) };
       case 'top': return { ...e, y: b.y1 };
       case 'bottom': return { ...e, y: b.y2 - e.h };
-      case 'vmiddle': return { ...e, y: b.cy - e.h / 2 };
+      case 'vmiddle': return { ...e, y: Math.round(b.cy - e.h / 2) };
       default: return e;
     }
   });

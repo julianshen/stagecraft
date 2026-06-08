@@ -240,4 +240,15 @@ describe('alignElements', () => {
     const r = alignElements(els(), 'left');
     expect(r[1].y).toBe(300); // y unchanged by a left align
   });
+
+  it('rounds fractional center alignment to whole pixels (no subpixel blur)', () => {
+    const e = [
+      { id: 'a', x: 0, y: 0, w: 100, h: 100 },
+      { id: 'b', x: 101, y: 51, w: 100, h: 100 }, // bbox cx=100.5, cy=75.5 → halves are fractional
+    ];
+    const h = alignElements(e, 'hcenter');
+    const v = alignElements(e, 'vmiddle');
+    expect(h.every(el => Number.isInteger(el.x))).toBe(true);
+    expect(v.every(el => Number.isInteger(el.y))).toBe(true);
+  });
 });

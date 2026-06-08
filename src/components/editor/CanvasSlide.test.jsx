@@ -74,4 +74,31 @@ describe('CanvasSlide drag', () => {
     const map = onUpdateElements.mock.calls[0][0];
     expect([...map.keys()]).toEqual(['b']);
   });
+
+  it('shift-clicking a selected element (no drag) toggles it out of the selection', () => {
+    const onUpdateElements = vi.fn();
+    const onSelectElement = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a', 'b']} onSelectElement={onSelectElement} onUpdateElements={onUpdateElements} />,
+    );
+    const [hitA] = hits(container);
+    // Press + release with shift held, no movement → a click, not a drag.
+    fire(hitA, 'pointerdown', { clientX: 0, clientY: 0, shiftKey: true });
+    fire(window, 'pointerup', {});
+    expect(onSelectElement).toHaveBeenCalledWith('a', true); // additive toggle removes it
+    expect(onUpdateElements).not.toHaveBeenCalled();          // no geometry change
+  });
+
+  it('does not commit a drag that snaps back to the starting position', () => {
+    // Grid-aligned element: a sub-grid jiggle snaps to the same coords → no-op.
+    const gridSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 104, y: 104, w: 200, h: 96 }] };
+    const onUpdateElements = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={gridSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    drag(hits(container)[0], { dx: 1, dy: 1 });
+    expect(onUpdateElements).not.toHaveBeenCalled();
+  });
 });

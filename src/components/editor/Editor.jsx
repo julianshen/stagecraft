@@ -141,8 +141,9 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   // Align the current multi-selection along an edge (no-op for <2 selected).
   function alignSelected(edge) {
     if (selElIds.length < 2) return;
+    const ids = new Set(selElIds);
     onDeckChange(prev => updateSlideElements(prev, curId, els => {
-      const aligned = alignElements(els.filter(e => selElIds.includes(e.id)), edge);
+      const aligned = alignElements(els.filter(e => ids.has(e.id)), edge);
       const byId = new Map(aligned.map(e => [e.id, e]));
       return els.map(e => byId.get(e.id) || e);
     }));
