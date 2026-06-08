@@ -1,32 +1,37 @@
 import React, { useState } from 'react';
 import Icon from '../../ui/Icon.jsx';
 import { IconButton } from '../../ui/Primitives.jsx';
-import { callLLM } from '../../../lib/llmClient.js';
+import { editSlide } from '../../../lib/llmClient.js';
 
-export default function DefaultAIDrawer({ onClose, slideNum, slide }) {
+export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch }) {
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
 
   const suggestions = [
-    { icon: 'magic', t: 'Rewrite as 3 columns' },
-    { icon: 'chart-bar', t: 'Plot against plan' },
-    { icon: 'layers', t: 'Apply Executive theme' },
-    { icon: 'sparkle', t: 'Generate speaker notes' },
+    { icon: 'magic', t: 'Make it more concise' },
+    { icon: 'list', t: 'Turn into a bulleted list' },
+    { icon: 'sparkle', t: 'Write a punchier headline' },
+    { icon: 'comment-dot', t: 'Generate speaker notes' },
   ];
 
   async function handleSend(text) {
+    if (loading) return; // ignore chips/Enter while a request is in flight
     const input = text || prompt;
     if (!input.trim()) return;
+    if (!slide) { setResponse('Select a slide to edit first.'); return; }
     if (!text) setPrompt(''); // clear the typed prompt (suggestion chips pass `text`)
     setLoading(true);
     setResponse('');
     try {
-      const ctx = slide ? `Current slide layout: ${slide.layout}, title: ${slide.title || ''}` : '';
-      const result = await callLLM([
-        { role: 'user', content: `${ctx}\n\n${input}` }
-      ]);
-      setResponse(result);
+      const patch = await editSlide(slide, input);
+      // onApplyPatch is the source of truth: it returns the patch keys that
+      // actually applied against the LATEST deck (target slide + its current
+      // layout), or [] if nothing applied (slide gone, or all fields rejected).
+      const applied = (patch && onApplyPatch) ? (onApplyPatch(patch, slide?.id) || []) : [];
+      setResponse(applied.length
+        ? `✓ Applied changes to: ${applied.join(', ')}`
+        : "I couldn't turn that into a slide edit — try rephrasing the instruction.");
     } catch (err) {
       setResponse(`Error: ${err.message}`);
     }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { callLLM, generateSlide, rewriteText, suggestImprovements } from './llmClient.js';
+import { callLLM, generateSlide, rewriteText, suggestImprovements, editSlide } from './llmClient.js';
 
 function res(body, { ok = true, status = 200 } = {}) {
   return { ok, status, json: async () => body, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) };
@@ -137,6 +137,13 @@ describe('generateSlide', () => {
     expect(slide).toMatchObject({ layout: 'text', title: 'summary', body: 'just prose, not json' });
     expect(slide.id).toMatch(/^ai-/);
   });
+
+  it('falls back to a text slide when the reply is valid JSON but not an object', async () => {
+    fetchMock.mockResolvedValue(res({ text: '[1, 2, 3]' }));
+    const slide = await generateSlide('summary');
+    expect(slide).toMatchObject({ layout: 'text', title: 'summary' });
+    expect(slide.id).toMatch(/^ai-/);
+  });
 });
 
 describe('rewriteText & suggestImprovements', () => {
@@ -148,5 +155,51 @@ describe('rewriteText & suggestImprovements', () => {
   it('suggestImprovements returns the model text', async () => {
     fetchMock.mockResolvedValue(res({ text: '1. do x\n2. do y' }));
     expect(await suggestImprovements({ layout: 'kpi' })).toMatch(/do x/);
+  });
+});
+
+describe('editSlide', () => {
+  it('returns a parsed patch from the model reply', async () => {
+    fetchMock.mockResolvedValue(res({ text: '{"title":"New title","body":"New body"}' }));
+    const patch = await editSlide({ id: 'a', layout: 'text', title: 'Old' }, 'make it punchier');
+    expect(patch).toEqual({ title: 'New title', body: 'New body' });
+  });
+
+  it('strips markdown code fences', async () => {
+    fetchMock.mockResolvedValue(res({ text: '```json\n{"layout":"list","items":["x"]}\n```' }));
+    expect(await editSlide({ id: 'a' }, 'as a list')).toEqual({ layout: 'list', items: ['x'] });
+  });
+
+  it('parses a reply with leading whitespace before the code fence', async () => {
+    fetchMock.mockResolvedValue(res({ text: '\n\n```json\n{"title":"X"}\n```' }));
+    expect(await editSlide({ id: 'a' }, 'x')).toEqual({ title: 'X' });
+  });
+
+  it('never returns an id in the patch', async () => {
+    fetchMock.mockResolvedValue(res({ text: '{"id":"evil","title":"T"}' }));
+    const patch = await editSlide({ id: 'a' }, 'x');
+    expect(patch).not.toHaveProperty('id');
+    expect(patch.title).toBe('T');
+  });
+
+  it('returns null when the reply is not valid JSON', async () => {
+    fetchMock.mockResolvedValue(res({ text: 'Sure! I changed the title for you.' }));
+    expect(await editSlide({ id: 'a' }, 'x')).toBeNull();
+  });
+
+  it('sends the current slide and instruction to the model', async () => {
+    fetchMock.mockResolvedValue(res({ text: '{}' }));
+    await editSlide({ id: 'a', layout: 'text', title: 'Hi' }, 'shorten');
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.messages[0].content).toContain('shorten');
+    expect(body.messages[0].content).toContain('"title":"Hi"');
+    expect(body.system).toMatch(/patch/i);
+  });
+});
+
+describe('editSlide non-object replies', () => {
+  it('returns null when the reply is valid JSON but not an object', async () => {
+    fetchMock.mockResolvedValue(res({ text: '[1, 2, 3]' }));
+    expect(await editSlide({ id: 'a' }, 'x')).toBeNull();
   });
 });
