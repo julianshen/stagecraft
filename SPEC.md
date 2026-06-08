@@ -246,7 +246,7 @@ Section-grouped live thumbnails (real `<Slide>` via `ScaledSlide`), active-state
 
 #### 7.2.4 Canvas (`CanvasSlide`, `Ruler`, `StatusBar`) 🟡
 - 🟢 Renders the current slide at zoom; H/V rulers; status bar with zoom controls (20–200%, fit), live dimensions readout.
-- 🟢 Direct manipulation of `slide.elements` (§9): click to select, **shift-click to multi-select** (additive toggle), drag to move (a drag on any member moves the whole selection), 8-handle resize when exactly one element is selected. A drag commits one atomic deck update on pointer-up (no per-frame PUT). Delete/Backspace removes the whole selection; **align (left/center/right + top/middle/bottom)** acts on a 2+ selection and **distribute** evens the gaps of a 3+ selection. ⚪ Marquee selection and rotate-handle are not yet wired.
+- 🟢 Direct manipulation of `slide.elements` (§9): click to select, **shift-click to multi-select** (additive toggle), drag to move (a drag on any member moves the whole selection), 8-handle resize when exactly one element is selected. A drag commits one atomic deck update on pointer-up (no per-frame PUT). Delete/Backspace removes the whole selection; **align (left/center/right + top/middle/bottom)** acts on a 2+ selection and **distribute** evens the gaps of a 3+ selection — the Arrange buttons are disabled until enough elements are selected. ⚪ Marquee selection and rotate-handle are not yet wired.
 - 🟢 Right-click context menu (paste / generate / change layout / apply theme / duplicate / delete) — 🟡 only duplicate & delete are wired.
 
 #### 7.2.5 Right inspector (`InspectorPane` / `FloatingInspector`) 🟡

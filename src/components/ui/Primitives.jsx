@@ -23,9 +23,9 @@ export function Button({ children, variant = 'ghost', size, icon, kbd, style, ..
   );
 }
 
-export function IconButton({ name, active, title, size = 14, onClick, style }) {
+export function IconButton({ name, active, title, size = 14, onClick, style, disabled }) {
   return (
-    <button className={`iconbtn${active ? ' active' : ''}`} onClick={onClick} title={title} style={style}>
+    <button className={`iconbtn${active ? ' active' : ''}`} onClick={onClick} title={title} style={style} disabled={disabled}>
       <Icon name={name} size={size} />
     </button>
   );
