@@ -11,10 +11,12 @@ const slide = { id: 'a', layout: 'text', title: 'Old' };
 
 beforeEach(() => editSlideMock.mockReset());
 
+// onApplyPatch is the source of truth: it returns the patch keys that actually
+// applied against the latest deck (or [] when nothing applied).
 describe('DefaultAIDrawer', () => {
   it('clears the prompt input after sending a typed message', async () => {
     editSlideMock.mockResolvedValue({ title: 'New' });
-    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={vi.fn()} />);
+    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={vi.fn().mockReturnValue(['title'])} />);
     const input = screen.getByPlaceholderText(/Ask Co-pilot/i);
     await userEvent.type(input, 'rewrite this');
     expect(input).toHaveValue('rewrite this');
@@ -22,9 +24,9 @@ describe('DefaultAIDrawer', () => {
     expect(input).toHaveValue('');
   });
 
-  it('applies the AI patch to the current slide and confirms', async () => {
+  it('applies the AI patch and confirms the applied fields', async () => {
     editSlideMock.mockResolvedValue({ title: 'Punchier', body: 'Tighter copy' });
-    const onApplyPatch = vi.fn().mockReturnValue(true);
+    const onApplyPatch = vi.fn().mockReturnValue(['title', 'body']);
     render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={onApplyPatch} />);
     await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'make it punchier');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -45,14 +47,14 @@ describe('DefaultAIDrawer', () => {
 
   it('applies a suggestion chip as an instruction', async () => {
     editSlideMock.mockResolvedValue({ layout: 'list', items: ['a', 'b'] });
-    const onApplyPatch = vi.fn();
+    const onApplyPatch = vi.fn().mockReturnValue(['layout', 'items']);
     render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={onApplyPatch} />);
     await userEvent.click(screen.getByText('Turn into a bulleted list'));
     expect(editSlideMock).toHaveBeenCalledWith(slide, 'Turn into a bulleted list');
     expect(onApplyPatch).toHaveBeenCalledWith({ layout: 'list', items: ['a', 'b'] }, 'a');
   });
 
-  it('does not claim success when there is no active slide', async () => {
+  it('does not send when there is no active slide', async () => {
     const onApplyPatch = vi.fn();
     render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={undefined} onApplyPatch={onApplyPatch} />);
     await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'do it');
@@ -68,52 +70,38 @@ describe('DefaultAIDrawer', () => {
     expect(editSlideMock).not.toHaveBeenCalled();
   });
 
-  it('shows the fallback (no success) when every patch field is rejected', async () => {
-    editSlideMock.mockResolvedValue({ title: { text: 'Q' } }); // object scalar → sanitized away
-    const onApplyPatch = vi.fn();
-    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={onApplyPatch} />);
-    await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'go');
-    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(onApplyPatch).not.toHaveBeenCalled();
-    expect(await screen.findByText(/couldn't turn that into a slide edit/i)).toBeInTheDocument();
-  });
-
-  it('reports only the fields that survive sanitization', async () => {
-    editSlideMock.mockResolvedValue({ title: 'Kept', items: 'bad-non-array' }); // items dropped
-    const onApplyPatch = vi.fn().mockReturnValue(true);
+  it('shows the fallback when nothing applied (every field rejected or slide gone)', async () => {
+    editSlideMock.mockResolvedValue({ title: { text: 'Q' } });
+    const onApplyPatch = vi.fn().mockReturnValue([]); // latest-deck sanitization dropped everything
     render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={onApplyPatch} />);
     await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'go');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(onApplyPatch).toHaveBeenCalled();
+    expect(await screen.findByText(/couldn't turn that into a slide edit/i)).toBeInTheDocument();
+  });
+
+  it('reports only the fields the callback says applied', async () => {
+    editSlideMock.mockResolvedValue({ title: 'Kept', items: 'bad-non-array' });
+    const onApplyPatch = vi.fn().mockReturnValue(['title']); // items dropped by latest-deck sanitize
+    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={onApplyPatch} />);
+    await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'go');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     const msg = await screen.findByText(/Applied changes to:/);
     expect(msg.textContent).toMatch(/title/);
     expect(msg.textContent).not.toMatch(/items/);
   });
 
-  it('shows the fallback when the target slide was deleted mid-request', async () => {
-    editSlideMock.mockResolvedValue({ title: 'X' });
-    const onApplyPatch = vi.fn().mockReturnValue(false); // target no longer exists
-    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={onApplyPatch} />);
-    await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'go');
-    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(onApplyPatch).toHaveBeenCalled();
-    expect(await screen.findByText(/couldn't turn that into a slide edit/i)).toBeInTheDocument();
-  });
-
   it('sends on Cmd/Ctrl+Enter from the input', async () => {
     editSlideMock.mockResolvedValue({ title: 'Q' });
-    const onApplyPatch = vi.fn();
-    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={onApplyPatch} />);
+    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={vi.fn().mockReturnValue(['title'])} />);
     const input = screen.getByPlaceholderText(/Ask Co-pilot/i);
     await userEvent.type(input, 'go{Control>}{Enter}{/Control}');
     expect(editSlideMock).toHaveBeenCalledWith(slide, 'go');
   });
 
   it('targets the slide the edit was generated for (not the live selection)', async () => {
-    // Resolve editSlide only after the test lets it; meanwhile the prop "slide"
-    // is what was captured at send time — its id must be the patch target.
     editSlideMock.mockResolvedValue({ title: 'Done' });
-    const onApplyPatch = vi.fn();
+    const onApplyPatch = vi.fn().mockReturnValue(['title']);
     render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={{ id: 'orig', layout: 'text' }} onApplyPatch={onApplyPatch} />);
     await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'go');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
-import { getFlatSlideIds, reconcileCurId, applySlidePatch } from '../../lib/deckUtils.js';
+import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
   const [curId, setCurId] = useState(() => {
@@ -73,19 +73,21 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   // defaults to the current slide but is passed explicitly by the Co-pilot so an
   // in-flight edit lands on the slide it was generated for, not whatever is
   // selected by the time the model responds.
-  // Returns whether the target slide still exists (and was patched) so the
-  // Co-pilot doesn't report success for a slide deleted mid-request. Existence
-  // is checked against the latest deck (deckRef), and the apply is re-guarded
-  // inside the updater against `prev` so a slide removed in between is a no-op.
+  // Returns the patch keys that actually applied, computed against the LATEST
+  // slide (deckRef) — its current layout decides which fields survive, and a
+  // slide deleted mid-request yields [] (no false success). The apply is
+  // re-guarded inside the updater against `prev` so a removed slide is a no-op.
   function applyAIPatch(patch, targetId = curId) {
-    if (!targetId || !patch) return false;
-    const exists = (deckRef.current?.slides || []).some(s => s.id === targetId);
-    if (exists) {
+    if (!targetId || !patch) return [];
+    const target = (deckRef.current?.slides || []).find(s => s.id === targetId);
+    if (!target) return [];
+    const applied = Object.keys(sanitizeSlidePatch(patch, target.layout));
+    if (applied.length) {
       onDeckChange(prev =>
         (prev.slides || []).some(s => s.id === targetId) ? applySlidePatch(prev, targetId, patch) : prev
       );
     }
-    return exists;
+    return applied;
   }
 
   const renderSlide = useCallback((slide, ctx) => (

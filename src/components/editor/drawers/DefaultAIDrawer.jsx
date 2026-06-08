@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import Icon from '../../ui/Icon.jsx';
 import { IconButton } from '../../ui/Primitives.jsx';
 import { editSlide } from '../../../lib/llmClient.js';
-import { sanitizeSlidePatch } from '../../../lib/deckUtils.js';
 
 export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch }) {
   const [prompt, setPrompt] = useState('');
@@ -26,12 +25,11 @@ export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch
     setResponse('');
     try {
       const patch = await editSlide(slide, input);
-      // Report only the fields that survive sanitization, and only if the target
-      // slide still exists (onApplyPatch returns false if it was deleted in the
-      // meantime) — otherwise the deck is unchanged, so don't claim success.
-      const applied = patch ? Object.keys(sanitizeSlidePatch(patch, slide?.layout)) : [];
-      const ok = applied.length > 0 && !!onApplyPatch && onApplyPatch(patch, slide?.id) === true;
-      setResponse(ok
+      // onApplyPatch is the source of truth: it returns the patch keys that
+      // actually applied against the LATEST deck (target slide + its current
+      // layout), or [] if nothing applied (slide gone, or all fields rejected).
+      const applied = (patch && onApplyPatch) ? (onApplyPatch(patch, slide?.id) || []) : [];
+      setResponse(applied.length
         ? `✓ Applied changes to: ${applied.join(', ')}`
         : "I couldn't turn that into a slide edit — try rephrasing the instruction.");
     } catch (err) {
