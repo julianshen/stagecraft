@@ -95,6 +95,33 @@ describe('applySlidePatch', () => {
     expect(next.slides[0].items).toEqual(['A']);   // other valid fields still applied
   });
 
+  it('drops object items when the target layout is list', () => {
+    const d = deck();
+    d.slides[0] = { id: 'a', layout: 'list', items: ['old'] };
+    const next = applySlidePatch(d, 'a', { items: [{ text: 'A' }] });
+    expect(next.slides[0].items).toEqual(['old']); // object items would render blank; dropped
+  });
+
+  it('accepts string items for a list layout', () => {
+    const d = deck();
+    d.slides[0] = { id: 'a', layout: 'list', items: [] };
+    const next = applySlidePatch(d, 'a', { items: ['A', 'B'] });
+    expect(next.slides[0].items).toEqual(['A', 'B']);
+  });
+
+  it('still accepts object items for an agenda layout', () => {
+    const d = deck();
+    d.slides[0] = { id: 'a', layout: 'agenda', items: [] };
+    const next = applySlidePatch(d, 'a', { items: [{ n: '01', t: 'A', d: 'B' }] });
+    expect(next.slides[0].items).toEqual([{ n: '01', t: 'A', d: 'B' }]);
+  });
+
+  it('uses the patch layout (switching to list) when validating items', () => {
+    const next = applySlidePatch(deck(), 'a', { layout: 'list', items: [{ text: 'A' }] });
+    expect(next.slides[0].layout).toBe('list');       // layout switch applied
+    expect(next.slides[0].items).toBeUndefined();      // object items rejected for list
+  });
+
   it('leaves other slides untouched and returns a new deck object', () => {
     const d = deck();
     const next = applySlidePatch(d, 'a', { title: 'X' });

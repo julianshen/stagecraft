@@ -29,7 +29,7 @@ export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch
       // Report only the fields that survive sanitization, and only if the target
       // slide still exists (onApplyPatch returns false if it was deleted in the
       // meantime) — otherwise the deck is unchanged, so don't claim success.
-      const applied = patch ? Object.keys(sanitizeSlidePatch(patch)) : [];
+      const applied = patch ? Object.keys(sanitizeSlidePatch(patch, slide?.layout)) : [];
       const ok = applied.length > 0 && !!onApplyPatch && onApplyPatch(patch, slide?.id) === true;
       setResponse(ok
         ? `✓ Applied changes to: ${applied.join(', ')}`

@@ -52,10 +52,13 @@ const isLeaf = (x) =>
 // object/array where a primitive is expected (e.g. `title: { text }`, a table
 // cell of `{ text }`) would crash React's "object as child" render, so it's
 // dropped before it can persist into the deck.
-function fieldOk(key, value) {
+function fieldOk(key, value, layout) {
   if (key === 'layout') return typeof value === 'string' && SLIDE_LAYOUTS.has(value);
   if (key === 'rows') return Array.isArray(value) && value.every((row) => Array.isArray(row) && row.every(isPrimitive));
   if (key === 'columns') return Array.isArray(value) && value.every(isPrimitive);
+  // The list layout renders items as plain text, so its items must be
+  // primitives — an object item (valid for agenda/risks) would render blank.
+  if (key === 'items' && layout === 'list') return Array.isArray(value) && value.every(isPrimitive);
   if (OBJECT_ARRAY_FIELDS.has(key)) return Array.isArray(value) && value.every(isLeaf);
   return isPrimitive(value);
 }
@@ -72,12 +75,15 @@ function fieldOk(key, value) {
  * schema's shape. Exposed so the Co-pilot can tell what an edit will actually
  * change (and avoid claiming success for a fully-rejected patch).
  */
-export function sanitizeSlidePatch(patch) {
+export function sanitizeSlidePatch(patch, currentLayout) {
   const safe = {};
   if (!patch || typeof patch !== 'object') return safe;
+  // The effective layout is the (valid) one the patch switches to, else the
+  // slide's current layout — it decides layout-specific field shapes.
+  const layout = typeof patch.layout === 'string' && SLIDE_LAYOUTS.has(patch.layout) ? patch.layout : currentLayout;
   for (const [k, v] of Object.entries(patch)) {
     if (UNSAFE_PATCH_KEYS.has(k)) continue;
-    if (!fieldOk(k, v)) continue;
+    if (!fieldOk(k, v, layout)) continue;
     safe[k] = v;
   }
   return safe;
@@ -85,7 +91,8 @@ export function sanitizeSlidePatch(patch) {
 
 export function applySlidePatch(deck, curId, patch) {
   if (!deck || !curId || !patch) return deck;
-  const safe = sanitizeSlidePatch(patch);
+  const current = (deck.slides || []).find((s) => s.id === curId);
+  const safe = sanitizeSlidePatch(patch, current?.layout);
   return {
     ...deck,
     slides: (deck.slides || []).map((s) => (s.id === curId ? { ...s, ...safe } : s)),
