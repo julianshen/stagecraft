@@ -1,8 +1,10 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import CanvasSlide from './CanvasSlide.jsx';
 
-// jsdom has no ResizeObserver; CanvasSlide measures its frame with one.
+// jsdom has no ResizeObserver; CanvasSlide measures its frame with one. Restore
+// the original afterwards so the stub can't leak across test files.
+const origRO = globalThis.ResizeObserver;
 beforeAll(() => {
   globalThis.ResizeObserver = class {
     observe() {}
@@ -10,6 +12,7 @@ beforeAll(() => {
     disconnect() {}
   };
 });
+afterAll(() => { globalThis.ResizeObserver = origRO; });
 
 const slide = {
   id: 's1',
@@ -117,5 +120,47 @@ describe('CanvasSlide drag', () => {
     );
     drag(hits(container)[0], { dx: 1, dy: 1 });
     expect(onUpdateElements).not.toHaveBeenCalled();
+  });
+
+  it('marquee-drag over empty canvas selects the overlapping elements', () => {
+    const onMarqueeSelect = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={[]} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} onMarqueeSelect={onMarqueeSelect} />,
+    );
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 400, clientY: 250 }); // covers a (100..300×100..200), not b (x≥500)
+    fire(window, 'pointerup', {});
+    expect(onMarqueeSelect).toHaveBeenCalledWith(['a']);
+  });
+
+  it('clicking empty canvas (no drag) clears the selection', () => {
+    const onSelectElement = vi.fn();
+    const onMarqueeSelect = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={onSelectElement} onUpdateElements={vi.fn()} onMarqueeSelect={onMarqueeSelect} />,
+    );
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointerup', {}); // no move → a click, not a marquee
+    expect(onSelectElement).toHaveBeenCalledWith(null);
+    expect(onMarqueeSelect).not.toHaveBeenCalled();
+  });
+
+  it('treats a sub-threshold tremor as a click, not a marquee', () => {
+    const onSelectElement = vi.fn();
+    const onMarqueeSelect = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={onSelectElement} onUpdateElements={vi.fn()} onMarqueeSelect={onMarqueeSelect} />,
+    );
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 1, clientY: 1 }); // within the 2px tolerance
+    fire(window, 'pointerup', {});
+    expect(onSelectElement).toHaveBeenCalledWith(null);
+    expect(onMarqueeSelect).not.toHaveBeenCalled();
   });
 });

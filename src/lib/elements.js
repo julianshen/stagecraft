@@ -100,6 +100,18 @@ export function distributeElements(els, axis) {
   return els.map((e) => ({ ...e, [pos]: at.get(e.id) }));
 }
 
+// Ids of elements that overlap the marquee rectangle defined by two corners
+// (any drag direction). Strict overlap — edge-only contact does not select.
+export function elementsInMarquee(els, x1, y1, x2, y2) {
+  const left = Math.min(x1, x2);
+  const right = Math.max(x1, x2);
+  const top = Math.min(y1, y2);
+  const bottom = Math.max(y1, y2);
+  return (els || [])
+    .filter((e) => e.x < right && e.x + e.w > left && e.y < bottom && e.y + e.h > top)
+    .map((e) => e.id);
+}
+
 // Immutably transform the `elements` array of slide `slideId` via `fn`.
 export function updateSlideElements(deck, slideId, fn) {
   if (!deck) return deck;

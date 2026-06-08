@@ -115,6 +115,10 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
       ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
       : [id]);
   }
+  // Replace the selection with the elements swept by a marquee.
+  function marqueeSelect(ids) {
+    setSelElIds(ids || []);
+  }
 
   function addElement(type) {
     if (!curId) return;
@@ -188,6 +192,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onDeleteElements: deleteSelectedElements,
         onAlignElements: alignSelected,
         onDistributeElements: distributeSelected,
+        onMarqueeSelect: marqueeSelect,
         onPresent,
         onExport: onOpenExport,
         onAddTable: addTable,

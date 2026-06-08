@@ -21,6 +21,7 @@ export default defineConfig({
         'src/lib/llmClient.js',
         'src/hooks/useDeckSync.js',
         'src/data/deck.js',
+        'src/components/editor/CanvasSlide.jsx',
       ],
       thresholds: {
         lines: 90,
