@@ -48,8 +48,11 @@ export default function PresenterView({ deck, onExit }) {
   if (!cur) return null;
 
   // Prefer notes authored on the slide (e.g. the Co-pilot's "Generate speaker
-  // notes"), then the bundled sample notes, then a default nudge.
-  const note = cur.notes || SPEAKER_NOTES[cur.id] || "Drive the narrative: what does the audience need to walk away believing? If you don't know, the slide isn't ready.";
+  // notes") — honoring an intentionally-cleared empty string — then the bundled
+  // sample notes, then a default nudge.
+  const note = typeof cur.notes === 'string'
+    ? cur.notes
+    : (SPEAKER_NOTES[cur.id] || "Drive the narrative: what does the audience need to walk away believing? If you don't know, the slide isn't ready.");
 
   return (
     <div className="presenter">

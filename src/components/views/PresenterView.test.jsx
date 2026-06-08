@@ -33,6 +33,17 @@ describe('PresenterView', () => {
     expect(() => render(<PresenterView deck={null} onExit={vi.fn()} />)).not.toThrow();
   });
 
+  it('honors an explicitly cleared (empty) notes value', () => {
+    const deck = {
+      title: 'Demo',
+      theme: 'indigo',
+      sections: [{ id: 's1', name: 'Intro', slides: ['a'] }],
+      slides: [{ id: 'a', layout: 'text', title: 'Alpha', notes: '' }],
+    };
+    render(<PresenterView deck={deck} onExit={vi.fn()} />);
+    expect(screen.queryByText(/Drive the narrative/)).not.toBeInTheDocument();
+  });
+
   it('shows notes authored on the slide (e.g. Co-pilot speaker notes)', () => {
     const deck = {
       title: 'Demo',
