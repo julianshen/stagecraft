@@ -68,12 +68,26 @@ describe('DefaultAIDrawer', () => {
     expect(editSlideMock).not.toHaveBeenCalled();
   });
 
-  it('confirms generically when the patch has no named fields', async () => {
-    editSlideMock.mockResolvedValue({});
-    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={vi.fn()} />);
+  it('shows the fallback (no success) when every patch field is rejected', async () => {
+    editSlideMock.mockResolvedValue({ title: { text: 'Q' } }); // object scalar → sanitized away
+    const onApplyPatch = vi.fn();
+    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={onApplyPatch} />);
     await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'go');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(await screen.findByText(/Applied changes to: the slide/)).toBeInTheDocument();
+    expect(onApplyPatch).not.toHaveBeenCalled();
+    expect(await screen.findByText(/couldn't turn that into a slide edit/i)).toBeInTheDocument();
+  });
+
+  it('reports only the fields that survive sanitization', async () => {
+    editSlideMock.mockResolvedValue({ title: 'Kept', items: 'bad-non-array' }); // items dropped
+    const onApplyPatch = vi.fn();
+    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={onApplyPatch} />);
+    await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'go');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(onApplyPatch).toHaveBeenCalled();
+    const msg = await screen.findByText(/Applied changes to:/);
+    expect(msg.textContent).toMatch(/title/);
+    expect(msg.textContent).not.toMatch(/items/);
   });
 
   it('sends on Cmd/Ctrl+Enter from the input', async () => {

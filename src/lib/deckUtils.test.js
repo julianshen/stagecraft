@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getFlatSlideIds, reconcileCurId, applySlidePatch } from './deckUtils.js';
+import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from './deckUtils.js';
 
 describe('getFlatSlideIds', () => {
   it('returns [] for a null or undefined deck instead of throwing', () => {
@@ -185,3 +185,17 @@ describe('applySlidePatch', () => {
     expect(next.slides[0].notes).toBe('n');
   });
 });
+
+describe('sanitizeSlidePatch', () => {
+  it('keeps valid fields and drops id, unsafe, and malformed ones', () => {
+    const patch = JSON.parse('{"id":"x","title":"T","items":"bad","constructor":"y"}');
+    expect(sanitizeSlidePatch(patch)).toEqual({ title: 'T' });
+  });
+
+  it('returns {} for null, a non-object, or a fully-rejected patch', () => {
+    expect(sanitizeSlidePatch(null)).toEqual({});
+    expect(sanitizeSlidePatch('nope')).toEqual({});
+    expect(sanitizeSlidePatch({ title: { text: 'Q' } })).toEqual({});
+  });
+});
+

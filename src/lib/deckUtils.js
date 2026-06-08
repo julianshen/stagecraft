@@ -58,14 +58,26 @@ function fieldOk(key, value) {
  * fields are dropped; every other field overrides. Returns a new deck
  * (immutable) or the deck unchanged when there's nothing to do.
  */
-export function applySlidePatch(deck, curId, patch) {
-  if (!deck || !curId || !patch) return deck;
+/**
+ * Return the subset of `patch` that is safe to merge — drops the immutable id,
+ * prototype-pollution keys, and any field whose value doesn't match the slide
+ * schema's shape. Exposed so the Co-pilot can tell what an edit will actually
+ * change (and avoid claiming success for a fully-rejected patch).
+ */
+export function sanitizeSlidePatch(patch) {
   const safe = {};
+  if (!patch || typeof patch !== 'object') return safe;
   for (const [k, v] of Object.entries(patch)) {
     if (UNSAFE_PATCH_KEYS.has(k)) continue;
     if (!fieldOk(k, v)) continue;
     safe[k] = v;
   }
+  return safe;
+}
+
+export function applySlidePatch(deck, curId, patch) {
+  if (!deck || !curId || !patch) return deck;
+  const safe = sanitizeSlidePatch(patch);
   return {
     ...deck,
     slides: (deck.slides || []).map((s) => (s.id === curId ? { ...s, ...safe } : s)),

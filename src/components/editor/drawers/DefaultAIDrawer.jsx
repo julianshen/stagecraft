@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Icon from '../../ui/Icon.jsx';
 import { IconButton } from '../../ui/Primitives.jsx';
 import { editSlide } from '../../../lib/llmClient.js';
+import { sanitizeSlidePatch } from '../../../lib/deckUtils.js';
 
 export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch }) {
   const [prompt, setPrompt] = useState('');
@@ -25,9 +26,12 @@ export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch
     setResponse('');
     try {
       const patch = await editSlide(slide, input);
-      if (patch && onApplyPatch) {
+      // Report only the fields that survive sanitization — a patch that's fully
+      // dropped (e.g. an object scalar) leaves the deck unchanged, so don't claim success.
+      const applied = patch ? Object.keys(sanitizeSlidePatch(patch)) : [];
+      if (applied.length && onApplyPatch) {
         onApplyPatch(patch, slide?.id); // target the slide this edit was generated for
-        setResponse(`✓ Applied changes to: ${Object.keys(patch).join(', ') || 'the slide'}`);
+        setResponse(`✓ Applied changes to: ${applied.join(', ')}`);
       } else {
         setResponse("I couldn't turn that into a slide edit — try rephrasing the instruction.");
       }
