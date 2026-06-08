@@ -59,13 +59,15 @@ export default function PropsPanel({ selected, setSelected }) {
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12 }}>{toHex(selected.fill)}</div>
         </div>
       </div>
-      <div className="pane-section">
-        <h4>Type</h4>
-        <FieldRow label="FAMILY"><div className="input-group"><input value="Inter" readOnly /><Icon name="chevron-down" size={11} /></div></FieldRow>
-        <FieldRow label="STYLE"><div className="double-input"><div className="input-group"><input value="Semibold" readOnly /></div><InputGroup value="96" unit="px" /></div></FieldRow>
-        <FieldRow label="ALIGN"><Seg value="left" onChange={() => { }} options={[{ v: 'left', ico: 'align-left' }, { v: 'center', ico: 'align-center' }, { v: 'right', ico: 'align-right' }]} /></FieldRow>
-        <FieldRow label="STYLE"><div className="seg"><button className="active"><Icon name="bold" size={12} /></button><button><Icon name="italic" size={12} /></button><button><Icon name="underline" size={12} /></button></div></FieldRow>
-      </div>
+      {selected.type === 'text' && (
+        <div className="pane-section">
+          <h4>Type</h4>
+          <FieldRow label="FAMILY"><div className="input-group"><input value="Inter" readOnly /><Icon name="chevron-down" size={11} /></div></FieldRow>
+          <FieldRow label="STYLE"><div className="double-input"><div className="input-group"><input value="Semibold" readOnly /></div><InputGroup value="96" unit="px" /></div></FieldRow>
+          <FieldRow label="ALIGN"><Seg value="left" onChange={() => { }} options={[{ v: 'left', ico: 'align-left' }, { v: 'center', ico: 'align-center' }, { v: 'right', ico: 'align-right' }]} /></FieldRow>
+          <FieldRow label="STYLE"><div className="seg"><button className="active"><Icon name="bold" size={12} /></button><button><Icon name="italic" size={12} /></button><button><Icon name="underline" size={12} /></button></div></FieldRow>
+        </div>
+      )}
     </>
   );
 }
