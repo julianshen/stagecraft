@@ -235,7 +235,7 @@ Mutations: `addComponent(id)`, `addText(style)`, `addTable(rows,cols)`, `addChar
 | Tools | Select / Pen / Image, 10 Shapes | 🔴 set active tool only — no canvas drawing |
 | Insert | Component menu, Text menu, Table size-picker, Chart-type picker | 🟢 add real slides |
 | Slide | Layout menu, Theme menu | 🟢 mutate current slide / deck |
-| Arrange | align left/center/right, distribute | 🟢 align ×3 act on a 2+ multi-selection; 🔴 distribute (⚪) and vertical align (⚪) unwired |
+| Arrange | align left/center/right, distribute | 🟢 align ×3 act on a 2+ selection; 🟢 distribute evens the gaps of a 3+ selection (axis auto-picked from the bbox); ⚪ vertical align unwired |
 | Misc | auto-arrange (✨), timeline toggle, version history | 🟡 timeline toggles drawer; others 🔴 |
 | Right | Co-pilot, Export, Present | 🟢 |
 
@@ -246,7 +246,7 @@ Section-grouped live thumbnails (real `<Slide>` via `ScaledSlide`), active-state
 
 #### 7.2.4 Canvas (`CanvasSlide`, `Ruler`, `StatusBar`) 🟡
 - 🟢 Renders the current slide at zoom; H/V rulers; status bar with zoom controls (20–200%, fit), live dimensions readout.
-- 🟢 Direct manipulation of `slide.elements` (§9): click to select, **shift-click to multi-select** (additive toggle), drag to move (a drag on any member moves the whole selection), 8-handle resize when exactly one element is selected. A drag commits one atomic deck update on pointer-up (no per-frame PUT). Delete/Backspace removes the whole selection; **align left/center/right** acts on a 2+ selection. ⚪ Marquee selection, distribute, vertical align, and rotate-handle are not yet wired.
+- 🟢 Direct manipulation of `slide.elements` (§9): click to select, **shift-click to multi-select** (additive toggle), drag to move (a drag on any member moves the whole selection), 8-handle resize when exactly one element is selected. A drag commits one atomic deck update on pointer-up (no per-frame PUT). Delete/Backspace removes the whole selection; **align left/center/right** acts on a 2+ selection and **distribute** evens the gaps of a 3+ selection. ⚪ Marquee selection, vertical align, and rotate-handle are not yet wired.
 - 🟢 Right-click context menu (paste / generate / change layout / apply theme / duplicate / delete) — 🟡 only duplicate & delete are wired.
 
 #### 7.2.5 Right inspector (`InspectorPane` / `FloatingInspector`) 🟡
@@ -308,7 +308,7 @@ Anthropic · OpenAI · Google · OpenRouter · Local (Ollama/LM Studio, no key) 
 
 **Still ⚪ (follow-ups):**
 - Per-element typography (font family/size/weight/align for text) and a rotate drag-handle.
-- Marquee selection (shift-click multi-select ✅ and align-over-selection ✅ shipped; distribute and vertical align still ⚪).
+- Marquee selection (shift-click multi-select ✅, align-over-selection ✅, and distribute ✅ shipped; vertical align still ⚪).
 - Snapping to alignment guides (currently grid-only); Pen/Image tools.
 - Persisting/AI-authoring elements (the `elements` field isn't in the AI-patch whitelist yet).
 
@@ -422,7 +422,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 | Settings: AI + Appearance | 🟢 (🟡 top-p) |
 | PPTX export | 🟢 (🟡 charts/roadmap) |
 | Presenter | 🟡 |
-| Canvas selection / direct manipulation | 🟢 core + multi-select/move/align (⚪ rotate/marquee/distribute) |
+| Canvas selection / direct manipulation | 🟢 core + multi-select/move/align/distribute (⚪ rotate/marquee/vertical-align) |
 | Inspector Design/Animate, timeline | 🔴 |
 | Home/Sorter secondary controls, drag-reorder | 🔴 → ⚪ |
 | Templates → real starter decks | 🟡 → ⚪ |

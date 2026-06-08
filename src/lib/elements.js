@@ -72,6 +72,34 @@ export function alignElements(els, edge) {
   });
 }
 
+// Distribute 3+ elements along `axis` ('h'|'v') so the gaps between adjacent
+// elements are equal, holding the two outermost edges fixed. The cross axis is
+// left untouched. Returns the input unchanged for fewer than three elements.
+export function distributeElements(els, axis) {
+  if (!els || els.length < 3) return els;
+  const pos = axis === 'v' ? 'y' : 'x';
+  const size = axis === 'v' ? 'h' : 'w';
+  const sorted = [...els].sort((a, b) => a[pos] - b[pos]);
+  const n = sorted.length;
+  // Outer edges of the bounding box. The far edge is the max over ALL elements
+  // — the element with the largest start may not be the one reaching furthest.
+  const near = Math.min(...sorted.map((e) => e[pos]));
+  const far = Math.max(...sorted.map((e) => e[pos] + e[size]));
+  const sumSize = sorted.reduce((acc, e) => acc + e[size], 0);
+  const gap = (far - near - sumSize) / (n - 1);
+  const at = new Map();
+  let cursor = near;
+  sorted.forEach((e, i) => {
+    // Pin both outer edges of the box exactly; reposition the interior elements
+    // (rounded) so the gaps between adjacent elements are equal.
+    if (i === 0) at.set(e.id, near);
+    else if (i === n - 1) at.set(e.id, far - e[size]);
+    else at.set(e.id, Math.round(cursor));
+    cursor += e[size] + gap;
+  });
+  return els.map((e) => ({ ...e, [pos]: at.get(e.id) }));
+}
+
 // Immutably transform the `elements` array of slide `slideId` via `fn`.
 export function updateSlideElements(deck, slideId, fn) {
   if (!deck) return deck;
