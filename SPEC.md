@@ -304,8 +304,10 @@ Anthropic · OpenAI · Google · OpenRouter · Local (Ollama/LM Studio, no key) 
 
 **Now 🟢 (core):** a per-slide **element overlay model** — `slide.elements[]` of `{id, type, x, y, w, h, content?}` in 1920×1080 space, rendered everywhere the slide renders (`ElementsLayer` in `SlideRenderer`, on top of the layout template). Pure geometry lives in `lib/elements.js` (`snap`/`createElement`/`moveElement`/`resizeElement`/`updateSlideElements`, gated + unit-tested): click-to-select, drag-move, 8-handle resize, all snapped to the 8px grid and clamped to the slide. The Text/Shape toolbar tools create elements; the Properties panel binds x/y/w/h to the real selected element; Delete removes it. State + mutations are owned by `Editor` (`selElId`, `addElement`/`updateElement`/`deleteElement`).
 
+**Also 🟢:** the Properties panel binds **angle (`rot`), opacity, and fill** to the selected element, and a **Content** field edits text elements; `ElementView` renders rotation/opacity/fill. (Element schema gains optional `rot`, `opacity`, `fill`.)
+
 **Still ⚪ (follow-ups):**
-- Rotate, opacity, and per-element style/fill/type editing (Properties panel beyond geometry).
+- Per-element typography (font family/size/weight/align for text) and a rotate drag-handle.
 - Marquee + multi-select; align/distribute over a selection set.
 - Snapping to alignment guides (currently grid-only); Pen/Image tools.
 - Persisting/AI-authoring elements (the `elements` field isn't in the AI-patch whitelist yet).

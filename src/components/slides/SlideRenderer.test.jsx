@@ -27,6 +27,23 @@ describe('ElementsLayer', () => {
     expect(textEl.style.width).toBe('300px');
   });
 
+  it('applies rotation, opacity, and fill to elements', () => {
+    const { container } = render(
+      <ElementsLayer
+        elements={[
+          { id: 's', type: 'rect', x: 0, y: 0, w: 100, h: 100, rot: 45, opacity: 50, fill: '#ff0000' },
+          { id: 't', type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'Hi', fill: '#00ff00' },
+        ]}
+      />
+    );
+    const rect = container.querySelector('[style*="rotate"]');
+    expect(rect.style.transform).toBe('rotate(45deg)');
+    expect(rect.style.opacity).toBe('0.5');
+    expect(rect.style.background).toContain('rgb(255, 0, 0)');
+    const text = screen.getByText('Hi');
+    expect(text.style.color).toContain('rgb(0, 255, 0)');
+  });
+
   it('renders distinct shape types (preserves the picked shape)', () => {
     const { container } = render(
       <ElementsLayer
