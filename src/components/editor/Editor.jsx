@@ -3,7 +3,7 @@ import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
-import { createElement, updateSlideElements, alignElements } from '../../lib/elements.js';
+import { createElement, updateSlideElements, alignElements, distributeElements } from '../../lib/elements.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
   const [curId, setCurId] = useState(() => {
@@ -148,6 +148,22 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
       return els.map(e => byId.get(e.id) || e);
     }));
   }
+  // Evenly distribute the multi-selection (no-op for <3). The axis is picked
+  // from the selection's bounding box: a wider-than-tall spread distributes
+  // horizontally, otherwise vertically.
+  function distributeSelected() {
+    if (selElIds.length < 3) return;
+    const ids = new Set(selElIds);
+    const sel = slideElements.filter(e => ids.has(e.id));
+    const spanX = Math.max(...sel.map(e => e.x + e.w)) - Math.min(...sel.map(e => e.x));
+    const spanY = Math.max(...sel.map(e => e.y + e.h)) - Math.min(...sel.map(e => e.y));
+    const axis = spanX >= spanY ? 'h' : 'v';
+    onDeckChange(prev => updateSlideElements(prev, curId, els => {
+      const distributed = distributeElements(els.filter(e => ids.has(e.id)), axis);
+      const byId = new Map(distributed.map(e => [e.id, e]));
+      return els.map(e => byId.get(e.id) || e);
+    }));
+  }
 
   const renderSlide = useCallback((slide, ctx) => (
     <Slide slide={slide} deck={ctx.deck} sectionName={ctx.sectionName} num={ctx.num} total={ctx.total} />
@@ -171,6 +187,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onUpdateElements: updateElements,
         onDeleteElements: deleteSelectedElements,
         onAlignElements: alignSelected,
+        onDistributeElements: distributeSelected,
         onPresent,
         onExport: onOpenExport,
         onAddTable: addTable,

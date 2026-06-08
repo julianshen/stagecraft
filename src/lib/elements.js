@@ -72,6 +72,28 @@ export function alignElements(els, edge) {
   });
 }
 
+// Distribute 3+ elements along `axis` ('h'|'v') so the gaps between adjacent
+// elements are equal, holding the two outermost edges fixed. The cross axis is
+// left untouched. Returns the input unchanged for fewer than three elements.
+export function distributeElements(els, axis) {
+  if (!els || els.length < 3) return els;
+  const pos = axis === 'v' ? 'y' : 'x';
+  const size = axis === 'v' ? 'h' : 'w';
+  const sorted = [...els].sort((a, b) => a[pos] - b[pos]);
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const sumSize = sorted.reduce((acc, e) => acc + e[size], 0);
+  const gap = (last[pos] + last[size] - first[pos] - sumSize) / (sorted.length - 1);
+  const at = new Map();
+  let cursor = first[pos];
+  sorted.forEach((e, i) => {
+    // Keep the extremes exactly put; reposition only the interior elements.
+    at.set(e.id, i === 0 || i === sorted.length - 1 ? e[pos] : Math.round(cursor));
+    cursor += e[size] + gap;
+  });
+  return els.map((e) => ({ ...e, [pos]: at.get(e.id) }));
+}
+
 // Immutably transform the `elements` array of slide `slideId` via `fn`.
 export function updateSlideElements(deck, slideId, fn) {
   if (!deck) return deck;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -250,5 +250,58 @@ describe('alignElements', () => {
     const v = alignElements(e, 'vmiddle');
     expect(h.every(el => Number.isInteger(el.x))).toBe(true);
     expect(v.every(el => Number.isInteger(el.y))).toBe(true);
+  });
+});
+
+describe('distributeElements', () => {
+  it('returns the input unchanged for fewer than three elements', () => {
+    const two = [{ id: 'a', x: 0, y: 0, w: 10, h: 10 }, { id: 'b', x: 100, y: 0, w: 10, h: 10 }];
+    expect(distributeElements(two, 'h')).toBe(two);
+    expect(distributeElements([], 'v')).toEqual([]);
+  });
+
+  it('equalizes horizontal gaps, holding the outer edges fixed', () => {
+    const e = [
+      { id: 'a', x: 0, y: 0, w: 100, h: 50 },
+      { id: 'b', x: 120, y: 0, w: 100, h: 50 }, // free space = 600-300 = 300, gap = 150
+      { id: 'c', x: 500, y: 0, w: 100, h: 50 },
+    ];
+    const byId = Object.fromEntries(distributeElements(e, 'h').map(x => [x.id, x]));
+    expect(byId.a.x).toBe(0);   // first edge unchanged
+    expect(byId.b.x).toBe(250); // gap of 150 on each side
+    expect(byId.c.x).toBe(500); // last edge unchanged
+  });
+
+  it('equalizes vertical gaps', () => {
+    const e = [
+      { id: 'a', x: 0, y: 0, w: 50, h: 100 },
+      { id: 'b', x: 0, y: 120, w: 50, h: 100 },
+      { id: 'c', x: 0, y: 500, w: 50, h: 100 },
+    ];
+    const byId = Object.fromEntries(distributeElements(e, 'v').map(x => [x.id, x]));
+    expect(byId.a.y).toBe(0);
+    expect(byId.b.y).toBe(250);
+    expect(byId.c.y).toBe(500);
+  });
+
+  it('sorts by position before distributing and preserves input order', () => {
+    const e = [
+      { id: 'c', x: 500, y: 0, w: 100, h: 50 },
+      { id: 'a', x: 0, y: 0, w: 100, h: 50 },
+      { id: 'b', x: 120, y: 0, w: 100, h: 50 },
+    ];
+    const r = distributeElements(e, 'h');
+    expect(r.map(x => x.id)).toEqual(['c', 'a', 'b']); // order preserved
+    const byId = Object.fromEntries(r.map(x => [x.id, x]));
+    expect([byId.a.x, byId.b.x, byId.c.x]).toEqual([0, 250, 500]);
+  });
+
+  it('leaves the cross-axis untouched', () => {
+    const e = [
+      { id: 'a', x: 0, y: 7, w: 100, h: 50 },
+      { id: 'b', x: 120, y: 9, w: 100, h: 50 },
+      { id: 'c', x: 500, y: 11, w: 100, h: 50 },
+    ];
+    expect(distributeElements(e, 'h').map(x => x.y)).toEqual([7, 9, 11]);
   });
 });
