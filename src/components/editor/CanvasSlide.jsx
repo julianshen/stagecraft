@@ -55,16 +55,20 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       latest = apply((ev.clientX - startX) / s, (ev.clientY - startY) / s);
       setDrag({ id: startEl.id, el: latest });
     }
-    function up() {
+    function removeListeners() {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       dragCleanup.current = null;
+    }
+    function up() {
+      removeListeners();
       setDrag(null);
       onUpdateElement?.(startEl.id, latest);
     }
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
-    dragCleanup.current = up;
+    // On unmount mid-drag, only detach listeners (no setState on an unmounted tree).
+    dragCleanup.current = removeListeners;
   }
 
   function startMove(e, el) {

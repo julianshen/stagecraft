@@ -65,18 +65,15 @@ export function resizeElement(el, handle, dx, dy, { grid = GRID, min = MIN_SIZE,
   const right = el.x + el.w, bottom = el.y + el.h;
   let { x, y, w, h } = el;
 
-  if (edge.l) { x = snap(el.x + dx, grid); w = right - x; }
-  else if (edge.r) { w = snap(el.w + dx, grid); }
-  if (edge.t) { y = snap(el.y + dy, grid); h = bottom - y; }
-  else if (edge.b) { h = snap(el.h + dy, grid); }
+  // For a moving start-edge, clamp the edge FIRST (into [0, opposite - min]) and
+  // derive the size from the anchored opposite edge — so the opposite edge never
+  // drifts, even when dragged past the slide boundary. For an end-edge, clamp the
+  // size into [min, bounds - start].
+  if (edge.l) { x = clamp(snap(el.x + dx, grid), 0, right - min); w = right - x; }
+  else if (edge.r) { w = clamp(snap(el.w + dx, grid), min, bounds.w - el.x); }
+  if (edge.t) { y = clamp(snap(el.y + dy, grid), 0, bottom - min); h = bottom - y; }
+  else if (edge.b) { h = clamp(snap(el.h + dy, grid), min, bounds.h - el.y); }
 
-  if (w < min) { if (edge.l) x = right - min; w = min; }
-  if (h < min) { if (edge.t) y = bottom - min; h = min; }
-
-  x = clamp(x, 0, bounds.w - min);
-  y = clamp(y, 0, bounds.h - min);
-  w = clamp(w, min, bounds.w - x);
-  h = clamp(h, min, bounds.h - y);
   return { ...el, x, y, w, h };
 }
 

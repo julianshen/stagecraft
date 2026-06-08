@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, IconButton, Menu } from '../ui/Primitives.jsx';
 import { flattenDeck } from '../../lib/deckOrder.js';
@@ -62,18 +62,22 @@ export default function SlideEditor(props) {
   const updateSelEl = (el) => { if (el?.id) callbacks.onUpdateElement?.(el.id, clampElement(el)); };
 
   // Delete/Backspace removes the selected element (unless typing in a field).
+  // Callbacks go through a ref so the listener isn't re-bound every render (the
+  // `callbacks` object is a fresh literal each parent render).
+  const callbacksRef = useRef(callbacks);
+  callbacksRef.current = callbacks;
   useEffect(() => {
     function onKey(e) {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      if (!props.selectedElementId || !callbacks.onDeleteElement) return;
+      if (!props.selectedElementId || !callbacksRef.current.onDeleteElement) return;
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       e.preventDefault();
-      callbacks.onDeleteElement(props.selectedElementId);
+      callbacksRef.current.onDeleteElement(props.selectedElementId);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [props.selectedElementId, callbacks]);
+  }, [props.selectedElementId]);
 
   const [tool, setTool] = useState('select');
   const [inspectorTab, setInspectorTab] = useState('design');

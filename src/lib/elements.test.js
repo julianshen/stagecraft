@@ -155,6 +155,13 @@ describe('resizeElement anchor + clampElement', () => {
     expect(r.h).toBe(MIN_SIZE);
     expect(r.y).toBe(600 - MIN_SIZE);
   });
+
+  it('anchors the right edge when a left resize is pushed past the slide edge', () => {
+    const el = { id: 'a', type: 'rect', x: 200, y: 0, w: 400, h: 100 }; // right = 600
+    const r = resizeElement(el, 'w', -100000, 0);
+    expect(r.x).toBe(0);
+    expect(r.x + r.w).toBe(600); // right edge stays anchored, not drifted to the slide edge
+  });
 });
 
 describe('clampElement', () => {
