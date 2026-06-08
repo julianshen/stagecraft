@@ -90,6 +90,23 @@ describe('CanvasSlide drag', () => {
     expect(onUpdateElements).not.toHaveBeenCalled();          // no geometry change
   });
 
+  it('aborts a drag on pointercancel and detaches its listeners', () => {
+    const onUpdateElements = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    const [hitA] = hits(container);
+    fire(hitA, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 40, clientY: 0 });
+    fire(window, 'pointercancel', {});
+    // Stray events after a cancel must be ignored — a leaked pointerup listener
+    // would otherwise commit the abandoned drag.
+    fire(window, 'pointermove', { clientX: 80, clientY: 0 });
+    fire(window, 'pointerup', {});
+    expect(onUpdateElements).not.toHaveBeenCalled();
+  });
+
   it('does not commit a drag that snaps back to the starting position', () => {
     // Grid-aligned element: a sub-grid jiggle snaps to the same coords → no-op.
     const gridSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 104, y: 104, w: 200, h: 96 }] };

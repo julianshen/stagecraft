@@ -62,7 +62,14 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     function removeListeners() {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
       dragCleanup.current = null;
+    }
+    // A canceled gesture (pointercancel never fires pointerup) discards the
+    // drag — detach listeners and clear the preview so the lifecycle isn't stuck.
+    function cancel() {
+      removeListeners();
+      setDrag(null);
     }
     function up() {
       removeListeners();
@@ -80,6 +87,7 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     }
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
     dragCleanup.current = removeListeners;
   }
 
