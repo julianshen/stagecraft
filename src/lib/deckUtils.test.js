@@ -142,4 +142,16 @@ describe('applySlidePatch', () => {
     const next = applySlidePatch(deck(), 'a', { rows: [['a', 'b'], ['c', 'd']] });
     expect(next.slides[0].rows).toEqual([['a', 'b'], ['c', 'd']]);
   });
+
+  it('drops a scalar field whose value is an object (would crash React render)', () => {
+    const next = applySlidePatch(deck(), 'a', { title: { text: 'Q' }, body: 'Keep' });
+    expect(next.slides[0].title).toBe('A');     // object dropped, original kept
+    expect(next.slides[0].body).toBe('Keep');   // primitive applied
+  });
+
+  it('keeps primitive scalar fields', () => {
+    const next = applySlidePatch(deck(), 'a', { title: 'New', notes: 'n' });
+    expect(next.slides[0].title).toBe('New');
+    expect(next.slides[0].notes).toBe('n');
+  });
 });

@@ -31,10 +31,14 @@ const UNSAFE_PATCH_KEYS = new Set(['id', '__proto__', 'constructor', 'prototype'
 // `row.map(...)`), so a flat `['North','South']` is rejected too.
 const ARRAY_SLIDE_FIELDS = new Set(['items', 'kpis', 'stats', 'columns']);
 
-function collectionFieldOk(key, value) {
+// Accept a patch field only if its value matches the slide schema's shape:
+// array collections are validated as arrays (rows as an array of row arrays),
+// and every other field must be a primitive — an object/array for a scalar
+// field (e.g. `title: { text }`) would crash React's "object as child" render.
+function fieldOk(key, value) {
   if (key === 'rows') return Array.isArray(value) && value.every((row) => Array.isArray(row));
   if (ARRAY_SLIDE_FIELDS.has(key)) return Array.isArray(value);
-  return true; // not an array-typed field
+  return value === null || typeof value !== 'object';
 }
 
 /**
@@ -48,7 +52,7 @@ export function applySlidePatch(deck, curId, patch) {
   const safe = {};
   for (const [k, v] of Object.entries(patch)) {
     if (UNSAFE_PATCH_KEYS.has(k)) continue;
-    if (!collectionFieldOk(k, v)) continue;
+    if (!fieldOk(k, v)) continue;
     safe[k] = v;
   }
   return {
