@@ -143,6 +143,21 @@ describe('applySlidePatch', () => {
     expect(next.slides[0].rows).toEqual([['a', 'b'], ['c', 'd']]);
   });
 
+  it('drops rows whose cells are not primitives', () => {
+    const next = applySlidePatch(deck(), 'a', { rows: [[{ text: 'North' }]] });
+    expect(next.slides[0].rows).toBeUndefined(); // object cell would crash React render
+  });
+
+  it('accepts rows of primitive cells', () => {
+    const next = applySlidePatch(deck(), 'a', { rows: [['North', 42]] });
+    expect(next.slides[0].rows).toEqual([['North', 42]]);
+  });
+
+  it('drops columns that are not all primitives', () => {
+    const next = applySlidePatch(deck(), 'a', { columns: [{ x: 1 }] });
+    expect(next.slides[0].columns).toBeUndefined();
+  });
+
   it('drops a scalar field whose value is an object (would crash React render)', () => {
     const next = applySlidePatch(deck(), 'a', { title: { text: 'Q' }, body: 'Keep' });
     expect(next.slides[0].title).toBe('A');     // object dropped, original kept

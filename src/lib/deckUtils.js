@@ -29,16 +29,21 @@ const UNSAFE_PATCH_KEYS = new Set(['id', '__proto__', 'constructor', 'prototype'
 // persists and breaks a downstream consumer (renderer, PPTX export). `rows` is
 // stricter: each row must itself be an array of cells (the renderer/exporter do
 // `row.map(...)`), so a flat `['North','South']` is rejected too.
-const ARRAY_SLIDE_FIELDS = new Set(['items', 'kpis', 'stats', 'columns']);
+// items/kpis/stats hold per-layout objects or strings, so only their array-ness
+// is checked. `rows`/`columns` (table) and every scalar field render directly as
+// React children, so their leaf values must be primitives.
+const OBJECT_ARRAY_FIELDS = new Set(['items', 'kpis', 'stats']);
+const isPrimitive = (x) => x === null || typeof x !== 'object';
 
-// Accept a patch field only if its value matches the slide schema's shape:
-// array collections are validated as arrays (rows as an array of row arrays),
-// and every other field must be a primitive — an object/array for a scalar
-// field (e.g. `title: { text }`) would crash React's "object as child" render.
+// Accept a patch field only if its value matches the slide schema's shape — an
+// object/array where a primitive is expected (e.g. `title: { text }`, a table
+// cell of `{ text }`) would crash React's "object as child" render, so it's
+// dropped before it can persist into the deck.
 function fieldOk(key, value) {
-  if (key === 'rows') return Array.isArray(value) && value.every((row) => Array.isArray(row));
-  if (ARRAY_SLIDE_FIELDS.has(key)) return Array.isArray(value);
-  return value === null || typeof value !== 'object';
+  if (key === 'rows') return Array.isArray(value) && value.every((row) => Array.isArray(row) && row.every(isPrimitive));
+  if (key === 'columns') return Array.isArray(value) && value.every(isPrimitive);
+  if (OBJECT_ARRAY_FIELDS.has(key)) return Array.isArray(value);
+  return isPrimitive(value);
 }
 
 /**
