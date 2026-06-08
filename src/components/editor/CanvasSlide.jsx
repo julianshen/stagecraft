@@ -6,17 +6,16 @@ const HANDLE_CURSOR = {
   nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
   n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
 };
-// Handle offset (fraction of the box): 0 = start edge, 0.5 = middle, 1 = end.
 const HANDLE_POS = {
   nw: [0, 0], n: [0.5, 0], ne: [1, 0],
   w: [0, 0.5], e: [1, 0.5],
   sw: [0, 1], s: [0.5, 1], se: [1, 1],
 };
 
-export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selectedId, onSelectElement, onUpdateElement }) {
+export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selectedIds = [], onSelectElement, onUpdateElements }) {
   const frameRef = useRef(null);
   const [scale, setScale] = useState(0.5);
-  const scaleRef = useRef(scale); // latest scale for the drag closure
+  const scaleRef = useRef(scale);
   scaleRef.current = scale;
 
   useEffect(() => {
@@ -31,29 +30,33 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     return () => ro.disconnect();
   }, []);
 
-  // Live drag preview: { id, el } while dragging. The deck is only updated once,
-  // on pointer-up — so a drag doesn't fire a deck mutation (and a server PUT) on
-  // every frame. Cleared on commit.
+  // Live drag preview: a map id→element while dragging (commits once on pointer-up).
   const [drag, setDrag] = useState(null);
   const dragCleanup = useRef(null);
-  useEffect(() => () => dragCleanup.current?.(), []); // tear down a drag if we unmount mid-drag
+  useEffect(() => () => dragCleanup.current?.(), []);
 
   const baseElements = slide.elements || [];
-  const elements = drag ? baseElements.map((e) => (e.id === drag.id ? drag.el : e)) : baseElements;
+  const selectedSet = new Set(selectedIds);
+  const elements = drag ? baseElements.map((e) => drag.get(e.id) || e) : baseElements;
   const liveSlide = drag ? { ...slide, elements } : slide;
-  const selected = elements.find((e) => e.id === selectedId) || null;
+  const selected = elements.filter((e) => selectedSet.has(e.id));
+  // Resize handles only when exactly one element is selected.
+  const resizeTarget = selected.length === 1 ? selected[0] : null;
 
-  function startDrag(e, startEl, apply) {
-    if (dragCleanup.current) return; // a drag is already active
+  // Drag `targets` (array): each pointermove maps the screen delta to slide
+  // coords and applies `apply(el, dx, dy)`; commits once on pointer-up.
+  function startDrag(e, targets, apply) {
+    if (dragCleanup.current) return;
     e.stopPropagation();
     e.preventDefault();
-    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* jsdom / unsupported */ }
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* unsupported */ }
     const startX = e.clientX, startY = e.clientY;
-    let latest = startEl;
+    let latest = new Map();
     function move(ev) {
       const s = scaleRef.current || 1;
-      latest = apply((ev.clientX - startX) / s, (ev.clientY - startY) / s);
-      setDrag({ id: startEl.id, el: latest });
+      const dx = (ev.clientX - startX) / s, dy = (ev.clientY - startY) / s;
+      latest = new Map(targets.map((t) => [t.id, apply(t, dx, dy)]));
+      setDrag(latest);
     }
     function removeListeners() {
       window.removeEventListener('pointermove', move);
@@ -63,20 +66,25 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     function up() {
       removeListeners();
       setDrag(null);
-      onUpdateElement?.(startEl.id, latest);
+      // One atomic commit for the whole drag (a click with no move is a no-op).
+      if (latest.size) onUpdateElements?.(latest);
     }
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
-    // On unmount mid-drag, only detach listeners (no setState on an unmounted tree).
     dragCleanup.current = removeListeners;
   }
 
   function startMove(e, el) {
-    onSelectElement?.(el.id);
-    startDrag(e, el, (dx, dy) => moveElement(el, dx, dy));
+    const inSelection = selectedSet.has(el.id);
+    const additive = !!e.shiftKey;
+    if (!inSelection) onSelectElement?.(el.id, additive);
+    // Drag the whole selection when the grabbed element is part of it. A
+    // shift-grab adds this element, so drag the combined set; otherwise just it.
+    const targets = inSelection ? selected : additive ? [...selected, el] : [el];
+    startDrag(e, targets, (t, dx, dy) => moveElement(t, dx, dy));
   }
   function startResize(e, el, handle) {
-    startDrag(e, el, (dx, dy) => resizeElement(el, handle, dx, dy));
+    startDrag(e, [el], (t, dx, dy) => resizeElement(t, handle, dx, dy));
   }
 
   return (
@@ -90,28 +98,28 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
         {elements.map((el) => (
           <div
             key={el.id}
-            className={`el-hit${el.id === selectedId ? ' selected' : ''}`}
+            className={`el-hit${selectedSet.has(el.id) ? ' selected' : ''}`}
             style={{
               position: 'absolute',
               left: el.x * scale, top: el.y * scale, width: el.w * scale, height: el.h * scale,
               cursor: 'move',
-              outline: el.id === selectedId ? '1.5px solid oklch(0.62 0.2 265)' : '1px solid transparent',
+              outline: selectedSet.has(el.id) ? '1.5px solid oklch(0.62 0.2 265)' : '1px solid transparent',
             }}
             onPointerDown={(e) => startMove(e, el)}
           />
         ))}
 
-        {selected && Object.entries(HANDLE_POS).map(([h, [fx, fy]]) => (
+        {resizeTarget && Object.entries(HANDLE_POS).map(([h, [fx, fy]]) => (
           <div
             key={h}
             className="sel-handle"
             style={{
               position: 'absolute',
-              left: (selected.x + selected.w * fx) * scale - 4,
-              top: (selected.y + selected.h * fy) * scale - 4,
+              left: (resizeTarget.x + resizeTarget.w * fx) * scale - 4,
+              top: (resizeTarget.y + resizeTarget.h * fy) * scale - 4,
               cursor: HANDLE_CURSOR[h],
             }}
-            onPointerDown={(e) => startResize(e, selected, h)}
+            onPointerDown={(e) => startResize(e, resizeTarget, h)}
           />
         ))}
       </div>

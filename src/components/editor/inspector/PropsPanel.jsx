@@ -11,7 +11,8 @@ function toHex(fill) {
   return /^#[0-9a-f]{6}$/.test(h) ? h : '#4f46e5';
 }
 
-export default function PropsPanel({ selected, setSelected }) {
+export default function PropsPanel({ selected, setSelected, count = 0 }) {
+  if (count > 1) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{count} elements selected — drag to move them together, or align via the toolbar.</div>;
   if (!selected) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>Select an element.</div>;
   return (
     <>

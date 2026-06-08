@@ -69,15 +69,15 @@ export default function SlideEditor(props) {
   useEffect(() => {
     function onKey(e) {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      if (!props.selectedElementId || !callbacksRef.current.onDeleteElement) return;
+      if (!props.selectedElementCount || !callbacksRef.current.onDeleteElements) return;
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       e.preventDefault();
-      callbacksRef.current.onDeleteElement(props.selectedElementId);
+      callbacksRef.current.onDeleteElements();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [props.selectedElementId]);
+  }, [props.selectedElementCount]);
 
   const [tool, setTool] = useState('select');
   const [inspectorTab, setInspectorTab] = useState('design');
@@ -136,9 +136,9 @@ export default function SlideEditor(props) {
         </div>
 
         <div className="group">
-          <IconButton name="align-left"/>
-          <IconButton name="align-center"/>
-          <IconButton name="align-right"/>
+          <IconButton name="align-left" title="Align left" onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('left')}/>
+          <IconButton name="align-center" title="Align center" onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('hcenter')}/>
+          <IconButton name="align-right" title="Align right" onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('right')}/>
           <IconButton name="logic" title="Distribute"/>
         </div>
 
@@ -191,9 +191,9 @@ export default function SlideEditor(props) {
                 slide={cur}
                 deckCtx={{ ...deckCtx, num: curIdx + 1 }}
                 renderSlide={renderSlide}
-                selectedId={props.selectedElementId}
+                selectedIds={props.selectedElementIds}
                 onSelectElement={onSelectElement}
-                onUpdateElement={callbacks.onUpdateElement}
+                onUpdateElements={callbacks.onUpdateElements}
                 zoom={zoom}
               />
             )}
@@ -229,6 +229,7 @@ export default function SlideEditor(props) {
             setTab={setInspectorTab}
             selection={selectedElement}
             setSelection={updateSelEl}
+            count={props.selectedElementCount}
             extras={slots.inspectorExtra}
           />
         )}
@@ -238,6 +239,7 @@ export default function SlideEditor(props) {
             setTab={setInspectorTab}
             selection={selectedElement}
             setSelection={updateSelEl}
+            count={props.selectedElementCount}
             extras={slots.inspectorExtra}
           />
         )}

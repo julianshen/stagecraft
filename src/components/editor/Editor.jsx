@@ -3,7 +3,7 @@ import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
-import { createElement, updateSlideElements } from '../../lib/elements.js';
+import { createElement, updateSlideElements, alignElements } from '../../lib/elements.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
   const [curId, setCurId] = useState(() => {
@@ -92,30 +92,60 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   }
 
   // ---- canvas elements (free-form overlay) ----
-  const [selElId, setSelElId] = useState(null);
-  // Deselect the element when switching slides.
-  useEffect(() => { setSelElId(null); }, [curId]);
+  const [selElIds, setSelElIds] = useState([]);
+  // Deselect when switching slides.
+  useEffect(() => { setSelElIds([]); }, [curId]);
 
   const currentSlide = (deck.slides || []).find(s => s.id === curId) || null;
-  const selectedElement = (currentSlide?.elements || []).find(e => e.id === selElId) || null;
+  const slideElements = currentSlide?.elements || [];
+  const selectedElements = slideElements.filter(e => selElIds.includes(e.id));
+  // PropsPanel binds to a single element; expose the one selected (else null).
+  const selectedElement = selectedElements.length === 1 ? selectedElements[0] : null;
 
-  // Clear a stale selection if the element vanished (e.g. removed by a live edit).
+  // Drop ids whose elements vanished (e.g. removed by a live edit).
   useEffect(() => {
-    if (selElId && !selectedElement) setSelElId(null);
-  }, [selElId, selectedElement]);
+    const live = selElIds.filter(id => slideElements.some(e => e.id === id));
+    if (live.length !== selElIds.length) setSelElIds(live);
+  }, [slideElements, selElIds]);
+
+  // Select an element; with `additive` (shift-click) toggle it within the set.
+  function selectElement(id, additive = false) {
+    if (id == null) { setSelElIds([]); return; }
+    setSelElIds(prev => additive
+      ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+      : [id]);
+  }
 
   function addElement(type) {
     if (!curId) return;
     const id = `el-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
     onDeckChange(prev => updateSlideElements(prev, curId, els => [...els, createElement(type, { id })]));
-    setSelElId(id);
+    setSelElIds([id]);
   }
   function updateElement(id, patch) {
     onDeckChange(prev => updateSlideElements(prev, curId, els => els.map(e => (e.id === id ? { ...e, ...patch } : e))));
   }
-  function deleteElement(id) {
-    onDeckChange(prev => updateSlideElements(prev, curId, els => els.filter(e => e.id !== id)));
-    setSelElId(cur => (cur === id ? null : cur));
+  // Batch path for a multi-element drag: one deck commit (and one PUT) for the
+  // whole gesture. `updates` is a Map id→element.
+  function updateElements(updates) {
+    if (!updates || updates.size === 0) return;
+    onDeckChange(prev => updateSlideElements(prev, curId, els =>
+      els.map(e => (updates.has(e.id) ? { ...e, ...updates.get(e.id) } : e))));
+  }
+  function deleteSelectedElements() {
+    if (!selElIds.length) return;
+    const ids = new Set(selElIds);
+    onDeckChange(prev => updateSlideElements(prev, curId, els => els.filter(e => !ids.has(e.id))));
+    setSelElIds([]);
+  }
+  // Align the current multi-selection along an edge (no-op for <2 selected).
+  function alignSelected(edge) {
+    if (selElIds.length < 2) return;
+    onDeckChange(prev => updateSlideElements(prev, curId, els => {
+      const aligned = alignElements(els.filter(e => selElIds.includes(e.id)), edge);
+      const byId = new Map(aligned.map(e => [e.id, e]));
+      return els.map(e => byId.get(e.id) || e);
+    }));
   }
 
   const renderSlide = useCallback((slide, ctx) => (
@@ -131,12 +161,15 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
       layoutVariant={layoutVariant}
       theme={{ accent, density }}
       selectedElement={selectedElement}
-      selectedElementId={selElId}
-      onSelectElement={setSelElId}
+      selectedElementIds={selElIds}
+      selectedElementCount={selectedElements.length}
+      onSelectElement={selectElement}
       callbacks={{
         onAddElement: addElement,
         onUpdateElement: updateElement,
-        onDeleteElement: deleteElement,
+        onUpdateElements: updateElements,
+        onDeleteElements: deleteSelectedElements,
+        onAlignElements: alignSelected,
         onPresent,
         onExport: onOpenExport,
         onAddTable: addTable,
