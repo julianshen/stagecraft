@@ -55,9 +55,10 @@ export async function callLLM(messages, options = {}) {
   return String(data.text || data.message || data || '');
 }
 
-// Parse a model reply as JSON, tolerating accidental ```json code fences.
+// Parse a model reply as JSON, tolerating surrounding whitespace and accidental
+// ```json code fences (which models often emit with leading newlines).
 function parseJsonReply(text) {
-  const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const clean = String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
   return JSON.parse(clean);
 }
 

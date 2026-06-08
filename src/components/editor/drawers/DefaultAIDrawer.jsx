@@ -16,6 +16,7 @@ export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch
   ];
 
   async function handleSend(text) {
+    if (loading) return; // ignore chips/Enter while a request is in flight
     const input = text || prompt;
     if (!input.trim()) return;
     if (!text) setPrompt(''); // clear the typed prompt (suggestion chips pass `text`)

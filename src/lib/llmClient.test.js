@@ -163,6 +163,11 @@ describe('editSlide', () => {
     expect(await editSlide({ id: 'a' }, 'as a list')).toEqual({ layout: 'list', items: ['x'] });
   });
 
+  it('parses a reply with leading whitespace before the code fence', async () => {
+    fetchMock.mockResolvedValue(res({ text: '\n\n```json\n{"title":"X"}\n```' }));
+    expect(await editSlide({ id: 'a' }, 'x')).toEqual({ title: 'X' });
+  });
+
   it('never returns an id in the patch', async () => {
     fetchMock.mockResolvedValue(res({ text: '{"id":"evil","title":"T"}' }));
     const patch = await editSlide({ id: 'a' }, 'x');
