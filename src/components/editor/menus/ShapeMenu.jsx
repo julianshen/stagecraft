@@ -15,7 +15,7 @@ const SHAPE_TOOLS = [
 ];
 const SHAPE_IDS = SHAPE_TOOLS.map(s => s.id);
 
-export default function ShapeMenu({ tool, setTool }) {
+export default function ShapeMenu({ tool, setTool, onPick }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -45,7 +45,7 @@ export default function ShapeMenu({ tool, setTool }) {
                 key={s.id}
                 className={`shape-cell${tool === s.id ? ' on' : ''}`}
                 title={s.label}
-                onClick={() => { setTool(s.id); setOpen(false); }}
+                onClick={() => { setTool(s.id); setOpen(false); if (onPick) onPick(s.id); }}
               >
                 <Icon name={s.icon} size={16} />
               </button>

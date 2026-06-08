@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, IconButton, Menu } from '../ui/Primitives.jsx';
 import { flattenDeck } from '../../lib/deckOrder.js';
@@ -7,6 +7,7 @@ import StatusBar from './StatusBar.jsx';
 import CollabLayer from './CollabLayer.jsx';
 import ThumbsPane from './ThumbsPane.jsx';
 import CanvasSlide from './CanvasSlide.jsx';
+import { clampElement } from '../../lib/elements.js';
 import ShapeMenu from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
 import TableSizePicker from './menus/TableSizePicker.jsx';
@@ -52,12 +53,31 @@ export default function SlideEditor(props) {
     if (!props.currentSlideId) setInternalCurId(id);
   };
 
-  const [internalSel, setInternalSel] = useState(props.selection || { x: 80, y: 380, w: 820, h: 210, label: 'Title · H1' });
-  const selection = props.selection || internalSel;
-  const setSelection = (s) => {
-    if (props.onSelectionChange) props.onSelectionChange(s);
-    if (!props.selection) setInternalSel(s);
-  };
+  // Selected canvas element (owned by Editor, passed in). PropsPanel edits it by
+  // handing back the full updated element, which we forward as a patch.
+  const selectedElement = props.selectedElement || null;
+  const onSelectElement = props.onSelectElement || (() => {});
+  // Properties-panel edits hand back the full element; clamp to bounds (typed
+  // values bypass the drag clamps) before forwarding as a patch.
+  const updateSelEl = (el) => { if (el?.id) callbacks.onUpdateElement?.(el.id, clampElement(el)); };
+
+  // Delete/Backspace removes the selected element (unless typing in a field).
+  // Callbacks go through a ref so the listener isn't re-bound every render (the
+  // `callbacks` object is a fresh literal each parent render).
+  const callbacksRef = useRef(callbacks);
+  callbacksRef.current = callbacks;
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (!props.selectedElementId || !callbacksRef.current.onDeleteElement) return;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      e.preventDefault();
+      callbacksRef.current.onDeleteElement(props.selectedElementId);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [props.selectedElementId]);
 
   const [tool, setTool] = useState('select');
   const [inspectorTab, setInspectorTab] = useState('design');
@@ -90,7 +110,8 @@ export default function SlideEditor(props) {
               title={t.title}
             />
           ))}
-          <ShapeMenu tool={tool} setTool={setTool}/>
+          <ShapeMenu tool={tool} setTool={setTool} onPick={(id) => callbacks.onAddElement && callbacks.onAddElement(id)}/>
+          <IconButton name="text" title="Text box" onClick={() => callbacks.onAddElement && callbacks.onAddElement('text')}/>
           {PEN_IMAGE_TOOLS.map(t => (
             <IconButton
               key={t.id}
@@ -170,14 +191,15 @@ export default function SlideEditor(props) {
                 slide={cur}
                 deckCtx={{ ...deckCtx, num: curIdx + 1 }}
                 renderSlide={renderSlide}
-                selected={selection}
-                setSelected={setSelection}
+                selectedId={props.selectedElementId}
+                onSelectElement={onSelectElement}
+                onUpdateElement={callbacks.onUpdateElement}
                 zoom={zoom}
               />
             )}
             {showCollabCursors && <CollabLayer collaborators={collaborators}/>}
           </div>
-          <StatusBar zoom={zoom} setZoom={setZoom} selected={selection}/>
+          <StatusBar zoom={zoom} setZoom={setZoom} selected={selectedElement}/>
 
           {showTimeline && <TimelineDrawer onClose={()=>setShowTimeline(false)} />}
           {showAI && (slots.aiDrawer || <DefaultAIDrawer onClose={()=>setShowAI(false)} slideNum={curIdx+1} slide={cur} onApplyPatch={callbacks.onApplyAIPatch} />)}
@@ -205,8 +227,8 @@ export default function SlideEditor(props) {
           <InspectorPane
             tab={inspectorTab}
             setTab={setInspectorTab}
-            selection={selection}
-            setSelection={setSelection}
+            selection={selectedElement}
+            setSelection={updateSelEl}
             extras={slots.inspectorExtra}
           />
         )}
@@ -214,8 +236,8 @@ export default function SlideEditor(props) {
           <FloatingInspector
             tab={inspectorTab}
             setTab={setInspectorTab}
-            selection={selection}
-            setSelection={setSelection}
+            selection={selectedElement}
+            setSelection={updateSelEl}
             extras={slots.inspectorExtra}
           />
         )}
