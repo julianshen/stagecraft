@@ -84,11 +84,13 @@ Context deck title: ${context.deckTitle || 'Untitled'}`;
   });
 
   try {
-    return parseJsonReply(text);
+    const slide = parseJsonReply(text);
+    // Only accept a plain object — an array/string/number would break consumers.
+    if (slide && typeof slide === 'object' && !Array.isArray(slide)) return slide;
   } catch {
-    // Fallback to a plain text slide
-    return { id: `ai-${Date.now()}`, layout: 'text', title: prompt, body: text };
+    // fall through to the text-slide fallback
   }
+  return { id: `ai-${Date.now()}`, layout: 'text', title: prompt, body: text };
 }
 
 /**

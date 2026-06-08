@@ -19,6 +19,7 @@ export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch
     if (loading) return; // ignore chips/Enter while a request is in flight
     const input = text || prompt;
     if (!input.trim()) return;
+    if (!slide) { setResponse('Select a slide to edit first.'); return; }
     if (!text) setPrompt(''); // clear the typed prompt (suggestion chips pass `text`)
     setLoading(true);
     setResponse('');

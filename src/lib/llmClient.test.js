@@ -137,6 +137,13 @@ describe('generateSlide', () => {
     expect(slide).toMatchObject({ layout: 'text', title: 'summary', body: 'just prose, not json' });
     expect(slide.id).toMatch(/^ai-/);
   });
+
+  it('falls back to a text slide when the reply is valid JSON but not an object', async () => {
+    fetchMock.mockResolvedValue(res({ text: '[1, 2, 3]' }));
+    const slide = await generateSlide('summary');
+    expect(slide).toMatchObject({ layout: 'text', title: 'summary' });
+    expect(slide.id).toMatch(/^ai-/);
+  });
 });
 
 describe('rewriteText & suggestImprovements', () => {

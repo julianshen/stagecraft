@@ -52,6 +52,16 @@ describe('DefaultAIDrawer', () => {
     expect(onApplyPatch).toHaveBeenCalledWith({ layout: 'list', items: ['a', 'b'] }, 'a');
   });
 
+  it('does not claim success when there is no active slide', async () => {
+    const onApplyPatch = vi.fn();
+    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={undefined} onApplyPatch={onApplyPatch} />);
+    await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'do it');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(editSlideMock).not.toHaveBeenCalled();
+    expect(onApplyPatch).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Select a slide to edit first/i)).toBeInTheDocument();
+  });
+
   it('ignores an empty prompt', async () => {
     render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
