@@ -110,7 +110,7 @@ export default function SlideEditor(props) {
               title={t.title}
             />
           ))}
-          <ShapeMenu tool={tool} setTool={setTool} onPick={(id) => callbacks.onAddElement && callbacks.onAddElement(id === 'circle' ? 'ellipse' : 'rect')}/>
+          <ShapeMenu tool={tool} setTool={setTool} onPick={(id) => callbacks.onAddElement && callbacks.onAddElement(id)}/>
           <IconButton name="text" title="Text box" onClick={() => callbacks.onAddElement && callbacks.onAddElement('text')}/>
           {PEN_IMAGE_TOOLS.map(t => (
             <IconButton

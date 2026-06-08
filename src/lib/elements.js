@@ -13,6 +13,7 @@ const DEFAULTS = {
   text: { w: 480, h: 120, content: 'Text' },
   rect: { w: 320, h: 200 },
   ellipse: { w: 240, h: 240 },
+  circle: { w: 240, h: 240 },
 };
 
 // Build a new element of `type`, centered by default, with snapped position.

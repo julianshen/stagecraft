@@ -222,6 +222,16 @@ export function RoadmapGraphic() {
 
 // Free-form element overlay (the canvas-editing layer), rendered on top of the
 // layout template in the same 1920×1080 coordinate space.
+const SHAPE_CLIP = {
+  triangle: 'polygon(50% 0, 100% 100%, 0 100%)',
+  diamond: 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
+  pentagon: 'polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%)',
+  hexagon: 'polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)',
+  star: 'polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)',
+  'arrow-shape': 'polygon(0 30%,60% 30%,60% 0,100% 50%,60% 100%,60% 70%,0 70%)',
+  arrow: 'polygon(0 30%,60% 30%,60% 0,100% 50%,60% 100%,60% 70%,0 70%)',
+};
+
 function ElementView({ el }) {
   const base = { position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h };
   if (el.type === 'text') {
@@ -231,8 +241,12 @@ function ElementView({ el }) {
       </div>
     );
   }
-  const shape = el.type === 'ellipse' ? { borderRadius: '50%' } : { borderRadius: 8 };
-  return <div style={{ ...base, background: 'oklch(0.62 0.17 265)', ...shape }} />;
+  const fill = { background: 'oklch(0.62 0.17 265)' };
+  if (el.type === 'circle' || el.type === 'ellipse') return <div style={{ ...base, ...fill, borderRadius: '50%' }} />;
+  if (el.type === 'rounded') return <div style={{ ...base, ...fill, borderRadius: 28 }} />;
+  if (el.type === 'line') return <div style={{ ...base, height: Math.min(el.h, 8), background: 'var(--ink, #15171C)' }} />;
+  if (SHAPE_CLIP[el.type]) return <div style={{ ...base, ...fill, clipPath: SHAPE_CLIP[el.type] }} />;
+  return <div style={{ ...base, ...fill, borderRadius: 8 }} />; // rect / unknown
 }
 
 export function ElementsLayer({ elements }) {

@@ -26,6 +26,23 @@ describe('ElementsLayer', () => {
     expect(textEl.style.left).toBe('100px');
     expect(textEl.style.width).toBe('300px');
   });
+
+  it('renders distinct shape types (preserves the picked shape)', () => {
+    const { container } = render(
+      <ElementsLayer
+        elements={[
+          { id: 'c', type: 'circle', x: 0, y: 0, w: 100, h: 100 },
+          { id: 't', type: 'triangle', x: 0, y: 0, w: 100, h: 100 },
+          { id: 'l', type: 'line', x: 0, y: 0, w: 200, h: 100 },
+        ]}
+      />
+    );
+    const boxes = container.querySelectorAll('div > div');
+    const circle = [...boxes].find(b => b.style.borderRadius === '50%');
+    const triangle = [...boxes].find(b => b.style.clipPath.includes('polygon'));
+    expect(circle).toBeTruthy();   // circle → 50% radius, not a plain rect
+    expect(triangle).toBeTruthy(); // triangle → clip-path polygon, not a rect
+  });
 });
 
 describe('Slide with elements', () => {
