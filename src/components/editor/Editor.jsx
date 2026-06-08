@@ -3,6 +3,7 @@ import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
+import { createElement, updateSlideElements } from '../../lib/elements.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
   const [curId, setCurId] = useState(() => {
@@ -90,6 +91,28 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     return applied;
   }
 
+  // ---- canvas elements (free-form overlay) ----
+  const [selElId, setSelElId] = useState(null);
+  // Deselect the element when switching slides.
+  useEffect(() => { setSelElId(null); }, [curId]);
+
+  const currentSlide = (deck.slides || []).find(s => s.id === curId) || null;
+  const selectedElement = (currentSlide?.elements || []).find(e => e.id === selElId) || null;
+
+  function addElement(type) {
+    if (!curId) return;
+    const id = `el-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4)}`;
+    onDeckChange(prev => updateSlideElements(prev, curId, els => [...els, createElement(type, { id })]));
+    setSelElId(id);
+  }
+  function updateElement(id, patch) {
+    onDeckChange(prev => updateSlideElements(prev, curId, els => els.map(e => (e.id === id ? { ...e, ...patch } : e))));
+  }
+  function deleteElement(id) {
+    onDeckChange(prev => updateSlideElements(prev, curId, els => els.filter(e => e.id !== id)));
+    setSelElId(cur => (cur === id ? null : cur));
+  }
+
   const renderSlide = useCallback((slide, ctx) => (
     <Slide slide={slide} deck={ctx.deck} sectionName={ctx.sectionName} num={ctx.num} total={ctx.total} />
   ), []);
@@ -102,7 +125,13 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
       renderSlide={renderSlide}
       layoutVariant={layoutVariant}
       theme={{ accent, density }}
+      selectedElement={selectedElement}
+      selectedElementId={selElId}
+      onSelectElement={setSelElId}
       callbacks={{
+        onAddElement: addElement,
+        onUpdateElement: updateElement,
+        onDeleteElement: deleteElement,
         onPresent,
         onExport: onOpenExport,
         onAddTable: addTable,

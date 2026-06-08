@@ -220,7 +220,40 @@ export function RoadmapGraphic() {
   );
 }
 
-export function Slide({ slide, deck, sectionName, num, total }) {
+// Free-form element overlay (the canvas-editing layer), rendered on top of the
+// layout template in the same 1920×1080 coordinate space.
+function ElementView({ el }) {
+  const base = { position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h };
+  if (el.type === 'text') {
+    return (
+      <div style={{ ...base, display: 'flex', alignItems: 'center', fontSize: 48, fontWeight: 500, color: 'var(--ink, #15171C)', lineHeight: 1.2, overflow: 'hidden' }}>
+        {el.content}
+      </div>
+    );
+  }
+  const shape = el.type === 'ellipse' ? { borderRadius: '50%' } : { borderRadius: 8 };
+  return <div style={{ ...base, background: 'oklch(0.62 0.17 265)', ...shape }} />;
+}
+
+export function ElementsLayer({ elements }) {
+  if (!elements?.length) return null;
+  return (
+    <div style={{ position: 'absolute', inset: 0 }}>
+      {elements.map((el) => <ElementView key={el.id} el={el} />)}
+    </div>
+  );
+}
+
+export function Slide(props) {
+  return (
+    <>
+      <SlideContent {...props} />
+      <ElementsLayer elements={props.slide?.elements} />
+    </>
+  );
+}
+
+function SlideContent({ slide, deck, sectionName, num, total }) {
   const s = { ...slide, sectionName, num, total };
   switch (slide.layout) {
     case 'cover':

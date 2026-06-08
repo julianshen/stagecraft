@@ -7,7 +7,7 @@ export default function PropsPanel({ selected, setSelected }) {
   return (
     <>
       <div className="pane-section">
-        <h4>{selected.label}</h4>
+        <h4>{selected.label || (selected.type ? `${selected.type[0].toUpperCase()}${selected.type.slice(1)} element` : 'Element')}</h4>
         <FieldRow label="POS">
           <div className="double-input">
             <InputGroup icoLeft="X" value={selected.x} onChange={v => setSelected({ ...selected, x: +v || 0 })} unit="px" />

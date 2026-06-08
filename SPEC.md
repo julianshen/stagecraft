@@ -296,13 +296,13 @@ Anthropic · OpenAI · Google · OpenRouter · Local (Ollama/LM Studio, no key) 
 
 ## 9. Selection & direct manipulation 🟡 → ⚪
 
-**Current:** one `Selection` object, initialized to a fixed title box (`{x:80,y:380,w:820,h:210,label:'Title · H1'}`). The Properties panel edits its geometry and the canvas reflects it. No element model; clicking slide content does not select it; tools/shapes don't draw.
+**Now 🟢 (core):** a per-slide **element overlay model** — `slide.elements[]` of `{id, type, x, y, w, h, content?}` in 1920×1080 space, rendered everywhere the slide renders (`ElementsLayer` in `SlideRenderer`, on top of the layout template). Pure geometry lives in `lib/elements.js` (`snap`/`createElement`/`moveElement`/`resizeElement`/`updateSlideElements`, gated + unit-tested): click-to-select, drag-move, 8-handle resize, all snapped to the 8px grid and clamped to the slide. The Text/Shape toolbar tools create elements; the Properties panel binds x/y/w/h to the real selected element; Delete removes it. State + mutations are owned by `Editor` (`selElId`, `addElement`/`updateElement`/`deleteElement`).
 
-**Spec (⚪):**
-- Introduce a per-slide **element model** (`{id, type, x, y, w, h, rot, opacity, style, content}`).
-- Click-to-select, marquee, multi-select; drag-move, handle-resize, rotate; snapping to the 8px grid and guides.
-- Shape/Pen/Image/Text tools create elements; Properties panel binds to the real selected element(s).
-- Align/distribute operate on the current selection set.
+**Still ⚪ (follow-ups):**
+- Rotate, opacity, and per-element style/fill/type editing (Properties panel beyond geometry).
+- Marquee + multi-select; align/distribute over a selection set.
+- Snapping to alignment guides (currently grid-only); Pen/Image tools.
+- Persisting/AI-authoring elements (the `elements` field isn't in the AI-patch whitelist yet).
 
 ---
 
@@ -414,7 +414,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 | Settings: AI + Appearance | 🟢 (🟡 top-p) |
 | PPTX export | 🟢 (🟡 charts/roadmap) |
 | Presenter | 🟡 |
-| Canvas selection / direct manipulation | 🟡 → ⚪ |
+| Canvas selection / direct manipulation | 🟢 core (⚪ rotate/multi-select/align) |
 | Inspector Design/Animate, timeline | 🔴 |
 | Home/Sorter secondary controls, drag-reorder | 🔴 → ⚪ |
 | Templates → real starter decks | 🟡 → ⚪ |
