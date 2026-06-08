@@ -132,4 +132,14 @@ describe('applySlidePatch', () => {
     const next = applySlidePatch(deck(), 'a', { items: ['a', 'b'] });
     expect(next.slides[0].items).toEqual(['a', 'b']);
   });
+
+  it('drops a rows value that is not an array of arrays', () => {
+    const next = applySlidePatch(deck(), 'a', { rows: ['North', 'South'] });
+    expect(next.slides[0].rows).toBeUndefined(); // flat array would crash r.map(...)
+  });
+
+  it('accepts a well-formed rows array of row arrays', () => {
+    const next = applySlidePatch(deck(), 'a', { rows: [['a', 'b'], ['c', 'd']] });
+    expect(next.slides[0].rows).toEqual([['a', 'b'], ['c', 'd']]);
+  });
 });

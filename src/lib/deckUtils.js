@@ -26,8 +26,16 @@ const UNSAFE_PATCH_KEYS = new Set(['id', '__proto__', 'constructor', 'prototype'
 
 // Slide fields that must be arrays. A patch that sets one of these to a truthy
 // non-array (e.g. `items: "one\ntwo"`) is dropped so the malformed shape never
-// persists and break a downstream consumer (renderer, PPTX export).
-const ARRAY_SLIDE_FIELDS = new Set(['items', 'kpis', 'stats', 'rows', 'columns']);
+// persists and breaks a downstream consumer (renderer, PPTX export). `rows` is
+// stricter: each row must itself be an array of cells (the renderer/exporter do
+// `row.map(...)`), so a flat `['North','South']` is rejected too.
+const ARRAY_SLIDE_FIELDS = new Set(['items', 'kpis', 'stats', 'columns']);
+
+function collectionFieldOk(key, value) {
+  if (key === 'rows') return Array.isArray(value) && value.every((row) => Array.isArray(row));
+  if (ARRAY_SLIDE_FIELDS.has(key)) return Array.isArray(value);
+  return true; // not an array-typed field
+}
 
 /**
  * Merge a partial-slide `patch` into the slide `curId` (used to apply AI edits).
@@ -40,7 +48,7 @@ export function applySlidePatch(deck, curId, patch) {
   const safe = {};
   for (const [k, v] of Object.entries(patch)) {
     if (UNSAFE_PATCH_KEYS.has(k)) continue;
-    if (ARRAY_SLIDE_FIELDS.has(k) && !Array.isArray(v)) continue;
+    if (!collectionFieldOk(k, v)) continue;
     safe[k] = v;
   }
   return {
