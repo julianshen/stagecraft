@@ -447,7 +447,7 @@ export function Slide({ slide, deck, sectionName, num, total }) {
               {(Array.isArray(slide.items) ? slide.items : []).filter(Boolean).map((it,i)=>(
                 <div key={i} style={{ display:'grid', gridTemplateColumns:'100px 1fr', gap:28, alignItems:'baseline', borderBottom:'1px solid #eee', paddingBottom:28 }}>
                   <div style={{ fontFamily:'var(--f-mono)', fontSize:28, color:'oklch(0.62 0.17 265)', fontWeight:500 }}>{String(i+1).padStart(2,'0')}</div>
-                  <div style={{ fontSize:38, fontWeight:500, letterSpacing:'-0.01em' }}>{it}</div>
+                  <div style={{ fontSize:38, fontWeight:500, letterSpacing:'-0.01em' }}>{typeof it === 'object' && it !== null ? '' : it}</div>
                 </div>
               ))}
             </div>

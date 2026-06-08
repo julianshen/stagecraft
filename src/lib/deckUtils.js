@@ -34,6 +34,12 @@ const UNSAFE_PATCH_KEYS = new Set(['id', '__proto__', 'constructor', 'prototype'
 // React children, so their leaf values must be primitives.
 const OBJECT_ARRAY_FIELDS = new Set(['items', 'kpis', 'stats']);
 const isPrimitive = (x) => x === null || typeof x !== 'object';
+// A leaf of an object-array field: a primitive (list item) or a flat record
+// whose own values are all primitives (agenda/kpi/stat objects). A nested
+// object (e.g. `{ label: { text } }`) is rejected — the renderer would render
+// that inner object directly as a React child and crash.
+const isLeaf = (x) =>
+  isPrimitive(x) || (typeof x === 'object' && !Array.isArray(x) && Object.values(x).every(isPrimitive));
 
 // Accept a patch field only if its value matches the slide schema's shape — an
 // object/array where a primitive is expected (e.g. `title: { text }`, a table
@@ -42,7 +48,7 @@ const isPrimitive = (x) => x === null || typeof x !== 'object';
 function fieldOk(key, value) {
   if (key === 'rows') return Array.isArray(value) && value.every((row) => Array.isArray(row) && row.every(isPrimitive));
   if (key === 'columns') return Array.isArray(value) && value.every(isPrimitive);
-  if (OBJECT_ARRAY_FIELDS.has(key)) return Array.isArray(value);
+  if (OBJECT_ARRAY_FIELDS.has(key)) return Array.isArray(value) && value.every(isLeaf);
   return isPrimitive(value);
 }
 

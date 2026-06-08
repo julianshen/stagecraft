@@ -158,6 +158,21 @@ describe('applySlidePatch', () => {
     expect(next.slides[0].columns).toBeUndefined();
   });
 
+  it('accepts object-array leaves that are flat records of primitives', () => {
+    const next = applySlidePatch(deck(), 'a', { items: [{ n: '01', t: 'A', d: 'B' }] });
+    expect(next.slides[0].items).toEqual([{ n: '01', t: 'A', d: 'B' }]);
+  });
+
+  it('accepts string leaves in object-array fields (e.g. list items)', () => {
+    const next = applySlidePatch(deck(), 'a', { items: ['one', 'two'] });
+    expect(next.slides[0].items).toEqual(['one', 'two']);
+  });
+
+  it('drops an object-array field whose leaves nest objects', () => {
+    const next = applySlidePatch(deck(), 'a', { kpis: [{ label: { text: 'ARR' }, val: '5' }] });
+    expect(next.slides[0].kpis).toBeUndefined(); // k.label would render an object child
+  });
+
   it('drops a scalar field whose value is an object (would crash React render)', () => {
     const next = applySlidePatch(deck(), 'a', { title: { text: 'Q' }, body: 'Keep' });
     expect(next.slides[0].title).toBe('A');     // object dropped, original kept
