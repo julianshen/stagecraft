@@ -139,6 +139,9 @@ export default function SlideEditor(props) {
           <IconButton name="align-left" title="Align left" onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('left')}/>
           <IconButton name="align-center" title="Align center" onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('hcenter')}/>
           <IconButton name="align-right" title="Align right" onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('right')}/>
+          <IconButton name="align-top" title="Align top" onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('top')}/>
+          <IconButton name="align-middle" title="Align middle" onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('vmiddle')}/>
+          <IconButton name="align-bottom" title="Align bottom" onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('bottom')}/>
           <IconButton name="logic" title="Distribute" onClick={() => callbacks.onDistributeElements && callbacks.onDistributeElements()}/>
         </div>
 
