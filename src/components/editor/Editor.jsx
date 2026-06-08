@@ -99,6 +99,11 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   const currentSlide = (deck.slides || []).find(s => s.id === curId) || null;
   const selectedElement = (currentSlide?.elements || []).find(e => e.id === selElId) || null;
 
+  // Clear a stale selection if the element vanished (e.g. removed by a live edit).
+  useEffect(() => {
+    if (selElId && !selectedElement) setSelElId(null);
+  }, [selElId, selectedElement]);
+
   function addElement(type) {
     if (!curId) return;
     const id = `el-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;

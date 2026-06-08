@@ -134,11 +134,17 @@ Common optional fields: `id` (required), `eyebrow?` (small label above the title
 - **`SPEAKER_NOTES`** — `{ [slideId]: string }`, surfaced in Presenter.
 - **`TEMPLATES`** — `{ id, name, cat, vibe }` for the gallery.
 
-### 3.4 Selection (editor-local)
+### 3.4 Canvas elements & selection (editor-local)
 ```ts
-type Selection = { x, y, w, h: number; label: string };  // 1920×1080 coordinate space
+type Element = {
+  id: string;
+  type: 'text' | 'rect' | 'rounded' | 'ellipse' | 'circle'
+      | 'triangle' | 'diamond' | 'pentagon' | 'hexagon' | 'star' | 'line' | 'arrow';
+  x, y, w, h: number;   // 1920×1080 coordinate space
+  content?: string;     // text elements
+};
 ```
-🟡 Single, initially-hardcoded selection; see §9.
+Elements live on `slide.elements?: Element[]` and render in `ElementsLayer` over the layout template. The editor tracks a single **selected element id** (`Editor.selElId`); geometry helpers are in `lib/elements.js`. See §9. (Rotate/opacity/multi-select are ⚪ follow-ups.)
 
 ---
 
