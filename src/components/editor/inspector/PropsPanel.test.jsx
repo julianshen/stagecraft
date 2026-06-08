@@ -12,6 +12,11 @@ describe('PropsPanel', () => {
     expect(screen.getByText(/Select an element/i)).toBeInTheDocument();
   });
 
+  it('shows a multi-selection message when more than one element is selected', () => {
+    render(<PropsPanel selected={null} setSelected={vi.fn()} count={3} />);
+    expect(screen.getByText(/3 elements selected/i)).toBeInTheDocument();
+  });
+
   it('edits the text content of a text element', async () => {
     const setSelected = vi.fn();
     render(<PropsPanel selected={el} setSelected={setSelected} />);

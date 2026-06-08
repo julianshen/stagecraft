@@ -3,7 +3,7 @@ import DesignPanel from './DesignPanel.jsx';
 import PropsPanel from './PropsPanel.jsx';
 import AnimPanel from './AnimPanel.jsx';
 
-export default function InspectorPane({ tab, setTab, selection, setSelection, extras }) {
+export default function InspectorPane({ tab, setTab, selection, setSelection, count, extras }) {
   return (
     <aside className="rightpane">
       <div className="inspector-tabs">
@@ -15,7 +15,7 @@ export default function InspectorPane({ tab, setTab, selection, setSelection, ex
       </div>
       <div className="inspector-body">
         {tab === 'design' && <DesignPanel />}
-        {tab === 'props' && <PropsPanel selected={selection} setSelected={setSelection} />}
+        {tab === 'props' && <PropsPanel selected={selection} setSelected={setSelection} count={count} />}
         {tab === 'anim' && <AnimPanel />}
         {extras}
       </div>

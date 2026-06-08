@@ -43,6 +43,35 @@ export function moveElement(el, dx, dy, { grid = GRID, bounds = { w: SLIDE_W, h:
   };
 }
 
+// Bounding box of a set of elements.
+function selectionBounds(els) {
+  const x1 = Math.min(...els.map((e) => e.x));
+  const y1 = Math.min(...els.map((e) => e.y));
+  const x2 = Math.max(...els.map((e) => e.x + e.w));
+  const y2 = Math.max(...els.map((e) => e.y + e.h));
+  return { x1, y1, x2, y2, cx: (x1 + x2) / 2, cy: (y1 + y2) / 2 };
+}
+
+// Align 2+ elements to their shared bounding box along `edge`
+// ('left'|'right'|'hcenter'|'top'|'bottom'|'vmiddle'). The cross axis is left
+// untouched. Returns the input unchanged for fewer than two elements.
+export function alignElements(els, edge) {
+  if (!els || els.length < 2) return els;
+  const b = selectionBounds(els);
+  // Exact alignment (no grid snapping — alignment must be pixel-precise).
+  return els.map((e) => {
+    switch (edge) {
+      case 'left': return { ...e, x: b.x1 };
+      case 'right': return { ...e, x: b.x2 - e.w };
+      case 'hcenter': return { ...e, x: Math.round(b.cx - e.w / 2) };
+      case 'top': return { ...e, y: b.y1 };
+      case 'bottom': return { ...e, y: b.y2 - e.h };
+      case 'vmiddle': return { ...e, y: Math.round(b.cy - e.h / 2) };
+      default: return e;
+    }
+  });
+}
+
 // Immutably transform the `elements` array of slide `slideId` via `fn`.
 export function updateSlideElements(deck, slideId, fn) {
   if (!deck) return deck;

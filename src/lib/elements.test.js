@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -196,5 +196,59 @@ describe('clampElement', () => {
     const c = clampElement({ x: 0, y: 0, w: 100, h: 100, opacity: 'oops', rot: 'spin' });
     expect(c.opacity).toBe(100);
     expect(c.rot).toBe(0);
+  });
+});
+
+describe('alignElements', () => {
+  const els = () => [
+    { id: 'a', type: 'rect', x: 100, y: 100, w: 200, h: 100 }, // right=300, bottom=200
+    { id: 'b', type: 'rect', x: 500, y: 300, w: 100, h: 80 },  // right=600, bottom=380
+  ];
+
+  it('returns the input unchanged for fewer than two elements', () => {
+    const one = [{ id: 'a', x: 0, y: 0, w: 10, h: 10 }];
+    expect(alignElements(one, 'left')).toBe(one);
+    expect(alignElements([], 'left')).toEqual([]);
+  });
+
+  it('aligns left edges to the selection bounding box', () => {
+    const r = alignElements(els(), 'left');
+    expect(r.map(e => e.x)).toEqual([100, 100]);
+  });
+
+  it('aligns right edges (x = maxRight - w)', () => {
+    const r = alignElements(els(), 'right');
+    expect(r.map(e => e.x + e.w)).toEqual([600, 600]);
+  });
+
+  it('aligns horizontal centers to the bbox center', () => {
+    const r = alignElements(els(), 'hcenter');
+    const cx = (100 + 600) / 2; // bbox center x = 350
+    expect(r[0].x + r[0].w / 2).toBe(cx);
+    expect(r[1].x + r[1].w / 2).toBe(cx);
+  });
+
+  it('aligns top, bottom, and vertical middle', () => {
+    expect(alignElements(els(), 'top').map(e => e.y)).toEqual([100, 100]);
+    expect(alignElements(els(), 'bottom').map(e => e.y + e.h)).toEqual([380, 380]);
+    const cy = (100 + 380) / 2; // 240
+    const mid = alignElements(els(), 'vmiddle');
+    expect(mid[0].y + mid[0].h / 2).toBe(cy);
+  });
+
+  it('leaves the cross-axis untouched', () => {
+    const r = alignElements(els(), 'left');
+    expect(r[1].y).toBe(300); // y unchanged by a left align
+  });
+
+  it('rounds fractional center alignment to whole pixels (no subpixel blur)', () => {
+    const e = [
+      { id: 'a', x: 0, y: 0, w: 100, h: 100 },
+      { id: 'b', x: 101, y: 51, w: 100, h: 100 }, // bbox cx=100.5, cy=75.5 → halves are fractional
+    ];
+    const h = alignElements(e, 'hcenter');
+    const v = alignElements(e, 'vmiddle');
+    expect(h.every(el => Number.isInteger(el.x))).toBe(true);
+    expect(v.every(el => Number.isInteger(el.y))).toBe(true);
   });
 });
