@@ -10,10 +10,10 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export const snap = (v, grid = GRID) => Math.round(v / grid) * grid;
 
 const DEFAULTS = {
-  text: { w: 480, h: 120, content: 'Text' },
-  rect: { w: 320, h: 200 },
-  ellipse: { w: 240, h: 240 },
-  circle: { w: 240, h: 240 },
+  text: { w: 480, h: 120, content: 'Text', fill: '#15171C' },
+  rect: { w: 320, h: 200, fill: '#4f46e5' },
+  ellipse: { w: 240, h: 240, fill: '#4f46e5' },
+  circle: { w: 240, h: 240, fill: '#4f46e5' },
 };
 
 // Build a new element of `type`, centered by default, with snapped position.
@@ -30,6 +30,7 @@ export function createElement(type, opts = {}) {
     h,
   };
   if (d.content !== undefined) el.content = opts.content ?? d.content;
+  el.fill = opts.fill ?? d.fill ?? '#4f46e5'; // canonical hex so the inspector swatch matches the render
   return el;
 }
 
@@ -83,11 +84,20 @@ export function resizeElement(el, handle, dx, dy, { grid = GRID, min = MIN_SIZE,
 export function clampElement(el, { bounds = { w: SLIDE_W, h: SLIDE_H }, min = MIN_SIZE } = {}) {
   const w = clamp(el.w, min, bounds.w);
   const h = clamp(el.h, min, bounds.h);
-  return {
+  const out = {
     ...el,
     w,
     h,
     x: clamp(el.x, 0, bounds.w - w),
     y: clamp(el.y, 0, bounds.h - h),
   };
+  if (el.opacity != null) {
+    const o = Number(el.opacity);
+    out.opacity = Number.isFinite(o) ? clamp(o, 0, 100) : 100;
+  }
+  if (el.rot != null) {
+    const r = Number(el.rot);
+    out.rot = Number.isFinite(r) ? ((r % 360) + 360) % 360 : 0;
+  }
+  return out;
 }

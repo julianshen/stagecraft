@@ -233,18 +233,22 @@ const SHAPE_CLIP = {
 };
 
 function ElementView({ el }) {
-  const base = { position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h };
+  const base = {
+    position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h,
+    ...(el.rot ? { transform: `rotate(${el.rot}deg)` } : {}),
+    ...(el.opacity != null ? { opacity: Math.max(0, Math.min(100, el.opacity)) / 100 } : {}),
+  };
   if (el.type === 'text') {
     return (
-      <div style={{ ...base, display: 'flex', alignItems: 'center', fontSize: 48, fontWeight: 500, color: 'var(--ink, #15171C)', lineHeight: 1.2, overflow: 'hidden' }}>
+      <div style={{ ...base, display: 'flex', alignItems: 'center', fontSize: 48, fontWeight: 500, color: el.fill || 'var(--ink, #15171C)', lineHeight: 1.2, overflow: 'hidden' }}>
         {el.content}
       </div>
     );
   }
-  const fill = { background: 'oklch(0.62 0.17 265)' };
+  const fill = { background: el.fill || 'oklch(0.62 0.17 265)' };
   if (el.type === 'circle' || el.type === 'ellipse') return <div style={{ ...base, ...fill, borderRadius: '50%' }} />;
   if (el.type === 'rounded') return <div style={{ ...base, ...fill, borderRadius: 28 }} />;
-  if (el.type === 'line') return <div style={{ ...base, height: Math.min(el.h, 8), background: 'var(--ink, #15171C)' }} />;
+  if (el.type === 'line') return <div style={{ ...base, height: Math.min(el.h, 8), background: el.fill || 'var(--ink, #15171C)' }} />;
   if (SHAPE_CLIP[el.type]) return <div style={{ ...base, ...fill, clipPath: SHAPE_CLIP[el.type] }} />;
   return <div style={{ ...base, ...fill, borderRadius: 8 }} />; // rect / unknown
 }

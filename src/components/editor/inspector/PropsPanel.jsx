@@ -2,6 +2,15 @@ import React from 'react';
 import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup, Seg } from '../../ui/Primitives.jsx';
 
+// Normalize a fill to a lowercase #rrggbb hex for <input type=color> (it requires
+// exactly that form). Expands #rgb shorthand; falls back to indigo for non-hex.
+function toHex(fill) {
+  if (typeof fill !== 'string') return '#4f46e5';
+  let h = fill.trim().toLowerCase();
+  if (/^#[0-9a-f]{3}$/.test(h)) h = '#' + h.slice(1).split('').map(c => c + c).join('');
+  return /^#[0-9a-f]{6}$/.test(h) ? h : '#4f46e5';
+}
+
 export default function PropsPanel({ selected, setSelected }) {
   if (!selected) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>Select an element.</div>;
   return (
@@ -20,24 +29,49 @@ export default function PropsPanel({ selected, setSelected }) {
             <InputGroup icoLeft="H" value={selected.h} onChange={v => setSelected({ ...selected, h: +v || 0 })} unit="px" />
           </div>
         </FieldRow>
-        <FieldRow label="ANGLE"><InputGroup icoLeft="°" value="0" unit="deg" /></FieldRow>
-        <FieldRow label="OPACITY"><InputGroup value="100" unit="%" /></FieldRow>
+        <FieldRow label="ANGLE">
+          <InputGroup icoLeft="°" value={selected.rot ?? 0} onChange={v => setSelected({ ...selected, rot: +v || 0 })} unit="deg" />
+        </FieldRow>
+        <FieldRow label="OPACITY">
+          <InputGroup value={selected.opacity ?? 100} onChange={v => setSelected({ ...selected, opacity: Math.max(0, Math.min(100, +v || 0)) })} unit="%" />
+        </FieldRow>
       </div>
-      <div className="pane-section">
-        <h4>Type</h4>
-        <FieldRow label="FAMILY"><div className="input-group"><input value="Inter" readOnly /><Icon name="chevron-down" size={11} /></div></FieldRow>
-        <FieldRow label="STYLE"><div className="double-input"><div className="input-group"><input value="Semibold" readOnly /></div><InputGroup value="96" unit="px" /></div></FieldRow>
-        <FieldRow label="ALIGN"><Seg value="left" onChange={() => { }} options={[{ v: 'left', ico: 'align-left' }, { v: 'center', ico: 'align-center' }, { v: 'right', ico: 'align-right' }]} /></FieldRow>
-        <FieldRow label="STYLE"><div className="seg"><button className="active"><Icon name="bold" size={12} /></button><button><Icon name="italic" size={12} /></button><button><Icon name="underline" size={12} /></button></div></FieldRow>
-      </div>
+
+      {selected.type === 'text' && (
+        <div className="pane-section">
+          <h4>Content</h4>
+          <textarea
+            className="props-content"
+            rows={3}
+            value={selected.content ?? ''}
+            onChange={e => setSelected({ ...selected, content: e.target.value })}
+            style={{ width: '100%', resize: 'vertical', font: 'inherit', fontSize: 12, padding: 6, borderRadius: 6, border: '1px solid var(--line)', background: 'var(--bg)', color: 'var(--ink)' }}
+          />
+        </div>
+      )}
+
       <div className="pane-section">
         <h4>Fill</h4>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-          <div style={{ width: 24, height: 24, borderRadius: 4, background: 'var(--ink)', border: '1px solid var(--line)' }} />
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12 }}>#15171C</div>
-          <span style={{ marginLeft: 'auto', fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-4)' }}>100%</span>
+          <input
+            type="color"
+            aria-label="Fill color"
+            value={toHex(selected.fill)}
+            onChange={e => setSelected({ ...selected, fill: e.target.value })}
+            style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 4, background: 'none' }}
+          />
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12 }}>{toHex(selected.fill)}</div>
         </div>
       </div>
+      {selected.type === 'text' && (
+        <div className="pane-section">
+          <h4>Type</h4>
+          <FieldRow label="FAMILY"><div className="input-group"><input value="Inter" readOnly /><Icon name="chevron-down" size={11} /></div></FieldRow>
+          <FieldRow label="STYLE"><div className="double-input"><div className="input-group"><input value="Semibold" readOnly /></div><InputGroup value="96" unit="px" /></div></FieldRow>
+          <FieldRow label="ALIGN"><Seg value="left" onChange={() => { }} options={[{ v: 'left', ico: 'align-left' }, { v: 'center', ico: 'align-center' }, { v: 'right', ico: 'align-right' }]} /></FieldRow>
+          <FieldRow label="STYLE"><div className="seg"><button className="active"><Icon name="bold" size={12} /></button><button><Icon name="italic" size={12} /></button><button><Icon name="underline" size={12} /></button></div></FieldRow>
+        </div>
+      )}
     </>
   );
 }

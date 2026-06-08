@@ -26,8 +26,14 @@ describe('createElement', () => {
   });
   it('creates a rect element with no content and honors overrides', () => {
     const el = createElement('rect', { id: 'r1', x: 100, y: 200, w: 300, h: 150 });
-    expect(el).toEqual({ id: 'r1', type: 'rect', x: 104, y: 200, w: 300, h: 150 });
+    expect(el).toEqual({ id: 'r1', type: 'rect', x: 104, y: 200, w: 300, h: 150, fill: '#4f46e5' });
     expect(el).not.toHaveProperty('content');
+  });
+
+  it('gives elements a default fill (matching the render)', () => {
+    expect(createElement('text', { id: 't' }).fill).toBe('#15171C');
+    expect(createElement('triangle', { id: 'g' }).fill).toBe('#4f46e5');
+    expect(createElement('rect', { id: 'r', fill: '#abcdef' }).fill).toBe('#abcdef');
   });
 });
 
@@ -177,5 +183,18 @@ describe('clampElement', () => {
   it('keeps an in-bounds element unchanged and does not snap', () => {
     const el = { id: 'a', type: 'rect', x: 101, y: 99, w: 300, h: 150 };
     expect(clampElement(el)).toMatchObject({ x: 101, y: 99, w: 300, h: 150 });
+  });
+
+  it('clamps opacity to 0-100 and normalizes rotation to 0-360', () => {
+    expect(clampElement({ x: 0, y: 0, w: 100, h: 100, opacity: 500 }).opacity).toBe(100);
+    expect(clampElement({ x: 0, y: 0, w: 100, h: 100, opacity: -20 }).opacity).toBe(0);
+    expect(clampElement({ x: 0, y: 0, w: 100, h: 100, rot: 450 }).rot).toBe(90);
+    expect(clampElement({ x: 0, y: 0, w: 100, h: 100, rot: -90 }).rot).toBe(270);
+  });
+
+  it('coerces non-numeric opacity/rot to safe defaults (no NaN)', () => {
+    const c = clampElement({ x: 0, y: 0, w: 100, h: 100, opacity: 'oops', rot: 'spin' });
+    expect(c.opacity).toBe(100);
+    expect(c.rot).toBe(0);
   });
 });
