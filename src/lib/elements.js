@@ -80,15 +80,21 @@ export function distributeElements(els, axis) {
   const pos = axis === 'v' ? 'y' : 'x';
   const size = axis === 'v' ? 'h' : 'w';
   const sorted = [...els].sort((a, b) => a[pos] - b[pos]);
-  const first = sorted[0];
-  const last = sorted[sorted.length - 1];
+  const n = sorted.length;
+  // Outer edges of the bounding box. The far edge is the max over ALL elements
+  // — the element with the largest start may not be the one reaching furthest.
+  const near = Math.min(...sorted.map((e) => e[pos]));
+  const far = Math.max(...sorted.map((e) => e[pos] + e[size]));
   const sumSize = sorted.reduce((acc, e) => acc + e[size], 0);
-  const gap = (last[pos] + last[size] - first[pos] - sumSize) / (sorted.length - 1);
+  const gap = (far - near - sumSize) / (n - 1);
   const at = new Map();
-  let cursor = first[pos];
+  let cursor = near;
   sorted.forEach((e, i) => {
-    // Keep the extremes exactly put; reposition only the interior elements.
-    at.set(e.id, i === 0 || i === sorted.length - 1 ? e[pos] : Math.round(cursor));
+    // Pin both outer edges of the box exactly; reposition the interior elements
+    // (rounded) so the gaps between adjacent elements are equal.
+    if (i === 0) at.set(e.id, near);
+    else if (i === n - 1) at.set(e.id, far - e[size]);
+    else at.set(e.id, Math.round(cursor));
     cursor += e[size] + gap;
   });
   return els.map((e) => ({ ...e, [pos]: at.get(e.id) }));

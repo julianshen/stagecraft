@@ -152,9 +152,9 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   // from the selection's bounding box: a wider-than-tall spread distributes
   // horizontally, otherwise vertically.
   function distributeSelected() {
-    if (selElIds.length < 3) return;
     const ids = new Set(selElIds);
     const sel = slideElements.filter(e => ids.has(e.id));
+    if (sel.length < 3) return; // guard on live elements, not (possibly stale) ids
     const spanX = Math.max(...sel.map(e => e.x + e.w)) - Math.min(...sel.map(e => e.x));
     const spanY = Math.max(...sel.map(e => e.y + e.h)) - Math.min(...sel.map(e => e.y));
     const axis = spanX >= spanY ? 'h' : 'v';

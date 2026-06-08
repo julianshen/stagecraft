@@ -304,4 +304,20 @@ describe('distributeElements', () => {
     ];
     expect(distributeElements(e, 'h').map(x => x.y)).toEqual([7, 9, 11]);
   });
+
+  it('uses the true outer far edge when the widest element is not the last', () => {
+    // b is widest (far edge 400) but starts before c (far edge 380). The
+    // selection bounding box is [0, 400], not [0, 380].
+    const e = [
+      { id: 'a', x: 0, y: 0, w: 50, h: 50 },   // far edge 50
+      { id: 'b', x: 100, y: 0, w: 300, h: 50 }, // far edge 400 (outermost)
+      { id: 'c', x: 350, y: 0, w: 30, h: 50 },  // far edge 380, but max x
+    ];
+    const byId = Object.fromEntries(distributeElements(e, 'h').map(x => [x.id, x]));
+    // span 400, sumW 380 → gap 10 each
+    expect(byId.a.x).toBe(0);
+    expect(byId.b.x).toBe(60);
+    expect(byId.c.x).toBe(370);
+    expect(byId.c.x + 30).toBe(400); // far edge of the box preserved
+  });
 });
