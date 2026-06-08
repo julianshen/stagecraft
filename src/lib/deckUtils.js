@@ -87,13 +87,30 @@ export function sanitizeSlidePatch(patch, currentLayout) {
   return safe;
 }
 
+const COLLECTION_FIELDS = ['items', 'kpis', 'stats', 'rows', 'columns'];
+
+function mergeSlide(slide, safe) {
+  const merged = { ...slide, ...safe };
+  // On a layout change, clear pre-existing collections that don't fit the new
+  // layout (e.g. agenda object items left on a slide switched to `list`), so the
+  // renderer doesn't show blank cards from carried-over content.
+  if (safe.layout && safe.layout !== slide.layout) {
+    for (const key of COLLECTION_FIELDS) {
+      if (key in merged && !(key in safe) && !fieldOk(key, merged[key], merged.layout)) {
+        delete merged[key];
+      }
+    }
+  }
+  return merged;
+}
+
 export function applySlidePatch(deck, curId, patch) {
   if (!deck || !curId || !patch) return deck;
   const current = (deck.slides || []).find((s) => s.id === curId);
   const safe = sanitizeSlidePatch(patch, current?.layout);
   return {
     ...deck,
-    slides: (deck.slides || []).map((s) => (s.id === curId ? { ...s, ...safe } : s)),
+    slides: (deck.slides || []).map((s) => (s.id === curId ? mergeSlide(s, safe) : s)),
   };
 }
 

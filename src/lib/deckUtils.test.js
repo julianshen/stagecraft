@@ -122,6 +122,21 @@ describe('applySlidePatch', () => {
     expect(next.slides[0].items).toBeUndefined();      // object items rejected for list
   });
 
+  it('drops carried-over collections that don\'t fit a changed layout', () => {
+    const d = deck();
+    d.slides[0] = { id: 'a', layout: 'agenda', items: [{ n: '01', t: 'A', d: 'B' }] };
+    const next = applySlidePatch(d, 'a', { layout: 'list' }); // layout-only edit
+    expect(next.slides[0].layout).toBe('list');
+    expect(next.slides[0].items).toBeUndefined(); // agenda objects don't fit list → cleared
+  });
+
+  it('keeps carried-over collections that still fit the changed layout', () => {
+    const d = deck();
+    d.slides[0] = { id: 'a', layout: 'agenda', items: [{ n: '01', t: 'A', d: 'B' }] };
+    const next = applySlidePatch(d, 'a', { layout: 'risks' }); // both object-backed
+    expect(next.slides[0].items).toEqual([{ n: '01', t: 'A', d: 'B' }]);
+  });
+
   it('leaves other slides untouched and returns a new deck object', () => {
     const d = deck();
     const next = applySlidePatch(d, 'a', { title: 'X' });
