@@ -89,6 +89,12 @@ describe('applySlidePatch', () => {
     expect(next.slides[0].items).toEqual(['one', 'two']);
   });
 
+  it('drops a layout that is not a supported layout name', () => {
+    const next = applySlidePatch(deck(), 'a', { layout: 'bulleted', items: ['A'] });
+    expect(next.slides[0].layout).toBe('text');   // unsupported layout dropped, original kept
+    expect(next.slides[0].items).toEqual(['A']);   // other valid fields still applied
+  });
+
   it('leaves other slides untouched and returns a new deck object', () => {
     const d = deck();
     const next = applySlidePatch(d, 'a', { title: 'X' });

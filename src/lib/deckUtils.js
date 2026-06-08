@@ -33,6 +33,13 @@ const UNSAFE_PATCH_KEYS = new Set(['id', '__proto__', 'constructor', 'prototype'
 // is checked. `rows`/`columns` (table) and every scalar field render directly as
 // React children, so their leaf values must be primitives.
 const OBJECT_ARRAY_FIELDS = new Set(['items', 'kpis', 'stats']);
+// The discriminated-union layouts the renderer/exporter understand. An AI patch
+// setting `layout` to anything else would fall through to the default render
+// path and silently lose the slide's content, so it's rejected.
+const SLIDE_LAYOUTS = new Set([
+  'cover', 'agenda', 'divider', 'kpi', 'chart', 'split',
+  'table', 'text', 'roadmap', 'risks', 'list', 'thanks',
+]);
 const isPrimitive = (x) => x === null || typeof x !== 'object';
 // A leaf of an object-array field: a primitive (list item) or a flat record
 // whose own values are all primitives (agenda/kpi/stat objects). A nested
@@ -46,6 +53,7 @@ const isLeaf = (x) =>
 // cell of `{ text }`) would crash React's "object as child" render, so it's
 // dropped before it can persist into the deck.
 function fieldOk(key, value) {
+  if (key === 'layout') return typeof value === 'string' && SLIDE_LAYOUTS.has(value);
   if (key === 'rows') return Array.isArray(value) && value.every((row) => Array.isArray(row) && row.every(isPrimitive));
   if (key === 'columns') return Array.isArray(value) && value.every(isPrimitive);
   if (OBJECT_ARRAY_FIELDS.has(key)) return Array.isArray(value) && value.every(isLeaf);
