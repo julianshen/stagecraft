@@ -90,9 +90,9 @@ describe('applySlidePatch', () => {
   });
 
   it('drops a layout that is not a supported layout name', () => {
-    const next = applySlidePatch(deck(), 'a', { layout: 'bulleted', items: ['A'] });
+    const next = applySlidePatch(deck(), 'a', { layout: 'bulleted', title: 'New' });
     expect(next.slides[0].layout).toBe('text');   // unsupported layout dropped, original kept
-    expect(next.slides[0].items).toEqual(['A']);   // other valid fields still applied
+    expect(next.slides[0].title).toBe('New');      // other valid fields still applied
   });
 
   it('drops object items when the target layout is list', () => {
@@ -161,8 +161,8 @@ describe('applySlidePatch', () => {
     expect(next.slides[1].title).toBe('T');
   });
 
-  it('still accepts a well-formed array collection', () => {
-    const next = applySlidePatch(deck(), 'a', { items: ['a', 'b'] });
+  it('still accepts a well-formed array collection (list items)', () => {
+    const next = applySlidePatch(deck(), 'a', { layout: 'list', items: ['a', 'b'] });
     expect(next.slides[0].items).toEqual(['a', 'b']);
   });
 
@@ -196,9 +196,25 @@ describe('applySlidePatch', () => {
     expect(next.slides[0].items).toEqual([{ n: '01', t: 'A', d: 'B' }]);
   });
 
-  it('accepts string leaves in object-array fields (e.g. list items)', () => {
-    const next = applySlidePatch(deck(), 'a', { items: ['one', 'two'] });
-    expect(next.slides[0].items).toEqual(['one', 'two']);
+  it('drops primitive items for an object-backed layout (agenda)', () => {
+    const d = deck();
+    d.slides[0] = { id: 'a', layout: 'agenda', items: [{ n: '01', t: 'x', d: 'y' }] };
+    const next = applySlidePatch(d, 'a', { items: ['Intro', 'Plan'] });
+    expect(next.slides[0].items).toEqual([{ n: '01', t: 'x', d: 'y' }]); // primitives dropped (would render blank cards)
+  });
+
+  it('drops primitive kpis/stats (object-backed collections)', () => {
+    const d = deck();
+    d.slides[1] = { id: 'b', layout: 'kpi', kpis: [{ label: 'X', val: '1' }] };
+    const next = applySlidePatch(d, 'b', { kpis: ['ARR'] });
+    expect(next.slides[1].kpis).toEqual([{ label: 'X', val: '1' }]);
+  });
+
+  it('accepts object kpis for a kpi layout', () => {
+    const d = deck();
+    d.slides[1] = { id: 'b', layout: 'kpi', kpis: [] };
+    const next = applySlidePatch(d, 'b', { kpis: [{ label: 'ARR', val: '$1M' }] });
+    expect(next.slides[1].kpis).toEqual([{ label: 'ARR', val: '$1M' }]);
   });
 
   it('drops an object-array field whose leaves nest objects', () => {

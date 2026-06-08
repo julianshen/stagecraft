@@ -32,7 +32,6 @@ const UNSAFE_PATCH_KEYS = new Set(['id', '__proto__', 'constructor', 'prototype'
 // items/kpis/stats hold per-layout objects or strings, so only their array-ness
 // is checked. `rows`/`columns` (table) and every scalar field render directly as
 // React children, so their leaf values must be primitives.
-const OBJECT_ARRAY_FIELDS = new Set(['items', 'kpis', 'stats']);
 // The discriminated-union layouts the renderer/exporter understand. An AI patch
 // setting `layout` to anything else would fall through to the default render
 // path and silently lose the slide's content, so it's rejected.
@@ -41,25 +40,24 @@ const SLIDE_LAYOUTS = new Set([
   'table', 'text', 'roadmap', 'risks', 'list', 'thanks',
 ]);
 const isPrimitive = (x) => x === null || typeof x !== 'object';
-// A leaf of an object-array field: a primitive (list item) or a flat record
-// whose own values are all primitives (agenda/kpi/stat objects). A nested
-// object (e.g. `{ label: { text } }`) is rejected — the renderer would render
-// that inner object directly as a React child and crash.
-const isLeaf = (x) =>
-  isPrimitive(x) || (typeof x === 'object' && !Array.isArray(x) && Object.values(x).every(isPrimitive));
+// A flat record: a non-array object whose own values are all primitives. Used
+// for agenda/risk items and kpi/stat entries, which the renderer reads field by
+// field (it.t, k.label, st.val) — a nested object would render as a React child.
+const isFlatRecord = (x) => x !== null && typeof x === 'object' && !Array.isArray(x) && Object.values(x).every(isPrimitive);
 
-// Accept a patch field only if its value matches the slide schema's shape — an
-// object/array where a primitive is expected (e.g. `title: { text }`, a table
-// cell of `{ text }`) would crash React's "object as child" render, so it's
-// dropped before it can persist into the deck.
+// Accept a patch field only if its value matches the slide schema's shape for
+// the target layout — a value of the wrong shape (e.g. `title: { text }`, a
+// table cell of `{ text }`, primitive `kpis`, or object items in a `list`)
+// would crash React or render blank, so it's dropped before it can persist.
 function fieldOk(key, value, layout) {
   if (key === 'layout') return typeof value === 'string' && SLIDE_LAYOUTS.has(value);
   if (key === 'rows') return Array.isArray(value) && value.every((row) => Array.isArray(row) && row.every(isPrimitive));
   if (key === 'columns') return Array.isArray(value) && value.every(isPrimitive);
-  // The list layout renders items as plain text, so its items must be
-  // primitives — an object item (valid for agenda/risks) would render blank.
-  if (key === 'items' && layout === 'list') return Array.isArray(value) && value.every(isPrimitive);
-  if (OBJECT_ARRAY_FIELDS.has(key)) return Array.isArray(value) && value.every(isLeaf);
+  // `list` renders items as plain text (primitives); agenda/risks render object
+  // fields, so for any other layout items must be flat records.
+  if (key === 'items') return Array.isArray(value) && value.every(layout === 'list' ? isPrimitive : isFlatRecord);
+  // kpis/stats are always object-backed (k.label/k.val, st.lbl/st.val).
+  if (key === 'kpis' || key === 'stats') return Array.isArray(value) && value.every(isFlatRecord);
   return isPrimitive(value);
 }
 
