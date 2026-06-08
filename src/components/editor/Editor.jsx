@@ -10,6 +10,11 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     return flat[3] || flat[0] || null;
   });
 
+  // Always-latest deck, so callbacks captured by an earlier render (e.g. the
+  // Co-pilot's apply handler held across an in-flight request) read current state.
+  const deckRef = useRef(deck);
+  deckRef.current = deck;
+
   // Reconcile the selection whenever the deck changes — both for a local delete
   // (keep position) and when a live MCP/agent edit removes the selected slide.
   const deletingRef = useRef(null);
@@ -69,11 +74,17 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   // in-flight edit lands on the slide it was generated for, not whatever is
   // selected by the time the model responds.
   // Returns whether the target slide still exists (and was patched) so the
-  // Co-pilot doesn't report success for a slide deleted mid-request.
+  // Co-pilot doesn't report success for a slide deleted mid-request. Existence
+  // is checked against the latest deck (deckRef), and the apply is re-guarded
+  // inside the updater against `prev` so a slide removed in between is a no-op.
   function applyAIPatch(patch, targetId = curId) {
     if (!targetId || !patch) return false;
-    const exists = (deck.slides || []).some(s => s.id === targetId);
-    if (exists) onDeckChange(prev => applySlidePatch(prev, targetId, patch));
+    const exists = (deckRef.current?.slides || []).some(s => s.id === targetId);
+    if (exists) {
+      onDeckChange(prev =>
+        (prev.slides || []).some(s => s.id === targetId) ? applySlidePatch(prev, targetId, patch) : prev
+      );
+    }
     return exists;
   }
 
