@@ -68,9 +68,13 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   // defaults to the current slide but is passed explicitly by the Co-pilot so an
   // in-flight edit lands on the slide it was generated for, not whatever is
   // selected by the time the model responds.
+  // Returns whether the target slide still exists (and was patched) so the
+  // Co-pilot doesn't report success for a slide deleted mid-request.
   function applyAIPatch(patch, targetId = curId) {
-    if (!targetId || !patch) return;
-    onDeckChange(prev => applySlidePatch(prev, targetId, patch));
+    if (!targetId || !patch) return false;
+    const exists = (deck.slides || []).some(s => s.id === targetId);
+    if (exists) onDeckChange(prev => applySlidePatch(prev, targetId, patch));
+    return exists;
   }
 
   const renderSlide = useCallback((slide, ctx) => (

@@ -26,15 +26,14 @@ export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch
     setResponse('');
     try {
       const patch = await editSlide(slide, input);
-      // Report only the fields that survive sanitization — a patch that's fully
-      // dropped (e.g. an object scalar) leaves the deck unchanged, so don't claim success.
+      // Report only the fields that survive sanitization, and only if the target
+      // slide still exists (onApplyPatch returns false if it was deleted in the
+      // meantime) — otherwise the deck is unchanged, so don't claim success.
       const applied = patch ? Object.keys(sanitizeSlidePatch(patch)) : [];
-      if (applied.length && onApplyPatch) {
-        onApplyPatch(patch, slide?.id); // target the slide this edit was generated for
-        setResponse(`✓ Applied changes to: ${applied.join(', ')}`);
-      } else {
-        setResponse("I couldn't turn that into a slide edit — try rephrasing the instruction.");
-      }
+      const ok = applied.length > 0 && !!onApplyPatch && onApplyPatch(patch, slide?.id) === true;
+      setResponse(ok
+        ? `✓ Applied changes to: ${applied.join(', ')}`
+        : "I couldn't turn that into a slide edit — try rephrasing the instruction.");
     } catch (err) {
       setResponse(`Error: ${err.message}`);
     }

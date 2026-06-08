@@ -24,7 +24,7 @@ describe('DefaultAIDrawer', () => {
 
   it('applies the AI patch to the current slide and confirms', async () => {
     editSlideMock.mockResolvedValue({ title: 'Punchier', body: 'Tighter copy' });
-    const onApplyPatch = vi.fn();
+    const onApplyPatch = vi.fn().mockReturnValue(true);
     render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={onApplyPatch} />);
     await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'make it punchier');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -80,7 +80,7 @@ describe('DefaultAIDrawer', () => {
 
   it('reports only the fields that survive sanitization', async () => {
     editSlideMock.mockResolvedValue({ title: 'Kept', items: 'bad-non-array' }); // items dropped
-    const onApplyPatch = vi.fn();
+    const onApplyPatch = vi.fn().mockReturnValue(true);
     render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={onApplyPatch} />);
     await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'go');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -88,6 +88,16 @@ describe('DefaultAIDrawer', () => {
     const msg = await screen.findByText(/Applied changes to:/);
     expect(msg.textContent).toMatch(/title/);
     expect(msg.textContent).not.toMatch(/items/);
+  });
+
+  it('shows the fallback when the target slide was deleted mid-request', async () => {
+    editSlideMock.mockResolvedValue({ title: 'X' });
+    const onApplyPatch = vi.fn().mockReturnValue(false); // target no longer exists
+    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={onApplyPatch} />);
+    await userEvent.type(screen.getByPlaceholderText(/Ask Co-pilot/i), 'go');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(onApplyPatch).toHaveBeenCalled();
+    expect(await screen.findByText(/couldn't turn that into a slide edit/i)).toBeInTheDocument();
   });
 
   it('sends on Cmd/Ctrl+Enter from the input', async () => {
