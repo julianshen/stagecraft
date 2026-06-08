@@ -2,12 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
 import { moveElement, resizeElement } from '../../lib/elements.js';
 
-const HANDLES = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'];
 const HANDLE_CURSOR = {
   nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
   n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
 };
-// Handle offset (fraction of the box) — 0 = start edge, 0.5 = middle, 1 = end edge.
+// Handle offset (fraction of the box): 0 = start edge, 0.5 = middle, 1 = end.
 const HANDLE_POS = {
   nw: [0, 0], n: [0.5, 0], ne: [1, 0],
   w: [0, 0.5], e: [1, 0.5],
@@ -17,7 +16,7 @@ const HANDLE_POS = {
 export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selectedId, onSelectElement, onUpdateElement }) {
   const frameRef = useRef(null);
   const [scale, setScale] = useState(0.5);
-  const scaleRef = useRef(scale);
+  const scaleRef = useRef(scale); // latest scale for the drag closure
   scaleRef.current = scale;
 
   useEffect(() => {
@@ -32,35 +31,54 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     return () => ro.disconnect();
   }, []);
 
-  const elements = slide.elements || [];
-  const selected = elements.find(e => e.id === selectedId) || null;
+  // Live drag preview: { id, el } while dragging. The deck is only updated once,
+  // on pointer-up — so a drag doesn't fire a deck mutation (and a server PUT) on
+  // every frame. Cleared on commit.
+  const [drag, setDrag] = useState(null);
+  const dragCleanup = useRef(null);
+  useEffect(() => () => dragCleanup.current?.(), []); // tear down a drag if we unmount mid-drag
 
-  // Generic pointer-drag: maps screen movement to slide coords and applies `apply`.
-  function startDrag(e, el, apply) {
+  const baseElements = slide.elements || [];
+  const elements = drag ? baseElements.map((e) => (e.id === drag.id ? drag.el : e)) : baseElements;
+  const liveSlide = drag ? { ...slide, elements } : slide;
+  const selected = elements.find((e) => e.id === selectedId) || null;
+
+  function startDrag(e, startEl, apply) {
+    if (dragCleanup.current) return; // a drag is already active
     e.stopPropagation();
     e.preventDefault();
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* jsdom / unsupported */ }
     const startX = e.clientX, startY = e.clientY;
+    let latest = startEl;
     function move(ev) {
       const s = scaleRef.current || 1;
-      const dx = (ev.clientX - startX) / s;
-      const dy = (ev.clientY - startY) / s;
-      onUpdateElement?.(el.id, apply(dx, dy));
+      latest = apply((ev.clientX - startX) / s, (ev.clientY - startY) / s);
+      setDrag({ id: startEl.id, el: latest });
     }
     function up() {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      dragCleanup.current = null;
+      setDrag(null);
+      onUpdateElement?.(startEl.id, latest);
     }
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    dragCleanup.current = up;
   }
 
-  const startMove = (e, el) => { onSelectElement?.(el.id); startDrag(e, el, (dx, dy) => moveElement(el, dx, dy)); };
-  const startResize = (e, el, handle) => startDrag(e, el, (dx, dy) => resizeElement(el, handle, dx, dy));
+  function startMove(e, el) {
+    onSelectElement?.(el.id);
+    startDrag(e, el, (dx, dy) => moveElement(el, dx, dy));
+  }
+  function startResize(e, el, handle) {
+    startDrag(e, el, (dx, dy) => resizeElement(el, handle, dx, dy));
+  }
 
   return (
     <div className="slide-frame" ref={frameRef} style={{ width: `${Math.min(92, zoom)}%`, aspectRatio: '16/9' }}>
       <ScaledSlide>
-        {renderSlide(slide, deckCtx)}
+        {renderSlide(liveSlide, deckCtx)}
       </ScaledSlide>
 
       {/* Interaction overlay — click empty space to deselect. */}
@@ -79,19 +97,19 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
           />
         ))}
 
-        {selected && HANDLES.map((h) => {
-          const [fx, fy] = HANDLE_POS[h];
-          const left = (selected.x + selected.w * fx) * scale - 4;
-          const top = (selected.y + selected.h * fy) * scale - 4;
-          return (
-            <div
-              key={h}
-              className="sel-handle"
-              style={{ position: 'absolute', left, top, cursor: HANDLE_CURSOR[h] }}
-              onPointerDown={(e) => startResize(e, selected, h)}
-            />
-          );
-        })}
+        {selected && Object.entries(HANDLE_POS).map(([h, [fx, fy]]) => (
+          <div
+            key={h}
+            className="sel-handle"
+            style={{
+              position: 'absolute',
+              left: (selected.x + selected.w * fx) * scale - 4,
+              top: (selected.y + selected.h * fy) * scale - 4,
+              cursor: HANDLE_CURSOR[h],
+            }}
+            onPointerDown={(e) => startResize(e, selected, h)}
+          />
+        ))}
       </div>
     </div>
   );

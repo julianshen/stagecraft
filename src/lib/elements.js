@@ -57,20 +57,39 @@ const HANDLE_EDGES = {
   sw: { l: true, b: true }, s: { b: true }, se: { r: true, b: true },
 };
 
-// Resize an element by dragging `handle` by (dx, dy): the moving edges shift,
-// then the result is snapped, kept at/above MIN_SIZE, and clamped to the slide.
+// Resize an element by dragging `handle` by (dx, dy). The dragged edge snaps to
+// the grid while the OPPOSITE edge stays anchored (so a left/top resize doesn't
+// drift the right/bottom edge), then min-size and slide bounds are enforced.
 export function resizeElement(el, handle, dx, dy, { grid = GRID, min = MIN_SIZE, bounds = { w: SLIDE_W, h: SLIDE_H } } = {}) {
   const edge = HANDLE_EDGES[handle] || {};
+  const right = el.x + el.w, bottom = el.y + el.h;
   let { x, y, w, h } = el;
-  if (edge.l) { x += dx; w -= dx; }
-  if (edge.r) { w += dx; }
-  if (edge.t) { y += dy; h -= dy; }
-  if (edge.b) { h += dy; }
 
-  x = snap(x, grid); y = snap(y, grid); w = snap(w, grid); h = snap(h, grid);
+  if (edge.l) { x = snap(el.x + dx, grid); w = right - x; }
+  else if (edge.r) { w = snap(el.w + dx, grid); }
+  if (edge.t) { y = snap(el.y + dy, grid); h = bottom - y; }
+  else if (edge.b) { h = snap(el.h + dy, grid); }
+
+  if (w < min) { if (edge.l) x = right - min; w = min; }
+  if (h < min) { if (edge.t) y = bottom - min; h = min; }
+
   x = clamp(x, 0, bounds.w - min);
   y = clamp(y, 0, bounds.h - min);
   w = clamp(w, min, bounds.w - x);
   h = clamp(h, min, bounds.h - y);
   return { ...el, x, y, w, h };
+}
+
+// Clamp an element's geometry to the slide bounds + min size (no snapping) —
+// used to sanitize direct numeric edits from the Properties panel.
+export function clampElement(el, { bounds = { w: SLIDE_W, h: SLIDE_H }, min = MIN_SIZE } = {}) {
+  const w = clamp(el.w, min, bounds.w);
+  const h = clamp(el.h, min, bounds.h);
+  return {
+    ...el,
+    w,
+    h,
+    x: clamp(el.x, 0, bounds.w - w),
+    y: clamp(el.y, 0, bounds.h - h),
+  };
 }

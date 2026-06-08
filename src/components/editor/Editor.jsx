@@ -101,7 +101,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
 
   function addElement(type) {
     if (!curId) return;
-    const id = `el-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4)}`;
+    const id = `el-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
     onDeckChange(prev => updateSlideElements(prev, curId, els => [...els, createElement(type, { id })]));
     setSelElId(id);
   }

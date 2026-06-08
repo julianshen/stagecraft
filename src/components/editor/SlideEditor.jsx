@@ -7,6 +7,7 @@ import StatusBar from './StatusBar.jsx';
 import CollabLayer from './CollabLayer.jsx';
 import ThumbsPane from './ThumbsPane.jsx';
 import CanvasSlide from './CanvasSlide.jsx';
+import { clampElement } from '../../lib/elements.js';
 import ShapeMenu from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
 import TableSizePicker from './menus/TableSizePicker.jsx';
@@ -56,7 +57,9 @@ export default function SlideEditor(props) {
   // handing back the full updated element, which we forward as a patch.
   const selectedElement = props.selectedElement || null;
   const onSelectElement = props.onSelectElement || (() => {});
-  const updateSelEl = (el) => { if (el?.id) callbacks.onUpdateElement?.(el.id, el); };
+  // Properties-panel edits hand back the full element; clamp to bounds (typed
+  // values bypass the drag clamps) before forwarding as a patch.
+  const updateSelEl = (el) => { if (el?.id) callbacks.onUpdateElement?.(el.id, clampElement(el)); };
 
   // Delete/Backspace removes the selected element (unless typing in a field).
   useEffect(() => {

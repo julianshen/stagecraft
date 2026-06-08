@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -125,5 +125,50 @@ describe('element edge cases (defaults & fallbacks)', () => {
   it('resizeElement with an unknown handle moves no edges (only snaps)', () => {
     const el = { id: 'a', type: 'rect', x: 96, y: 96, w: 200, h: 96 }; // already grid-aligned
     expect(resizeElement(el, 'zzz', 50, 50)).toMatchObject({ x: 96, y: 96, w: 200, h: 96 });
+  });
+});
+
+describe('resizeElement anchor + clampElement', () => {
+  it('preserves the opposite edge on an off-grid left resize', () => {
+    const el = { id: 'a', type: 'rect', x: 200, y: 200, w: 400, h: 200 }; // right = 600
+    const r = resizeElement(el, 'w', 5, 0);
+    expect(r.x + r.w).toBe(600); // right edge unchanged despite snapping x
+    expect(r.x % GRID).toBe(0);
+  });
+
+  it('preserves the bottom edge on an off-grid top resize', () => {
+    const el = { id: 'a', type: 'rect', x: 0, y: 200, w: 400, h: 400 }; // bottom = 600
+    const r = resizeElement(el, 'n', 0, 5);
+    expect(r.y + r.h).toBe(600);
+  });
+
+  it('anchors the right edge when a left resize hits min size', () => {
+    const el = { id: 'a', type: 'rect', x: 200, y: 200, w: 400, h: 200 }; // right = 600
+    const r = resizeElement(el, 'w', 100000, 0);
+    expect(r.w).toBe(MIN_SIZE);
+    expect(r.x).toBe(600 - MIN_SIZE);
+  });
+
+  it('anchors the bottom edge when a top resize hits min size', () => {
+    const el = { id: 'a', type: 'rect', x: 0, y: 200, w: 400, h: 400 }; // bottom = 600
+    const r = resizeElement(el, 'n', 0, 100000);
+    expect(r.h).toBe(MIN_SIZE);
+    expect(r.y).toBe(600 - MIN_SIZE);
+  });
+});
+
+describe('clampElement', () => {
+  it('clamps position and size to the slide bounds and min size', () => {
+    const el = { id: 'a', type: 'rect', x: -500, y: -10, w: 5000, h: 5 };
+    const c = clampElement(el);
+    expect(c.x).toBe(0);
+    expect(c.y).toBe(0);
+    expect(c.w).toBe(SLIDE_W);
+    expect(c.h).toBe(MIN_SIZE);
+  });
+
+  it('keeps an in-bounds element unchanged and does not snap', () => {
+    const el = { id: 'a', type: 'rect', x: 101, y: 99, w: 300, h: 150 };
+    expect(clampElement(el)).toMatchObject({ x: 101, y: 99, w: 300, h: 150 });
   });
 });
