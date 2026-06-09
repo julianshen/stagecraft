@@ -8,3 +8,6 @@ shots/*.png
 
 # coverage reports
 coverage/
+
+# Persisted deck library (dev server)
+.stagecraft-decks.json

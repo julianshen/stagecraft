@@ -5,14 +5,83 @@
 // in-memory store: given a request, it returns { status, body } or null when the
 // route is unhandled (the caller then falls through to next()).
 
-export function createDeckStore(initialDeck = null) {
-  // `rev` is a monotonic revision counter bumped on every mutation. Clients poll
-  // it (GET /api/deck/state) to detect external edits without diffing the deck.
-  return { deck: initialDeck, rev: 0 };
+let deckSeq = 0;
+function newDeckId() {
+  return `deck-${Date.now().toString(36)}-${(deckSeq++).toString(36)}`;
+}
+function deckName(deck) {
+  return (deck && (deck.title || deck.name)) || 'Untitled deck';
+}
+function makeRecord(id, deck, name) {
+  return { id, name: name || deckName(deck), deck, updatedAt: Date.now() };
+}
+// A minimal but valid empty deck (one section, no slides) for "new deck".
+function blankDeck() {
+  return { theme: 'indigo', sections: [{ id: `sec-${newDeckId()}`, name: 'Section 1', slides: [] }], slides: [] };
 }
 
-function bump(store) {
+/**
+ * The store holds many decks keyed by id, plus an `activeId`. `store.deck` is a
+ * getter/setter onto the active deck's content, so every existing route and MCP
+ * tool keeps operating on "the deck" unchanged while the library lives underneath.
+ *
+ * `createDeckStore()` — empty. `createDeckStore(deck)` — wrap a legacy deck as the
+ * active one. `createDeckStore({ decks, activeId })` — restore a persisted snapshot.
+ */
+export function createDeckStore(initial = null) {
+  // `rev` is a monotonic revision counter bumped on every mutation. Clients poll
+  // it (GET /api/deck/state) to detect external edits without diffing the deck.
+  const store = {
+    // Null-prototype map so a deck id from the URL (e.g. "__proto__") can never
+    // reach Object.prototype — no prototype pollution, and unknown ids read as
+    // undefined (→ 404) rather than inherited members.
+    decks: Object.create(null),
+    activeId: null,
+    rev: 0,
+    get deck() {
+      return this.activeId != null ? (this.decks[this.activeId]?.deck ?? null) : null;
+    },
+    set deck(d) {
+      if (this.activeId != null && this.decks[this.activeId]) {
+        this.decks[this.activeId].deck = d;
+        this.decks[this.activeId].updatedAt = Date.now();
+      } else {
+        const id = newDeckId();
+        this.decks[id] = makeRecord(id, d);
+        this.activeId = id;
+      }
+    },
+  };
+  if (initial && initial.decks) {
+    // Copy into the null-prototype map (a parsed-JSON snapshot has Object.prototype).
+    for (const [k, v] of Object.entries(initial.decks)) store.decks[k] = v;
+    store.activeId = initial.activeId ?? Object.keys(store.decks)[0] ?? null;
+  } else if (initial) {
+    store.deck = initial; // wrap a legacy deck as the active one
+  }
+  return store;
+}
+
+// Advance the revision and stamp a record's modified time. `rec` defaults to the
+// active deck (content mutations); pass a specific record to stamp it instead, or
+// `null` to bump the revision without stamping (activate / delete).
+function bump(store, rec) {
   store.rev += 1;
+  const target = rec === undefined
+    ? (store.activeId != null ? store.decks[store.activeId] : null)
+    : rec;
+  if (target) target.updatedAt = Date.now();
+}
+
+function deckMeta(rec, activeId) {
+  return {
+    id: rec.id,
+    name: rec.name,
+    slides: rec.deck?.slides?.length ?? 0,
+    theme: rec.deck?.theme,
+    updatedAt: rec.updatedAt,
+    active: rec.id === activeId,
+  };
 }
 
 export const MCP_MANIFEST = {
@@ -153,6 +222,55 @@ export async function handleApiRequest(store, req, deps = {}) {
 
   // Round-trip polling endpoint: deck content + revision in one read.
   if (path === '/api/deck/state' && method === 'GET') return ok({ deck: store.deck ?? null, rev: store.rev });
+
+  // ---- Multi-deck library ----
+  if (path === '/api/decks') {
+    if (method === 'GET') {
+      return ok(Object.values(store.decks).map((r) => deckMeta(r, store.activeId)));
+    }
+    if (method === 'POST') {
+      const id = newDeckId();
+      const d = (body && body.deck) || blankDeck();
+      store.decks[id] = makeRecord(id, d, body && body.name);
+      store.activeId = id;
+      bump(store);
+      return ok(deckMeta(store.decks[id], store.activeId), 201);
+    }
+  }
+
+  const activateMatch = path.match(/^\/api\/decks\/([^/]+)\/activate$/);
+  if (activateMatch && method === 'POST') {
+    const id = activateMatch[1];
+    if (!store.decks[id]) return ok({ error: 'Not found' }, 404);
+    store.activeId = id;
+    bump(store, null); // activation advances rev (clients re-adopt) but isn't an edit
+    return ok({ deck: store.deck, rev: store.rev });
+  }
+
+  const deckIdMatch = path.match(/^\/api\/decks\/([^/]+)$/);
+  if (deckIdMatch) {
+    const id = deckIdMatch[1];
+    const rec = store.decks[id];
+    if (method === 'GET') {
+      if (!rec) return ok({ error: 'Not found' }, 404);
+      return ok({ id, name: rec.name, deck: rec.deck });
+    }
+    if (method === 'PUT') {
+      if (!rec) return ok({ error: 'Not found' }, 404);
+      if (body && typeof body.name === 'string') {
+        rec.name = body.name;
+        bump(store, rec); // stamp the renamed deck, even if it isn't the active one
+      }
+      return ok({ id, name: rec.name });
+    }
+    if (method === 'DELETE') {
+      if (!rec) return ok({ error: 'Not found' }, 404);
+      delete store.decks[id];
+      if (store.activeId === id) store.activeId = Object.keys(store.decks)[0] ?? null;
+      bump(store, null); // a removal, not a content edit — don't stamp the survivor
+      return ok({ ok: true });
+    }
+  }
 
   if (path === '/api/deck') {
     if (method === 'GET') return ok(store.deck || {});
