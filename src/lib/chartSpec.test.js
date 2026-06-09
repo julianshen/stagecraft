@@ -2,20 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { chartSpec } from './chartSpec.js';
 
 describe('chartSpec', () => {
-  it('maps chartType to a pptxgenjs chart type (bar default)', () => {
+  it('maps chartType to a pptxgenjs chart type, mirroring the canvas renderer', () => {
     expect(chartSpec({ chartType: 'bar' }).type).toBe('bar');
-    expect(chartSpec({ chartType: 'column' }).type).toBe('bar');
     expect(chartSpec({ chartType: 'line' }).type).toBe('line');
     expect(chartSpec({ chartType: 'area' }).type).toBe('area');
-    expect(chartSpec({ chartType: 'pie' }).type).toBe('pie');
     expect(chartSpec({ chartType: 'donut' }).type).toBe('doughnut');
-    expect(chartSpec({ chartType: 'mystery' }).type).toBe('bar'); // unknown → bar
-    expect(chartSpec({}).type).toBe('bar');                        // missing → bar
+    expect(chartSpec({ chartType: 'pie' }).type).toBe('doughnut');  // canvas draws a donut for pie
+    expect(chartSpec({ chartType: 'mystery' }).type).toBe('line');  // unknown → line (renderer default)
+    expect(chartSpec({}).type).toBe('line');                        // missing → line (renderer default)
   });
 
-  it('exports bar/column charts as vertical columns (barDir col), matching the canvas', () => {
+  it('exports bar charts as vertical columns (barDir col), matching the canvas', () => {
     expect(chartSpec({ chartType: 'bar' }).barDir).toBe('col');
-    expect(chartSpec({ chartType: 'column' }).barDir).toBe('col');
     expect(chartSpec({ chartType: 'line' }).barDir).toBeUndefined();
   });
 
@@ -62,8 +60,9 @@ describe('chartSpec', () => {
   });
 
   it('keeps only a single series for pie / doughnut', () => {
-    const slide = { chartType: 'pie', chart: { categories: ['a', 'b'], series: [{ name: 'S1', values: [1, 2] }, { name: 'S2', values: [3, 4] }] } };
-    expect(chartSpec(slide).data).toHaveLength(1);
+    const multi = { categories: ['a', 'b'], series: [{ name: 'S1', values: [1, 2] }, { name: 'S2', values: [3, 4] }] };
+    expect(chartSpec({ chartType: 'pie', chart: multi }).data).toHaveLength(1);
+    expect(chartSpec({ chartType: 'donut', chart: multi }).data).toHaveLength(1);
   });
 
   it('names unnamed series and tolerates missing values (padded to categories)', () => {
