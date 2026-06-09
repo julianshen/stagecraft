@@ -126,6 +126,30 @@ describe('CanvasSlide drag', () => {
     expect(onUpdateElements.mock.calls[0][0].get('a').rot).toBe(90);
   });
 
+  it('takes the rotation from the pointerup position on a fast flick (no pointermove)', () => {
+    const onUpdateElements = vi.fn();
+    const oneSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 100 }] };
+    const { container } = render(
+      <CanvasSlide slide={oneSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    fire(container.querySelector('.rotate-handle'), 'pointerdown', { clientX: 50, clientY: 0 });
+    fire(window, 'pointerup', { clientX: 150, clientY: 50 }); // released right of center, no move
+    expect(onUpdateElements.mock.calls[0][0].get('a').rot).toBe(90);
+  });
+
+  it('a click on the rotate handle (no real drag) does not rotate', () => {
+    const onUpdateElements = vi.fn();
+    const oneSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 100, rot: 90 }] };
+    const { container } = render(
+      <CanvasSlide slide={oneSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    fire(container.querySelector('.rotate-handle'), 'pointerdown', { clientX: 50, clientY: 0 });
+    fire(window, 'pointerup', { clientX: 50, clientY: 0 }); // released where it started → a click
+    expect(onUpdateElements).not.toHaveBeenCalled();
+  });
+
   it('does not commit a rotation that leaves the angle unchanged', () => {
     const onUpdateElements = vi.fn();
     const oneSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 100, rot: 90 }] };

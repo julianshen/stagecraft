@@ -130,11 +130,14 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     e.preventDefault();
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* unsupported */ }
     const rect = frame.getBoundingClientRect();
-    let latest = new Map();
+    const startX = e.clientX, startY = e.clientY;
+    // A real drag past a screen-pixel threshold — a click on the handle must not
+    // rotate (it would otherwise snap the element to the handle's angle).
+    const swept = (cx, cy) => Math.abs(cx - startX) > 3 || Math.abs(cy - startY) > 3;
     function move(ev) {
+      if (!swept(ev.clientX, ev.clientY)) return;
       const p = toSlide(rect, ev.clientX, ev.clientY);
-      latest = new Map([[el.id, rotateElement(el, p.x, p.y)]]);
-      setDrag(latest);
+      setDrag(new Map([[el.id, rotateElement(el, p.x, p.y)]]));
     }
     function removeListeners() {
       window.removeEventListener('pointermove', move);
@@ -142,13 +145,16 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       window.removeEventListener('pointercancel', cancel);
       dragCleanup.current = null;
     }
-    function up() {
+    function up(ev) {
       removeListeners();
       setDrag(null);
-      // Commit only when the angle actually changed (no rev-bumping no-op write).
-      // A missing rot means the default 0°, so normalize before comparing.
-      const rotated = latest.get(el.id);
-      if (rotated && rotated.rot !== (el.rot ?? 0)) onUpdateElements?.(latest);
+      if (!swept(ev.clientX, ev.clientY)) return; // a click, not a rotation
+      // The release position is authoritative (a fast flick may deliver no
+      // pointermove). Commit only when the angle actually changed — a missing
+      // rot means the default 0°, so normalize before comparing.
+      const p = toSlide(rect, ev.clientX, ev.clientY);
+      const rotated = rotateElement(el, p.x, p.y);
+      if (rotated.rot !== (el.rot ?? 0)) onUpdateElements?.(new Map([[el.id, rotated]]));
     }
     function cancel() { removeListeners(); setDrag(null); }
     window.addEventListener('pointermove', move);
