@@ -26,9 +26,9 @@ export function chartSpec(slide) {
   // pptxgenjs wants [{ name, labels, values }] with values aligned to labels —
   // clip an over-long series and pad a short one with 0 (a mismatch corrupts the chart XML).
   const data = rawSeries.map((s, i) => {
-    const values = (Array.isArray(s.values) ? s.values : []).slice(0, n);
+    const values = (s && Array.isArray(s.values) ? s.values : []).slice(0, n);
     while (values.length < n) values.push(0);
-    return { name: s.name || `Series ${i + 1}`, labels: categories, values };
+    return { name: (s && s.name) || `Series ${i + 1}`, labels: categories, values };
   });
   const single = m.type === 'pie' || m.type === 'doughnut';
   return { type: m.type, ...(m.barDir ? { barDir: m.barDir } : {}), data: single ? data.slice(0, 1) : data };

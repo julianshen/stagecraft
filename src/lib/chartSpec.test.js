@@ -54,6 +54,13 @@ describe('chartSpec', () => {
     expect(chartSpec(slide).data[0].values).toEqual([1, 2]);
   });
 
+  it('tolerates a null/undefined series element', () => {
+    const slide = { chartType: 'bar', chart: { categories: ['a', 'b'], series: [null, { name: 'S', values: [1, 2] }] } };
+    const { data } = chartSpec(slide);
+    expect(data[0]).toEqual({ name: 'Series 1', labels: ['a', 'b'], values: [0, 0] });
+    expect(data[1].name).toBe('S');
+  });
+
   it('keeps only a single series for pie / doughnut', () => {
     const slide = { chartType: 'pie', chart: { categories: ['a', 'b'], series: [{ name: 'S1', values: [1, 2] }, { name: 'S2', values: [3, 4] }] } };
     expect(chartSpec(slide).data).toHaveLength(1);
