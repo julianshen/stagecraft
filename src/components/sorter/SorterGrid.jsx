@@ -53,6 +53,17 @@ export default function SorterGrid({ deck, flat, active, setActive, onOpenSlide,
                 </div>
               )}
             </div>
+            {editable && slides.length === 0 && (
+              // An empty section's grid collapses to zero height, leaving no
+              // visible place to drop. Give it a real drop target (the wrapper's
+              // sectionDropProps catches the drop via bubbling).
+              <div
+                className="sorter-empty"
+                style={{ minHeight: 132, display: 'grid', placeItems: 'center', border: '1px dashed var(--line, #2a2f3a)', borderRadius: 10, color: 'var(--ink-4)', fontSize: 13 }}
+              >
+                Drop slides here
+              </div>
+            )}
             <div className="sorter-grid">
               {slides.map(s => {
                 const idx = flat.findIndex(f => f.id === s.id);

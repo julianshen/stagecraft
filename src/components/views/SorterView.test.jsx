@@ -78,8 +78,10 @@ describe('SorterView — drag to reorder', () => {
     const { container } = render(
       <SorterView deck={withEmpty} onBack={vi.fn()} onOpenSlide={vi.fn()} onDeckChange={onDeckChange} />,
     );
-    fireEvent.dragStart(card(container, 'a'));
+    // The empty section shows a visible "Drop slides here" target inside its drop zone.
     const zone = container.querySelector('[data-section-drop="s2"]');
+    expect(within(zone).getByText('Drop slides here')).toBeTruthy();
+    fireEvent.dragStart(card(container, 'a'));
     fireEvent.drop(zone); // a → into the empty section
     const next = onDeckChange.mock.calls[0][0](withEmpty);
     expect(next.sections[1].slides).toEqual(['a']);
