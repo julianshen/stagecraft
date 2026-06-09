@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ElementsLayer, Slide, ChartByType, RoadmapGraphic } from './SlideRenderer.jsx';
+import { ElementsLayer, Slide, ChartByType, RoadmapGraphic, LineChart } from './SlideRenderer.jsx';
 
 describe('ElementsLayer', () => {
   it('renders nothing when there are no elements', () => {
@@ -136,6 +136,13 @@ describe('ChartByType — multi-series', () => {
     const solo = { chart: { categories: ['A', 'B'], series: [{ name: 'Solo', values: [1, 2] }] } };
     const { container } = render(<ChartByType type="line" slide={solo} />);
     expect(container.textContent).not.toContain('Solo'); // no legend for a single series
+  });
+
+  it('emits no NaN coordinates for non-finite or empty series values', () => {
+    const { container: c1 } = render(<LineChart categories={['a', 'b', 'c']} series={[{ values: [1, NaN, undefined] }]} />);
+    expect(c1.innerHTML).not.toContain('NaN');
+    const { container: c2 } = render(<LineChart categories={['a']} series={[{ values: [] }]} />);
+    expect(c2.innerHTML).not.toContain('NaN'); // empty series: no area path / badge, no crash
   });
 });
 

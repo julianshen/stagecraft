@@ -43,10 +43,14 @@ const colorAt = (i) => C_SLICES[i % C_SLICES.length];
 // One chart coordinate system, shared by the grid, the legend, and the plotted
 // data, so they can't drift (a viewBox/margin change lands in exactly one place).
 const CW = 1600, CH = 560, CP = 60;
-const yScale = (top) => (v) => CH - CP - (v / top) * (CH - CP * 2);
+// Coerce a non-finite value to 0 so a stray NaN/undefined never reaches an SVG
+// coordinate (every line/bar/dot/gridline y flows through yScale).
+const yScale = (top) => (v) => CH - CP - ((Number.isFinite(v) ? v : 0) / top) * (CH - CP * 2);
 const xScale = (n) => (i) => CP + (i * (CW - CP * 2)) / Math.max(1, n - 1);
 // Shared axis ceiling across every series, so multiple series share one scale.
-const seriesTop = (ser) => chartCeil(Math.max(0, ...ser.flatMap((s) => s.values)));
+// Filter to finite values so a non-numeric entry can't turn the max (and the
+// whole scale) into NaN.
+const seriesTop = (ser) => chartCeil(Math.max(0, ...ser.flatMap((s) => s.values).filter(Number.isFinite)));
 // Coerce the incoming series prop to a non-empty array (falling back to the
 // shared default), so each renderer can treat one and many series uniformly.
 const toSeries = (series) => (series && series.length ? series : [{ name: 'Series 1', values: FB_VALS }]);
@@ -94,7 +98,7 @@ export function LineChart({ categories, series } = {}) {
   const toPath = arr => arr.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(v)}`).join(' ');
   // Area fill + value badge are single-series-only decorations; skip the work when multi.
   const first = ser[0].values;
-  const area = multi ? null : 'M' + first.map((v, i) => `${x(i)},${y(v)}`).join('L') + `L${x(first.length - 1)},${H - P}L${x(0)},${H - P}Z`;
+  const area = multi || !first.length ? null : 'M' + first.map((v, i) => `${x(i)},${y(v)}`).join('L') + `L${x(first.length - 1)},${H - P}L${x(0)},${H - P}Z`;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
       <defs>
@@ -116,7 +120,7 @@ export function LineChart({ categories, series } = {}) {
           ))}
         </g>
       ))}
-      {!multi && (
+      {!multi && first.length > 0 && (
         <g transform={`translate(${Math.max(P, x(first.length - 1) - 96)},${Math.max(P + 22, y(first[first.length - 1]) - 30)})`}>
           <rect x="0" y="-20" width="92" height="32" rx="4" fill={C_ACCENT} />
           <text x="46" y="1" fill="white" fontSize="18" fontFamily="JetBrains Mono" fontWeight="600" textAnchor="middle">{first[first.length - 1]}</text>
