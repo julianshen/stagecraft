@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
-import { moveElement, resizeElement, elementsInMarquee } from '../../lib/elements.js';
+import { moveElement, resizeElement, elementsInMarquee, rotateElement } from '../../lib/elements.js';
 
 const HANDLE_CURSOR = {
   nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
@@ -41,6 +41,12 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   // Latest elements for the marquee's pointer-up (the deck can change mid-drag).
   const baseElementsRef = useRef(baseElements);
   baseElementsRef.current = baseElements;
+  // Map a screen point to slide coords against a cached frame rect (px → 1920×1080).
+  const toSlide = (rect, cx, cy) => {
+    const s = scaleRef.current || 1;
+    return { x: (cx - rect.left) / s, y: (cy - rect.top) / s };
+  };
+
   const selectedSet = new Set(selectedIds);
   const elements = drag ? baseElements.map((e) => drag.get(e.id) || e) : baseElements;
   const liveSlide = drag ? { ...slide, elements } : slide;
@@ -113,6 +119,43 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     startDrag(e, [el], (t, dx, dy) => resizeElement(t, handle, dx, dy));
   }
 
+  // Rotate the single selected element: the handle drags around the element's
+  // center, with `rot` derived from the pointer angle (commits on pointer-up).
+  function startRotate(e, el) {
+    if (dragCleanup.current) return;
+    if (e.button !== 0) return;
+    const frame = frameRef.current;
+    if (!frame) return;
+    e.stopPropagation();
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* unsupported */ }
+    const rect = frame.getBoundingClientRect();
+    let latest = new Map();
+    function move(ev) {
+      const p = toSlide(rect, ev.clientX, ev.clientY);
+      latest = new Map([[el.id, rotateElement(el, p.x, p.y)]]);
+      setDrag(latest);
+    }
+    function removeListeners() {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      dragCleanup.current = null;
+    }
+    function up() {
+      removeListeners();
+      setDrag(null);
+      // Commit only when the angle actually changed (no rev-bumping no-op write).
+      const rotated = latest.get(el.id);
+      if (rotated && rotated.rot !== el.rot) onUpdateElements?.(latest);
+    }
+    function cancel() { removeListeners(); setDrag(null); }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    dragCleanup.current = removeListeners;
+  }
+
   // Rubber-band selection: a drag on empty canvas sweeps a rectangle and selects
   // the elements it overlaps on pointer-up. A click (no drag) deselects.
   function startMarquee(e) {
@@ -127,16 +170,12 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     // rect is stable for the gesture — cache it once (no per-move layout read).
     const rect = frame.getBoundingClientRect();
     const startX = e.clientX, startY = e.clientY;
-    const toSlide = (cx, cy) => {
-      const s = scaleRef.current || 1;
-      return { x: (cx - rect.left) / s, y: (cy - rect.top) / s };
-    };
-    const start = toSlide(startX, startY);
+    const start = toSlide(rect, startX, startY);
     // Sweep past a screen-pixel threshold (zoom-independent), not a jittery click.
     const swept = (cx, cy) => Math.abs(cx - startX) > 3 || Math.abs(cy - startY) > 3;
     function move(ev) {
       if (!swept(ev.clientX, ev.clientY)) return;
-      const p = toSlide(ev.clientX, ev.clientY);
+      const p = toSlide(rect, ev.clientX, ev.clientY);
       setMarquee({ x1: start.x, y1: start.y, x2: p.x, y2: p.y });
     }
     function removeListeners() {
@@ -152,7 +191,7 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       // pointermove at the release point. A real sweep selects the overlapped
       // (live) elements; a bare click deselects.
       if (swept(ev.clientX, ev.clientY)) {
-        const p = toSlide(ev.clientX, ev.clientY);
+        const p = toSlide(rect, ev.clientX, ev.clientY);
         onMarqueeSelect?.(elementsInMarquee(baseElementsRef.current, start.x, start.y, p.x, p.y));
       } else {
         onSelectElement?.(null);
@@ -200,6 +239,36 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
             onPointerDown={(e) => startResize(e, resizeTarget, h)}
           />
         ))}
+
+        {resizeTarget && (
+          <>
+            {/* stem from the top-center handle up to the rotate knob */}
+            <div
+              style={{
+                position: 'absolute',
+                left: (resizeTarget.x + resizeTarget.w / 2) * scale - 0.5,
+                top: resizeTarget.y * scale - 22,
+                width: 1, height: 22,
+                background: 'oklch(0.62 0.2 265)',
+                pointerEvents: 'none',
+              }}
+            />
+            <div
+              className="rotate-handle"
+              style={{
+                position: 'absolute',
+                left: (resizeTarget.x + resizeTarget.w / 2) * scale - 6,
+                top: resizeTarget.y * scale - 28,
+                width: 12, height: 12,
+                borderRadius: '50%',
+                border: '1.5px solid oklch(0.62 0.2 265)',
+                background: 'white',
+                cursor: 'grab',
+              }}
+              onPointerDown={(e) => startRotate(e, resizeTarget)}
+            />
+          </>
+        )}
 
         {marquee && (
           <div

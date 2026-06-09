@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -350,5 +350,25 @@ describe('elementsInMarquee', () => {
   it('treats edge-only contact as non-overlapping (strict)', () => {
     // Rectangle right edge at x=100 exactly touches a's left edge — not a hit.
     expect(elementsInMarquee(els(), 0, 100, 100, 200)).toEqual([]);
+  });
+});
+
+describe('rotateElement', () => {
+  const el = { id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 100 }; // center (50, 50)
+
+  it('reads 0° when the pointer is directly above the center', () => {
+    expect(rotateElement(el, 50, -50).rot).toBe(0);
+  });
+
+  it('reads 90° to the right, 180° below, 270° to the left', () => {
+    expect(rotateElement(el, 150, 50).rot).toBe(90);
+    expect(rotateElement(el, 50, 150).rot).toBe(180);
+    expect(rotateElement(el, -50, 50).rot).toBe(270); // normalized, not -90
+  });
+
+  it('rounds to whole degrees and leaves the other fields untouched', () => {
+    const r = rotateElement(el, 60, -50); // slightly right of straight-up
+    expect(Number.isInteger(r.rot)).toBe(true);
+    expect({ x: r.x, y: r.y, w: r.w, h: r.h, id: r.id }).toEqual({ x: 0, y: 0, w: 100, h: 100, id: 'a' });
   });
 });

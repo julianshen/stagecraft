@@ -110,6 +110,56 @@ describe('CanvasSlide drag', () => {
     expect(onUpdateElements).not.toHaveBeenCalled();
   });
 
+  it('rotates the selected element when dragging the rotate handle', () => {
+    const onUpdateElements = vi.fn();
+    const oneSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 100 }] };
+    const { container } = render(
+      <CanvasSlide slide={oneSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    const handle = container.querySelector('.rotate-handle');
+    expect(handle).toBeTruthy(); // only shown for a single selection
+    fire(handle, 'pointerdown', { clientX: 50, clientY: 0, button: 0 });
+    fire(window, 'pointermove', { clientX: 150, clientY: 50 }); // right of center (50,50) → 90°
+    fire(window, 'pointerup', { clientX: 150, clientY: 50 });
+    expect(onUpdateElements).toHaveBeenCalled();
+    expect(onUpdateElements.mock.calls[0][0].get('a').rot).toBe(90);
+  });
+
+  it('does not commit a rotation that leaves the angle unchanged', () => {
+    const onUpdateElements = vi.fn();
+    const oneSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 100, rot: 90 }] };
+    const { container } = render(
+      <CanvasSlide slide={oneSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    fire(container.querySelector('.rotate-handle'), 'pointerdown', { clientX: 50, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 150, clientY: 50 }); // resolves to 90° — already the current rot
+    fire(window, 'pointerup', { clientX: 150, clientY: 50 });
+    expect(onUpdateElements).not.toHaveBeenCalled();
+  });
+
+  it('ignores a non-primary button on the rotate handle', () => {
+    const onUpdateElements = vi.fn();
+    const oneSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 100 }] };
+    const { container } = render(
+      <CanvasSlide slide={oneSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    fire(container.querySelector('.rotate-handle'), 'pointerdown', { clientX: 50, clientY: 0, button: 2 });
+    fire(window, 'pointermove', { clientX: 150, clientY: 50 });
+    fire(window, 'pointerup', { clientX: 150, clientY: 50 });
+    expect(onUpdateElements).not.toHaveBeenCalled();
+  });
+
+  it('shows no rotate handle when multiple elements are selected', () => {
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a', 'b']} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} />,
+    );
+    expect(container.querySelector('.rotate-handle')).toBeNull();
+  });
+
   it('does not commit a drag that snaps back to the starting position', () => {
     // Grid-aligned element: a sub-grid jiggle snaps to the same coords → no-op.
     const gridSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 104, y: 104, w: 200, h: 96 }] };

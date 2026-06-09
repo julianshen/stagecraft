@@ -246,7 +246,7 @@ Section-grouped live thumbnails (real `<Slide>` via `ScaledSlide`), active-state
 
 #### 7.2.4 Canvas (`CanvasSlide`, `Ruler`, `StatusBar`) 🟡
 - 🟢 Renders the current slide at zoom; H/V rulers; status bar with zoom controls (20–200%, fit), live dimensions readout.
-- 🟢 Direct manipulation of `slide.elements` (§9): click to select, **shift-click to multi-select** (additive toggle), **marquee** (drag empty canvas to rubber-band-select overlapping elements; click empty space to deselect), drag to move (a drag on any member moves the whole selection), 8-handle resize when exactly one element is selected. A drag commits one atomic deck update on pointer-up (no per-frame PUT). Delete/Backspace removes the whole selection; **align (left/center/right + top/middle/bottom)** acts on a 2+ selection and **distribute** evens the gaps of a 3+ selection — the Arrange buttons are disabled until enough elements are selected. ⚪ Rotate-handle and shift-add-to-marquee are not yet wired.
+- 🟢 Direct manipulation of `slide.elements` (§9): click to select, **shift-click to multi-select** (additive toggle), **marquee** (drag empty canvas to rubber-band-select overlapping elements; click empty space to deselect), drag to move (a drag on any member moves the whole selection), 8-handle resize and a **rotate handle** when exactly one element is selected. A drag commits one atomic deck update on pointer-up (no per-frame PUT). Delete/Backspace removes the whole selection; **align (left/center/right + top/middle/bottom)** acts on a 2+ selection and **distribute** evens the gaps of a 3+ selection — the Arrange buttons are disabled until enough elements are selected. ⚪ Shift-add-to-marquee is not yet wired.
 - 🟢 Right-click context menu (paste / generate / change layout / apply theme / duplicate / delete) — 🟡 only duplicate & delete are wired.
 
 #### 7.2.5 Right inspector (`InspectorPane` / `FloatingInspector`) 🟡
@@ -307,8 +307,8 @@ Anthropic · OpenAI · Google · OpenRouter · Local (Ollama/LM Studio, no key) 
 **Also 🟢:** the Properties panel binds **angle (`rot`), opacity, and fill** to the selected element, and a **Content** field edits text elements; `ElementView` renders rotation/opacity/fill. (Element schema gains optional `rot`, `opacity`, `fill`.)
 
 **Still ⚪ (follow-ups):**
-- Per-element typography (font family/size/weight/align for text) and a rotate drag-handle.
-- Selection set: shift-click multi-select ✅, marquee drag-rectangle ✅, align (horizontal + vertical) ✅, and distribute ✅ all shipped; ⚪ shift-add-to-marquee and a rotate-handle remain.
+- Per-element typography (font family/size/weight/align for text).
+- Selection set: shift-click multi-select ✅, marquee drag-rectangle ✅, align (horizontal + vertical) ✅, distribute ✅, and a rotate handle ✅ all shipped; ⚪ shift-add-to-marquee remains.
 - Snapping to alignment guides (currently grid-only); Pen/Image tools.
 - Persisting/AI-authoring elements (the `elements` field isn't in the AI-patch whitelist yet).
 
@@ -422,7 +422,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 | Settings: AI + Appearance | 🟢 (🟡 top-p) |
 | PPTX export | 🟢 (🟡 charts/roadmap) |
 | Presenter | 🟡 |
-| Canvas selection / direct manipulation | 🟢 core + multi-select/marquee/move/align (H+V)/distribute (⚪ rotate) |
+| Canvas selection / direct manipulation | 🟢 core + multi-select/marquee/move/resize/rotate/align (H+V)/distribute |
 | Inspector Design/Animate, timeline | 🔴 |
 | Home/Sorter secondary controls, drag-reorder | 🔴 → ⚪ |
 | Templates → real starter decks | 🟡 → ⚪ |
