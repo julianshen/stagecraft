@@ -244,7 +244,7 @@ Mutations: `addComponent(id)`, `addText(style)`, `addTable(rows,cols)`, `addChar
 Menus (`ShapeMenu`, `ComponentMenu`, `TextMenu`, `TableSizePicker`, `ChartTypePicker`, `LayoutMenu`, `ThemeMenu`) are dismiss-on-outside-click popovers. The table picker supports drag/click sizing up to 8×8.
 
 #### 7.2.3 Left thumbnails pane (`ThumbsPane`) 🟡
-Section-grouped live thumbnails (real `<Slide>` via `ScaledSlide`), active-state, click-to-select, per-slide comment badge, **＋ New slide** wired. 🔴 outline toggle, "more", section-collapse chevrons, "New section" have no handlers. ⚪ Spec: drag-to-reorder within/across sections (updates `sections[].slides`).
+Section-grouped live thumbnails (real `<Slide>` via `ScaledSlide`), active-state, click-to-select, per-slide comment badge, **＋ New slide** wired. 🟢 **drag-to-reorder** — thumbs are draggable; dropping a thumb inserts the dragged slide just before it (within or across sections), updating `sections[].slides` via the pure `moveSlide` helper (`lib/deckOrder.js`). 🔴 outline toggle, "more", section-collapse chevrons, "New section" have no handlers.
 
 #### 7.2.4 Canvas (`CanvasSlide`, `Ruler`, `StatusBar`) 🟡
 - 🟢 Renders the current slide at zoom; H/V rulers; status bar with zoom controls (20–200%, fit), live dimensions readout.
@@ -442,7 +442,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 2. ~~**Co-pilot applies edits** — parse replies and commit through editor callbacks.~~ ✅ **Done** — `editSlide` → patch → `applySlidePatch` via `onApplyAIPatch` (§8.2).
 3. ~~**Real selection & direct manipulation** — element model + click/drag/resize/rotate; multi-select/align/distribute.~~ ✅ **Done** — free-form `elements` layer with select/marquee/move/resize/rotate + align (H+V)/distribute (§9). _(Properties panel binds the single selection; per-element typography still ⚪.)_
 4. ~~**Durable persistence + multi-deck library**~~ ✅ **Done** — disk-persisted deck library; Home lists/opens/creates/renames/deletes real decks (§7.1, §17). _Follow-up: seed via `POST /api/decks` to remove the last untagged-write window; list-view rename/delete._
-5. **Drag-to-reorder** slides/sections in Thumbs + Sorter. _(§7.2.3, §7.3)_
+5. **Drag-to-reorder** — ✅ Thumbs (left rail) via `moveSlide` (§7.2.3); ⚪ remaining: Sorter view + section reordering/CRUD. _(§7.3)_
 6. **Chart-to-image in PPTX** + roadmap timeline; wire export options. _(§12, §13)_
 7. **Templates seed real decks**; persist top-p; genericize Home/`DeckCover` strings; duplicate-slide. _(§14, §7.4, §7.1, §7.2.1)_
 8. **Presenter** laser-tracks-pointer + blackout. _(§7.5)_

@@ -4,6 +4,7 @@ import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
 import { createElement, updateSlideElements, alignElements, distributeElements } from '../../lib/elements.js';
+import { moveSlide } from '../../lib/deckOrder.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
   const [curId, setCurId] = useState(() => {
@@ -203,6 +204,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onChangeTheme: changeTheme,
         onNewSlide: () => addComponent('text'),
         onDeleteSlide: deleteSlide,
+        onReorderSlide: (slideId, toSectionId, toIndex) => onDeckChange(prev => moveSlide(prev, slideId, toSectionId, toIndex)),
         onApplyAIPatch: applyAIPatch,
       }}
     />
