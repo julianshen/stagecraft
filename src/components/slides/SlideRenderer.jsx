@@ -39,17 +39,66 @@ function chartCeil(v) {
   return step * mag;
 }
 const chartTicks = (top) => [0, 1, 2, 3, 4].map((i) => Math.round((top * i) / 4));
+const colorAt = (i) => C_SLICES[i % C_SLICES.length];
+// One chart coordinate system, shared by the grid, the legend, and the plotted
+// data, so they can't drift (a viewBox/margin change lands in exactly one place).
+const CW = 1600, CH = 560, CP = 60;
+// Coerce a non-finite value to 0 so a stray NaN/undefined never reaches an SVG
+// coordinate (every line/bar/dot/gridline y flows through yScale).
+const yScale = (top) => (v) => CH - CP - ((Number.isFinite(v) ? v : 0) / top) * (CH - CP * 2);
+const xScale = (n) => (i) => CP + (i * (CW - CP * 2)) / Math.max(1, n - 1);
+// Shared axis ceiling across every series, so multiple series share one scale.
+// Filter to finite values so a non-numeric entry can't turn the max (and the
+// whole scale) into NaN.
+const seriesTop = (ser) => chartCeil(Math.max(0, ...ser.flatMap((s) => s.values).filter(Number.isFinite)));
+// Coerce the incoming series prop to a non-empty array (falling back to the
+// shared default), so each renderer can treat one and many series uniformly.
+const toSeries = (series) => (series && series.length ? series : [{ name: 'Series 1', values: FB_VALS }]);
 
-export function LineChart({ categories, values, plan } = {}) {
+// Horizontal swatch legend, drawn in the chart's top margin for >1 series.
+// Spacing shrinks as series grow so it doesn't run past the 1600-wide viewBox.
+function ChartLegend({ series, y = 26 }) {
+  const gap = Math.min(280, (CW - 120) / series.length);
+  return (
+    <g>
+      {series.map((s, i) => (
+        <g key={i} transform={`translate(${CP + i * gap}, ${y})`}>
+          <rect data-legend="" x="0" y="-16" width="22" height="22" rx="4" fill={colorAt(i)} />
+          <text x="30" y="2" fontSize="20" fontFamily="Inter" fontWeight="600" fill="#222">{s.name}</text>
+        </g>
+      ))}
+    </g>
+  );
+}
+
+// Shared zero-based y-axis: gridlines + tick labels, identical for line/bar/area.
+function ChartGrid({ top }) {
+  const y = yScale(top);
+  return (
+    <>
+      {chartTicks(top).map(v => (
+        <g key={v}>
+          <line x1={CP} x2={CW - CP} y1={y(v)} y2={y(v)} stroke="#e9e7e2" strokeWidth="1" />
+          <text x={CP - 10} y={y(v) + 5} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{v}</text>
+        </g>
+      ))}
+    </>
+  );
+}
+
+export function LineChart({ categories, series } = {}) {
   const gid = 'lg' + useId().replace(/:/g, ''); // unique per instance — multiple charts share a DOM (thumbs + canvas)
-  const vals = values && values.length ? values : FB_VALS;
+  const ser = toSeries(series);
   const labels = categories && categories.length ? categories : FB_CATS;
-  const W = 1600, H = 560, P = 60;
-  const top = chartCeil(Math.max(...vals));
-  const x = i => P + (i * (W - P * 2)) / Math.max(1, vals.length - 1);
-  const y = v => H - P - (v / top) * (H - P * 2);
+  const W = CW, H = CH, P = CP;
+  const multi = ser.length > 1;
+  const top = seriesTop(ser);
+  const x = xScale(labels.length);
+  const y = yScale(top);
   const toPath = arr => arr.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(v)}`).join(' ');
-  const area = 'M' + vals.map((v, i) => `${x(i)},${y(v)}`).join('L') + `L${x(vals.length - 1)},${H - P}L${x(0)},${H - P}Z`;
+  // Area fill + value badge are single-series-only decorations; skip the work when multi.
+  const first = ser[0].values;
+  const area = multi || !first.length ? null : 'M' + first.map((v, i) => `${x(i)},${y(v)}`).join('L') + `L${x(first.length - 1)},${H - P}L${x(0)},${H - P}Z`;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
       <defs>
@@ -58,66 +107,77 @@ export function LineChart({ categories, values, plan } = {}) {
           <stop offset="1" stopColor={C_ACCENT} stopOpacity="0"/>
         </linearGradient>
       </defs>
-      {chartTicks(top).map(v => (
-        <g key={v}>
-          <line x1={P} x2={W - P} y1={y(v)} y2={y(v)} stroke="#e9e7e2" strokeWidth="1" />
-          <text x={P - 10} y={y(v) + 5} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{v}</text>
-        </g>
-      ))}
+      <ChartGrid top={top} />
       {labels.map((l, i) => (
         <text key={i} x={x(i)} y={H - P + 28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{l}</text>
       ))}
-      <path d={area} fill={`url(#${gid})`} />
-      {plan && plan.length ? <path d={toPath(plan)} fill="none" stroke="#999" strokeWidth="2" strokeDasharray="6 6" /> : null}
-      <path d={toPath(vals)} fill="none" stroke={C_ACCENT} strokeWidth="3" />
-      {vals.map((v, i) => (
-        <circle key={i} cx={x(i)} cy={y(v)} r="5" fill="white" stroke={C_ACCENT} strokeWidth="2.5" />
+      {!multi && <path d={area} fill={`url(#${gid})`} />}
+      {ser.map((s, si) => (
+        <g key={si}>
+          <path d={toPath(s.values)} fill="none" stroke={colorAt(si)} strokeWidth="3" />
+          {s.values.map((v, i) => (
+            <circle key={i} cx={x(i)} cy={y(v)} r="5" fill="white" stroke={colorAt(si)} strokeWidth="2.5" />
+          ))}
+        </g>
       ))}
-      <g transform={`translate(${Math.max(P, x(vals.length - 1) - 96)},${Math.max(P + 22, y(vals[vals.length - 1]) - 30)})`}>
-        <rect x="0" y="-20" width="92" height="32" rx="4" fill={C_ACCENT} />
-        <text x="46" y="1" fill="white" fontSize="18" fontFamily="JetBrains Mono" fontWeight="600" textAnchor="middle">{vals[vals.length - 1]}</text>
-      </g>
+      {!multi && first.length > 0 && (
+        <g transform={`translate(${Math.max(P, x(first.length - 1) - 96)},${Math.max(P + 22, y(first[first.length - 1]) - 30)})`}>
+          <rect x="0" y="-20" width="92" height="32" rx="4" fill={C_ACCENT} />
+          <text x="46" y="1" fill="white" fontSize="18" fontFamily="JetBrains Mono" fontWeight="600" textAnchor="middle">{first[first.length - 1]}</text>
+        </g>
+      )}
+      {multi && <ChartLegend series={ser} />}
     </svg>
   );
 }
 
-export function BarChart({ categories, values } = {}) {
-  const vals = values && values.length ? values : FB_VALS;
+export function BarChart({ categories, series } = {}) {
+  const ser = toSeries(series);
   const labels = categories && categories.length ? categories : FB_CATS;
-  const W = 1600, H = 560, P = 60;
-  const top = chartCeil(Math.max(...vals));
-  const bw = (W - P * 2) / vals.length;
-  const y = v => H - P - (v / top) * (H - P * 2);
+  const W = CW, H = CH, P = CP;
+  const multi = ser.length > 1;
+  const top = seriesTop(ser);
+  const slot = (W - P * 2) / labels.length;
+  const y = yScale(top);
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
-      {chartTicks(top).map(v => (
-        <g key={v}>
-          <line x1={P} x2={W - P} y1={y(v)} y2={y(v)} stroke="#e9e7e2" strokeWidth="1"/>
-          <text x={P - 10} y={y(v) + 5} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{v}</text>
-        </g>
-      ))}
-      {vals.map((v, i) => (
-        <g key={i}>
-          <rect x={P + i * bw + bw * 0.18} y={y(v)} width={bw * 0.64} height={Math.max(0, H - P - y(v))} rx="6"
-            fill={i === vals.length - 1 ? C_ACCENT : 'oklch(0.78 0.07 265)'}/>
-          <text x={P + i * bw + bw * 0.5} y={y(v) - 16} fontSize="20" fontFamily="JetBrains Mono" fontWeight="600" fill="#222" textAnchor="middle">{v}</text>
-          <text x={P + i * bw + bw * 0.5} y={H - P + 28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{labels[i] || ''}</text>
-        </g>
-      ))}
+      <ChartGrid top={top} />
+      {!multi
+        ? ser[0].values.map((v, i) => (
+            <g key={i}>
+              <rect data-bar="" x={P + i * slot + slot * 0.18} y={y(v)} width={slot * 0.64} height={Math.max(0, H - P - y(v))} rx="6"
+                fill={i === ser[0].values.length - 1 ? C_ACCENT : 'oklch(0.78 0.07 265)'}/>
+              <text x={P + i * slot + slot * 0.5} y={y(v) - 16} fontSize="20" fontFamily="JetBrains Mono" fontWeight="600" fill="#222" textAnchor="middle">{v}</text>
+              <text x={P + i * slot + slot * 0.5} y={H - P + 28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{labels[i] || ''}</text>
+            </g>
+          ))
+        : labels.map((l, i) => {
+            const gx = P + i * slot, bw = (slot * 0.7) / ser.length;
+            return (
+              <g key={i}>
+                {ser.map((s, si) => (
+                  <rect data-bar="" key={si} x={gx + slot * 0.15 + si * bw} y={y(s.values[i])} width={bw * 0.9} height={Math.max(0, H - P - y(s.values[i]))} rx="4" fill={colorAt(si)}/>
+                ))}
+                <text x={gx + slot * 0.5} y={H - P + 28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{l}</text>
+              </g>
+            );
+          })}
+      {multi && <ChartLegend series={ser} />}
     </svg>
   );
 }
 
-export function AreaChart({ categories, values } = {}) {
+export function AreaChart({ categories, series } = {}) {
   const gid = 'ag' + useId().replace(/:/g, ''); // unique per instance (see LineChart)
-  const vals = values && values.length ? values : FB_VALS;
+  const ser = toSeries(series);
   const labels = categories && categories.length ? categories : FB_CATS;
-  const W = 1600, H = 560, P = 60;
-  const top = chartCeil(Math.max(...vals));
-  const x = i => P + (i * (W - P * 2)) / Math.max(1, vals.length - 1);
-  const y = v => H - P - (v / top) * (H - P * 2);
-  const line = vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(v)}`).join(' ');
-  const area = 'M' + vals.map((v, i) => `${x(i)},${y(v)}`).join('L') + `L${x(vals.length - 1)},${H - P}L${x(0)},${H - P}Z`;
+  const W = CW, H = CH, P = CP;
+  const multi = ser.length > 1;
+  const top = seriesTop(ser);
+  const x = xScale(labels.length);
+  const y = yScale(top);
+  const line = arr => arr.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(v)}`).join(' ');
+  const area = arr => 'M' + arr.map((v, i) => `${x(i)},${y(v)}`).join('L') + `L${x(arr.length - 1)},${H - P}L${x(0)},${H - P}Z`;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
       <defs>
@@ -126,18 +186,20 @@ export function AreaChart({ categories, values } = {}) {
           <stop offset="1" stopColor={C_ACCENT} stopOpacity="0.02"/>
         </linearGradient>
       </defs>
-      {chartTicks(top).map(v => (
-        <g key={v}>
-          <line x1={P} x2={W - P} y1={y(v)} y2={y(v)} stroke="#e9e7e2" strokeWidth="1"/>
-          <text x={P - 10} y={y(v) + 5} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{v}</text>
-        </g>
-      ))}
+      <ChartGrid top={top} />
       {labels.map((l, i) => (
         <text key={i} x={x(i)} y={H - P + 28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{l}</text>
       ))}
-      <path d={area} fill={`url(#${gid})`}/>
-      <path d={line} fill="none" stroke={C_ACCENT} strokeWidth="3.5"/>
-      {vals.map((v, i) => (<circle key={i} cx={x(i)} cy={y(v)} r="5" fill="white" stroke={C_ACCENT} strokeWidth="2.5"/>))}
+      {ser.map((s, si) => (
+        // Single series keeps the accent gradient fill + dots; multiple series
+        // overlay translucent fills per colour (no dots, to stay readable).
+        <g key={si}>
+          <path d={area(s.values)} fill={multi ? colorAt(si) : `url(#${gid})`} fillOpacity={multi ? 0.18 : 1}/>
+          <path d={line(s.values)} fill="none" stroke={multi ? colorAt(si) : C_ACCENT} strokeWidth={multi ? 3 : 3.5}/>
+          {!multi && s.values.map((v, i) => (<circle key={i} cx={x(i)} cy={y(v)} r="5" fill="white" stroke={C_ACCENT} strokeWidth="2.5"/>))}
+        </g>
+      ))}
+      {multi && <ChartLegend series={ser} />}
     </svg>
   );
 }
@@ -190,11 +252,11 @@ export function DonutChart({ categories, values } = {}) {
 // chart shows the identical default on canvas and in the export.
 export function ChartByType({ type, slide }) {
   const d = chartData(slide);
-  const props = { categories: d.categories, values: d.series[0]?.values, plan: d.series[1]?.values };
-  if (type === 'bar') return <BarChart {...props}/>;
-  if (type === 'area') return <AreaChart {...props}/>;
-  if (type === 'donut' || type === 'pie') return <DonutChart {...props}/>;
-  return <LineChart {...props}/>;
+  // line/bar/area render every series; a donut composes a single series over its categories.
+  if (type === 'bar') return <BarChart categories={d.categories} series={d.series}/>;
+  if (type === 'area') return <AreaChart categories={d.categories} series={d.series}/>;
+  if (type === 'donut' || type === 'pie') return <DonutChart categories={d.categories} values={d.series[0]?.values}/>;
+  return <LineChart categories={d.categories} series={d.series}/>;
 }
 
 export function RoadmapGraphic({ slide } = {}) {

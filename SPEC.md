@@ -377,7 +377,9 @@ The store carries a monotonic **`rev`** counter, bumped on every mutation (deck 
 | **roadmap** | 🟢 **native PPTX timeline** — month axis, status-coloured lane bars, optional TODAY marker, and a legend, built from the same `roadmapModel` (`lib/roadmapSpec.js`) the canvas uses, so they match. |
 | **chart** | 🟢 **native PPTX chart** (`addChart`) — editable in PowerPoint. Both the canvas SVG renderers and the export read the slide's `chart: { categories, series }` through the shared **`chartData`** helper (`lib/chartSpec.js`), so they show the same numbers; `chartSpec` maps the type (bar→vertical columns, line, area, pie/donut→doughnut, default line) for pptxgenjs. Both fall back to matching demo data when a slide carries none. |
 
-**Spec (⚪):** render multiple series on the canvas SVGs (grouped bars / multi-line / stacked areas) to fully match a multi-series export — today the canvas shows the first series (line also overlays the 2nd as a comparison), while the export includes every series; expand roadmap to a real table/shape timeline; honor export-modal range/quality/notes options.
+🟢 **Multi-series on the canvas** — `LineChart`/`BarChart`/`AreaChart` render every series (N lines / grouped bars / overlaid areas) on one shared axis (scaled to the max across all series), with a swatch legend naming each — matching the *series/grouping* the export already produced. A single series keeps the original look (area fill + value badge, no legend) so the demo is unchanged; a donut still composes a single series over its categories.
+
+**Spec (⚪):** unify the per-series colour palette across canvas (`C_SLICES`, oklch) and export (the theme-tinted `chartColors`, hex) so series colours match — they currently agree on shape/order but not colour; expand roadmap to a real table/shape timeline; honor export-modal range/quality/notes options.
 
 ---
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ElementsLayer, Slide, ChartByType, RoadmapGraphic } from './SlideRenderer.jsx';
+import { ElementsLayer, Slide, ChartByType, RoadmapGraphic, LineChart } from './SlideRenderer.jsx';
 
 describe('ElementsLayer', () => {
   it('renders nothing when there are no elements', () => {
@@ -100,6 +100,49 @@ describe('ChartByType (data-driven charts)', () => {
     const { container } = render(<ChartByType type="donut" slide={slide} />);
     expect(container.querySelector('path')).toBeTruthy(); // arc drawn, not collapsed
     expect(container.textContent).toContain('100%');
+  });
+});
+
+describe('ChartByType — multi-series', () => {
+  const twoSeries = { chart: { categories: ['A', 'B'], series: [{ name: 'S1', values: [1, 2] }, { name: 'S2', values: [3, 4] }] } };
+
+  it('line: draws a legend naming every series', () => {
+    const { container } = render(<ChartByType type="line" slide={twoSeries} />);
+    expect(container.textContent).toContain('S1');
+    expect(container.textContent).toContain('S2');
+  });
+
+  it('bar: grouped bars (one per series per category) + legend', () => {
+    const { container } = render(<ChartByType type="bar" slide={twoSeries} />);
+    expect(container.querySelectorAll('[data-bar]').length).toBe(4); // 2 categories × 2 series
+    expect(container.textContent).toContain('S1');
+    expect(container.textContent).toContain('S2');
+  });
+
+  it('area: legend naming every series', () => {
+    const { container } = render(<ChartByType type="area" slide={twoSeries} />);
+    expect(container.textContent).toContain('S1');
+    expect(container.textContent).toContain('S2');
+  });
+
+  it('scales the shared axis to the max across all series', () => {
+    // S2 max is 4; the top tick should reflect a ceiling >= 4, not series[0]'s max of 2.
+    const { container } = render(<ChartByType type="line" slide={twoSeries} />);
+    const ticks = [...container.querySelectorAll('text')].map((t) => Number(t.textContent)).filter((n) => Number.isFinite(n));
+    expect(Math.max(...ticks)).toBeGreaterThanOrEqual(4);
+  });
+
+  it('single-series charts show no legend (unchanged look)', () => {
+    const solo = { chart: { categories: ['A', 'B'], series: [{ name: 'Solo', values: [1, 2] }] } };
+    const { container } = render(<ChartByType type="line" slide={solo} />);
+    expect(container.textContent).not.toContain('Solo'); // no legend for a single series
+  });
+
+  it('emits no NaN coordinates for non-finite or empty series values', () => {
+    const { container: c1 } = render(<LineChart categories={['a', 'b', 'c']} series={[{ values: [1, NaN, undefined] }]} />);
+    expect(c1.innerHTML).not.toContain('NaN');
+    const { container: c2 } = render(<LineChart categories={['a']} series={[{ values: [] }]} />);
+    expect(c2.innerHTML).not.toContain('NaN'); // empty series: no area path / badge, no crash
   });
 });
 
