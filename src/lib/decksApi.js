@@ -65,3 +65,16 @@ export async function openDeck(id, fetchFn = globalThis.fetch) {
   const res = await fetchFn(`/api/decks/${encodeURIComponent(id)}/activate`, { method: 'POST' });
   return jsonOrThrow(res, 'openDeck');
 }
+
+export async function renameDeck(id, name, fetchFn = globalThis.fetch) {
+  const res = await fetchFn(`/api/decks/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  return jsonOrThrow(res, 'renameDeck');
+}
+
+export async function deleteDeck(id, fetchFn = globalThis.fetch) {
+  return jsonOrThrow(await fetchFn(`/api/decks/${encodeURIComponent(id)}`, { method: 'DELETE' }), 'deleteDeck');
+}

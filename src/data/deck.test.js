@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ACCENTS, DECKS, SAMPLE_DECK, SPEAKER_NOTES, TEMPLATES } from './deck.js';
+import { ACCENTS, SAMPLE_DECK, SPEAKER_NOTES, TEMPLATES } from './deck.js';
 import { flattenDeck } from '../lib/deckOrder.js';
 
 const KNOWN_LAYOUTS = new Set([
@@ -40,9 +40,7 @@ describe('catalogs', () => {
     }
   });
 
-  it('DECKS and TEMPLATES have stable unique ids', () => {
-    const deckIds = DECKS.map((d) => d.id);
-    expect(new Set(deckIds).size).toBe(deckIds.length);
+  it('TEMPLATES have stable unique ids', () => {
     const tplIds = TEMPLATES.map((t) => t.id);
     expect(new Set(tplIds).size).toBe(tplIds.length);
   });

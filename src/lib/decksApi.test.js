@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { listDecks, createDeck, openDeck, themeTint, initials, relativeTime } from './decksApi.js';
+import { listDecks, createDeck, openDeck, renameDeck, deleteDeck, themeTint, initials, relativeTime } from './decksApi.js';
 
 const resolving = (value) => vi.fn().mockResolvedValue({ ok: true, json: async () => value });
 const failing = (status = 500) => vi.fn().mockResolvedValue({ ok: false, status, json: async () => ({ error: 'boom' }) });
@@ -35,10 +35,28 @@ describe('decksApi requests', () => {
     expect(r.rev).toBe(3);
   });
 
+  it('renameDeck PUTs the new name to the deck', async () => {
+    const fetchFn = resolving({ id: 'd1', name: 'New' });
+    const r = await renameDeck('d1', 'New', fetchFn);
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe('/api/decks/d1');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(init.body)).toEqual({ name: 'New' });
+    expect(r.name).toBe('New');
+  });
+
+  it('deleteDeck DELETEs the deck by id (encoded)', async () => {
+    const fetchFn = resolving({ ok: true });
+    await deleteDeck('d 1', fetchFn);
+    expect(fetchFn).toHaveBeenCalledWith('/api/decks/d%201', { method: 'DELETE' });
+  });
+
   it('rejects on a non-ok HTTP response instead of parsing an error body as data', async () => {
     await expect(listDecks(failing(500))).rejects.toThrow();
     await expect(createDeck('x', failing(500))).rejects.toThrow();
     await expect(openDeck('x', failing(404))).rejects.toThrow();
+    await expect(renameDeck('x', 'y', failing(404))).rejects.toThrow();
+    await expect(deleteDeck('x', failing(404))).rejects.toThrow();
   });
 });
 

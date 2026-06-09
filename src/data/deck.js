@@ -7,18 +7,6 @@ export const ACCENTS = {
   coral:   { name: 'Coral',   hue: 25,  chroma: 0.17 },
 };
 
-// -------------------- sample decks --------------------
-export const DECKS = [
-  { id: 'intro', name: 'Meet Stagecraft', owner: 'You', edited: 'just now', slides: 14, cover: 'S', tint: 'oklch(0.62 0.17 265)' },
-  { id: 'gtm-26', name: '2026 GTM Plan', owner: 'Sam Levine', edited: '1h', slides: 18, cover: 'GTM', tint: 'oklch(0.67 0.14 155)' },
-  { id: 'board-apr', name: 'April Board Deck', owner: 'You', edited: 'Yesterday', slides: 42, cover: 'BOARD', tint: 'oklch(0.28 0.02 260)' },
-  { id: 'proj-cascade', name: 'Project Cascade — Kickoff', owner: 'Jules Kwon', edited: '2d', slides: 11, cover: 'PC', tint: 'oklch(0.7 0.14 75)' },
-  { id: 'eoy-retro', name: 'EOY Retro + FY27 Planning', owner: 'Mira Cohen', edited: '3d', slides: 30, cover: 'EOY', tint: 'oklch(0.6 0.18 335)' },
-  { id: 'ar-update', name: 'Analyst Relations Update', owner: 'You', edited: '1w', slides: 16, cover: 'AR', tint: 'oklch(0.55 0.1 260)' },
-  { id: 'hiring', name: 'Hiring Plan — Engineering', owner: 'Rohan Patel', edited: '2w', slides: 9, cover: 'H', tint: 'oklch(0.62 0.17 25)' },
-  { id: 'onboard', name: 'New Hire Onboarding', owner: 'HR', edited: '1mo', slides: 22, cover: 'HR', tint: 'oklch(0.6 0.08 260)' },
-];
-
 // -------------------- "Meet Stagecraft" intro deck --------------------
 export const SAMPLE_DECK = {
   id: 'intro',

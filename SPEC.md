@@ -32,7 +32,7 @@ Every feature below is tagged with its implementation status as of this spec:
 
 ### 1.2 Non-goals (current scope)
 - Real-time multi-user collaboration backend (cursors/comments are presentation-only).
-- A persistence backend (deck state is in-memory / bundled sample).
+- A database / cloud sync backend (decks persist to a local JSON snapshot in the dev server, not a remote store).
 - Full freeform vector editing (drawing engine).
 
 ### 1.3 Primary personas
@@ -70,7 +70,7 @@ src/
   main.jsx                      — ReactDOM root
   App.jsx                       — shell: topbar, nav, view routing, theming, modals, shortcuts
   styles/main.css               — full design system (~2.1k lines)
-  data/deck.js                  — ACCENTS, DECKS, SAMPLE_DECK, SPEAKER_NOTES, TEMPLATES
+  data/deck.js                  — ACCENTS, SAMPLE_DECK, SPEAKER_NOTES, TEMPLATES
   components/
     ui/Icon.jsx                 — SVG icon set (~90 paths)
     ui/Primitives.jsx           — Avatar, Button, IconButton, FieldRow, InputGroup, Seg,
@@ -130,7 +130,7 @@ Common optional fields: `id` (required), `eyebrow?` (small label above the title
 
 ### 3.3 Supporting data
 - **`ACCENTS`** — `{ id: { name, hue, chroma } }` for the 5 palettes.
-- **`DECKS`** — dashboard listing rows `{ id, name, owner, edited, slides, cover, tint }`. 🔴 static.
+- The Home dashboard now lists the **real deck library** (`GET /api/decks` → metadata records), not a static array — see §7.1/§17. (The former `DECKS` mock was removed.)
 - **`SPEAKER_NOTES`** — `{ [slideId]: string }`, surfaced in Presenter.
 - **`TEMPLATES`** — `{ id, name, cat, vibe }` for the gallery.
 
@@ -215,11 +215,13 @@ Each is a fixed visual composition driven by the slide schema (§3.2):
 
 ## 7. Views
 
-### 7.1 Home / Files — `HomeView.jsx`
-- **Sidebar** 🟢 filter state (All / Recent / Starred / Trash); counts 🔴 static.
-- **"New" cards** 🟢 — Blank/AI/Import call `onNewDeck`; "From template" opens the picker.
-- **Deck grid/list** 🟢 toggle; cards open the editor.
-- 🔴 Search input, Filter/Edited sort buttons, greeting name, and per-deck metadata are static. `DeckCover` prints a hardcoded "ATLAS · Q3 FY26" header. ⚪ Spec: covers should derive label from the deck; cards should carry real timestamps; search should filter `DECKS`.
+### 7.1 Home / Files — `HomeView.jsx` 🟢
+Backed by the real **deck library** (`GET /api/decks`, see §11.6/§17), not a mock list.
+- **Deck grid** 🟢 — lists the persisted decks; a card opens the deck (activates it server-side and adopts its content); the active deck shows a **LIVE** badge; cover tint/initials and the "edited" time derive from each deck's metadata (`lib/decksApi.js` view-model helpers). Empty state when the library has no decks.
+- **Per-card actions** 🟢 — a ⋯ menu offers **Rename** (inline edit; sets the deck title as the single source of its name) and **Delete**.
+- **"New" cards** 🟢 — Blank creates + opens a fresh deck (`POST /api/decks`); "From template" opens the picker.
+- **Deck list view** 🟡 toggle — rows open the deck; per-row rename/delete not yet wired (grid only).
+- 🔴 Search input, Filter/Edited sort buttons, greeting name, and the Recent/Starred/Trash sidebar filters are still static.
 
 ### 7.2 Editor — `Editor.jsx` + `SlideEditor.jsx`
 The core surface. Composed of toolbar, left thumbs, canvas, right inspector.
@@ -353,7 +355,7 @@ Returns `{ text }`. Errors return `{ error }` 500.
 `POST /api/export/pptx` → acknowledges; real bytes are produced client-side (§12).
 
 ### 11.6 Round-trip sync 🟢 (🟡 persistence)
-The store carries a monotonic **`rev`** counter, bumped on every mutation (deck PUT, slide REST writes, and all writing tools). `GET /api/deck/state` → `{ deck, rev }`; `PUT /api/deck` returns the new `rev`. The app-level **`useDeckSync`** hook (`src/hooks/useDeckSync.js`) reconciles on mount (adopt a pre-existing server deck, else seed ours), pushes local edits, and polls `/api/deck/state` (~1.5 s) — adopting the server deck whenever `rev` advances past the one it last wrote, while suppressing the echo PUT. **So MCP/agent edits now render live in the running UI.** 🟡 Remaining: server state is still in-memory, so a reload reseeds (see §17 durable persistence). Last-write-wins; no operational-transform/CRDT merge.
+The store carries a monotonic **`rev`** counter, bumped on every mutation (deck PUT, slide REST writes, and all writing tools). `GET /api/deck/state` → `{ deck, rev, activeId }`; `PUT /api/deck` returns `{ rev, activeId }`. The app-level **`useDeckSync`** hook (`src/hooks/useDeckSync.js`) reconciles on mount (adopt a pre-existing server deck, else seed ours), pushes local edits, and polls `/api/deck/state` (~1.5 s) — adopting the server deck whenever `rev` advances past the one it last wrote, while suppressing the echo PUT. It also **tags each write with `?forId=<activeId>`** so a stale in-flight PUT is dropped (not applied to a deck the user just switched to), and exposes `adopt(deck, rev, id)` for the open path to adopt without echoing. **MCP/agent edits render live, and edits are durable** (§17). Last-write-wins; no operational-transform/CRDT merge.
 
 ---
 
@@ -403,9 +405,10 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 | Tweaks (theme/accent/density/layout) | `localStorage['stagecraft.tw']` | 🟢 |
 | AI settings | `localStorage['stagecraft.ai']` | 🟢 (🟡 top-p excluded) |
 | Active view | `localStorage['stagecraft.view']` | 🟢 |
-| Deck content | React state + in-memory server | 🟡 not durable |
+| Deck content | React state + in-memory server | 🟢 |
+| Deck library | JSON snapshot `.stagecraft-decks.json` (load on boot, debounced write on `rev`, flush on exit) | 🟢 durable |
 
-⚪ Spec: durable deck store (file/db) behind `/api/deck`; multi-deck support keyed by `DECKS`.
+🟢 The deck store is now a **multi-deck library** (decks keyed by id + an `activeId`) persisted to disk; the Home view lists/opens/creates/renames/deletes real decks. Edits survive reload and dev-server restart.
 
 ---
 
@@ -427,9 +430,9 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 | Inspector Design/Animate, timeline | 🔴 |
 | Home/Sorter secondary controls, drag-reorder | 🔴 → ⚪ |
 | Templates → real starter decks | 🟡 → ⚪ |
-| Editor ↔ server round-trip | 🟢 (🟡 in-memory only) |
+| Editor ↔ server round-trip | 🟢 |
 | Collaboration | 🔴 → ⚪ |
-| Durable persistence | ⚪ |
+| Durable persistence + multi-deck library | 🟢 |
 
 ---
 
@@ -437,10 +440,10 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 
 1. ~~**MCP round-trip** — editor `GET`/polls `/api/deck` so agent edits render live.~~ ✅ **Done** — `rev` counter + `/api/deck/state` + `useDeckSync` (§11.6). _Next: durable persistence (§17) so reloads survive._
 2. ~~**Co-pilot applies edits** — parse replies and commit through editor callbacks.~~ ✅ **Done** — `editSlide` → patch → `applySlidePatch` via `onApplyAIPatch` (§8.2).
-3. **Real selection & direct manipulation** — element model + click/drag/resize; bind Properties panel. _(§9)_
-4. **Drag-to-reorder** slides/sections in Thumbs + Sorter. _(§7.2.3, §7.3)_
-5. **Chart-to-image in PPTX** + roadmap timeline; wire export options. _(§12, §13)_
-6. **Templates seed real decks**; persist top-p; genericize Home/`DeckCover` strings; duplicate-slide. _(§14, §7.4, §7.1, §7.2.1)_
-7. **Durable persistence** + multi-deck. _(§17)_
+3. ~~**Real selection & direct manipulation** — element model + click/drag/resize/rotate; multi-select/align/distribute.~~ ✅ **Done** — free-form `elements` layer with select/marquee/move/resize/rotate + align (H+V)/distribute (§9). _(Properties panel binds the single selection; per-element typography still ⚪.)_
+4. ~~**Durable persistence + multi-deck library**~~ ✅ **Done** — disk-persisted deck library; Home lists/opens/creates/renames/deletes real decks (§7.1, §17). _Follow-up: seed via `POST /api/decks` to remove the last untagged-write window; list-view rename/delete._
+5. **Drag-to-reorder** slides/sections in Thumbs + Sorter. _(§7.2.3, §7.3)_
+6. **Chart-to-image in PPTX** + roadmap timeline; wire export options. _(§12, §13)_
+7. **Templates seed real decks**; persist top-p; genericize Home/`DeckCover` strings; duplicate-slide. _(§14, §7.4, §7.1, §7.2.1)_
 8. **Presenter** laser-tracks-pointer + blackout. _(§7.5)_
 9. **Collaboration** presence + comments. _(§16)_

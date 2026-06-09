@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, IconButton } from '../ui/Primitives.jsx';
 import { themeTint, initials, relativeTime } from '../../lib/decksApi.js';
@@ -29,11 +29,29 @@ function DeckCover({ deck }) {
   );
 }
 
-export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemplates }) {
+export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemplates, onRenameDeck, onDeleteDeck }) {
   const [filter, setFilter] = useState('all');
   const [view, setView] = useState('grid');
+  const [menuId, setMenuId] = useState(null);   // card whose actions menu is open
+  const [renaming, setRenaming] = useState(null); // card being renamed inline
+  const [renameValue, setRenameValue] = useState('');
 
   const cards = decks.map(toCard);
+
+  // A rename session ends exactly once. Enter/blur both route here, and clearing
+  // `renaming` unmounts the input which fires another blur — the ref makes that
+  // re-entry a no-op (a stale-closure state check wouldn't, since the unmounting
+  // input's handler closes over the pre-clear `renaming`). Escape ends without
+  // committing.
+  const renameSettled = useRef(false);
+  const startRename = (card) => { renameSettled.current = false; setMenuId(null); setRenaming(card.id); setRenameValue(card.name); };
+  const endRename = (id, commit) => {
+    if (renameSettled.current) return;
+    renameSettled.current = true;
+    const name = renameValue.trim();
+    setRenaming(null);
+    if (commit && name) onRenameDeck?.(id, name);
+  };
 
   const sections = [
     { id: 'all',     label: 'All files',  count: cards.length, icon: 'grid' },
@@ -123,8 +141,33 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
                 </div>
                 <div className="info">
                   <div className="title">
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
+                    {renaming === d.id ? (
+                      <input
+                        autoFocus
+                        className="deck-rename"
+                        value={renameValue}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') endRename(d.id, true);
+                          else if (e.key === 'Escape') endRename(d.id, false);
+                        }}
+                        onBlur={() => endRename(d.id, true)}
+                        style={{ flex: 1, minWidth: 0, font: 'inherit', fontSize: 13, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--accent)', background: 'var(--bg)', color: 'var(--ink)' }}
+                      />
+                    ) : (
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
+                    )}
                     {d.active && <span className="badge" style={{ background: 'var(--accent-wash)', color: 'var(--accent)' }}>LIVE</span>}
+                    <div style={{ marginLeft: 'auto', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                      <IconButton name="more-h" size={13} title={`Actions: ${d.name}`} onClick={() => setMenuId(menuId === d.id ? null : d.id)} />
+                      {menuId === d.id && (
+                        <div className="deck-menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 10, background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: 'var(--shadow-2)', padding: 4, minWidth: 120 }}>
+                          <button className="menu-item" style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', background: 'none', border: 0, color: 'var(--ink)', cursor: 'pointer', borderRadius: 4 }} onClick={() => startRename(d)}>Rename</button>
+                          <button className="menu-item" style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', background: 'none', border: 0, color: 'var(--danger)', cursor: 'pointer', borderRadius: 4 }} onClick={() => { setMenuId(null); onDeleteDeck?.(d.id); }}>Delete</button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="sub">
                     <span>{d.slides} slides</span>
