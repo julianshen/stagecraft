@@ -112,6 +112,16 @@ export function elementsInMarquee(els, x1, y1, x2, y2) {
     .map((e) => e.id);
 }
 
+// Rotation (whole degrees, normalized to [0,360)) of element `el` so its top
+// points toward the pointer (px, py) in slide coords. The +90 puts 0° at
+// "pointer straight up" (the rotate handle sits above the element).
+export function rotateElement(el, px, py) {
+  const cx = el.x + el.w / 2;
+  const cy = el.y + el.h / 2;
+  const deg = Math.round(Math.atan2(py - cy, px - cx) * 180 / Math.PI + 90);
+  return { ...el, rot: ((deg % 360) + 360) % 360 };
+}
+
 // Immutably transform the `elements` array of slide `slideId` via `fn`.
 export function updateSlideElements(deck, slideId, fn) {
   if (!deck) return deck;
