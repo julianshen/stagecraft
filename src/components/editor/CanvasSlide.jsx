@@ -146,8 +146,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       removeListeners();
       setDrag(null);
       // Commit only when the angle actually changed (no rev-bumping no-op write).
+      // A missing rot means the default 0°, so normalize before comparing.
       const rotated = latest.get(el.id);
-      if (rotated && rotated.rot !== el.rot) onUpdateElements?.(latest);
+      if (rotated && rotated.rot !== (el.rot ?? 0)) onUpdateElements?.(latest);
     }
     function cancel() { removeListeners(); setDrag(null); }
     window.addEventListener('pointermove', move);

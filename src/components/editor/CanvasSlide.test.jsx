@@ -139,6 +139,19 @@ describe('CanvasSlide drag', () => {
     expect(onUpdateElements).not.toHaveBeenCalled();
   });
 
+  it('does not commit when rotating a default (rot-less) element to 0°', () => {
+    const onUpdateElements = vi.fn();
+    const oneSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 100 }] }; // rot undefined
+    const { container } = render(
+      <CanvasSlide slide={oneSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    fire(container.querySelector('.rotate-handle'), 'pointerdown', { clientX: 50, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 50, clientY: -50 }); // straight up → 0°, the implicit default
+    fire(window, 'pointerup', { clientX: 50, clientY: -50 });
+    expect(onUpdateElements).not.toHaveBeenCalled();
+  });
+
   it('ignores a non-primary button on the rotate handle', () => {
     const onUpdateElements = vi.fn();
     const oneSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 100 }] };
