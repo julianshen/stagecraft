@@ -229,7 +229,7 @@ The core surface. Composed of toolbar, left thumbs, canvas, right inspector.
 #### 7.2.1 Editor wrapper (`Editor.jsx`) 🟢
 Owns a deep-cloned working `deck` and the current slide id. Exposes mutation callbacks and **syncs `deck → PUT /api/deck`** on every change.
 
-Mutations: `addComponent(id)`, `addText(style)`, `addTable(rows,cols)`, `addChart(type)`, `changeLayout(layout)`, `changeTheme(theme)`, `deleteSlide(id)`, `onNewSlide`. 🔴 `onDuplicateSlide` is a no-op (⚪ should clone the current slide with a new id and insert after it).
+Mutations: `addComponent(id)`, `addText(style)`, `addTable(rows,cols)`, `addChart(type)`, `changeLayout(layout)`, `changeTheme(theme)`, `deleteSlide(id)`, `onNewSlide`, `duplicateSlide(id)`. 🟢 **Duplicate slide** deep-clones the current slide with fresh slide + element ids, inserts the copy right after it in its section (`duplicateSlide` in `lib/deckOrder.js`), and selects it.
 
 #### 7.2.2 Toolbar (`SlideEditor.jsx`)
 | Group | Control | Status |
@@ -444,6 +444,6 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 4. ~~**Durable persistence + multi-deck library**~~ ✅ **Done** — disk-persisted deck library; Home lists/opens/creates/renames/deletes real decks (§7.1, §17). _Follow-up: seed via `POST /api/decks` to remove the last untagged-write window; list-view rename/delete._
 5. **Drag-to-reorder** — ✅ Thumbs (left rail) via `moveSlide` (§7.2.3); ⚪ remaining: Sorter view + section reordering/CRUD. _(§7.3)_
 6. ~~**Chart in PPTX**~~ ✅ **Done** — native editable `addChart` via `chartSpec`; canvas + export share `chartData` so charts are data-driven and match (§12). ⚪ Remaining: roadmap-layout timeline; wire export-modal range/quality/notes options. _(§12, §13)_
-7. ~~**Templates seed real decks**~~ ✅ **Done** — the picker creates a themed library deck via `templateDeck` + `createDeck` (§14). ⚪ Remaining: persist top-p; genericize the `DeckCover` chrome string; duplicate-slide; per-template multi-slide skeletons. _(§7.4, §7.1, §7.2.1)_
+7. ~~**Templates seed real decks**~~ ✅ **Done** — the picker creates a themed library deck via `templateDeck` + `createDeck` (§14). ⚪ Remaining: persist top-p; genericize the `DeckCover` chrome string; per-template multi-slide skeletons. _(§7.4, §7.1)_ (Duplicate-slide ✅ §7.2.1.)
 8. **Presenter** laser-tracks-pointer + blackout. _(§7.5)_
 9. **Collaboration** presence + comments. _(§16)_

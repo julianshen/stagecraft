@@ -4,7 +4,7 @@ import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
 import { createElement, updateSlideElements, alignElements, distributeElements } from '../../lib/elements.js';
-import { moveSlide } from '../../lib/deckOrder.js';
+import { moveSlide, duplicateSlide } from '../../lib/deckOrder.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
   const [curId, setCurId] = useState(() => {
@@ -69,6 +69,21 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
       }));
       return next;
     });
+  }
+
+  // Duplicate the current slide (deep clone with fresh ids, inserted after it)
+  // and select the copy. Decide against the render-time deck via duplicateSlide
+  // (its null contract is the single source of truth for "nothing to duplicate"),
+  // then re-apply through the updater against the freshest deck with the SAME id
+  // so selection matches — matching the other mutations and avoiding a
+  // stale-closure overwrite racing the sync poll. Bailing on a null result means
+  // we never select a phantom id when the op is a no-op.
+  function duplicateCurrentSlide() {
+    const result = duplicateSlide(deck, curId);
+    if (!result) return;
+    const { newId } = result;
+    onDeckChange(prev => duplicateSlide(prev, curId, newId)?.deck ?? prev);
+    setCurId(newId);
   }
 
   // Apply an AI-generated patch to a specific slide (Co-pilot edits). The target
@@ -204,6 +219,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onChangeTheme: changeTheme,
         onNewSlide: () => addComponent('text'),
         onDeleteSlide: deleteSlide,
+        onDuplicateSlide: duplicateCurrentSlide,
         onReorderSlide: (slideId, toSectionId, toIndex) => onDeckChange(prev => moveSlide(prev, slideId, toSectionId, toIndex)),
         onApplyAIPatch: applyAIPatch,
       }}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { flattenDeck, moveSlide } from './deckOrder.js';
+import { flattenDeck, moveSlide, duplicateSlide } from './deckOrder.js';
 
 describe('flattenDeck', () => {
   const deck = {
@@ -86,5 +86,69 @@ describe('moveSlide', () => {
     moveSlide(d, 'a', 's2', 0);
     expect(d.sections[0].slides).toEqual(['a', 'b', 'c']);
     expect(d.sections[1].slides).toEqual(['d', 'e']);
+  });
+});
+
+describe('duplicateSlide', () => {
+  const deck = () => ({
+    sections: [
+      { id: 's1', name: 'Intro', slides: ['a', 'b'] },
+      { id: 's2', name: 'End', slides: ['c'] },
+    ],
+    slides: [
+      { id: 'a', layout: 'cover', title: 'A' },
+      { id: 'b', layout: 'text', title: 'B', elements: [{ id: 'e1', type: 'text', content: 'hi' }] },
+      { id: 'c', layout: 'thanks' },
+    ],
+  });
+  const order = (d) => flattenDeck(d).map((s) => s.id);
+
+  it('inserts a clone right after the original in its section', () => {
+    const { deck: r, newId } = duplicateSlide(deck(), 'a');
+    expect(r.sections[0].slides).toEqual(['a', newId, 'b']);
+    expect(order(r)).toEqual(['a', newId, 'b', 'c']);
+    expect(r.slides.find((s) => s.id === newId).title).toBe('A'); // same content
+  });
+
+  it('gives the clone (and its elements) fresh ids', () => {
+    const { deck: r, newId } = duplicateSlide(deck(), 'b');
+    expect(newId).not.toBe('b');
+    const clone = r.slides.find((s) => s.id === newId);
+    expect(clone.elements[0].id).not.toBe('e1'); // element ids re-issued
+    expect(clone.elements[0].content).toBe('hi'); // content preserved
+  });
+
+  it('deep-clones so editing the copy does not touch the original', () => {
+    const { deck: r, newId } = duplicateSlide(deck(), 'b');
+    const clone = r.slides.find((s) => s.id === newId);
+    clone.elements[0].content = 'changed';
+    const orig = r.slides.find((s) => s.id === 'b');
+    expect(orig.elements[0].content).toBe('hi');
+  });
+
+  it('uses a caller-supplied newId (so the caller can select the copy)', () => {
+    const { deck: r, newId } = duplicateSlide(deck(), 'a', 'my-copy');
+    expect(newId).toBe('my-copy');
+    expect(r.sections[0].slides).toEqual(['a', 'my-copy', 'b']);
+    expect(r.slides.find((s) => s.id === 'my-copy').title).toBe('A');
+  });
+
+  it('returns null for an unknown slide or a malformed deck', () => {
+    expect(duplicateSlide(deck(), 'zzz')).toBeNull();
+    expect(duplicateSlide(null, 'a')).toBeNull();
+  });
+
+  it('returns null for a null/undefined slide id (no selection to duplicate)', () => {
+    // The Editor's duplicate handler relies on this: when nothing valid is
+    // selected the op no-ops, so the caller must not select a phantom id.
+    expect(duplicateSlide(deck(), null)).toBeNull();
+    expect(duplicateSlide(deck(), undefined)).toBeNull();
+  });
+
+  it('does not mutate the input deck', () => {
+    const d = deck();
+    duplicateSlide(d, 'a');
+    expect(d.slides).toHaveLength(3);
+    expect(d.sections[0].slides).toEqual(['a', 'b']);
   });
 });
