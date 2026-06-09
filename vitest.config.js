@@ -23,8 +23,12 @@ export default defineConfig({
         'src/lib/chartSpec.js',
         'src/lib/templateDeck.js',
         'src/hooks/useDeckSync.js',
+        'src/hooks/useReorderDrag.js',
         'src/data/deck.js',
         'src/components/editor/CanvasSlide.jsx',
+        'src/components/views/SorterView.jsx',
+        'src/components/sorter/SorterGrid.jsx',
+        'src/components/sorter/SorterToolbar.jsx',
       ],
       thresholds: {
         lines: 90,

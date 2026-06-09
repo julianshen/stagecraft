@@ -191,7 +191,7 @@ export default function App() {
       )}
 
       {view === 'sorter' && (
-        <SorterView deck={deck} onBack={() => setView('editor')} onOpenSlide={() => setView('editor')}/>
+        <SorterView deck={deck} onDeckChange={setDeck} onBack={() => setView('editor')} onOpenSlide={() => setView('editor')}/>
       )}
 
       {view === 'settings' && (

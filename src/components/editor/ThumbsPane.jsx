@@ -1,20 +1,11 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import Icon from '../ui/Icon.jsx';
 import { IconButton, ScaledSlide } from '../ui/Primitives.jsx';
+import { useReorderDrag } from '../../hooks/useReorderDrag.js';
 
 export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx, comments = [], onNewSlide, onReorder }) {
-  // Drag-to-reorder: remember the dragged slide id; on drop, insert it just
-  // before the slide it landed on (within or across sections). Computing the
-  // target index against the section minus the dragged slide makes a same-section
-  // move land exactly before the drop target (no off-by-one from the removal).
-  const dragId = useRef(null);
-  const handleDrop = (dropSid, sec) => {
-    const src = dragId.current;
-    dragId.current = null;
-    if (!src || src === dropSid || !onReorder) return;
-    const toIndex = sec.slides.filter((id) => id !== src).indexOf(dropSid);
-    onReorder(src, sec.id, toIndex < 0 ? sec.slides.length : toIndex);
-  };
+  // Drag-to-reorder mechanics shared with the Sorter grid.
+  const dragProps = useReorderDrag(onReorder);
   return (
     <aside className="leftpane">
       <div className="pane-header">
@@ -46,11 +37,7 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
                   data-sid={sid}
                   className={`thumb ${sid === curId ? 'active' : ''}`}
                   onClick={() => onPick(sid)}
-                  draggable
-                  onDragStart={(e) => { dragId.current = sid; e.dataTransfer?.setData?.('text/plain', sid); }}
-                  onDragEnd={() => { dragId.current = null; }}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => { e.preventDefault(); handleDrop(sid, sec); }}
+                  {...dragProps(sid, sec)}
                 >
                   <div className="thumb-num">{String(idx + 1).padStart(2, '0')}</div>
                   <div className="thumb-slide">
