@@ -249,7 +249,7 @@ function addRoadmapSlide(pptx, slide, tc) {
         // Keep the label box inside the bar so short bars don't spill their text
         // onto the dark slide background (where 'planned' dark text would vanish).
         sld.addText(it.lbl, {
-          x: bx + 0.06, y: y + laneH / 2 - barH / 2, w: Math.max(0.3, bw - 0.12), h: barH,
+          x: bx + 0.06, y: y + laneH / 2 - barH / 2, w: Math.max(0.05, bw - 0.12), h: barH,
           fontSize: 8, color: it.state === 'planned' ? '333333' : 'FFFFFF', fontFace: 'Inter', valign: 'middle',
         });
       }

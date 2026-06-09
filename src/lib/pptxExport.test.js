@@ -76,15 +76,16 @@ describe('addRoadmapSlide (PPTX timeline)', () => {
     expect(textsOf(last())).toContain('My Plan');
   });
 
-  it('keeps a bar label box within its bar so short bars do not spill onto the background', async () => {
-    // 12 months makes a 1-month bar narrow (~0.59"), where the old Math.max(bw,1.3) overflowed.
+  it('keeps a bar label box within its bar even when the bar hits its minimum width', async () => {
+    // 100 months drives the 1-month bar to its 0.12" floor — the case where a
+    // 0.3" label-width floor would overflow the bar.
     await exportToPPTX(deckOf({
-      months: Array.from({ length: 12 }, (_, i) => `M${i + 1}`),
+      months: Array.from({ length: 100 }, (_, i) => `M${i + 1}`),
       lanes: [{ name: 'L', items: [{ t: 0, d: 1, lbl: 'LongLabel', state: 'planned' }] }],
     }));
     const s = last();
     const bar = s.shapes.find((sh) => sh.type === 'roundRect');
     const label = s.texts.find((x) => x.t === 'LongLabel');
-    expect(label.o.w).toBeLessThanOrEqual(bar.o.w); // label stays inside the bar
+    expect(label.o.w).toBeLessThanOrEqual(bar.o.w); // label stays inside the bar at minimum width
   });
 });
