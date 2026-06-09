@@ -27,7 +27,9 @@ export function chartData(slide) {
   const rawSeries = Array.isArray(chart.series) && chart.series.length ? chart.series : DEFAULT_SERIES;
   const n = categories.length;
   const series = rawSeries.map((s, i) => {
-    const values = (s && Array.isArray(s.values) ? s.values : []).slice(0, n);
+    // Coerce to finite numbers (non-numeric → 0) so neither the SVG coords nor
+    // the pptxgenjs chart XML get NaN; clip to and pad to the category count.
+    const values = (s && Array.isArray(s.values) ? s.values : []).slice(0, n).map((v) => (Number.isFinite(Number(v)) ? Number(v) : 0));
     while (values.length < n) values.push(0);
     return { name: (s && s.name) || `Series ${i + 1}`, values };
   });

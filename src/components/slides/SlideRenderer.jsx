@@ -18,14 +18,14 @@ export function SlideChrome({ slide, deck }) {
   );
 }
 
-// ---- Chart SVG (data-driven; see C_DEMO/chartCeil helpers below the imports) ----
+// ---- Chart SVG (data-driven; shared C_FALLBACK + chartCeil helpers below) ----
 const C_ACCENT = 'oklch(0.62 0.17 265)';
 const C_SLICES = ['oklch(0.62 0.17 265)', 'oklch(0.62 0.13 155)', 'oklch(0.7 0.15 75)', 'oklch(0.6 0.18 335)', 'oklch(0.55 0.12 200)', 'oklch(0.6 0.14 25)'];
-const C_DEMO = {
-  line:  { categories: ['Q4 FY24', 'Q1', 'Q2', 'Q3', 'Q4', 'Q1 FY26', 'Q2', 'Q3'], values: [112, 120, 131, 142, 149, 160, 170, 184] },
-  bar:   { categories: ['FY22', 'FY23', 'FY24', 'FY25', 'FY26'], values: [112, 131, 149, 170, 184] },
-  donut: { categories: ['Enterprise', 'Mid-market', 'SMB', 'Public sector'], values: [61, 26, 10, 3] },
-};
+// Shared default (same as the PPTX export) for a chart called without data, so
+// the canvas and the export never disagree. ChartByType always passes real data.
+const C_FALLBACK = chartData();
+const FB_CATS = C_FALLBACK.categories;
+const FB_VALS = C_FALLBACK.series[0].values;
 // Round a max up to a "nice" axis ceiling (1/2/5 × 10^k); zero-based ticks.
 function chartCeil(v) {
   if (!(v > 0)) return 10;
@@ -41,8 +41,8 @@ const chartTicks = (top) => [0, 1, 2, 3, 4].map((i) => Math.round((top * i) / 4)
 
 export function LineChart({ categories, values, plan } = {}) {
   const gid = 'lg' + useId().replace(/:/g, ''); // unique per instance — multiple charts share a DOM (thumbs + canvas)
-  const vals = values && values.length ? values : C_DEMO.line.values;
-  const labels = categories && categories.length ? categories : C_DEMO.line.categories;
+  const vals = values && values.length ? values : FB_VALS;
+  const labels = categories && categories.length ? categories : FB_CATS;
   const W = 1600, H = 560, P = 60;
   const top = chartCeil(Math.max(...vals));
   const x = i => P + (i * (W - P * 2)) / Math.max(1, vals.length - 1);
@@ -72,7 +72,7 @@ export function LineChart({ categories, values, plan } = {}) {
       {vals.map((v, i) => (
         <circle key={i} cx={x(i)} cy={y(v)} r="5" fill="white" stroke={C_ACCENT} strokeWidth="2.5" />
       ))}
-      <g transform={`translate(${x(vals.length - 1) - 96},${Math.max(P + 22, y(vals[vals.length - 1]) - 30)})`}>
+      <g transform={`translate(${Math.max(P, x(vals.length - 1) - 96)},${Math.max(P + 22, y(vals[vals.length - 1]) - 30)})`}>
         <rect x="0" y="-20" width="92" height="32" rx="4" fill={C_ACCENT} />
         <text x="46" y="1" fill="white" fontSize="18" fontFamily="JetBrains Mono" fontWeight="600" textAnchor="middle">{vals[vals.length - 1]}</text>
       </g>
@@ -81,8 +81,8 @@ export function LineChart({ categories, values, plan } = {}) {
 }
 
 export function BarChart({ categories, values } = {}) {
-  const vals = values && values.length ? values : C_DEMO.bar.values;
-  const labels = categories && categories.length ? categories : C_DEMO.bar.categories;
+  const vals = values && values.length ? values : FB_VALS;
+  const labels = categories && categories.length ? categories : FB_CATS;
   const W = 1600, H = 560, P = 60;
   const top = chartCeil(Math.max(...vals));
   const bw = (W - P * 2) / vals.length;
@@ -109,8 +109,8 @@ export function BarChart({ categories, values } = {}) {
 
 export function AreaChart({ categories, values } = {}) {
   const gid = 'ag' + useId().replace(/:/g, ''); // unique per instance (see LineChart)
-  const vals = values && values.length ? values : C_DEMO.line.values;
-  const labels = categories && categories.length ? categories : C_DEMO.line.categories;
+  const vals = values && values.length ? values : FB_VALS;
+  const labels = categories && categories.length ? categories : FB_CATS;
   const W = 1600, H = 560, P = 60;
   const top = chartCeil(Math.max(...vals));
   const x = i => P + (i * (W - P * 2)) / Math.max(1, vals.length - 1);
@@ -142,8 +142,8 @@ export function AreaChart({ categories, values } = {}) {
 }
 
 export function DonutChart({ categories, values } = {}) {
-  const vals = values && values.length ? values : C_DEMO.donut.values;
-  const labels = categories && categories.length ? categories : C_DEMO.donut.categories;
+  const vals = values && values.length ? values : FB_VALS;
+  const labels = categories && categories.length ? categories : FB_CATS;
   const sum = vals.reduce((a, b) => a + b, 0);
   const total = sum || 1; // avoid /0 in arc/percentage math; the label shows the real sum
   const cx = 280, cy = 280, r = 200, rin = 120;
@@ -161,8 +161,10 @@ export function DonutChart({ categories, values } = {}) {
     <svg viewBox="0 0 1200 560" width="100%" style={{ display: 'block' }}>
       <g>
         {vals.map((v, i) => {
-          const d = arc(acc, acc + (v / total) * 360);
-          acc += (v / total) * 360;
+          const ang = (v / total) * 360;
+          // A full 360° arc has identical start/end and renders nothing — clamp it.
+          const d = arc(acc, acc + Math.min(ang, 359.99));
+          acc += ang;
           return <path key={i} d={d} fill={C_SLICES[i % C_SLICES.length]}/>;
         })}
         <text x={cx} y={cy - 6} fontSize="44" fontFamily="JetBrains Mono" fontWeight="600" fill="#222" textAnchor="middle">{sum}</text>
@@ -170,7 +172,8 @@ export function DonutChart({ categories, values } = {}) {
       </g>
       <g transform="translate(640, 130)">
         {vals.map((v, i) => (
-          <g key={i} transform={`translate(0, ${i * 72})`}>
+          // Spacing shrinks as slices grow so the legend doesn't overflow the SVG.
+          <g key={i} transform={`translate(0, ${i * Math.min(72, 420 / vals.length)})`}>
             <rect x="0" y="0" width="26" height="26" rx="5" fill={C_SLICES[i % C_SLICES.length]}/>
             <text x="40" y="20" fontSize="26" fontFamily="Inter" fontWeight="600" fill="#222">{labels[i] || `Series ${i + 1}`}</text>
             <text x="440" y="20" fontSize="26" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{Math.round((v / total) * 100)}%</text>
@@ -181,11 +184,12 @@ export function DonutChart({ categories, values } = {}) {
   );
 }
 
-// Dispatch by chart type, feeding each chart the slide's data (shared with the
-// PPTX export via chartData) — or nothing, so it uses its demo data.
+// Dispatch by chart type, always feeding each chart the slide's data through the
+// shared chartData helper — the same source the PPTX export uses — so a data-less
+// chart shows the identical default on canvas and in the export.
 export function ChartByType({ type, slide }) {
-  const d = slide && slide.chart ? chartData(slide) : null;
-  const props = d ? { categories: d.categories, values: d.series[0]?.values, plan: d.series[1]?.values } : {};
+  const d = chartData(slide);
+  const props = { categories: d.categories, values: d.series[0]?.values, plan: d.series[1]?.values };
   if (type === 'bar') return <BarChart {...props}/>;
   if (type === 'area') return <AreaChart {...props}/>;
   if (type === 'donut' || type === 'pie') return <DonutChart {...props}/>;

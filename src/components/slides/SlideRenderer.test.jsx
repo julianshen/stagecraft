@@ -90,8 +90,15 @@ describe('ChartByType (data-driven charts)', () => {
     expect(container.textContent).toContain('A');
   });
 
-  it('falls back to demo data when the slide carries no chart payload', () => {
+  it('falls back to the shared default (same as the export) when the slide has no chart', () => {
     const { container } = render(<ChartByType type="bar" slide={{}} />);
-    expect(container.textContent).toContain('FY26'); // a demo bar label
+    expect(container.textContent).toContain('Q1'); // chartData() default category — matches chartSpec
+  });
+
+  it('renders a 100% single-slice donut (clamped arc, not blank)', () => {
+    const slide = { chart: { categories: ['Only'], series: [{ values: [5] }] } };
+    const { container } = render(<ChartByType type="donut" slide={slide} />);
+    expect(container.querySelector('path')).toBeTruthy(); // arc drawn, not collapsed
+    expect(container.textContent).toContain('100%');
   });
 });

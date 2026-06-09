@@ -9,6 +9,11 @@ describe('chartData', () => {
     expect(series[0].values.length).toBe(categories.length);
   });
 
+  it('coerces non-numeric values to 0', () => {
+    const d = chartData({ chart: { categories: ['a', 'b', 'c'], series: [{ values: [5, 'oops', null] }] } });
+    expect(d.series[0].values).toEqual([5, 0, 0]);
+  });
+
   it('tolerates a null/undefined slide', () => {
     for (const arg of [null, undefined]) {
       const { categories, series } = chartData(arg);
