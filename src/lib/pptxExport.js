@@ -155,7 +155,7 @@ function addChartSlide(pptx, slide, tc) {
   const { type, barDir, data } = chartSpec(slide);
   sld.addChart(type, data, {
     x: 0.5, y: 1.0, w: 9, h: 4.0,
-    chartColors: CHART_SERIES_HEX, // same ordered palette the canvas uses, so colours match
+    chartColors: [...CHART_SERIES_HEX], // same palette the canvas uses; copy so pptxgenjs can't mutate the frozen source
     // A doughnut has no category axis, so its slices are only identifiable via
     // the legend + on-slice percentages — always show those for doughnut/pie.
     showLegend: data.length > 1 || type === 'doughnut', legendPos: 'b', legendColor: 'AAAAAA', legendFontFace: 'Inter',

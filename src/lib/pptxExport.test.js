@@ -103,6 +103,7 @@ describe('addChartSlide (PPTX chart)', () => {
     await exportToPPTX(chartDeck());
     const chart = last().charts[0];
     expect(chart.o.chartColors).toEqual(CHART_SERIES_HEX);
+    expect(chart.o.chartColors).not.toBe(CHART_SERIES_HEX); // a copy, so pptxgenjs can't mutate the frozen source
     expect(chart.data).toHaveLength(2);      // both series exported
     expect(chart.o.showLegend).toBe(true);   // multi-series legend
   });

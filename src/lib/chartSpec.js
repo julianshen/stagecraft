@@ -23,8 +23,8 @@ const DEFAULT_SERIES = [{ name: 'Coverage', values: [112, 131, 149, 184] }];
 // the canvas. Each hex is the exact sRGB of its oklch sibling (OKLab→linear
 // sRGB→gamma, D65) — a test recomputes the conversion and asserts equality, so
 // editing one array without regenerating the other fails CI.
-export const CHART_SERIES_OKLCH = ['oklch(0.62 0.17 265)', 'oklch(0.62 0.13 155)', 'oklch(0.7 0.15 75)', 'oklch(0.6 0.18 335)', 'oklch(0.55 0.12 200)', 'oklch(0.6 0.14 25)'];
-export const CHART_SERIES_HEX = ['537FEB', '349D62', 'D48E00', 'BE4DAA', '00858D', 'C65954'];
+export const CHART_SERIES_OKLCH = Object.freeze(['oklch(0.62 0.17 265)', 'oklch(0.62 0.13 155)', 'oklch(0.7 0.15 75)', 'oklch(0.6 0.18 335)', 'oklch(0.55 0.12 200)', 'oklch(0.6 0.14 25)']);
+export const CHART_SERIES_HEX = Object.freeze(['537FEB', '349D62', 'D48E00', 'BE4DAA', '00858D', 'C65954']);
 
 // Normalized chart data for a slide — shared by the PPTX exporter (chartSpec)
 // and the on-canvas chart renderers so both draw the same numbers. Falls back to

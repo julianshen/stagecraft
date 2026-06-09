@@ -7,6 +7,9 @@ describe('chart series palette', () => {
     expect(CHART_SERIES_OKLCH.length).toBeGreaterThanOrEqual(4);
     CHART_SERIES_OKLCH.forEach((c) => expect(c).toMatch(/^oklch\(/));
     CHART_SERIES_HEX.forEach((c) => expect(c).toMatch(/^[0-9A-F]{6}$/i));
+    // Frozen so a consumer can't mutate the shared source of truth.
+    expect(Object.isFrozen(CHART_SERIES_OKLCH)).toBe(true);
+    expect(Object.isFrozen(CHART_SERIES_HEX)).toBe(true);
   });
 
   it('keeps each hex the exact sRGB of its oklch sibling, so the two cannot drift', () => {
