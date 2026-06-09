@@ -220,8 +220,8 @@ export async function handleApiRequest(store, req, deps = {}) {
 
   if (path === '/api/health' && method === 'GET') return ok({ ok: true, version: '1.0.0' });
 
-  // Round-trip polling endpoint: deck content + revision in one read.
-  if (path === '/api/deck/state' && method === 'GET') return ok({ deck: store.deck ?? null, rev: store.rev });
+  // Round-trip polling endpoint: deck content + revision (+ active deck id) in one read.
+  if (path === '/api/deck/state' && method === 'GET') return ok({ deck: store.deck ?? null, rev: store.rev, activeId: store.activeId });
 
   // ---- Multi-deck library ----
   if (path === '/api/decks') {
@@ -274,7 +274,16 @@ export async function handleApiRequest(store, req, deps = {}) {
 
   if (path === '/api/deck') {
     if (method === 'GET') return ok(store.deck || {});
-    if (method === 'PUT') { store.deck = body; bump(store); return ok({ ok: true, rev: store.rev }); }
+    if (method === 'PUT') {
+      // A write may be tagged with the deck it was issued for; ignore it if the
+      // active deck has since switched, so a stale in-flight PUT can't clobber a
+      // different deck the user just opened.
+      const forId = new URLSearchParams(req.url.split('?')[1] || '').get('forId');
+      if (forId != null && forId !== store.activeId) return ok({ ok: false, ignored: true, rev: store.rev });
+      store.deck = body;
+      bump(store);
+      return ok({ ok: true, rev: store.rev });
+    }
   }
 
   if (path === '/api/slides') {

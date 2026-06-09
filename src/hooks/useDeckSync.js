@@ -45,11 +45,13 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
 
   const lastRev = useRef(null);  // the rev we last wrote or saw
   const adopted = useRef(null);  // the exact deck object we last adopted (skip its echo PUT)
+  const activeId = useRef(null); // the deck our writes are for (tags PUTs so a stale write can't clobber a switched deck)
   const [initialized, setInitialized] = useState(false);
 
-  const adopt = useCallback((serverDeck, rev) => {
+  const adopt = useCallback((serverDeck, rev, forId) => {
     lastRev.current = rev;
     adopted.current = serverDeck;
+    if (forId !== undefined) activeId.current = forId;
     onExternalRef.current(serverDeck);
   }, []);
 
@@ -63,8 +65,9 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
         // Any deck the server already holds wins — including one preloaded at
         // rev 0 (createDeckStore(initialDeck) or a future durable load). Its
         // presence, not the rev, distinguishes a loaded server from an empty one.
-        if (!cancelled && data && typeof data.rev === 'number' && data.deck) {
-          adopt(data.deck, data.rev);
+        if (!cancelled && data && typeof data.rev === 'number') {
+          if (data.activeId !== undefined) activeId.current = data.activeId;
+          if (data.deck) adopt(data.deck, data.rev, data.activeId);
         }
       } catch {
         // Server not running (static build/preview) — sync is a no-op.
@@ -79,7 +82,10 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   useEffect(() => {
     if (!initialized || deck === adopted.current) return;
     let cancelled = false;
-    fetchRef.current('/api/deck', putInit(deck))
+    // Tag the write with the deck it's for so the server drops it if the active
+    // deck has since switched (prevents a stale PUT clobbering a just-opened deck).
+    const url = activeId.current != null ? `/api/deck?forId=${encodeURIComponent(activeId.current)}` : '/api/deck';
+    fetchRef.current(url, putInit(deck))
       .then((r) => r.json())
       .then((body) => { if (!cancelled && body && typeof body.rev === 'number') lastRev.current = body.rev; })
       .catch(() => {});
@@ -92,11 +98,13 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
     const id = setInterval(async () => {
       try {
         const data = await (await fetchRef.current('/api/deck/state')).json();
-        if (stopped || !data || typeof data.rev !== 'number' || data.rev === lastRev.current) return;
+        if (stopped) return;
+        if (data && data.activeId !== undefined) activeId.current = data.activeId; // keep our write tag current
+        if (!data || typeof data.rev !== 'number' || data.rev === lastRev.current) return;
         // rev changed: keep lastRev in step even on a server reset (rev → 0 with
         // no deck, e.g. a dev-server restart) so later edits aren't missed.
         lastRev.current = data.rev;
-        if (data.deck) adopt(data.deck, data.rev);
+        if (data.deck) adopt(data.deck, data.rev, data.activeId);
       } catch {
         // transient — try again next tick
       }

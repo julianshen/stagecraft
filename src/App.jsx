@@ -72,7 +72,7 @@ export default function App() {
     try {
       const { deck: opened, rev } = await openDeck(id);
       if (!opened) return;          // no content — stay on Home rather than show a stale deck
-      adoptDeck(opened, rev);
+      adoptDeck(opened, rev, id);   // tag subsequent writes for this deck
       setView('editor');
     } catch { /* server error — stay on Home */ }
   };

@@ -10,20 +10,23 @@ const localDeck = { id: 'local', theme: 'indigo', slides: [], sections: [] };
 function makeServer(initial = { deck: null, rev: 0 }) {
   const state = { ...initial };
   const puts = [];
+  const putUrls = [];
   const fetchFn = vi.fn((url, init) => {
-    if (url === '/api/deck/state') {
-      return Promise.resolve({ json: async () => ({ deck: state.deck, rev: state.rev }) });
+    const path = url.split('?')[0];
+    if (path === '/api/deck/state') {
+      return Promise.resolve({ json: async () => ({ deck: state.deck, rev: state.rev, activeId: state.activeId }) });
     }
-    if (url === '/api/deck' && init?.method === 'PUT') {
+    if (path === '/api/deck' && init?.method === 'PUT') {
       const body = JSON.parse(init.body);
       puts.push(body);
+      putUrls.push(url);
       state.deck = body;
       state.rev += 1;
       return Promise.resolve({ json: async () => ({ ok: true, rev: state.rev }) });
     }
     return Promise.resolve({ json: async () => ({}) });
   });
-  return { state, puts, fetchFn };
+  return { state, puts, putUrls, fetchFn };
 }
 
 // Mirrors App: owns deck state and feeds setDeck back into the hook as
@@ -100,6 +103,22 @@ describe('useDeckSync', () => {
     await flush(1000); // a poll tick
     expect(controls.deck).toBe(opened);          // adopted into local state
     expect(srv.puts).toHaveLength(putsAfterSeed); // and NOT echoed back as an edit
+  });
+
+  it('tags writes with the active deck id once known (stale-write guard)', async () => {
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush(); // seed — activeId unknown, so this PUT is untagged
+    expect(srv.putUrls.at(-1)).toBe('/api/deck');
+    // The server activated deck 'B'; the client opens it.
+    srv.state.deck = { id: 'B', theme: 'amber', slides: [], sections: [] };
+    srv.state.rev = 5; srv.state.activeId = 'B';
+    await act(async () => { controls.adopt(srv.state.deck, 5, 'B'); });
+    // A subsequent edit must be tagged for 'B'.
+    const edited = { id: 'B', theme: 'coral', slides: [], sections: [] };
+    await act(async () => { controls.setDeck(edited); await vi.advanceTimersByTimeAsync(0); });
+    expect(srv.putUrls.at(-1)).toBe('/api/deck?forId=B');
   });
 
   it('pushes a local edit to the server', async () => {
