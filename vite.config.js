@@ -21,9 +21,9 @@ const store = loadStore();
 let saveTimer = null;
 let dirty = false;
 function writeSnapshot() {
-  dirty = false;
   try {
     writeFileSync(DECKS_FILE, JSON.stringify({ decks: store.decks, activeId: store.activeId }));
+    dirty = false; // only clear on success — a failed write stays pending for a later retry
   } catch (e) {
     console.error('[stagecraft] failed to persist deck library:', e);
   }
