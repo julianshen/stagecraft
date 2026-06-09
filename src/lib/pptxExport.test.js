@@ -10,10 +10,11 @@ vi.mock('pptxgenjs', () => {
     }
     addSlide() {
       const s = {
-        texts: [], shapes: [], background: null,
+        texts: [], shapes: [], charts: [], background: null,
         addText(t, o) { this.texts.push({ t, o }); },
         addShape(type, o) { this.shapes.push({ type, o }); },
-        addTable() {}, addChart() {},
+        addChart(type, data, o) { this.charts.push({ type, data, o }); },
+        addTable() {},
       };
       rec.slides.push(s);
       return s;
@@ -24,6 +25,7 @@ vi.mock('pptxgenjs', () => {
 });
 
 import { exportToPPTX } from './pptxExport.js';
+import { CHART_SERIES_HEX } from './chartSpec.js';
 
 const deckOf = (roadmap) => ({
   title: 'D', theme: 'indigo',
@@ -87,5 +89,21 @@ describe('addRoadmapSlide (PPTX timeline)', () => {
     const bar = s.shapes.find((sh) => sh.type === 'roundRect');
     const label = s.texts.find((x) => x.t === 'LongLabel');
     expect(label.o.w).toBeLessThanOrEqual(bar.o.w); // label stays inside the bar at minimum width
+  });
+});
+
+describe('addChartSlide (PPTX chart)', () => {
+  const chartDeck = () => ({
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's1', name: 'X', slides: ['c'] }],
+    slides: [{ id: 'c', layout: 'chart', chartType: 'bar', chart: { categories: ['A', 'B'], series: [{ name: 'S1', values: [1, 2] }, { name: 'S2', values: [3, 4] }] } }],
+  });
+
+  it('colours series from the shared palette (matching the canvas), not a theme-tinted one', async () => {
+    await exportToPPTX(chartDeck());
+    const chart = last().charts[0];
+    expect(chart.o.chartColors).toEqual(CHART_SERIES_HEX);
+    expect(chart.data).toHaveLength(2);      // both series exported
+    expect(chart.o.showLegend).toBe(true);   // multi-series legend
   });
 });
