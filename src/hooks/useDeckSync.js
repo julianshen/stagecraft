@@ -89,10 +89,13 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
       .then((r) => r.json())
       .then((body) => {
         if (cancelled || !body) return;
-        if (typeof body.rev === 'number') lastRev.current = body.rev;
         // Learn the active id from the write response (e.g. right after a seed
         // created it) so the very next edit is tagged without waiting for a poll.
         if (body.activeId !== undefined) activeId.current = body.activeId;
+        // A dropped (stale-tagged) write didn't take effect — don't advance
+        // lastRev, or the next poll would skip adopting the actually-active deck.
+        if (body.ignored) return;
+        if (typeof body.rev === 'number') lastRev.current = body.rev;
       })
       .catch(() => {});
     return () => { cancelled = true; };

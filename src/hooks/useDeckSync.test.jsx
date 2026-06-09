@@ -133,6 +133,26 @@ describe('useDeckSync', () => {
     expect(srv.putUrls.at(-1)).toBe('/api/deck?forId=seeded');
   });
 
+  it('does not let an ignored (dropped) write advance lastRev, so the poll still adopts the active deck', async () => {
+    const state = { deck: { id: 'A', theme: 'indigo', slides: [], sections: [] }, rev: 5, activeId: 'A' };
+    const fetchFn = vi.fn((url, init) => {
+      const path = url.split('?')[0];
+      if (path === '/api/deck/state') return Promise.resolve({ json: async () => ({ ...state }) });
+      if (path === '/api/deck' && init?.method === 'PUT') {
+        // While our tagged write was in flight, deck B became active at rev 9 — drop ours.
+        state.deck = { id: 'B', theme: 'amber', slides: [], sections: [] }; state.rev = 9; state.activeId = 'B';
+        return Promise.resolve({ json: async () => ({ ok: false, ignored: true, rev: 9, activeId: 'B' }) });
+      }
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    const controls = {};
+    render(<Harness initialDeck={state.deck} fetchFn={fetchFn} controls={controls} />);
+    await flush(); // mount adopts A @ rev 5
+    await act(async () => { controls.setDeck({ id: 'A2', theme: 'coral', slides: [], sections: [] }); await vi.advanceTimersByTimeAsync(0); });
+    await flush(1000); // poll
+    expect(controls.deck.id).toBe('B'); // adopted the now-active deck, not stuck on the dropped edit
+  });
+
   it('pushes a local edit to the server', async () => {
     const srv = makeServer({ deck: null, rev: 0 });
     const controls = {};
