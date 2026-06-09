@@ -383,8 +383,8 @@ Format chooser: **PPTX 🟢**; Keynote / PDF / PNG seq / MP4 / Link 🔴 (close 
 
 ---
 
-## 14. Templates — `TemplatePicker.jsx` 🟡
-Category-filtered gallery with visual `TemplatePreview` per `vibe`. 🟢 filter; 🔴 search; "Create deck" 🟡 just opens the editor on the sample deck. ⚪ Spec: each template should seed a real starter `Deck` (theme + section/slide skeleton) loaded into the editor.
+## 14. Templates — `TemplatePicker.jsx` 🟢
+Category-filtered gallery with visual `TemplatePreview` per `vibe`. 🟢 filter; 🟢 **picking a template creates a real library deck** — `templateDeck(template)` (`lib/templateDeck.js`) builds a themed starter (`vibe`→theme via `vibeTheme`, a cover titled after the template + a starter content slide), which `App.handlePickTemplate` persists via `createDeck(name, deck)` (`POST /api/decks`) and opens in the editor. 🔴 search. ⚪ Per-template bespoke multi-slide skeletons (currently one shared cover+intro starter).
 
 ---
 
@@ -444,6 +444,6 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 4. ~~**Durable persistence + multi-deck library**~~ ✅ **Done** — disk-persisted deck library; Home lists/opens/creates/renames/deletes real decks (§7.1, §17). _Follow-up: seed via `POST /api/decks` to remove the last untagged-write window; list-view rename/delete._
 5. **Drag-to-reorder** — ✅ Thumbs (left rail) via `moveSlide` (§7.2.3); ⚪ remaining: Sorter view + section reordering/CRUD. _(§7.3)_
 6. ~~**Chart in PPTX**~~ ✅ **Done** — native editable `addChart` via `chartSpec`; canvas + export share `chartData` so charts are data-driven and match (§12). ⚪ Remaining: roadmap-layout timeline; wire export-modal range/quality/notes options. _(§12, §13)_
-7. **Templates seed real decks**; persist top-p; genericize Home/`DeckCover` strings; duplicate-slide. _(§14, §7.4, §7.1, §7.2.1)_
+7. ~~**Templates seed real decks**~~ ✅ **Done** — the picker creates a themed library deck via `templateDeck` + `createDeck` (§14). ⚪ Remaining: persist top-p; genericize the `DeckCover` chrome string; duplicate-slide; per-template multi-slide skeletons. _(§7.4, §7.1, §7.2.1)_
 8. **Presenter** laser-tracks-pointer + blackout. _(§7.5)_
 9. **Collaboration** presence + comments. _(§16)_

@@ -14,7 +14,7 @@ describe('decksApi requests', () => {
 
   it('createDeck POSTs the name', async () => {
     const fetchFn = resolving({ id: 'new', name: 'Hi' });
-    const r = await createDeck('Hi', fetchFn);
+    const r = await createDeck('Hi', null, fetchFn);
     const [url, init] = fetchFn.mock.calls[0];
     expect(url).toBe('/api/decks');
     expect(init.method).toBe('POST');
@@ -22,10 +22,17 @@ describe('decksApi requests', () => {
     expect(r.id).toBe('new');
   });
 
-  it('createDeck sends an empty body when no name is given', async () => {
+  it('createDeck sends an empty body when no name or deck is given', async () => {
     const fetchFn = resolving({ id: 'new' });
-    await createDeck(undefined, fetchFn);
+    await createDeck(undefined, null, fetchFn);
     expect(JSON.parse(fetchFn.mock.calls[0][1].body)).toEqual({});
+  });
+
+  it('createDeck seeds the deck content when given one (templates)', async () => {
+    const fetchFn = resolving({ id: 'new', name: 'Atlas' });
+    const seed = { title: 'Atlas', theme: 'slate', sections: [], slides: [] };
+    await createDeck('Atlas', seed, fetchFn);
+    expect(JSON.parse(fetchFn.mock.calls[0][1].body)).toEqual({ name: 'Atlas', deck: seed });
   });
 
   it('openDeck activates the deck by id (encoded) and returns it', async () => {
@@ -53,7 +60,7 @@ describe('decksApi requests', () => {
 
   it('rejects on a non-ok HTTP response instead of parsing an error body as data', async () => {
     await expect(listDecks(failing(500))).rejects.toThrow();
-    await expect(createDeck('x', failing(500))).rejects.toThrow();
+    await expect(createDeck('x', null, failing(500))).rejects.toThrow();
     await expect(openDeck('x', failing(404))).rejects.toThrow();
     await expect(renameDeck('x', 'y', failing(404))).rejects.toThrow();
     await expect(deleteDeck('x', failing(404))).rejects.toThrow();

@@ -14,6 +14,7 @@ import TemplatePicker from './components/modals/TemplatePicker.jsx';
 import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
 import { useDeckSync } from './hooks/useDeckSync.js';
 import { listDecks, createDeck, openDeck, renameDeck, deleteDeck } from './lib/decksApi.js';
+import { templateDeck } from './lib/templateDeck.js';
 
 const VIEW_LABELS = { home: 'Home', editor: 'Editor', sorter: 'Sorter', settings: 'Settings' };
 const VIEW_ORDER = ['home', 'editor', 'sorter', 'settings'];
@@ -97,6 +98,17 @@ export default function App() {
       const meta = await createDeck();
       if (meta?.id) await handleOpenDeck(meta.id);
     } catch { /* server error — stay on Home */ }
+  };
+  // Pick a template: create a real library deck seeded from it, then open it.
+  // Close the picker only once the deck is created, so a failed pick leaves the
+  // modal open to retry rather than dismissing with no feedback.
+  const handlePickTemplate = async (template) => {
+    try {
+      const meta = await createDeck(template?.name, templateDeck(template));
+      if (!meta?.id) return;          // no deck created — leave the picker open
+      setModal(null);
+      await handleOpenDeck(meta.id);
+    } catch { /* server error — leave the picker open */ }
   };
   const handleRenameDeck = async (id, name) => {
     try { await renameDeck(id, name); await refreshDecks(); } catch { /* ignore */ }
@@ -190,7 +202,7 @@ export default function App() {
       {modal === 'templates' && (
         <TemplatePicker
           onClose={() => setModal(null)}
-          onPick={() => { setModal(null); setView('editor'); }}
+          onPick={handlePickTemplate}
         />
       )}
 
