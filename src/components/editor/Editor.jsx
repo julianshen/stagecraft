@@ -4,7 +4,7 @@ import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
 import { createElement, updateSlideElements, alignElements, distributeElements } from '../../lib/elements.js';
-import { moveSlide } from '../../lib/deckOrder.js';
+import { moveSlide, duplicateSlide, newSlideId } from '../../lib/deckOrder.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
   const [curId, setCurId] = useState(() => {
@@ -69,6 +69,18 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
       }));
       return next;
     });
+  }
+
+  // Duplicate the current slide (deep clone with fresh ids, inserted after it)
+  // and select the copy. Pre-generate the id so we can select it, but apply the
+  // duplication through the updater form against the freshest deck (matching the
+  // other mutations — avoids a stale-closure overwrite racing the sync poll).
+  function duplicateCurrentSlide() {
+    if (!curId) return;
+    const id = curId;
+    const newId = newSlideId();
+    onDeckChange(prev => duplicateSlide(prev, id, newId)?.deck ?? prev);
+    setCurId(newId);
   }
 
   // Apply an AI-generated patch to a specific slide (Co-pilot edits). The target
@@ -204,6 +216,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onChangeTheme: changeTheme,
         onNewSlide: () => addComponent('text'),
         onDeleteSlide: deleteSlide,
+        onDuplicateSlide: duplicateCurrentSlide,
         onReorderSlide: (slideId, toSectionId, toIndex) => onDeckChange(prev => moveSlide(prev, slideId, toSectionId, toIndex)),
         onApplyAIPatch: applyAIPatch,
       }}

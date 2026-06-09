@@ -28,6 +28,31 @@ export function moveSlide(deck, slideId, toSectionId, toIndex) {
   return { ...deck, sections };
 }
 
+let dupSeq = 0;
+const uid = (p) => `${p}-${Date.now().toString(36)}-${(dupSeq++).toString(36)}`;
+export function newSlideId() { return uid('slide'); }
+
+// Duplicate slide `slideId`: a deep clone with fresh ids (slide + its elements)
+// inserted right after the original in its section. Immutable; returns
+// { deck, newId } or null if the slide/deck can't be used. The caller may pass
+// `newId` so it can pre-generate the id (to select the copy) while still applying
+// the duplication through an onDeckChange updater against the freshest deck.
+export function duplicateSlide(deck, slideId, newId = newSlideId()) {
+  if (!deck || !Array.isArray(deck.slides) || !Array.isArray(deck.sections)) return null;
+  const orig = deck.slides.find((s) => s.id === slideId);
+  if (!orig) return null;
+  const clone = JSON.parse(JSON.stringify(orig)); // deep copy — no shared nested refs
+  clone.id = newId;
+  if (Array.isArray(clone.elements)) clone.elements = clone.elements.map((e) => ({ ...e, id: uid('el') }));
+  const sections = deck.sections.map((sec) => {
+    if (!Array.isArray(sec.slides) || !sec.slides.includes(slideId)) return sec;
+    const slides = [...sec.slides];
+    slides.splice(slides.indexOf(slideId) + 1, 0, newId);
+    return { ...sec, slides };
+  });
+  return { deck: { ...deck, slides: [...deck.slides, clone], sections }, newId };
+}
+
 export function flattenDeck(deck) {
   const arr = [];
   if (!deck || !Array.isArray(deck.sections) || !Array.isArray(deck.slides)) return arr;
