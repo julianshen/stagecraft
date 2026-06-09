@@ -1,5 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { chartSpec } from './chartSpec.js';
+import { chartSpec, chartData } from './chartSpec.js';
+
+describe('chartData', () => {
+  it('returns defaults when the slide carries no chart data', () => {
+    const { categories, series } = chartData({});
+    expect(categories.length).toBeGreaterThan(0);
+    expect(series).toHaveLength(1);
+    expect(series[0].values.length).toBe(categories.length);
+  });
+
+  it('coerces non-numeric values to 0', () => {
+    const d = chartData({ chart: { categories: ['a', 'b', 'c'], series: [{ values: [5, 'oops', null] }] } });
+    expect(d.series[0].values).toEqual([5, 0, 0]);
+  });
+
+  it('tolerates a null/undefined slide', () => {
+    for (const arg of [null, undefined]) {
+      const { categories, series } = chartData(arg);
+      expect(categories.length).toBeGreaterThan(0);
+      expect(series[0].values.length).toBe(categories.length);
+    }
+  });
+
+  it('normalizes categories + series, padding/clipping values to the category count', () => {
+    const d = chartData({ chart: { categories: ['a', 'b', 'c'], series: [{ name: 'S', values: [1] }, { values: [9, 8, 7, 6] }] } });
+    expect(d.categories).toEqual(['a', 'b', 'c']);
+    expect(d.series[0]).toEqual({ name: 'S', values: [1, 0, 0] });   // padded
+    expect(d.series[1]).toEqual({ name: 'Series 2', values: [9, 8, 7] }); // clipped + named
+  });
+});
 
 describe('chartSpec', () => {
   it('maps chartType to a pptxgenjs chart type, mirroring the canvas renderer', () => {
