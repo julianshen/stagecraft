@@ -53,6 +53,120 @@ describe('deck REST', () => {
     await handleApiRequest(store, req('PUT', '/api/deck', deck()));
     expect((await handleApiRequest(store, req('GET', '/api/deck'))).body.title).toBe('Demo');
   });
+
+  it('PUT /api/deck with no active deck creates and activates one (seed flow)', async () => {
+    const store = createDeckStore();
+    expect(store.activeId).toBeNull();
+    await handleApiRequest(store, req('PUT', '/api/deck', deck()));
+    expect(store.activeId).not.toBeNull();
+    expect(store.deck.title).toBe('Demo');          // getter follows the active record
+    expect(Object.keys(store.decks)).toHaveLength(1); // and it joined the library
+  });
+});
+
+describe('multi-deck store', () => {
+  it('createDeckStore(legacyDeck) wraps it as the active deck', () => {
+    const store = createDeckStore(deck());
+    expect(store.deck.title).toBe('Demo');
+    expect(store.decks[store.activeId].deck.title).toBe('Demo');
+  });
+
+  it('createDeckStore restores a { decks, activeId } snapshot', () => {
+    const snap = { decks: { x: { id: 'x', name: 'X', deck: deck(), updatedAt: 5 } }, activeId: 'x' };
+    const store = createDeckStore(snap);
+    expect(store.activeId).toBe('x');
+    expect(store.deck.title).toBe('Demo');
+  });
+
+  it('mutating store.deck writes through to the active record', () => {
+    const store = createDeckStore(deck());
+    store.deck.slides.push({ id: 'z', layout: 'text' });
+    expect(store.decks[store.activeId].deck.slides.map((s) => s.id)).toContain('z');
+  });
+});
+
+describe('decks library REST', () => {
+  it('GET /api/decks lists deck metadata with an active flag', async () => {
+    const store = createDeckStore(deck());
+    const r = await handleApiRequest(store, req('GET', '/api/decks'));
+    expect(r.status).toBe(200);
+    expect(r.body).toHaveLength(1);
+    expect(r.body[0]).toMatchObject({ id: store.activeId, name: 'Demo', slides: 3, active: true });
+  });
+
+  it('POST /api/decks creates and activates a new deck', async () => {
+    const store = createDeckStore(deck());
+    const r = await handleApiRequest(store, req('POST', '/api/decks', { name: 'Fresh' }));
+    expect(r.status).toBe(201);
+    expect(r.body.id).toBeTruthy();
+    expect(store.activeId).toBe(r.body.id);          // newly created deck is active
+    expect(store.deck.slides).toEqual([]);            // blank deck
+    expect(Object.keys(store.decks)).toHaveLength(2);
+  });
+
+  it('GET /api/decks/:id returns the full deck, 404 for unknown', async () => {
+    const store = createDeckStore(deck());
+    const id = store.activeId;
+    expect((await handleApiRequest(store, req('GET', `/api/decks/${id}`))).body.deck.title).toBe('Demo');
+    expect((await handleApiRequest(store, req('GET', '/api/decks/nope'))).status).toBe(404);
+  });
+
+  it('POST /api/decks/:id/activate switches the active deck and returns it', async () => {
+    const store = createDeckStore(deck());
+    const first = store.activeId;
+    const created = (await handleApiRequest(store, req('POST', '/api/decks', { name: 'Two' }))).body.id;
+    const r = await handleApiRequest(store, req('POST', `/api/decks/${first}/activate`));
+    expect(r.status).toBe(200);
+    expect(store.activeId).toBe(first);
+    expect(store.deck.title).toBe('Demo');
+    expect(r.body.deck.title).toBe('Demo');
+    expect(typeof r.body.rev).toBe('number');
+    expect(created).not.toBe(first);
+    expect((await handleApiRequest(store, req('POST', '/api/decks/nope/activate'))).status).toBe(404);
+  });
+
+  it('PUT /api/decks/:id renames a deck', async () => {
+    const store = createDeckStore(deck());
+    const id = store.activeId;
+    const r = await handleApiRequest(store, req('PUT', `/api/decks/${id}`, { name: 'Renamed' }));
+    expect(r.status).toBe(200);
+    expect(store.decks[id].name).toBe('Renamed');
+    expect((await handleApiRequest(store, req('PUT', '/api/decks/nope', { name: 'x' }))).status).toBe(404);
+  });
+
+  it('does not treat prototype keys as decks (no pollution)', async () => {
+    const store = createDeckStore(deck());
+    expect((await handleApiRequest(store, req('GET', '/api/decks/__proto__'))).status).toBe(404);
+    expect((await handleApiRequest(store, req('DELETE', '/api/decks/constructor'))).status).toBe(404);
+    expect((await handleApiRequest(store, req('POST', '/api/decks/__proto__/activate'))).status).toBe(404);
+    expect({}.polluted).toBeUndefined();
+  });
+
+  it('renaming a non-active deck stamps that deck, not the active one', async () => {
+    const store = createDeckStore(deck());
+    const first = store.activeId;
+    const second = (await handleApiRequest(store, req('POST', '/api/decks', { name: 'Two' }))).body.id;
+    const activeStamp = store.decks[second].updatedAt;
+    store.decks[first].updatedAt = 1; // make the non-active deck obviously stale
+    await handleApiRequest(store, req('PUT', `/api/decks/${first}`, { name: 'Renamed' }));
+    expect(store.decks[first].updatedAt).toBeGreaterThan(1);  // the renamed deck is stamped
+    expect(store.decks[second].updatedAt).toBe(activeStamp);  // the active deck is untouched
+  });
+
+  it('DELETE /api/decks/:id removes it and reassigns active when needed', async () => {
+    const store = createDeckStore(deck());
+    const first = store.activeId;
+    const second = (await handleApiRequest(store, req('POST', '/api/decks', { name: 'Two' }))).body.id;
+    // second is active now; delete it → active falls back to a remaining deck.
+    const r = await handleApiRequest(store, req('DELETE', `/api/decks/${second}`));
+    expect(r.status).toBe(200);
+    expect(store.decks[second]).toBeUndefined();
+    expect(store.activeId).toBe(first);
+    // deleting the last deck leaves no active deck.
+    await handleApiRequest(store, req('DELETE', `/api/decks/${first}`));
+    expect(store.activeId).toBeNull();
+    expect((await handleApiRequest(store, req('DELETE', '/api/decks/nope'))).status).toBe(404);
+  });
 });
 
 describe('slides REST', () => {
