@@ -131,7 +131,19 @@ describe('CanvasSlide drag', () => {
     const overlay = container.querySelector('.elements-overlay');
     fire(overlay, 'pointerdown', { clientX: 0, clientY: 0 });
     fire(window, 'pointermove', { clientX: 400, clientY: 250 }); // covers a (100..300×100..200), not b (x≥500)
-    fire(window, 'pointerup', {});
+    fire(window, 'pointerup', { clientX: 400, clientY: 250 });
+    expect(onMarqueeSelect).toHaveBeenCalledWith(['a']);
+  });
+
+  it('uses the pointerup position when a fast flick delivers no qualifying pointermove', () => {
+    const onMarqueeSelect = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={[]} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} onMarqueeSelect={onMarqueeSelect} />,
+    );
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointerup', { clientX: 400, clientY: 250 }); // straight to release, no move
     expect(onMarqueeSelect).toHaveBeenCalledWith(['a']);
   });
 
@@ -172,8 +184,8 @@ describe('CanvasSlide drag', () => {
     );
     const overlay = container.querySelector('.elements-overlay');
     fire(overlay, 'pointerdown', { clientX: 0, clientY: 0 });
-    fire(window, 'pointermove', { clientX: 1, clientY: 1 }); // within the 2px tolerance
-    fire(window, 'pointerup', {});
+    fire(window, 'pointermove', { clientX: 1, clientY: 1 }); // within the 3px tolerance
+    fire(window, 'pointerup', { clientX: 1, clientY: 1 });
     expect(onSelectElement).toHaveBeenCalledWith(null);
     expect(onMarqueeSelect).not.toHaveBeenCalled();
   });

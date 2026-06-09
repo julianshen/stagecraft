@@ -132,13 +132,12 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       return { x: (cx - rect.left) / s, y: (cy - rect.top) / s };
     };
     const start = toSlide(startX, startY);
-    let end = start;
-    let moved = false; // a real sweep, not a jittery click
+    // Sweep past a screen-pixel threshold (zoom-independent), not a jittery click.
+    const swept = (cx, cy) => Math.abs(cx - startX) > 3 || Math.abs(cy - startY) > 3;
     function move(ev) {
-      // Threshold in screen pixels so it doesn't shrink as the canvas zooms out.
-      if (!moved && (Math.abs(ev.clientX - startX) > 3 || Math.abs(ev.clientY - startY) > 3)) moved = true;
-      end = toSlide(ev.clientX, ev.clientY);
-      if (moved) setMarquee({ x1: start.x, y1: start.y, x2: end.x, y2: end.y });
+      if (!swept(ev.clientX, ev.clientY)) return;
+      const p = toSlide(ev.clientX, ev.clientY);
+      setMarquee({ x1: start.x, y1: start.y, x2: p.x, y2: p.y });
     }
     function removeListeners() {
       window.removeEventListener('pointermove', move);
@@ -146,12 +145,18 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       window.removeEventListener('pointercancel', cancel);
       dragCleanup.current = null;
     }
-    function up() {
+    function up(ev) {
       removeListeners();
       setMarquee(null);
-      // A real sweep selects the overlapped (live) elements; a bare click deselects.
-      if (moved) onMarqueeSelect?.(elementsInMarquee(baseElementsRef.current, start.x, start.y, end.x, end.y));
-      else onSelectElement?.(null);
+      // The release position is authoritative — a fast flick may deliver no
+      // pointermove at the release point. A real sweep selects the overlapped
+      // (live) elements; a bare click deselects.
+      if (swept(ev.clientX, ev.clientY)) {
+        const p = toSlide(ev.clientX, ev.clientY);
+        onMarqueeSelect?.(elementsInMarquee(baseElementsRef.current, start.x, start.y, p.x, p.y));
+      } else {
+        onSelectElement?.(null);
+      }
     }
     function cancel() { removeListeners(); setMarquee(null); }
     window.addEventListener('pointermove', move);
