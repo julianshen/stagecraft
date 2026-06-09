@@ -8,6 +8,7 @@ const THEME_COLORS = {
   emerald: { accent: '2ECC71', bg: '0A1A10', ink: 'FFFFFF' },
   magenta: { accent: 'CC2E88', bg: '1A0A12', ink: 'FFFFFF' },
   coral:   { accent: 'E05C3A', bg: '1A0E0A', ink: 'FFFFFF' },
+  slate:   { accent: '6E7A90', bg: '12151A', ink: 'FFFFFF' },
 };
 
 function themeColors(theme) {
