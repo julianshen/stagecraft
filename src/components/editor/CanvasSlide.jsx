@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
-import { moveElement, resizeElement } from '../../lib/elements.js';
+import { moveElement, resizeElement, elementsInMarquee } from '../../lib/elements.js';
 
 const HANDLE_CURSOR = {
   nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
@@ -12,7 +12,7 @@ const HANDLE_POS = {
   sw: [0, 1], s: [0.5, 1], se: [1, 1],
 };
 
-export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selectedIds = [], onSelectElement, onUpdateElements }) {
+export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selectedIds = [], onSelectElement, onUpdateElements, onMarqueeSelect }) {
   const frameRef = useRef(null);
   const [scale, setScale] = useState(0.5);
   const scaleRef = useRef(scale);
@@ -32,10 +32,15 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
 
   // Live drag preview: a map id→element while dragging (commits once on pointer-up).
   const [drag, setDrag] = useState(null);
+  // Live marquee rectangle (slide coords) while rubber-band selecting on empty space.
+  const [marquee, setMarquee] = useState(null);
   const dragCleanup = useRef(null);
   useEffect(() => () => dragCleanup.current?.(), []);
 
   const baseElements = slide.elements || [];
+  // Latest elements for the marquee's pointer-up (the deck can change mid-drag).
+  const baseElementsRef = useRef(baseElements);
+  baseElementsRef.current = baseElements;
   const selectedSet = new Set(selectedIds);
   const elements = drag ? baseElements.map((e) => drag.get(e.id) || e) : baseElements;
   const liveSlide = drag ? { ...slide, elements } : slide;
@@ -108,14 +113,66 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     startDrag(e, [el], (t, dx, dy) => resizeElement(t, handle, dx, dy));
   }
 
+  // Rubber-band selection: a drag on empty canvas sweeps a rectangle and selects
+  // the elements it overlaps on pointer-up. A click (no drag) deselects.
+  function startMarquee(e) {
+    if (dragCleanup.current) return;
+    // Primary button only — let right/middle clicks through to the context menu.
+    if (e.button !== 0) return;
+    const frame = frameRef.current;
+    if (!frame) { onSelectElement?.(null); return; }
+    e.preventDefault();
+    e.stopPropagation();
+    // The slide canvas is a fixed, non-scrolling scaled viewport, so the frame
+    // rect is stable for the gesture — cache it once (no per-move layout read).
+    const rect = frame.getBoundingClientRect();
+    const startX = e.clientX, startY = e.clientY;
+    const toSlide = (cx, cy) => {
+      const s = scaleRef.current || 1;
+      return { x: (cx - rect.left) / s, y: (cy - rect.top) / s };
+    };
+    const start = toSlide(startX, startY);
+    // Sweep past a screen-pixel threshold (zoom-independent), not a jittery click.
+    const swept = (cx, cy) => Math.abs(cx - startX) > 3 || Math.abs(cy - startY) > 3;
+    function move(ev) {
+      if (!swept(ev.clientX, ev.clientY)) return;
+      const p = toSlide(ev.clientX, ev.clientY);
+      setMarquee({ x1: start.x, y1: start.y, x2: p.x, y2: p.y });
+    }
+    function removeListeners() {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      dragCleanup.current = null;
+    }
+    function up(ev) {
+      removeListeners();
+      setMarquee(null);
+      // The release position is authoritative — a fast flick may deliver no
+      // pointermove at the release point. A real sweep selects the overlapped
+      // (live) elements; a bare click deselects.
+      if (swept(ev.clientX, ev.clientY)) {
+        const p = toSlide(ev.clientX, ev.clientY);
+        onMarqueeSelect?.(elementsInMarquee(baseElementsRef.current, start.x, start.y, p.x, p.y));
+      } else {
+        onSelectElement?.(null);
+      }
+    }
+    function cancel() { removeListeners(); setMarquee(null); }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    dragCleanup.current = removeListeners;
+  }
+
   return (
     <div className="slide-frame" ref={frameRef} style={{ width: `${Math.min(92, zoom)}%`, aspectRatio: '16/9' }}>
       <ScaledSlide>
         {renderSlide(liveSlide, deckCtx)}
       </ScaledSlide>
 
-      {/* Interaction overlay — click empty space to deselect. */}
-      <div style={{ position: 'absolute', inset: 0 }} onPointerDown={() => onSelectElement?.(null)}>
+      {/* Interaction overlay — drag empty space to marquee-select, click to deselect. */}
+      <div className="elements-overlay" style={{ position: 'absolute', inset: 0 }} onPointerDown={startMarquee}>
         {elements.map((el) => (
           <div
             key={el.id}
@@ -143,6 +200,22 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
             onPointerDown={(e) => startResize(e, resizeTarget, h)}
           />
         ))}
+
+        {marquee && (
+          <div
+            className="marquee-rect"
+            style={{
+              position: 'absolute',
+              left: Math.min(marquee.x1, marquee.x2) * scale,
+              top: Math.min(marquee.y1, marquee.y2) * scale,
+              width: Math.abs(marquee.x2 - marquee.x1) * scale,
+              height: Math.abs(marquee.y2 - marquee.y1) * scale,
+              border: '1px solid oklch(0.62 0.2 265)',
+              background: 'oklch(0.62 0.2 265 / 0.12)',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
       </div>
     </div>
   );

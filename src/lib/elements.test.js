@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -319,5 +319,36 @@ describe('distributeElements', () => {
     expect(byId.b.x).toBe(60);
     expect(byId.c.x).toBe(370);
     expect(byId.c.x + 30).toBe(400); // far edge of the box preserved
+  });
+});
+
+describe('elementsInMarquee', () => {
+  const els = () => [
+    { id: 'a', x: 100, y: 100, w: 200, h: 100 }, // 100..300 × 100..200
+    { id: 'b', x: 500, y: 100, w: 200, h: 100 }, // 500..700 × 100..200
+    { id: 'c', x: 100, y: 400, w: 200, h: 100 }, // 100..300 × 400..500
+  ];
+
+  it('returns ids of elements overlapping the rectangle', () => {
+    expect(elementsInMarquee(els(), 0, 0, 400, 250)).toEqual(['a']);
+  });
+
+  it('selects every element the rectangle overlaps', () => {
+    expect(elementsInMarquee(els(), 0, 0, 800, 600)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('normalizes a rectangle dragged up-and-left (reversed corners)', () => {
+    // Same box as the first case but dragged from bottom-right to top-left.
+    expect(elementsInMarquee(els(), 400, 250, 0, 0)).toEqual(['a']);
+  });
+
+  it('returns an empty array when nothing overlaps', () => {
+    expect(elementsInMarquee(els(), 0, 0, 10, 10)).toEqual([]);
+    expect(elementsInMarquee([], 0, 0, 999, 999)).toEqual([]);
+  });
+
+  it('treats edge-only contact as non-overlapping (strict)', () => {
+    // Rectangle right edge at x=100 exactly touches a's left edge — not a hit.
+    expect(elementsInMarquee(els(), 0, 100, 100, 200)).toEqual([]);
   });
 });

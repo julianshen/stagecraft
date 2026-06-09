@@ -202,6 +202,7 @@ export default function SlideEditor(props) {
                 selectedIds={props.selectedElementIds}
                 onSelectElement={onSelectElement}
                 onUpdateElements={callbacks.onUpdateElements}
+                onMarqueeSelect={callbacks.onMarqueeSelect}
                 zoom={zoom}
               />
             )}
