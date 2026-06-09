@@ -43,15 +43,14 @@ describe('roadmapModel — custom data', () => {
     expect(m.lanes[0].items.map((i) => i.state)).toEqual(['planned', 'planned']);
   });
 
-  it('coerces non-numeric t/d and drops falsy lanes/items', () => {
+  it('coerces non-numeric t/d (incl. null/true, not just NaN) and drops falsy lanes/items', () => {
     const m = roadmapModel({
       months: ['a', 'b', 'c'],
-      lanes: [null, { name: 'L', items: [null, { t: 'x', d: 'y', lbl: 'q', state: 'inflight' }] }],
+      lanes: [null, { name: 'L', items: [null, { t: 'x', d: 'y', lbl: 'q', state: 'inflight' }, { t: true, d: null, lbl: 'r', state: 'done' }] }],
     });
     expect(m.lanes).toHaveLength(1);
-    const it = m.lanes[0].items[0];
-    expect(it.t).toBe(0);  // NaN → 0
-    expect(it.d).toBe(1);  // NaN → min 1
+    expect(m.lanes[0].items[0]).toMatchObject({ t: 0, d: 1 }); // 'x'/'y' → fallbacks
+    expect(m.lanes[0].items[1]).toMatchObject({ t: 0, d: 1 }); // true/null → fallbacks, NOT 1/0
   });
 });
 

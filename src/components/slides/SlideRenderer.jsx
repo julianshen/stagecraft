@@ -199,7 +199,11 @@ export function ChartByType({ type, slide }) {
 
 export function RoadmapGraphic({ slide } = {}) {
   const { months, lanes, todayIndex } = roadmapModel(slide);
-  const W = 1600, H = 540, laneH = 110, left = 180;
+  // laneH shrinks below its 110 default once there are enough lanes to overflow
+  // the fixed 540 viewBox, so a custom roadmap with many lanes isn't clipped
+  // (≤4 lanes keep the original 110 → the demo is unchanged).
+  const W = 1600, H = 540, left = 180;
+  const laneH = lanes.length ? Math.min(110, (H - 80) / lanes.length) : 0;
   const monthW = (W - left - 40) / months.length;
   const stateColor = s => ROADMAP_OKLCH[s] || ROADMAP_OKLCH.planned;
   return (

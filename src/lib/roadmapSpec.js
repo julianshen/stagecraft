@@ -23,7 +23,9 @@ export const ROADMAP_OKLCH = { done: 'oklch(0.62 0.13 155)', inflight: 'oklch(0.
 export const ROADMAP_HEX = { done: '27AE60', inflight: '6E5BE6', atrisk: 'E0533A', planned: 'CCCCCC' };
 
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
-const num = (v, fallback) => (Number.isFinite(+v) ? +v : fallback);
+// Strict: only a real finite number passes (no +coercion), so null/''/true/[]
+// fall back rather than becoming 0/1 — consistent with the todayIndex check.
+const num = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
 function normItem(it, span) {
   // t in [0, span-1] (leaving room for the bar); duration >= 1 but shrunk so the

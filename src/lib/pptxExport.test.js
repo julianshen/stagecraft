@@ -75,4 +75,16 @@ describe('addRoadmapSlide (PPTX timeline)', () => {
     await exportToPPTX(deckOf({ title: 'My Plan' }));
     expect(textsOf(last())).toContain('My Plan');
   });
+
+  it('keeps a bar label box within its bar so short bars do not spill onto the background', async () => {
+    // 12 months makes a 1-month bar narrow (~0.59"), where the old Math.max(bw,1.3) overflowed.
+    await exportToPPTX(deckOf({
+      months: Array.from({ length: 12 }, (_, i) => `M${i + 1}`),
+      lanes: [{ name: 'L', items: [{ t: 0, d: 1, lbl: 'LongLabel', state: 'planned' }] }],
+    }));
+    const s = last();
+    const bar = s.shapes.find((sh) => sh.type === 'roundRect');
+    const label = s.texts.find((x) => x.t === 'LongLabel');
+    expect(label.o.w).toBeLessThanOrEqual(bar.o.w); // label stays inside the bar
+  });
 });
