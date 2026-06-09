@@ -64,6 +64,27 @@ describe('SorterView — drag to reorder', () => {
     fireEvent.drop(card(container, 'a'));
     expect(onDeckChange).not.toHaveBeenCalled();
   });
+
+  it('drops a card into an empty section via the section drop zone', () => {
+    const withEmpty = {
+      title: 'Deck',
+      sections: [
+        { id: 's1', name: 'Intro', slides: ['a', 'b'] },
+        { id: 's2', name: 'Empty', slides: [] },
+      ],
+      slides: [{ id: 'a', layout: 'cover', title: 'A' }, { id: 'b', layout: 'text', title: 'B' }],
+    };
+    const onDeckChange = vi.fn();
+    const { container } = render(
+      <SorterView deck={withEmpty} onBack={vi.fn()} onOpenSlide={vi.fn()} onDeckChange={onDeckChange} />,
+    );
+    fireEvent.dragStart(card(container, 'a'));
+    const zone = container.querySelector('[data-section-drop="s2"]');
+    fireEvent.drop(zone); // a → into the empty section
+    const next = onDeckChange.mock.calls[0][0](withEmpty);
+    expect(next.sections[1].slides).toEqual(['a']);
+    expect(next.sections[0].slides).toEqual(['b']);
+  });
 });
 
 describe('SorterView — section CRUD', () => {

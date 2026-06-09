@@ -6,7 +6,9 @@ import { useReorderDrag } from '../../hooks/useReorderDrag.js';
 
 export default function SorterGrid({ deck, flat, active, setActive, onOpenSlide, editable, onReorder, onRenameSection, onDeleteSection }) {
   // Drag-to-reorder mechanics shared with the editor's thumbnail rail.
-  const dragProps = useReorderDrag(onReorder);
+  // `sectionDropProps` lets a slide be dropped into an empty section's area
+  // (a card drop wins via stopPropagation; the container append is the fallback).
+  const { dragProps, sectionDropProps } = useReorderDrag(onReorder);
 
   // Inline section rename: which section is in edit mode + the draft text.
   const [editingId, setEditingId] = useState(null);
@@ -22,7 +24,7 @@ export default function SorterGrid({ deck, flat, active, setActive, onOpenSlide,
       {deck.sections.map((sec, si) => {
         const slides = sec.slides.map(sid => flat.find(f => f.id === sid)).filter(Boolean);
         return (
-          <div key={sec.id} style={{ marginBottom: 36 }}>
+          <div key={sec.id} data-section-drop={sec.id} style={{ marginBottom: 36 }} {...(editable ? sectionDropProps(sec) : {})}>
             <div className="sorter-head">
               <h2>
                 <Icon name="chevron-down" size={11} style={{ marginRight: 6 }}/>

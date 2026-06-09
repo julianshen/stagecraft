@@ -5,7 +5,7 @@ import { useReorderDrag } from '../../hooks/useReorderDrag.js';
 
 export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx, comments = [], onNewSlide, onReorder }) {
   // Drag-to-reorder mechanics shared with the Sorter grid.
-  const dragProps = useReorderDrag(onReorder);
+  const { dragProps } = useReorderDrag(onReorder);
   return (
     <aside className="leftpane">
       <div className="pane-header">
