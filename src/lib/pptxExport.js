@@ -154,12 +154,14 @@ function addChartSlide(pptx, slide, tc) {
   sld.addChart(type, data, {
     x: 0.5, y: 1.0, w: 9, h: 4.0,
     chartColors: [tc.accent, '8888AA', '555577', 'AAAACC', '6E6E9E'],
-    showLegend: data.length > 1, legendPos: 'b', legendColor: 'AAAAAA', legendFontFace: 'Inter',
+    // A doughnut has no category axis, so its slices are only identifiable via
+    // the legend + on-slice percentages — always show those for doughnut/pie.
+    showLegend: data.length > 1 || type === 'doughnut', legendPos: 'b', legendColor: 'AAAAAA', legendFontFace: 'Inter',
     showTitle: false,
     catAxisLabelColor: '888888', valAxisLabelColor: '888888',
     catAxisLabelFontFace: 'Inter', valAxisLabelFontFace: 'Inter',
     ...(barDir ? { barDir } : {}),
-    ...(type === 'doughnut' ? { holeSize: 60 } : {}),
+    ...(type === 'doughnut' ? { holeSize: 60, showPercent: true, dataLabelColor: 'FFFFFF', dataLabelFontFace: 'Inter' } : {}),
   });
 }
 
