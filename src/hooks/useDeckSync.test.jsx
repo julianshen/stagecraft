@@ -10,28 +10,32 @@ const localDeck = { id: 'local', theme: 'indigo', slides: [], sections: [] };
 function makeServer(initial = { deck: null, rev: 0 }) {
   const state = { ...initial };
   const puts = [];
+  const putUrls = [];
   const fetchFn = vi.fn((url, init) => {
-    if (url === '/api/deck/state') {
-      return Promise.resolve({ json: async () => ({ deck: state.deck, rev: state.rev }) });
+    const path = url.split('?')[0];
+    if (path === '/api/deck/state') {
+      return Promise.resolve({ json: async () => ({ deck: state.deck, rev: state.rev, activeId: state.activeId }) });
     }
-    if (url === '/api/deck' && init?.method === 'PUT') {
+    if (path === '/api/deck' && init?.method === 'PUT') {
       const body = JSON.parse(init.body);
       puts.push(body);
+      putUrls.push(url);
       state.deck = body;
+      if (state.activeId == null) state.activeId = 'seeded'; // a seed creates + activates a deck
       state.rev += 1;
-      return Promise.resolve({ json: async () => ({ ok: true, rev: state.rev }) });
+      return Promise.resolve({ json: async () => ({ ok: true, rev: state.rev, activeId: state.activeId }) });
     }
     return Promise.resolve({ json: async () => ({}) });
   });
-  return { state, puts, fetchFn };
+  return { state, puts, putUrls, fetchFn };
 }
 
 // Mirrors App: owns deck state and feeds setDeck back into the hook as
 // onExternalDeck. `controls` exposes the live deck + a setter to drive edits.
 function Harness({ initialDeck = localDeck, intervalMs = 1000, fetchFn, controls }) {
   const [deck, setDeck] = useState(initialDeck);
-  useDeckSync(deck, setDeck, { intervalMs, fetchFn });
-  if (controls) { controls.deck = deck; controls.setDeck = setDeck; }
+  const adopt = useDeckSync(deck, setDeck, { intervalMs, fetchFn });
+  if (controls) { controls.deck = deck; controls.setDeck = setDeck; controls.adopt = adopt; }
   return null;
 }
 
@@ -85,6 +89,68 @@ describe('useDeckSync', () => {
     await flush();      // seed → rev 1
     await flush(1000);  // poll sees rev 1 == lastRev
     expect(srv.puts).toEqual([localDeck]); // no echo PUT
+  });
+
+  it('returns an adopt() that adopts a server deck without echoing it back', async () => {
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush(); // seed → rev 1
+    const putsAfterSeed = srv.puts.length;
+    const opened = { id: 'opened', theme: 'amber', slides: [], sections: [] };
+    // Simulate the server having activated `opened` (as openDeck() does server-side).
+    srv.state.deck = opened; srv.state.rev = 42;
+    await act(async () => { controls.adopt(opened, 42); });
+    await flush(1000); // a poll tick
+    expect(controls.deck).toBe(opened);          // adopted into local state
+    expect(srv.puts).toHaveLength(putsAfterSeed); // and NOT echoed back as an edit
+  });
+
+  it('tags writes with the active deck id once known (stale-write guard)', async () => {
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush(); // seed — activeId unknown, so this PUT is untagged
+    expect(srv.putUrls.at(-1)).toBe('/api/deck');
+    // The server activated deck 'B'; the client opens it.
+    srv.state.deck = { id: 'B', theme: 'amber', slides: [], sections: [] };
+    srv.state.rev = 5; srv.state.activeId = 'B';
+    await act(async () => { controls.adopt(srv.state.deck, 5, 'B'); });
+    // A subsequent edit must be tagged for 'B'.
+    const edited = { id: 'B', theme: 'coral', slides: [], sections: [] };
+    await act(async () => { controls.setDeck(edited); await vi.advanceTimersByTimeAsync(0); });
+    expect(srv.putUrls.at(-1)).toBe('/api/deck?forId=B');
+  });
+
+  it('tags writes immediately after a seed using the activeId from the PUT response', async () => {
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush(); // mount → seed PUT (untagged); its response carries the new activeId
+    const edited = { id: 'local', theme: 'magenta', slides: [], sections: [] };
+    await act(async () => { controls.setDeck(edited); await vi.advanceTimersByTimeAsync(0); });
+    // No poll has run yet, but the seed response already taught us the active id.
+    expect(srv.putUrls.at(-1)).toBe('/api/deck?forId=seeded');
+  });
+
+  it('does not let an ignored (dropped) write advance lastRev, so the poll still adopts the active deck', async () => {
+    const state = { deck: { id: 'A', theme: 'indigo', slides: [], sections: [] }, rev: 5, activeId: 'A' };
+    const fetchFn = vi.fn((url, init) => {
+      const path = url.split('?')[0];
+      if (path === '/api/deck/state') return Promise.resolve({ json: async () => ({ ...state }) });
+      if (path === '/api/deck' && init?.method === 'PUT') {
+        // While our tagged write was in flight, deck B became active at rev 9 — drop ours.
+        state.deck = { id: 'B', theme: 'amber', slides: [], sections: [] }; state.rev = 9; state.activeId = 'B';
+        return Promise.resolve({ json: async () => ({ ok: false, ignored: true, rev: 9, activeId: 'B' }) });
+      }
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    const controls = {};
+    render(<Harness initialDeck={state.deck} fetchFn={fetchFn} controls={controls} />);
+    await flush(); // mount adopts A @ rev 5
+    await act(async () => { controls.setDeck({ id: 'A2', theme: 'coral', slides: [], sections: [] }); await vi.advanceTimersByTimeAsync(0); });
+    await flush(1000); // poll
+    expect(controls.deck.id).toBe('B'); // adopted the now-active deck, not stuck on the dropped edit
   });
 
   it('pushes a local edit to the server', async () => {

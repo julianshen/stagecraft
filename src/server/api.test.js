@@ -54,6 +54,42 @@ describe('deck REST', () => {
     expect((await handleApiRequest(store, req('GET', '/api/deck'))).body.title).toBe('Demo');
   });
 
+  it('PUT /api/deck?forId ignores a write meant for a no-longer-active deck', async () => {
+    const store = createDeckStore(deck());
+    const first = store.activeId;
+    const second = (await handleApiRequest(store, req('POST', '/api/decks', { name: 'Two' }))).body.id;
+    const untouched = JSON.stringify(store.decks[second].deck);
+    // A stale in-flight PUT meant for `first` lands after the switch to `second`.
+    const r = await handleApiRequest(store, req('PUT', `/api/deck?forId=${first}`, { title: 'CLOBBER', slides: [], sections: [] }));
+    expect(r.body.ok).toBe(false);
+    expect(JSON.stringify(store.decks[second].deck)).toBe(untouched); // active deck not corrupted
+  });
+
+  it('PUT /api/deck?forId applies when it matches the active deck', async () => {
+    const store = createDeckStore(deck());
+    await handleApiRequest(store, req('PUT', `/api/deck?forId=${store.activeId}`, { title: 'OK', slides: [], sections: [] }));
+    expect(store.deck.title).toBe('OK');
+  });
+
+  it('PUT /api/deck returns the active deck id so writes can be tagged immediately', async () => {
+    const store = createDeckStore();
+    const r = await handleApiRequest(store, req('PUT', '/api/deck', deck())); // seed creates + activates
+    expect(r.body.activeId).toBe(store.activeId);
+    expect(r.body.activeId).not.toBeNull();
+  });
+
+  it('keeps the library name in step with the deck title on a content write', async () => {
+    const store = createDeckStore(deck()); // title 'Demo' → name 'Demo'
+    const id = store.activeId;
+    await handleApiRequest(store, req('PUT', '/api/deck', { ...deck(), title: 'Renamed in editor' }));
+    expect(store.decks[id].name).toBe('Renamed in editor');
+  });
+
+  it('GET /api/deck/state reports the active deck id', async () => {
+    const store = createDeckStore(deck());
+    expect((await handleApiRequest(store, req('GET', '/api/deck/state'))).body.activeId).toBe(store.activeId);
+  });
+
   it('PUT /api/deck with no active deck creates and activates one (seed flow)', async () => {
     const store = createDeckStore();
     expect(store.activeId).toBeNull();
@@ -132,6 +168,14 @@ describe('decks library REST', () => {
     expect(r.status).toBe(200);
     expect(store.decks[id].name).toBe('Renamed');
     expect((await handleApiRequest(store, req('PUT', '/api/decks/nope', { name: 'x' }))).status).toBe(404);
+  });
+
+  it('PUT /api/decks/:id rename also updates the deck content title (single source)', async () => {
+    const store = createDeckStore(deck());
+    const id = store.activeId;
+    await handleApiRequest(store, req('PUT', `/api/decks/${id}`, { name: 'Renamed' }));
+    expect(store.decks[id].name).toBe('Renamed');
+    expect(store.decks[id].deck.title).toBe('Renamed'); // chrome reads deck.title — keep it in step
   });
 
   it('PUT /api/decks/:id without a valid name is a no-op (no rev bump)', async () => {
@@ -401,13 +445,13 @@ describe('deck revisions (round-trip sync)', () => {
 
   it('GET /api/deck/state returns deck:null when no deck is loaded', async () => {
     const r = await handleApiRequest(createDeckStore(), req('GET', '/api/deck/state'));
-    expect(r.body).toEqual({ deck: null, rev: 0 });
+    expect(r.body).toEqual({ deck: null, rev: 0, activeId: null });
   });
 
   it('PUT /api/deck bumps rev and returns it', async () => {
     const store = createDeckStore(deck());
     const r1 = await handleApiRequest(store, req('PUT', '/api/deck', { id: 'd2', slides: [], sections: [] }));
-    expect(r1.body).toEqual({ ok: true, rev: 1 });
+    expect(r1.body).toEqual({ ok: true, rev: 1, activeId: store.activeId });
     const r2 = await handleApiRequest(store, req('PUT', '/api/deck', { id: 'd3', slides: [], sections: [] }));
     expect(r2.body.rev).toBe(2);
     expect(store.rev).toBe(2);

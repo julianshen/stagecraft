@@ -43,8 +43,13 @@ export function createDeckStore(initial = null) {
     },
     set deck(d) {
       if (this.activeId != null && this.decks[this.activeId]) {
-        this.decks[this.activeId].deck = d;
-        this.decks[this.activeId].updatedAt = Date.now();
+        const rec = this.decks[this.activeId];
+        rec.deck = d;
+        // The deck's title is its name — keep the library record in step on a
+        // content write (Phase 3 rename will likewise set deck.title, so the two
+        // never diverge). Fall back to the existing name when the deck is untitled.
+        rec.name = (d && (d.title || d.name)) || rec.name;
+        rec.updatedAt = Date.now();
       } else {
         const id = newDeckId();
         this.decks[id] = makeRecord(id, d);
@@ -220,8 +225,8 @@ export async function handleApiRequest(store, req, deps = {}) {
 
   if (path === '/api/health' && method === 'GET') return ok({ ok: true, version: '1.0.0' });
 
-  // Round-trip polling endpoint: deck content + revision in one read.
-  if (path === '/api/deck/state' && method === 'GET') return ok({ deck: store.deck ?? null, rev: store.rev });
+  // Round-trip polling endpoint: deck content + revision (+ active deck id) in one read.
+  if (path === '/api/deck/state' && method === 'GET') return ok({ deck: store.deck ?? null, rev: store.rev, activeId: store.activeId });
 
   // ---- Multi-deck library ----
   if (path === '/api/decks') {
@@ -259,6 +264,7 @@ export async function handleApiRequest(store, req, deps = {}) {
       if (!rec) return ok({ error: 'Not found' }, 404);
       if (body && typeof body.name === 'string') {
         rec.name = body.name;
+        if (rec.deck) rec.deck.title = body.name; // the title is the name — keep content in step
         bump(store, rec); // stamp the renamed deck, even if it isn't the active one
       }
       return ok({ id, name: rec.name });
@@ -274,7 +280,18 @@ export async function handleApiRequest(store, req, deps = {}) {
 
   if (path === '/api/deck') {
     if (method === 'GET') return ok(store.deck || {});
-    if (method === 'PUT') { store.deck = body; bump(store); return ok({ ok: true, rev: store.rev }); }
+    if (method === 'PUT') {
+      // A write may be tagged with the deck it was issued for; ignore it if the
+      // active deck has since switched, so a stale in-flight PUT can't clobber a
+      // different deck the user just opened.
+      const forId = new URLSearchParams(req.url.split('?')[1] || '').get('forId');
+      // Always report activeId so the client can tag subsequent writes right
+      // away — notably after a fresh-store seed that just created the active deck.
+      if (forId != null && forId !== store.activeId) return ok({ ok: false, ignored: true, rev: store.rev, activeId: store.activeId });
+      store.deck = body;
+      bump(store);
+      return ok({ ok: true, rev: store.rev, activeId: store.activeId });
+    }
   }
 
   if (path === '/api/slides') {
