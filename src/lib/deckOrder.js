@@ -30,13 +30,14 @@ export function moveSlide(deck, slideId, toSectionId, toIndex) {
 
 let dupSeq = 0;
 const uid = (p) => `${p}-${Date.now().toString(36)}-${(dupSeq++).toString(36)}`;
-export function newSlideId() { return uid('slide'); }
+function newSlideId() { return uid('slide'); }
 
 // Duplicate slide `slideId`: a deep clone with fresh ids (slide + its elements)
 // inserted right after the original in its section. Immutable; returns
 // { deck, newId } or null if the slide/deck can't be used. The caller may pass
-// `newId` so it can pre-generate the id (to select the copy) while still applying
-// the duplication through an onDeckChange updater against the freshest deck.
+// `newId` so two applications agree on the copy's id: decide + read `newId` from
+// one call against the current deck, then re-apply with that same id through an
+// onDeckChange updater against the freshest deck, and select it.
 export function duplicateSlide(deck, slideId, newId = newSlideId()) {
   if (!deck || !Array.isArray(deck.slides) || !Array.isArray(deck.sections)) return null;
   const orig = deck.slides.find((s) => s.id === slideId);

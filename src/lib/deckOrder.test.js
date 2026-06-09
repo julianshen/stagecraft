@@ -138,6 +138,13 @@ describe('duplicateSlide', () => {
     expect(duplicateSlide(null, 'a')).toBeNull();
   });
 
+  it('returns null for a null/undefined slide id (no selection to duplicate)', () => {
+    // The Editor's duplicate handler relies on this: when nothing valid is
+    // selected the op no-ops, so the caller must not select a phantom id.
+    expect(duplicateSlide(deck(), null)).toBeNull();
+    expect(duplicateSlide(deck(), undefined)).toBeNull();
+  });
+
   it('does not mutate the input deck', () => {
     const d = deck();
     duplicateSlide(d, 'a');
