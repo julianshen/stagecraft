@@ -1,5 +1,36 @@
 import { describe, it, expect } from 'vitest';
-import { chartSpec, chartData } from './chartSpec.js';
+import { chartSpec, chartData, CHART_SERIES_OKLCH, CHART_SERIES_HEX } from './chartSpec.js';
+
+describe('chart series palette', () => {
+  it('is one ordered palette in two render targets (oklch canvas + hex export), aligned by index', () => {
+    expect(CHART_SERIES_OKLCH.length).toBe(CHART_SERIES_HEX.length);
+    expect(CHART_SERIES_OKLCH.length).toBeGreaterThanOrEqual(4);
+    CHART_SERIES_OKLCH.forEach((c) => expect(c).toMatch(/^oklch\(/));
+    CHART_SERIES_HEX.forEach((c) => expect(c).toMatch(/^[0-9A-F]{6}$/i));
+    // Frozen so a consumer can't mutate the shared source of truth.
+    expect(Object.isFrozen(CHART_SERIES_OKLCH)).toBe(true);
+    expect(Object.isFrozen(CHART_SERIES_HEX)).toBe(true);
+  });
+
+  it('keeps each hex the exact sRGB of its oklch sibling, so the two cannot drift', () => {
+    // OKLCH → OKLab → linear sRGB → gamma (D65). Deterministic + dependency-free,
+    // so it enforces the "exact sRGB" invariant the source comment promises.
+    const g = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+    const hx = (v) => Math.max(0, Math.min(255, Math.round(v * 255))).toString(16).padStart(2, '0').toUpperCase();
+    const oklchToHex = (str) => {
+      const [L, C, H] = str.match(/oklch\(([\d.]+) ([\d.]+) ([\d.]+)\)/).slice(1).map(Number);
+      const a = C * Math.cos((H * Math.PI) / 180), b = C * Math.sin((H * Math.PI) / 180);
+      const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+      const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+      const s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+      const r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+      const gg = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+      const bb = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+      return hx(g(r)) + hx(g(gg)) + hx(g(bb));
+    };
+    expect(CHART_SERIES_OKLCH.map(oklchToHex)).toEqual(CHART_SERIES_HEX);
+  });
+});
 
 describe('chartData', () => {
   it('returns defaults when the slide carries no chart data', () => {

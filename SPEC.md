@@ -377,9 +377,11 @@ The store carries a monotonic **`rev`** counter, bumped on every mutation (deck 
 | **roadmap** | 🟢 **native PPTX timeline** — month axis, status-coloured lane bars, optional TODAY marker, and a legend, built from the same `roadmapModel` (`lib/roadmapSpec.js`) the canvas uses, so they match. |
 | **chart** | 🟢 **native PPTX chart** (`addChart`) — editable in PowerPoint. Both the canvas SVG renderers and the export read the slide's `chart: { categories, series }` through the shared **`chartData`** helper (`lib/chartSpec.js`), so they show the same numbers; `chartSpec` maps the type (bar→vertical columns, line, area, pie/donut→doughnut, default line) for pptxgenjs. Both fall back to matching demo data when a slide carries none. |
 
-🟢 **Multi-series on the canvas** — `LineChart`/`BarChart`/`AreaChart` render every series (N lines / grouped bars / overlaid areas) on one shared axis (scaled to the max across all series), with a swatch legend naming each — matching the *series/grouping* the export already produced. A single series keeps the original look (area fill + value badge, no legend) so the demo is unchanged; a donut still composes a single series over its categories.
+🟢 **Multi-series on the canvas** — `LineChart`/`BarChart`/`AreaChart` render every series (N lines / grouped bars / overlaid areas) on one shared axis (scaled to the max across all series), with a swatch legend naming each. A single series keeps the original look (area fill + value badge, no legend) so the demo is unchanged; a donut still composes a single series over its categories.
 
-**Spec (⚪):** unify the per-series colour palette across canvas (`C_SLICES`, oklch) and export (the theme-tinted `chartColors`, hex) so series colours match — they currently agree on shape/order but not colour; expand roadmap to a real table/shape timeline; honor export-modal range/quality/notes options.
+🟢 **Series-colour parity** — canvas and export draw each series the same colour: one ordered palette in `chartSpec.js` (`CHART_SERIES_OKLCH` for the SVG canvas, `CHART_SERIES_HEX` — the exact sRGB equivalents — for pptxgenjs). The export uses it directly (no theme-tint) so it mirrors the screen.
+
+**Spec (⚪):** expand roadmap to a real table/shape timeline; honor export-modal range/quality/notes options.
 
 ---
 

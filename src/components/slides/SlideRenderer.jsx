@@ -1,7 +1,7 @@
 // Renders one slide from the sample deck in 1920×1080 coordinates.
 // Caller should wrap in <ScaledSlide> if displaying inside a smaller container.
 import { useId } from 'react';
-import { chartData } from '../../lib/chartSpec.js';
+import { chartData, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
 import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
 
 export function SlideChrome({ slide, deck }) {
@@ -20,8 +20,11 @@ export function SlideChrome({ slide, deck }) {
 }
 
 // ---- Chart SVG (data-driven; shared C_FALLBACK + chartCeil helpers below) ----
-const C_ACCENT = 'oklch(0.62 0.17 265)';
-const C_SLICES = ['oklch(0.62 0.17 265)', 'oklch(0.62 0.13 155)', 'oklch(0.7 0.15 75)', 'oklch(0.6 0.18 335)', 'oklch(0.55 0.12 200)', 'oklch(0.6 0.14 25)'];
+// Series colours — shared with the PPTX export (CHART_SERIES_HEX) via chartSpec
+// so a series is the same colour on screen and in the export. C_ACCENT (series 0)
+// stays the single-series accent.
+const C_SLICES = CHART_SERIES_OKLCH;
+const C_ACCENT = CHART_SERIES_OKLCH[0];
 // Shared default (same as the PPTX export) for a chart called without data, so
 // the canvas and the export never disagree. ChartByType always passes real data.
 const C_FALLBACK = chartData();
