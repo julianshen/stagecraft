@@ -77,7 +77,7 @@ export const SAMPLE_DECK = {
 
     { id: 'list-next', layout: 'list', title: 'What\'s next', eyebrow: 'Roadmap',
       items: [
-        'Export the roadmap timeline as a native PPTX shape (charts already export natively)',
+        'Rearrange slides and sections with the AI Co-pilot',
         'Code-split the bundle (pptxgenjs is the heavy bit)',
         'Persist decks to a backend instead of in-memory state',
         'Collaborative cursors and live comments',
@@ -91,7 +91,7 @@ export const SAMPLE_DECK = {
 
     { id: 'risks-limits', layout: 'risks', title: 'Honest limitations', eyebrow: 'Honest take',
       items: [
-        { sev: 'low', t: 'Roadmap layout exports as text', d: 'The timeline layout isn\'t a native PPTX shape yet (charts now export as native, editable charts)' },
+        { sev: 'low', t: 'Charts render a single series', d: 'The canvas and PPTX draw the first data series only; multi-series rendering is pending (roadmap and charts now export as native shapes)' },
         { sev: 'low', t: 'Single JS bundle',              d: '647 KB (pptxgenjs) — code-splitting is pending' },
         { sev: 'low', t: 'No persistence',                d: 'Deck state is in-memory; a backend store is on the roadmap' },
       ]

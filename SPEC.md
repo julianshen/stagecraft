@@ -124,7 +124,7 @@ Common optional fields: `id` (required), `eyebrow?` (small label above the title
 | `table` | `{ title, eyebrow?, columns: string[], rows: string[][] }` |
 | `text` | `{ title, body, eyebrow? }` |
 | `list` | `{ title, eyebrow?, items: string[] }` |
-| `roadmap` | `{ title }` (graphic is currently fixed data) |
+| `roadmap` | `{ title, eyebrow?, months?: string[], lanes?: { name, items: { t, d, lbl, state: 'done'\|'inflight'\|'atrisk'\|'planned' }[] }[], todayIndex?: number }` — normalized by `roadmapModel` (`lib/roadmapSpec.js`); falls back to the built-in demo when omitted |
 | `risks` | `{ title, eyebrow?, items: { sev: 'high'\|'med'\|'low', t, d }[] }` |
 | `thanks` | `{ title, subtitle? }` |
 
@@ -204,7 +204,7 @@ Each is a fixed visual composition driven by the slide schema (§3.2):
 - **table** — header row + data grid; 6-column decks get a tuned column-width template and a "health" pill in the last cell.
 - **text** — title + body paragraph (eyebrow = section name by default).
 - **list** — title + bulleted points.
-- **roadmap** — swimlane Gantt graphic. 🟡 graphic uses fixed internal lanes/items, not slide data.
+- **roadmap** — swimlane Gantt graphic. 🟢 data-driven via `roadmapModel` (`lib/roadmapSpec.js`), shared by the canvas and the PPTX export; a slide may supply `months`/`lanes`/`todayIndex`, and falls back to the built-in demo when omitted. ⚪ No in-app authoring path yet — the schema is set via MCP/agent or hand-authored JSON; the inspector can't edit lanes (same staged rollout the chart layout had).
 - **risks** — severity-coded rows (high/med/low).
 - **thanks** — closing slide.
 
@@ -373,7 +373,8 @@ The store carries a monotonic **`rev`** counter, bumped on every mutation (deck 
 | table | native PPTX table (header + rows) |
 | split | two-column text + stats |
 | text / list / thanks | title + body/bullets |
-| risks / roadmap | text representation 🟡 |
+| risks | text representation 🟡 |
+| **roadmap** | 🟢 **native PPTX timeline** — month axis, status-coloured lane bars, optional TODAY marker, and a legend, built from the same `roadmapModel` (`lib/roadmapSpec.js`) the canvas uses, so they match. |
 | **chart** | 🟢 **native PPTX chart** (`addChart`) — editable in PowerPoint. Both the canvas SVG renderers and the export read the slide's `chart: { categories, series }` through the shared **`chartData`** helper (`lib/chartSpec.js`), so they show the same numbers; `chartSpec` maps the type (bar→vertical columns, line, area, pie/donut→doughnut, default line) for pptxgenjs. Both fall back to matching demo data when a slide carries none. |
 
 **Spec (⚪):** render multiple series on the canvas SVGs (grouped bars / multi-line / stacked areas) to fully match a multi-series export — today the canvas shows the first series (line also overlays the 2nd as a comparison), while the export includes every series; expand roadmap to a real table/shape timeline; honor export-modal range/quality/notes options.
@@ -445,7 +446,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 3. ~~**Real selection & direct manipulation** — element model + click/drag/resize/rotate; multi-select/align/distribute.~~ ✅ **Done** — free-form `elements` layer with select/marquee/move/resize/rotate + align (H+V)/distribute (§9). _(Properties panel binds the single selection; per-element typography still ⚪.)_
 4. ~~**Durable persistence + multi-deck library**~~ ✅ **Done** — disk-persisted deck library; Home lists/opens/creates/renames/deletes real decks (§7.1, §17). _Follow-up: seed via `POST /api/decks` to remove the last untagged-write window; list-view rename/delete._
 5. ~~**Drag-to-reorder + section CRUD**~~ ✅ **Done** — Thumbs rail (§7.2.3) and Sorter grid (§7.3) both reorder via `moveSlide`; Sorter adds section create/rename/delete (`addSection`/`renameSection`/`deleteSection`, all in `lib/deckOrder.js`). ⚪ Remaining: AI reorder via Co-pilot. _(§7.3)_
-6. ~~**Chart in PPTX**~~ ✅ **Done** — native editable `addChart` via `chartSpec`; canvas + export share `chartData` so charts are data-driven and match (§12). ⚪ Remaining: roadmap-layout timeline; wire export-modal range/quality/notes options. _(§12, §13)_
+6. ~~**Chart + roadmap in PPTX**~~ ✅ **Done** — native editable `addChart` via `chartSpec`; canvas + export share `chartData` so charts are data-driven and match (§12). Roadmap now exports as a native timeline (month axis, status-coloured lane bars, TODAY marker, legend), built from the shared `roadmapModel` (`lib/roadmapSpec.js`) so canvas and export match. ⚪ Remaining: multi-series chart canvas rendering; wire export-modal range/quality/notes options. _(§12, §13)_
 7. ~~**Templates seed real decks**~~ ✅ **Done** — the picker creates a themed library deck via `templateDeck` + `createDeck` (§14). ⚪ Remaining: persist top-p; genericize the `DeckCover` chrome string; per-template multi-slide skeletons. _(§7.4, §7.1)_ (Duplicate-slide ✅ §7.2.1.)
 8. **Presenter** laser-tracks-pointer + blackout. _(§7.5)_
 9. **Collaboration** presence + comments. _(§16)_

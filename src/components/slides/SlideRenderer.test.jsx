@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ElementsLayer, Slide, ChartByType } from './SlideRenderer.jsx';
+import { ElementsLayer, Slide, ChartByType, RoadmapGraphic } from './SlideRenderer.jsx';
 
 describe('ElementsLayer', () => {
   it('renders nothing when there are no elements', () => {
@@ -100,5 +100,28 @@ describe('ChartByType (data-driven charts)', () => {
     const { container } = render(<ChartByType type="donut" slide={slide} />);
     expect(container.querySelector('path')).toBeTruthy(); // arc drawn, not collapsed
     expect(container.textContent).toContain('100%');
+  });
+});
+
+describe('RoadmapGraphic (data-driven, shared model)', () => {
+  it('renders the demo roadmap (default lanes + TODAY marker) when given no slide data', () => {
+    render(<RoadmapGraphic />);
+    ['Platform', 'Growth', 'AI', 'Enterprise'].forEach((n) => expect(screen.getByText(n)).toBeTruthy());
+    expect(screen.getByText('TODAY')).toBeTruthy();
+  });
+
+  it('renders slide-supplied lanes/months and omits TODAY when unspecified', () => {
+    render(<RoadmapGraphic slide={{ months: ['W1', 'W2'], lanes: [{ name: 'OnlyLane', items: [{ t: 0, d: 1, lbl: 'Task', state: 'done' }] }] }} />);
+    expect(screen.getByText('OnlyLane')).toBeTruthy();
+    expect(screen.getByText('W1')).toBeTruthy();
+    expect(screen.queryByText('Platform')).toBeNull(); // demo data not used
+    expect(screen.queryByText('TODAY')).toBeNull();     // no todayIndex on a custom roadmap
+  });
+});
+
+describe('Slide — roadmap legend', () => {
+  it('drives the canvas legend from the shared status labels', () => {
+    render(<Slide slide={{ layout: 'roadmap', title: 'R' }} deck={{ title: 'D' }} />);
+    ['Shipped', 'In-flight', 'At risk', 'Planned'].forEach((l) => expect(screen.getByText(l)).toBeTruthy());
   });
 });

@@ -1,5 +1,6 @@
 import pptxgen from 'pptxgenjs';
 import { chartSpec } from './chartSpec.js';
+import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
 
 // ---- theme colours (fallback to indigo) ----
 const THEME_COLORS = {
@@ -201,20 +202,64 @@ function addRisksSlide(pptx, slide, tc) {
   });
 }
 
+// Native, data-driven roadmap timeline (mirrors the canvas RoadmapGraphic via
+// the shared roadmapModel): a month axis, optional TODAY marker, one row per
+// lane with status-coloured bars, and a status legend.
 function addRoadmapSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   sld.addText(slide.title || 'Roadmap', {
     x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, bold: true, color: tc.ink, fontFace: 'Inter',
   });
-  const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
-  quarters.forEach((q, i) => {
-    const x = 0.5 + i * 2.3;
-    sld.addText(q, { x, y: 1.0, w: 2, h: 0.4, fontSize: 12, color: tc.accent, fontFace: 'Courier New' });
-    sld.addShape(pptx.ShapeType.rect, { x, y: 1.5, w: 2, h: 3.5, fill: { color: '1A1A2E' }, line: { color: '333355', width: 1 } });
+
+  const { months, lanes, todayIndex } = roadmapModel(slide);
+  const left = 0.5, labelW = 1.3, axisX = left + labelW;
+  const axisW = 9.5 - axisX;
+  const monthW = axisW / months.length;
+  const top = 1.2, bottom = 4.6;
+  const laneH = lanes.length ? (bottom - top) / lanes.length : 0;
+
+  // Month axis: label + faint gridline per month.
+  months.forEach((m, i) => {
+    const x = axisX + i * monthW;
+    sld.addText(String(m), { x, y: top - 0.34, w: monthW + 0.3, h: 0.3, fontSize: 8, color: '888888', fontFace: 'Courier New' });
+    sld.addShape(pptx.ShapeType.line, { x, y: top, w: 0, h: bottom - top, line: { color: '333355', width: 0.5 } });
   });
-  sld.addText('Roadmap details coming soon', {
-    x: 0.5, y: 3.2, w: 9, h: 0.4, fontSize: 12, color: '555577', align: 'center', fontFace: 'Inter',
+
+  // TODAY marker (dashed) when the model supplies one.
+  if (todayIndex != null) {
+    const x = axisX + todayIndex * monthW;
+    sld.addShape(pptx.ShapeType.line, { x, y: top, w: 0, h: bottom - top, line: { color: 'E0533A', width: 1, dashType: 'dash' } });
+    sld.addText('TODAY', { x: x + 0.03, y: top - 0.04, w: 1, h: 0.24, fontSize: 8, bold: true, color: 'E0533A', fontFace: 'Courier New' });
+  }
+
+  // Lanes: name + status-coloured bars.
+  const barH = Math.min(0.34, laneH * 0.5);
+  lanes.forEach((lane, li) => {
+    const y = top + li * laneH;
+    sld.addText(lane.name, { x: left, y: y + laneH / 2 - 0.15, w: labelW - 0.1, h: 0.3, fontSize: 11, bold: true, color: tc.ink, fontFace: 'Inter' });
+    lane.items.forEach((it) => {
+      const bx = axisX + it.t * monthW;
+      const bw = Math.max(0.12, it.d * monthW - 0.05);
+      sld.addShape(pptx.ShapeType.roundRect, {
+        x: bx, y: y + laneH / 2 - barH / 2, w: bw, h: barH, rectRadius: 0.04,
+        fill: { color: ROADMAP_HEX[it.state] }, line: { type: 'none' },
+      });
+      if (it.lbl) {
+        sld.addText(it.lbl, {
+          x: bx + 0.06, y: y + laneH / 2 - barH / 2, w: Math.max(bw, 1.3), h: barH,
+          fontSize: 8, color: it.state === 'planned' ? '333333' : 'FFFFFF', fontFace: 'Inter', valign: 'middle',
+        });
+      }
+    });
+  });
+
+  // Status legend along the bottom.
+  const legendY = bottom + 0.2;
+  ROADMAP_STATES.forEach((st, i) => {
+    const lx = axisX + i * 1.6;
+    sld.addShape(pptx.ShapeType.rect, { x: lx, y: legendY + 0.02, w: 0.16, h: 0.16, fill: { color: ROADMAP_HEX[st] }, line: { type: 'none' } });
+    sld.addText(ROADMAP_LABELS[st], { x: lx + 0.22, y: legendY - 0.02, w: 1.3, h: 0.25, fontSize: 9, color: 'AAAAAA', fontFace: 'Inter' });
   });
 }
 
