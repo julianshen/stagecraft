@@ -117,6 +117,20 @@ describe('RoadmapGraphic (data-driven, shared model)', () => {
     expect(screen.queryByText('Platform')).toBeNull(); // demo data not used
     expect(screen.queryByText('TODAY')).toBeNull();     // no todayIndex on a custom roadmap
   });
+
+  const barHeights = (container) =>
+    [...container.querySelectorAll('rect')].map((r) => Number(r.getAttribute('height')));
+
+  it('keeps the demo bar height at 36 for <=4 lanes', () => {
+    const { container } = render(<RoadmapGraphic />);
+    expect(barHeights(container).every((h) => h === 36)).toBe(true);
+  });
+
+  it('scales bar height down so dense (many-lane) roadmaps do not overlap rows', () => {
+    const lanes = Array.from({ length: 20 }, (_, i) => ({ name: `L${i}`, items: [{ t: 0, d: 1, lbl: 'x', state: 'done' }] }));
+    const { container } = render(<RoadmapGraphic slide={{ lanes }} />);
+    barHeights(container).forEach((h) => expect(h).toBeLessThan(36)); // compressed, not fixed 36
+  });
 });
 
 describe('Slide — roadmap legend', () => {

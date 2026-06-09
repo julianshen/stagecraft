@@ -204,6 +204,9 @@ export function RoadmapGraphic({ slide } = {}) {
   // (≤4 lanes keep the original 110 → the demo is unchanged).
   const W = 1600, H = 540, left = 180;
   const laneH = lanes.length ? Math.min(110, (H - 80) / lanes.length) : 0;
+  // Bar height scales with laneH (like the PPTX path) so dense roadmaps don't
+  // overlap rows; ≤4 lanes keep the original 36 → the demo is unchanged.
+  const barHt = Math.min(36, laneH * 0.5);
   const monthW = (W - left - 40) / months.length;
   const stateColor = s => ROADMAP_OKLCH[s] || ROADMAP_OKLCH.planned;
   return (
@@ -227,8 +230,8 @@ export function RoadmapGraphic({ slide } = {}) {
           {lane.items.map((it, i) => (
             <g key={i}>
               <rect
-                x={left + it.t*monthW} y={laneH/2 - 18}
-                width={Math.max(2, it.d*monthW - 8)} height="36"
+                x={left + it.t*monthW} y={laneH/2 - barHt/2}
+                width={Math.max(2, it.d*monthW - 8)} height={barHt}
                 rx="6"
                 fill={stateColor(it.state)}
                 opacity={it.state === 'planned' ? 0.5 : 1}
