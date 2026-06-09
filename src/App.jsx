@@ -110,7 +110,7 @@ export default function App() {
 
   return (
     <div className="app" data-screen-label={`${String(viewIdx(view)).padStart(2, '0')} ${viewName(view)}`}>
-      <TopBar view={view} setView={setView} deckTitle="Meet Stagecraft" setModal={setModal} onPresent={() => setPresenting(true)} />
+      <TopBar view={view} setView={setView} deckTitle={deck?.title || 'Untitled deck'} setModal={setModal} onPresent={() => setPresenting(true)} />
 
       {/* ---- views ---- */}
       {view === 'home' && (

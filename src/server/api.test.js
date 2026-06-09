@@ -71,6 +71,13 @@ describe('deck REST', () => {
     expect(store.deck.title).toBe('OK');
   });
 
+  it('keeps the library name in step with the deck title on a content write', async () => {
+    const store = createDeckStore(deck()); // title 'Demo' → name 'Demo'
+    const id = store.activeId;
+    await handleApiRequest(store, req('PUT', '/api/deck', { ...deck(), title: 'Renamed in editor' }));
+    expect(store.decks[id].name).toBe('Renamed in editor');
+  });
+
   it('GET /api/deck/state reports the active deck id', async () => {
     const store = createDeckStore(deck());
     expect((await handleApiRequest(store, req('GET', '/api/deck/state'))).body.activeId).toBe(store.activeId);

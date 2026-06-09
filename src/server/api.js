@@ -43,8 +43,13 @@ export function createDeckStore(initial = null) {
     },
     set deck(d) {
       if (this.activeId != null && this.decks[this.activeId]) {
-        this.decks[this.activeId].deck = d;
-        this.decks[this.activeId].updatedAt = Date.now();
+        const rec = this.decks[this.activeId];
+        rec.deck = d;
+        // The deck's title is its name — keep the library record in step on a
+        // content write (Phase 3 rename will likewise set deck.title, so the two
+        // never diverge). Fall back to the existing name when the deck is untitled.
+        rec.name = (d && (d.title || d.name)) || rec.name;
+        rec.updatedAt = Date.now();
       } else {
         const id = newDeckId();
         this.decks[id] = makeRecord(id, d);
