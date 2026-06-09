@@ -257,8 +257,10 @@ export async function handleApiRequest(store, req, deps = {}) {
     }
     if (method === 'PUT') {
       if (!rec) return ok({ error: 'Not found' }, 404);
-      if (body && typeof body.name === 'string') rec.name = body.name;
-      bump(store, rec); // stamp the renamed deck, even if it isn't the active one
+      if (body && typeof body.name === 'string') {
+        rec.name = body.name;
+        bump(store, rec); // stamp the renamed deck, even if it isn't the active one
+      }
       return ok({ id, name: rec.name });
     }
     if (method === 'DELETE') {

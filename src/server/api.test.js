@@ -134,6 +134,17 @@ describe('decks library REST', () => {
     expect((await handleApiRequest(store, req('PUT', '/api/decks/nope', { name: 'x' }))).status).toBe(404);
   });
 
+  it('PUT /api/decks/:id without a valid name is a no-op (no rev bump)', async () => {
+    const store = createDeckStore(deck());
+    const id = store.activeId;
+    const revBefore = store.rev;
+    const stampBefore = store.decks[id].updatedAt;
+    const r = await handleApiRequest(store, req('PUT', `/api/decks/${id}`, {}));
+    expect(r.status).toBe(200);
+    expect(store.rev).toBe(revBefore);
+    expect(store.decks[id].updatedAt).toBe(stampBefore);
+  });
+
   it('does not treat prototype keys as decks (no pollution)', async () => {
     const store = createDeckStore(deck());
     expect((await handleApiRequest(store, req('GET', '/api/decks/__proto__'))).status).toBe(404);

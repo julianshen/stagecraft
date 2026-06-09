@@ -33,8 +33,14 @@ function persist() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(writeSnapshot, 300);
 }
-// Flush any debounced write on shutdown so the last edits aren't lost on Ctrl+C.
-process.on('exit', () => { if (dirty) { clearTimeout(saveTimer); writeSnapshot(); } });
+// Flush any debounced write on shutdown so the last edits aren't lost. `exit`
+// covers a clean exit; Node does NOT emit it on a signal, so SIGINT (Ctrl+C) and
+// SIGTERM flush then exit explicitly.
+function flushPending() { if (dirty) { clearTimeout(saveTimer); writeSnapshot(); } }
+process.on('exit', flushPending);
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => { flushPending(); process.exit(0); });
+}
 
 function mcpMiddlewarePlugin() {
   return {
