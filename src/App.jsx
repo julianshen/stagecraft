@@ -13,7 +13,7 @@ import TemplatePicker from './components/modals/TemplatePicker.jsx';
 
 import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
 import { useDeckSync } from './hooks/useDeckSync.js';
-import { listDecks, createDeck, openDeck } from './lib/decksApi.js';
+import { listDecks, createDeck, openDeck, renameDeck, deleteDeck } from './lib/decksApi.js';
 
 const VIEW_LABELS = { home: 'Home', editor: 'Editor', sorter: 'Sorter', settings: 'Settings' };
 const VIEW_ORDER = ['home', 'editor', 'sorter', 'settings'];
@@ -58,11 +58,25 @@ export default function App() {
 
   // ---- deck library (multi-deck) ----
   const [decks, setDecks] = useState([]);
+  const [activeDeckId, setActiveDeckId] = useState(null); // which library deck the editor is on
+  // Fetch the library; keep the active-deck id in step with the server's flag.
+  const refreshDecks = async () => {
+    try {
+      const d = await listDecks();
+      if (Array.isArray(d)) {
+        setDecks(d);
+        const live = d.find((x) => x.active);
+        if (live) setActiveDeckId(live.id);
+        return d;
+      }
+    } catch { /* server absent */ }
+    return [];
+  };
   // Refresh the library whenever Home is shown (badges/edited times stay current).
   useEffect(() => {
     if (view !== 'home') return;
     let cancelled = false;
-    listDecks().then((d) => { if (!cancelled && Array.isArray(d)) setDecks(d); }).catch(() => { /* server absent */ });
+    listDecks().then((d) => { if (!cancelled && Array.isArray(d)) { setDecks(d); const a = d.find((x) => x.active); if (a) setActiveDeckId(a.id); } }).catch(() => {});
     return () => { cancelled = true; };
   }, [view]);
 
@@ -73,6 +87,7 @@ export default function App() {
       const { deck: opened, rev } = await openDeck(id);
       if (!opened) return;          // no content — stay on Home rather than show a stale deck
       adoptDeck(opened, rev, id);   // tag subsequent writes for this deck
+      setActiveDeckId(id);
       setView('editor');
     } catch { /* server error — stay on Home */ }
   };
@@ -82,6 +97,33 @@ export default function App() {
       const meta = await createDeck();
       if (meta?.id) await handleOpenDeck(meta.id);
     } catch { /* server error — stay on Home */ }
+  };
+  const handleRenameDeck = async (id, name) => {
+    try { await renameDeck(id, name); await refreshDecks(); } catch { /* ignore */ }
+  };
+  // Delete a deck; if it was the one the editor is on, adopt the deck the server
+  // promoted to active so the editor doesn't linger on the deleted (ghost) deck.
+  const handleDeleteDeck = async (id) => {
+    try {
+      await deleteDeck(id);
+      const list = await refreshDecks();
+      if (id === activeDeckId) {
+        // The server promoted a survivor to active; adopt its content so the
+        // editor isn't left on the deleted deck. Stay on Home — don't navigate.
+        const promoted = list.find((d) => d.active) || list[0];
+        if (promoted) {
+          const { deck: opened, rev } = await openDeck(promoted.id);
+          if (opened) adoptDeck(opened, rev, promoted.id);
+          setActiveDeckId(promoted.id);
+        } else {
+          // No decks remain: reset the editor to a fresh deck and clear the write
+          // tag (forId=null) so the next edit seeds a brand-new deck rather than
+          // being dropped as a stale write against the deleted one.
+          setActiveDeckId(null);
+          adoptDeck(JSON.parse(JSON.stringify(SAMPLE_DECK)), 0, null);
+        }
+      }
+    } catch { /* ignore */ }
   };
 
   // ---- apply theme + density + accent ----
@@ -118,6 +160,8 @@ export default function App() {
           decks={decks}
           onOpenDeck={handleOpenDeck}
           onNewDeck={handleNewDeck}
+          onRenameDeck={handleRenameDeck}
+          onDeleteDeck={handleDeleteDeck}
           onOpenTemplates={() => setModal('templates')}
         />
       )}

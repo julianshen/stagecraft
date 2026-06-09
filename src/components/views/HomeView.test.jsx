@@ -34,4 +34,46 @@ describe('HomeView', () => {
     render(<HomeView decks={[]} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
     expect(screen.getByText(/no decks yet/i)).toBeInTheDocument();
   });
+
+  it('opening a deck-actions menu does not open the deck', () => {
+    const onOpenDeck = vi.fn();
+    render(<HomeView decks={decks} onOpenDeck={onOpenDeck} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={noop} onDeleteDeck={noop} />);
+    fireEvent.click(screen.getByTitle('Actions: Meet Stagecraft'));
+    expect(onOpenDeck).not.toHaveBeenCalled();
+    expect(screen.getByText('Rename')).toBeInTheDocument();
+    expect(screen.getByText('Delete')).toBeInTheDocument();
+  });
+
+  it('renames a deck inline via the actions menu', () => {
+    const onRenameDeck = vi.fn();
+    render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={onRenameDeck} onDeleteDeck={noop} />);
+    fireEvent.click(screen.getByTitle('Actions: Meet Stagecraft'));
+    fireEvent.click(screen.getByText('Rename'));
+    const input = screen.getByDisplayValue('Meet Stagecraft');
+    fireEvent.change(input, { target: { value: 'Q3 Review' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRenameDeck).toHaveBeenCalledWith('d1', 'Q3 Review');
+    expect(onRenameDeck).toHaveBeenCalledTimes(1); // not double-fired by a follow-on blur
+  });
+
+  it('Escape cancels an inline rename without committing', () => {
+    const onRenameDeck = vi.fn();
+    render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={onRenameDeck} onDeleteDeck={noop} />);
+    fireEvent.click(screen.getByTitle('Actions: Meet Stagecraft'));
+    fireEvent.click(screen.getByText('Rename'));
+    const input = screen.getByDisplayValue('Meet Stagecraft');
+    fireEvent.change(input, { target: { value: 'Discarded' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(onRenameDeck).not.toHaveBeenCalled();
+  });
+
+  it('deletes a deck only after an inline confirm', () => {
+    const onDeleteDeck = vi.fn();
+    render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={noop} onDeleteDeck={onDeleteDeck} />);
+    fireEvent.click(screen.getByTitle('Actions: GTM Plan'));
+    fireEvent.click(screen.getByText('Delete'));
+    expect(onDeleteDeck).not.toHaveBeenCalled();     // first click only arms the confirm
+    fireEvent.click(screen.getByText('Confirm delete'));
+    expect(onDeleteDeck).toHaveBeenCalledWith('d2');
+  });
 });
