@@ -1,5 +1,7 @@
 // Renders one slide from the sample deck in 1920×1080 coordinates.
 // Caller should wrap in <ScaledSlide> if displaying inside a smaller container.
+import { useId } from 'react';
+import { chartData } from '../../lib/chartSpec.js';
 
 export function SlideChrome({ slide, deck }) {
   return (
@@ -16,151 +18,162 @@ export function SlideChrome({ slide, deck }) {
   );
 }
 
-// ---- Chart SVG ----
-export function LineChart() {
-  const data = [112, 120, 131, 142, 149, 160, 170, 184];
-  const plan = [110, 118, 128, 138, 147, 156, 166, 176];
-  const labels = ['Q4 FY24','Q1','Q2','Q3','Q4','Q1 FY26','Q2','Q3'];
-  const W = 1600, H = 560;
-  const P = 60;
-  const min = 100, max = 200;
-  const x = i => P + (i * (W - P*2)) / (data.length - 1);
-  const y = v => H - P - ((v - min) * (H - P*2)) / (max - min);
-  const line = arr => arr.map((v,i)=>`${i===0?'M':'L'}${x(i)},${y(v)}`).join(' ');
-  const area = 'M' + data.map((v,i)=>`${x(i)},${y(v)}`).join('L') + `L${x(data.length-1)},${H-P}L${x(0)},${H-P}Z`;
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display:'block' }}>
-      <defs>
-        <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="oklch(0.62 0.17 265)" stopOpacity="0.22"/>
-          <stop offset="1" stopColor="oklch(0.62 0.17 265)" stopOpacity="0"/>
-        </linearGradient>
-      </defs>
-      {[100,120,140,160,180,200].map(v => (
-        <g key={v}>
-          <line x1={P} x2={W-P} y1={y(v)} y2={y(v)} stroke="#e9e7e2" strokeWidth="1" />
-          <text x={P-10} y={y(v)+5} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{v}</text>
-        </g>
-      ))}
-      {labels.map((l,i)=>(
-        <text key={i} x={x(i)} y={H-P+28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{l}</text>
-      ))}
-      <path d={area} fill="url(#g)" />
-      <path d={line(plan)} fill="none" stroke="#999" strokeWidth="2" strokeDasharray="6 6" />
-      <path d={line(data)} fill="none" stroke="oklch(0.62 0.17 265)" strokeWidth="3" />
-      {data.map((v,i)=>(
-        <circle key={i} cx={x(i)} cy={y(v)} r="5" fill="white" stroke="oklch(0.62 0.17 265)" strokeWidth="2.5" />
-      ))}
-      <g transform={`translate(${x(data.length-1)+12},${y(data[data.length-1])-16})`}>
-        <rect x="0" y="-20" width="110" height="32" rx="4" fill="oklch(0.62 0.17 265)" />
-        <text x="10" y="1" fill="white" fontSize="18" fontFamily="JetBrains Mono" fontWeight="600">$184.2M</text>
-      </g>
-      <g transform={`translate(${P},${P-22})`}>
-        <circle cx="4" cy="0" r="4" fill="oklch(0.62 0.17 265)"/>
-        <text x="14" y="5" fontSize="16" fontFamily="JetBrains Mono" fill="#333">Actual</text>
-        <line x1="88" x2="110" y1="0" y2="0" stroke="#999" strokeWidth="2" strokeDasharray="4 4"/>
-        <text x="118" y="5" fontSize="16" fontFamily="JetBrains Mono" fill="#333">Plan</text>
-      </g>
-    </svg>
-  );
+// ---- Chart SVG (data-driven; see C_DEMO/chartCeil helpers below the imports) ----
+const C_ACCENT = 'oklch(0.62 0.17 265)';
+const C_SLICES = ['oklch(0.62 0.17 265)', 'oklch(0.62 0.13 155)', 'oklch(0.7 0.15 75)', 'oklch(0.6 0.18 335)', 'oklch(0.55 0.12 200)', 'oklch(0.6 0.14 25)'];
+const C_DEMO = {
+  line:  { categories: ['Q4 FY24', 'Q1', 'Q2', 'Q3', 'Q4', 'Q1 FY26', 'Q2', 'Q3'], values: [112, 120, 131, 142, 149, 160, 170, 184] },
+  bar:   { categories: ['FY22', 'FY23', 'FY24', 'FY25', 'FY26'], values: [112, 131, 149, 170, 184] },
+  donut: { categories: ['Enterprise', 'Mid-market', 'SMB', 'Public sector'], values: [61, 26, 10, 3] },
+};
+// Round a max up to a "nice" axis ceiling (1/2/5 × 10^k); zero-based ticks.
+function chartCeil(v) {
+  if (!(v > 0)) return 10;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / mag;
+  let step = 10;
+  if (n <= 1) step = 1;
+  else if (n <= 2) step = 2;
+  else if (n <= 5) step = 5;
+  return step * mag;
 }
+const chartTicks = (top) => [0, 1, 2, 3, 4].map((i) => Math.round((top * i) / 4));
 
-export function BarChart() {
-  const data = [112, 131, 149, 170, 184];
-  const labels = ['FY22','FY23','FY24','FY25','FY26'];
+export function LineChart({ categories, values, plan } = {}) {
+  const gid = 'lg' + useId().replace(/:/g, ''); // unique per instance — multiple charts share a DOM (thumbs + canvas)
+  const vals = values && values.length ? values : C_DEMO.line.values;
+  const labels = categories && categories.length ? categories : C_DEMO.line.categories;
   const W = 1600, H = 560, P = 60;
-  const max = 200;
-  const bw = (W - P*2) / data.length;
-  const y = v => H - P - (v / max) * (H - P*2);
+  const top = chartCeil(Math.max(...vals));
+  const x = i => P + (i * (W - P * 2)) / Math.max(1, vals.length - 1);
+  const y = v => H - P - (v / top) * (H - P * 2);
+  const toPath = arr => arr.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(v)}`).join(' ');
+  const area = 'M' + vals.map((v, i) => `${x(i)},${y(v)}`).join('L') + `L${x(vals.length - 1)},${H - P}L${x(0)},${H - P}Z`;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display:'block' }}>
-      {[0,50,100,150,200].map(v => (
-        <g key={v}>
-          <line x1={P} x2={W-P} y1={y(v)} y2={y(v)} stroke="#e9e7e2" strokeWidth="1"/>
-          <text x={P-10} y={y(v)+5} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{v}</text>
-        </g>
-      ))}
-      {data.map((v,i)=>(
-        <g key={i}>
-          <rect x={P + i*bw + bw*0.18} y={y(v)} width={bw*0.64} height={H-P-y(v)} rx="6"
-            fill={i===data.length-1 ? 'oklch(0.62 0.17 265)' : 'oklch(0.78 0.07 265)'}/>
-          <text x={P + i*bw + bw*0.5} y={y(v)-16} fontSize="20" fontFamily="JetBrains Mono" fontWeight="600" fill="#222" textAnchor="middle">{v}</text>
-          <text x={P + i*bw + bw*0.5} y={H-P+28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{labels[i]}</text>
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-export function AreaChart() {
-  const data = [112, 120, 131, 142, 149, 160, 170, 184];
-  const labels = ['Q4 FY24','Q1','Q2','Q3','Q4','Q1 FY26','Q2','Q3'];
-  const W = 1600, H = 560, P = 60, min = 100, max = 200;
-  const x = i => P + (i * (W - P*2)) / (data.length - 1);
-  const y = v => H - P - ((v - min) * (H - P*2)) / (max - min);
-  const line = data.map((v,i)=>`${i===0?'M':'L'}${x(i)},${y(v)}`).join(' ');
-  const area = 'M' + data.map((v,i)=>`${x(i)},${y(v)}`).join('L') + `L${x(data.length-1)},${H-P}L${x(0)},${H-P}Z`;
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display:'block' }}>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
       <defs>
-        <linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="oklch(0.62 0.17 265)" stopOpacity="0.35"/>
-          <stop offset="1" stopColor="oklch(0.62 0.17 265)" stopOpacity="0.02"/>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={C_ACCENT} stopOpacity="0.22"/>
+          <stop offset="1" stopColor={C_ACCENT} stopOpacity="0"/>
         </linearGradient>
       </defs>
-      {[100,120,140,160,180,200].map(v => (
+      {chartTicks(top).map(v => (
         <g key={v}>
-          <line x1={P} x2={W-P} y1={y(v)} y2={y(v)} stroke="#e9e7e2" strokeWidth="1"/>
-          <text x={P-10} y={y(v)+5} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{v}</text>
+          <line x1={P} x2={W - P} y1={y(v)} y2={y(v)} stroke="#e9e7e2" strokeWidth="1" />
+          <text x={P - 10} y={y(v) + 5} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{v}</text>
         </g>
       ))}
-      {labels.map((l,i)=>(
-        <text key={i} x={x(i)} y={H-P+28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{l}</text>
+      {labels.map((l, i) => (
+        <text key={i} x={x(i)} y={H - P + 28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{l}</text>
       ))}
-      <path d={area} fill="url(#ga)"/>
-      <path d={line} fill="none" stroke="oklch(0.62 0.17 265)" strokeWidth="3.5"/>
-      {data.map((v,i)=>(<circle key={i} cx={x(i)} cy={y(v)} r="5" fill="white" stroke="oklch(0.62 0.17 265)" strokeWidth="2.5"/>))}
+      <path d={area} fill={`url(#${gid})`} />
+      {plan && plan.length ? <path d={toPath(plan)} fill="none" stroke="#999" strokeWidth="2" strokeDasharray="6 6" /> : null}
+      <path d={toPath(vals)} fill="none" stroke={C_ACCENT} strokeWidth="3" />
+      {vals.map((v, i) => (
+        <circle key={i} cx={x(i)} cy={y(v)} r="5" fill="white" stroke={C_ACCENT} strokeWidth="2.5" />
+      ))}
+      <g transform={`translate(${x(vals.length - 1) - 96},${Math.max(P + 22, y(vals[vals.length - 1]) - 30)})`}>
+        <rect x="0" y="-20" width="92" height="32" rx="4" fill={C_ACCENT} />
+        <text x="46" y="1" fill="white" fontSize="18" fontFamily="JetBrains Mono" fontWeight="600" textAnchor="middle">{vals[vals.length - 1]}</text>
+      </g>
     </svg>
   );
 }
 
-export function DonutChart() {
-  const slices = [
-    { lbl:'Enterprise',    v:61, c:'oklch(0.62 0.17 265)' },
-    { lbl:'Mid-market',    v:26, c:'oklch(0.62 0.13 155)' },
-    { lbl:'SMB',           v:10, c:'oklch(0.7 0.15 75)' },
-    { lbl:'Public sector', v:3,  c:'oklch(0.6 0.18 335)' },
-  ];
-  const total = slices.reduce((a,s)=>a+s.v,0);
-  const cx=280, cy=280, r=200, rin=120;
+export function BarChart({ categories, values } = {}) {
+  const vals = values && values.length ? values : C_DEMO.bar.values;
+  const labels = categories && categories.length ? categories : C_DEMO.bar.categories;
+  const W = 1600, H = 560, P = 60;
+  const top = chartCeil(Math.max(...vals));
+  const bw = (W - P * 2) / vals.length;
+  const y = v => H - P - (v / top) * (H - P * 2);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+      {chartTicks(top).map(v => (
+        <g key={v}>
+          <line x1={P} x2={W - P} y1={y(v)} y2={y(v)} stroke="#e9e7e2" strokeWidth="1"/>
+          <text x={P - 10} y={y(v) + 5} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{v}</text>
+        </g>
+      ))}
+      {vals.map((v, i) => (
+        <g key={i}>
+          <rect x={P + i * bw + bw * 0.18} y={y(v)} width={bw * 0.64} height={Math.max(0, H - P - y(v))} rx="6"
+            fill={i === vals.length - 1 ? C_ACCENT : 'oklch(0.78 0.07 265)'}/>
+          <text x={P + i * bw + bw * 0.5} y={y(v) - 16} fontSize="20" fontFamily="JetBrains Mono" fontWeight="600" fill="#222" textAnchor="middle">{v}</text>
+          <text x={P + i * bw + bw * 0.5} y={H - P + 28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{labels[i] || ''}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+export function AreaChart({ categories, values } = {}) {
+  const gid = 'ag' + useId().replace(/:/g, ''); // unique per instance (see LineChart)
+  const vals = values && values.length ? values : C_DEMO.line.values;
+  const labels = categories && categories.length ? categories : C_DEMO.line.categories;
+  const W = 1600, H = 560, P = 60;
+  const top = chartCeil(Math.max(...vals));
+  const x = i => P + (i * (W - P * 2)) / Math.max(1, vals.length - 1);
+  const y = v => H - P - (v / top) * (H - P * 2);
+  const line = vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(v)}`).join(' ');
+  const area = 'M' + vals.map((v, i) => `${x(i)},${y(v)}`).join('L') + `L${x(vals.length - 1)},${H - P}L${x(0)},${H - P}Z`;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={C_ACCENT} stopOpacity="0.35"/>
+          <stop offset="1" stopColor={C_ACCENT} stopOpacity="0.02"/>
+        </linearGradient>
+      </defs>
+      {chartTicks(top).map(v => (
+        <g key={v}>
+          <line x1={P} x2={W - P} y1={y(v)} y2={y(v)} stroke="#e9e7e2" strokeWidth="1"/>
+          <text x={P - 10} y={y(v) + 5} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{v}</text>
+        </g>
+      ))}
+      {labels.map((l, i) => (
+        <text key={i} x={x(i)} y={H - P + 28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{l}</text>
+      ))}
+      <path d={area} fill={`url(#${gid})`}/>
+      <path d={line} fill="none" stroke={C_ACCENT} strokeWidth="3.5"/>
+      {vals.map((v, i) => (<circle key={i} cx={x(i)} cy={y(v)} r="5" fill="white" stroke={C_ACCENT} strokeWidth="2.5"/>))}
+    </svg>
+  );
+}
+
+export function DonutChart({ categories, values } = {}) {
+  const vals = values && values.length ? values : C_DEMO.donut.values;
+  const labels = categories && categories.length ? categories : C_DEMO.donut.categories;
+  const sum = vals.reduce((a, b) => a + b, 0);
+  const total = sum || 1; // avoid /0 in arc/percentage math; the label shows the real sum
+  const cx = 280, cy = 280, r = 200, rin = 120;
   let acc = -90;
   function arc(start, end) {
-    const s=(start*Math.PI)/180, e=(end*Math.PI)/180;
-    const x1=cx+r*Math.cos(s), y1=cy+r*Math.sin(s);
-    const x2=cx+r*Math.cos(e), y2=cy+r*Math.sin(e);
-    const xi2=cx+rin*Math.cos(e), yi2=cy+rin*Math.sin(e);
-    const xi1=cx+rin*Math.cos(s), yi1=cy+rin*Math.sin(s);
-    const big = end-start>180?1:0;
+    const s = (start * Math.PI) / 180, e = (end * Math.PI) / 180;
+    const x1 = cx + r * Math.cos(s), y1 = cy + r * Math.sin(s);
+    const x2 = cx + r * Math.cos(e), y2 = cy + r * Math.sin(e);
+    const xi2 = cx + rin * Math.cos(e), yi2 = cy + rin * Math.sin(e);
+    const xi1 = cx + rin * Math.cos(s), yi1 = cy + rin * Math.sin(s);
+    const big = end - start > 180 ? 1 : 0;
     return `M${x1},${y1} A${r},${r} 0 ${big} 1 ${x2},${y2} L${xi2},${yi2} A${rin},${rin} 0 ${big} 0 ${xi1},${yi1} Z`;
   }
   return (
-    <svg viewBox="0 0 1200 560" width="100%" style={{ display:'block' }}>
+    <svg viewBox="0 0 1200 560" width="100%" style={{ display: 'block' }}>
       <g>
-        {slices.map((sl,i)=>{
-          const ang = (sl.v/total)*360;
-          const d = arc(acc, acc+ang);
-          acc += ang;
-          return <path key={i} d={d} fill={sl.c}/>;
+        {vals.map((v, i) => {
+          const d = arc(acc, acc + (v / total) * 360);
+          acc += (v / total) * 360;
+          return <path key={i} d={d} fill={C_SLICES[i % C_SLICES.length]}/>;
         })}
-        <text x={cx} y={cy-6} fontSize="44" fontFamily="JetBrains Mono" fontWeight="600" fill="#222" textAnchor="middle">$184M</text>
-        <text x={cx} y={cy+34} fontSize="20" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">Net ARR</text>
+        <text x={cx} y={cy - 6} fontSize="44" fontFamily="JetBrains Mono" fontWeight="600" fill="#222" textAnchor="middle">{sum}</text>
+        <text x={cx} y={cy + 34} fontSize="20" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">Total</text>
       </g>
       <g transform="translate(640, 130)">
-        {slices.map((sl,i)=>(
-          <g key={i} transform={`translate(0, ${i*72})`}>
-            <rect x="0" y="0" width="26" height="26" rx="5" fill={sl.c}/>
-            <text x="40" y="20" fontSize="26" fontFamily="Inter" fontWeight="600" fill="#222">{sl.lbl}</text>
-            <text x="440" y="20" fontSize="26" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{sl.v}%</text>
+        {vals.map((v, i) => (
+          <g key={i} transform={`translate(0, ${i * 72})`}>
+            <rect x="0" y="0" width="26" height="26" rx="5" fill={C_SLICES[i % C_SLICES.length]}/>
+            <text x="40" y="20" fontSize="26" fontFamily="Inter" fontWeight="600" fill="#222">{labels[i] || `Series ${i + 1}`}</text>
+            <text x="440" y="20" fontSize="26" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{Math.round((v / total) * 100)}%</text>
           </g>
         ))}
       </g>
@@ -168,11 +181,15 @@ export function DonutChart() {
   );
 }
 
-export function ChartByType({ type }) {
-  if (type === 'bar') return <BarChart/>;
-  if (type === 'area') return <AreaChart/>;
-  if (type === 'donut' || type === 'pie') return <DonutChart/>;
-  return <LineChart/>;
+// Dispatch by chart type, feeding each chart the slide's data (shared with the
+// PPTX export via chartData) — or nothing, so it uses its demo data.
+export function ChartByType({ type, slide }) {
+  const d = slide && slide.chart ? chartData(slide) : null;
+  const props = d ? { categories: d.categories, values: d.series[0]?.values, plan: d.series[1]?.values } : {};
+  if (type === 'bar') return <BarChart {...props}/>;
+  if (type === 'area') return <AreaChart {...props}/>;
+  if (type === 'donut' || type === 'pie') return <DonutChart {...props}/>;
+  return <LineChart {...props}/>;
 }
 
 export function RoadmapGraphic() {
@@ -373,7 +390,7 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
             <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 8px' }}>{slide.title}</h1>
             <div style={{ fontFamily:'var(--f-mono)', fontSize:22, color:'#888', marginBottom:40 }}>{slide.sub || `${typeLabel} chart`}</div>
             <div style={{ background:'white', border:'1px solid #eee', borderRadius:10, padding:30 }}>
-              <ChartByType type={chartType}/>
+              <ChartByType type={chartType} slide={slide}/>
             </div>
           </div>
         </div>

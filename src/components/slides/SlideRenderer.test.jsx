@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ElementsLayer, Slide } from './SlideRenderer.jsx';
+import { ElementsLayer, Slide, ChartByType } from './SlideRenderer.jsx';
 
 describe('ElementsLayer', () => {
   it('renders nothing when there are no elements', () => {
@@ -70,5 +70,28 @@ describe('Slide with elements', () => {
     };
     render(<Slide slide={slide} deck={{ title: 'Demo' }} sectionName="Intro" num={1} total={1} />);
     expect(screen.getByText('Overlay text')).toBeInTheDocument();
+  });
+});
+
+describe('ChartByType (data-driven charts)', () => {
+  it('renders bar values and category labels from the slide chart data', () => {
+    const slide = { chart: { categories: ['Alpha', 'Beta'], series: [{ values: [42, 7] }] } };
+    const { container } = render(<ChartByType type="bar" slide={slide} />);
+    const t = container.textContent;
+    expect(t).toContain('42');
+    expect(t).toContain('Alpha');
+    expect(t).toContain('Beta');
+  });
+
+  it('renders donut slice percentages + labels from the slide chart data', () => {
+    const slide = { chart: { categories: ['A', 'B'], series: [{ values: [3, 1] }] } };
+    const { container } = render(<ChartByType type="donut" slide={slide} />);
+    expect(container.textContent).toContain('75%'); // 3 of 4
+    expect(container.textContent).toContain('A');
+  });
+
+  it('falls back to demo data when the slide carries no chart payload', () => {
+    const { container } = render(<ChartByType type="bar" slide={{}} />);
+    expect(container.textContent).toContain('FY26'); // a demo bar label
   });
 });
