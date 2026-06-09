@@ -308,6 +308,7 @@ Anthropic · OpenAI · Google · OpenRouter · Local (Ollama/LM Studio, no key) 
 
 **Still ⚪ (follow-ups):**
 - Per-element typography (font family/size/weight/align for text).
+- Rotate the selection overlay (resize handles + rotate knob) to track a rotated element, which also needs rotate-aware resize math (the overlay is currently axis-aligned).
 - Selection set: shift-click multi-select ✅, marquee drag-rectangle ✅, align (horizontal + vertical) ✅, distribute ✅, and a rotate handle ✅ all shipped; ⚪ shift-add-to-marquee remains.
 - Snapping to alignment guides (currently grid-only); Pen/Image tools.
 - Persisting/AI-authoring elements (the `elements` field isn't in the AI-patch whitelist yet).
