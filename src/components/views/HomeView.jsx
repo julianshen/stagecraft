@@ -33,8 +33,11 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
   const [filter, setFilter] = useState('all');
   const [view, setView] = useState('grid');
   const [menuId, setMenuId] = useState(null);   // card whose actions menu is open
+  const [confirmingDelete, setConfirmingDelete] = useState(false); // delete armed in the open menu
   const [renaming, setRenaming] = useState(null); // card being renamed inline
   const [renameValue, setRenameValue] = useState('');
+
+  const toggleMenu = (id) => { setMenuId(menuId === id ? null : id); setConfirmingDelete(false); };
 
   const cards = decks.map(toCard);
 
@@ -160,11 +163,18 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
                     )}
                     {d.active && <span className="badge" style={{ background: 'var(--accent-wash)', color: 'var(--accent)' }}>LIVE</span>}
                     <div style={{ marginLeft: 'auto', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
-                      <IconButton name="more-h" size={13} title={`Actions: ${d.name}`} onClick={() => setMenuId(menuId === d.id ? null : d.id)} />
+                      <IconButton name="more-h" size={13} title={`Actions: ${d.name}`} onClick={() => toggleMenu(d.id)} />
                       {menuId === d.id && (
-                        <div className="deck-menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 10, background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: 'var(--shadow-2)', padding: 4, minWidth: 120 }}>
+                        <div className="deck-menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 10, background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: 'var(--shadow-2)', padding: 4, minWidth: 130 }}>
                           <button className="menu-item" style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', background: 'none', border: 0, color: 'var(--ink)', cursor: 'pointer', borderRadius: 4 }} onClick={() => startRename(d)}>Rename</button>
-                          <button className="menu-item" style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', background: 'none', border: 0, color: 'var(--danger)', cursor: 'pointer', borderRadius: 4 }} onClick={() => { setMenuId(null); onDeleteDeck?.(d.id); }}>Delete</button>
+                          <button
+                            className="menu-item"
+                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', background: confirmingDelete ? 'var(--accent-wash)' : 'none', border: 0, color: 'var(--danger)', cursor: 'pointer', borderRadius: 4, fontWeight: confirmingDelete ? 600 : 400 }}
+                            onClick={() => {
+                              if (confirmingDelete) { setMenuId(null); setConfirmingDelete(false); onDeleteDeck?.(d.id); }
+                              else setConfirmingDelete(true); // arm — require a second click to confirm
+                            }}
+                          >{confirmingDelete ? 'Confirm delete' : 'Delete'}</button>
                         </div>
                       )}
                     </div>

@@ -67,11 +67,13 @@ describe('HomeView', () => {
     expect(onRenameDeck).not.toHaveBeenCalled();
   });
 
-  it('deletes a deck from the actions menu', () => {
+  it('deletes a deck only after an inline confirm', () => {
     const onDeleteDeck = vi.fn();
     render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={noop} onDeleteDeck={onDeleteDeck} />);
     fireEvent.click(screen.getByTitle('Actions: GTM Plan'));
     fireEvent.click(screen.getByText('Delete'));
+    expect(onDeleteDeck).not.toHaveBeenCalled();     // first click only arms the confirm
+    fireEvent.click(screen.getByText('Confirm delete'));
     expect(onDeleteDeck).toHaveBeenCalledWith('d2');
   });
 });
