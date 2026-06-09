@@ -187,6 +187,7 @@ export default function SlideEditor(props) {
             deckCtx={deckCtx}
             comments={comments}
             onNewSlide={callbacks.onNewSlide}
+            onReorder={callbacks.onReorderSlide}
           />
         )}
 
