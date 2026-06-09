@@ -62,7 +62,7 @@ export default function App() {
   useEffect(() => {
     if (view !== 'home') return;
     let cancelled = false;
-    listDecks().then((d) => { if (!cancelled) setDecks(d); }).catch(() => { /* server absent */ });
+    listDecks().then((d) => { if (!cancelled && Array.isArray(d)) setDecks(d); }).catch(() => { /* server absent */ });
     return () => { cancelled = true; };
   }, [view]);
 
@@ -71,7 +71,8 @@ export default function App() {
   const handleOpenDeck = async (id) => {
     try {
       const { deck: opened, rev } = await openDeck(id);
-      if (opened) adoptDeck(opened, rev);
+      if (!opened) return;          // no content — stay on Home rather than show a stale deck
+      adoptDeck(opened, rev);
       setView('editor');
     } catch { /* server error — stay on Home */ }
   };

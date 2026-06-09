@@ -18,14 +18,16 @@ export function themeTint(theme) {
 
 // Up to three uppercase initials for a deck cover badge.
 export function initials(name) {
-  const words = (name || '').trim().split(/\s+/).filter(Boolean);
+  const words = String(name || '').trim().split(/\s+/).filter(Boolean);
   if (!words.length) return '??';
   return words.slice(0, 3).map((w) => w[0].toUpperCase()).join('');
 }
 
 // Compact "edited" label from a timestamp (just now / Nm / Nh / Nd / Nw / Nmo).
 export function relativeTime(ms, now = Date.now()) {
-  const sec = Math.floor(Math.max(0, now - ms) / 1000);
+  const t = Number(ms);
+  if (!Number.isFinite(t)) return '—';
+  const sec = Math.floor(Math.max(0, now - t) / 1000);
   if (sec < 60) return 'just now';
   const min = Math.floor(sec / 60);
   if (min < 60) return `${min}m`;

@@ -57,6 +57,11 @@ describe('decksApi view-model helpers', () => {
     expect(initials('   ')).toBe('??');
   });
 
+  it('initials tolerates non-string input', () => {
+    expect(initials(2026)).toBe('2');   // coerced, no throw
+    expect(initials(null)).toBe('??');
+  });
+
   it('relativeTime buckets durations from a fixed now', () => {
     const now = 1_000_000_000_000;
     expect(relativeTime(now, now)).toBe('just now');
@@ -66,5 +71,10 @@ describe('decksApi view-model helpers', () => {
     expect(relativeTime(now - 2 * 86_400_000, now)).toBe('2d');
     expect(relativeTime(now - 2 * 7 * 86_400_000, now)).toBe('2w');
     expect(relativeTime(now - 60 * 86_400_000, now)).toBe('2mo');
+  });
+
+  it('relativeTime returns a dash for non-finite input', () => {
+    expect(relativeTime(NaN, 1000)).toBe('—');
+    expect(relativeTime('oops', 1000)).toBe('—');
   });
 });

@@ -5,13 +5,14 @@ import { themeTint, initials, relativeTime } from '../../lib/decksApi.js';
 
 // Turn a deck-library metadata record into the card view-model the grid renders.
 function toCard(meta) {
+  const name = meta.name || 'Untitled deck';
   return {
     id: meta.id,
-    name: meta.name || 'Untitled deck',
+    name,
     slides: meta.slides ?? 0,
     edited: meta.updatedAt ? relativeTime(meta.updatedAt) : '—',
     tint: themeTint(meta.theme),
-    cover: initials(meta.name),
+    cover: initials(name),
     active: !!meta.active,
   };
 }
