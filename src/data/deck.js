@@ -91,7 +91,7 @@ export const SAMPLE_DECK = {
 
     { id: 'risks-limits', layout: 'risks', title: 'Honest limitations', eyebrow: 'Honest take',
       items: [
-        { sev: 'low', t: 'Charts render a single series', d: 'The canvas and PPTX draw the first data series only; multi-series rendering is pending (roadmap and charts now export as native shapes)' },
+        { sev: 'low', t: 'Data layouts are JSON-authored', d: 'Chart series and roadmap lanes are set via MCP or hand-authored JSON — the inspector can\'t edit them in-app yet (both now render multi-series / multi-lane on canvas and in PPTX)' },
         { sev: 'low', t: 'Single JS bundle',              d: '647 KB (pptxgenjs) — code-splitting is pending' },
         { sev: 'low', t: 'No persistence',                d: 'Deck state is in-memory; a backend store is on the roadmap' },
       ]

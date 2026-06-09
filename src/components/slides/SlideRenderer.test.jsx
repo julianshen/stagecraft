@@ -103,6 +103,42 @@ describe('ChartByType (data-driven charts)', () => {
   });
 });
 
+describe('ChartByType — multi-series', () => {
+  const twoSeries = { chart: { categories: ['A', 'B'], series: [{ name: 'S1', values: [1, 2] }, { name: 'S2', values: [3, 4] }] } };
+
+  it('line: draws a legend naming every series', () => {
+    const { container } = render(<ChartByType type="line" slide={twoSeries} />);
+    expect(container.textContent).toContain('S1');
+    expect(container.textContent).toContain('S2');
+  });
+
+  it('bar: grouped bars (one per series per category) + legend', () => {
+    const { container } = render(<ChartByType type="bar" slide={twoSeries} />);
+    expect(container.querySelectorAll('[data-bar]').length).toBe(4); // 2 categories × 2 series
+    expect(container.textContent).toContain('S1');
+    expect(container.textContent).toContain('S2');
+  });
+
+  it('area: legend naming every series', () => {
+    const { container } = render(<ChartByType type="area" slide={twoSeries} />);
+    expect(container.textContent).toContain('S1');
+    expect(container.textContent).toContain('S2');
+  });
+
+  it('scales the shared axis to the max across all series', () => {
+    // S2 max is 4; the top tick should reflect a ceiling >= 4, not series[0]'s max of 2.
+    const { container } = render(<ChartByType type="line" slide={twoSeries} />);
+    const ticks = [...container.querySelectorAll('text')].map((t) => Number(t.textContent)).filter((n) => Number.isFinite(n));
+    expect(Math.max(...ticks)).toBeGreaterThanOrEqual(4);
+  });
+
+  it('single-series charts show no legend (unchanged look)', () => {
+    const solo = { chart: { categories: ['A', 'B'], series: [{ name: 'Solo', values: [1, 2] }] } };
+    const { container } = render(<ChartByType type="line" slide={solo} />);
+    expect(container.textContent).not.toContain('Solo'); // no legend for a single series
+  });
+});
+
 describe('RoadmapGraphic (data-driven, shared model)', () => {
   it('renders the demo roadmap (default lanes + TODAY marker) when given no slide data', () => {
     render(<RoadmapGraphic />);
