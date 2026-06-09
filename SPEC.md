@@ -374,7 +374,7 @@ The store carries a monotonic **`rev`** counter, bumped on every mutation (deck 
 | risks / roadmap | text representation 🟡 |
 | **chart** | 🟢 **native PPTX chart** (`addChart`) — editable in PowerPoint. Both the canvas SVG renderers and the export read the slide's `chart: { categories, series }` through the shared **`chartData`** helper (`lib/chartSpec.js`), so they show the same numbers; `chartSpec` maps the type (bar→vertical columns, line, area, pie/donut→doughnut, default line) for pptxgenjs. Both fall back to matching demo data when a slide carries none. |
 
-**Spec (⚪):** expand roadmap to a real table/shape timeline; honor export-modal range/quality/notes options.
+**Spec (⚪):** render multiple series on the canvas SVGs (grouped bars / multi-line / stacked areas) to fully match a multi-series export — today the canvas shows the first series (line also overlays the 2nd as a comparison), while the export includes every series; expand roadmap to a real table/shape timeline; honor export-modal range/quality/notes options.
 
 ---
 
