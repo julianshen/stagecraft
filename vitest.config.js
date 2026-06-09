@@ -20,6 +20,7 @@ export default defineConfig({
         'src/lib/elements.js',
         'src/lib/llmClient.js',
         'src/lib/decksApi.js',
+        'src/lib/chartSpec.js',
         'src/hooks/useDeckSync.js',
         'src/data/deck.js',
         'src/components/editor/CanvasSlide.jsx',
