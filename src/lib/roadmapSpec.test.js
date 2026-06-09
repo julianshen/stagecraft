@@ -64,6 +64,12 @@ describe('roadmapModel — todayIndex', () => {
     expect(roadmapModel({ months: ['a', 'b'], lanes: [{ name: 'L', items: [] }] }).todayIndex).toBeNull();
   });
 
+  it('clamps the default 3.5 marker to a custom month axis (months without lanes)', () => {
+    // usingDefaultLanes stays true, but 3.5 must not fall off a 2-slot axis.
+    expect(roadmapModel({ months: ['H1', 'H2'] }).todayIndex).toBe(2);
+    expect(roadmapModel(undefined).todayIndex).toBe(3.5); // 12-month default unaffected
+  });
+
   it('treats a non-numeric todayIndex (null/""/string) as "no marker", not month 0', () => {
     const base = { months: ['a', 'b'], lanes: [{ name: 'L', items: [] }] };
     expect(roadmapModel({ ...base, todayIndex: null }).todayIndex).toBeNull();

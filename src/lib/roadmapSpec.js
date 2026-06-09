@@ -59,6 +59,6 @@ export function roadmapModel(slide) {
   // an explicit `todayIndex: null` correctly means "no marker", not month 0.
   const todayIndex = Number.isFinite(slide?.todayIndex)
     ? clamp(slide.todayIndex, 0, span)
-    : (usingDefaultLanes ? DEFAULT_TODAY : null);
+    : (usingDefaultLanes ? clamp(DEFAULT_TODAY, 0, span) : null);
   return { months, lanes, todayIndex };
 }
