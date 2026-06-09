@@ -2,6 +2,7 @@
 // Caller should wrap in <ScaledSlide> if displaying inside a smaller container.
 import { useId } from 'react';
 import { chartData } from '../../lib/chartSpec.js';
+import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
 
 export function SlideChrome({ slide, deck }) {
   return (
@@ -196,35 +197,41 @@ export function ChartByType({ type, slide }) {
   return <LineChart {...props}/>;
 }
 
-export function RoadmapGraphic() {
-  const lanes = [
-    { name: 'Platform',   items: [ { t: 0, d: 2, lbl: 'Workflow GA',   state: 'done' },    { t: 3, d: 3, lbl: 'Audit v2',     state: 'done' }, { t: 7, d: 4, lbl: 'Data residency', state: 'inflight' } ] },
-    { name: 'Growth',     items: [ { t: 1, d: 3, lbl: 'Self-serve EU', state: 'done' },    { t: 5, d: 3, lbl: 'SMB re-price',  state: 'inflight' }, { t: 9, d: 2, lbl: 'PLG loops', state: 'planned' } ] },
-    { name: 'AI',         items: [ { t: 2, d: 4, lbl: 'Copilot α',     state: 'inflight' }, { t: 7, d: 5, lbl: 'Auto-workflow', state: 'planned' } ] },
-    { name: 'Enterprise', items: [ { t: 0, d: 6, lbl: 'SAML→OIDC',     state: 'done' },     { t: 6, d: 3, lbl: 'Gov cloud',     state: 'atrisk' }, { t: 9, d: 2, lbl: 'SOC2 II', state: 'planned' } ] },
-  ];
-  const W = 1600, H = 540, laneH = 110, left = 180;
-  const monthW = (W - left - 40) / 12;
-  const stateColor = s => ({ done: 'oklch(0.62 0.13 155)', inflight: 'oklch(0.62 0.17 265)', planned: '#ddd', atrisk: 'oklch(0.65 0.18 25)' }[s]);
+export function RoadmapGraphic({ slide } = {}) {
+  const { months, lanes, todayIndex } = roadmapModel(slide);
+  // laneH shrinks below its 110 default once there are enough lanes to overflow
+  // the fixed 540 viewBox, so a custom roadmap with many lanes isn't clipped
+  // (≤4 lanes keep the original 110 → the demo is unchanged).
+  const W = 1600, H = 540, left = 180;
+  const laneH = lanes.length ? Math.min(110, (H - 80) / lanes.length) : 0;
+  // Bar height scales with laneH (like the PPTX path) so dense roadmaps don't
+  // overlap rows; ≤4 lanes keep the original 36 → the demo is unchanged.
+  const barHt = Math.min(36, laneH * 0.5);
+  const monthW = (W - left - 40) / months.length;
+  const stateColor = s => ROADMAP_OKLCH[s] || ROADMAP_OKLCH.planned;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display:'block' }}>
-      {['Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun'].map((m,i)=>(
-        <g key={m}>
+      {months.map((m,i)=>(
+        <g key={`${m}-${i}`}>
           <line x1={left+i*monthW} x2={left+i*monthW} y1="40" y2={40+lanes.length*laneH} stroke="#eee" strokeWidth="1"/>
           <text x={left+i*monthW+8} y="32" fontSize="16" fontFamily="JetBrains Mono" fill="#888">{m}</text>
         </g>
       ))}
-      <line x1={left+3.5*monthW} x2={left+3.5*monthW} y1="40" y2={40+lanes.length*laneH} stroke="oklch(0.6 0.2 25)" strokeWidth="2" strokeDasharray="4 4"/>
-      <text x={left+3.5*monthW+8} y="58" fontSize="16" fontFamily="JetBrains Mono" fill="oklch(0.6 0.2 25)" fontWeight="600">TODAY</text>
+      {todayIndex != null && (
+        <g>
+          <line x1={left+todayIndex*monthW} x2={left+todayIndex*monthW} y1="40" y2={40+lanes.length*laneH} stroke="oklch(0.6 0.2 25)" strokeWidth="2" strokeDasharray="4 4"/>
+          <text x={left+todayIndex*monthW+8} y="58" fontSize="16" fontFamily="JetBrains Mono" fill="oklch(0.6 0.2 25)" fontWeight="600">TODAY</text>
+        </g>
+      )}
       {lanes.map((lane, li) => (
-        <g key={lane.name} transform={`translate(0, ${40 + li*laneH})`}>
+        <g key={li} transform={`translate(0, ${40 + li*laneH})`}>
           <text x="30" y={laneH/2+6} fontSize="20" fontFamily="Inter" fontWeight="600" fill="#222">{lane.name}</text>
           <line x1={left} x2={W-40} y1={laneH-1} y2={laneH-1} stroke="#eee"/>
           {lane.items.map((it, i) => (
             <g key={i}>
               <rect
-                x={left + it.t*monthW} y={laneH/2 - 18}
-                width={it.d*monthW - 8} height="36"
+                x={left + it.t*monthW} y={laneH/2 - barHt/2}
+                width={Math.max(2, it.d*monthW - 8)} height={barHt}
                 rx="6"
                 fill={stateColor(it.state)}
                 opacity={it.state === 'planned' ? 0.5 : 1}
@@ -474,12 +481,13 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
           <div style={{ position:'absolute', top:140, left:80, right:80 }}>
             <div className="slide-eyebrow">{slide.eyebrow || 'Product'}</div>
             <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px' }}>{slide.title}</h1>
-            <RoadmapGraphic/>
+            <RoadmapGraphic slide={slide}/>
             <div style={{ display:'flex', gap:28, marginTop:24, fontFamily:'var(--f-mono)', fontSize:18 }}>
-              <span style={{ display:'flex', alignItems:'center', gap:10 }}><span style={{ width:14, height:14, background:'oklch(0.62 0.13 155)', borderRadius:2 }}/>Shipped</span>
-              <span style={{ display:'flex', alignItems:'center', gap:10 }}><span style={{ width:14, height:14, background:'oklch(0.62 0.17 265)', borderRadius:2 }}/>In-flight</span>
-              <span style={{ display:'flex', alignItems:'center', gap:10 }}><span style={{ width:14, height:14, background:'oklch(0.65 0.18 25)', borderRadius:2 }}/>At risk</span>
-              <span style={{ display:'flex', alignItems:'center', gap:10 }}><span style={{ width:14, height:14, background:'#ddd', borderRadius:2 }}/>Planned</span>
+              {ROADMAP_STATES.map(st => (
+                <span key={st} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ width:14, height:14, background:ROADMAP_OKLCH[st], borderRadius:2 }}/>{ROADMAP_LABELS[st]}
+                </span>
+              ))}
             </div>
           </div>
         </div>
