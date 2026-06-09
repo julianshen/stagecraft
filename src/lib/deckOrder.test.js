@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { flattenDeck, moveSlide, duplicateSlide } from './deckOrder.js';
+import { flattenDeck, moveSlide, duplicateSlide, addSection, renameSection, deleteSection } from './deckOrder.js';
 
 describe('flattenDeck', () => {
   const deck = {
@@ -149,6 +149,133 @@ describe('duplicateSlide', () => {
     const d = deck();
     duplicateSlide(d, 'a');
     expect(d.slides).toHaveLength(3);
+    expect(d.sections[0].slides).toEqual(['a', 'b']);
+  });
+});
+
+describe('addSection', () => {
+  const deck = () => ({
+    sections: [{ id: 's1', name: 'Intro', slides: ['a'] }],
+    slides: [{ id: 'a' }],
+  });
+
+  it('appends a new empty section and returns its id', () => {
+    const { deck: r, sectionId } = addSection(deck(), 'Appendix');
+    expect(r.sections).toHaveLength(2);
+    const added = r.sections[1];
+    expect(added.id).toBe(sectionId);
+    expect(added.name).toBe('Appendix');
+    expect(added.slides).toEqual([]);
+  });
+
+  it('defaults to a sensible name when none/blank is given', () => {
+    expect(addSection(deck()).deck.sections[1].name).toBe('New section');
+    expect(addSection(deck(), '   ').deck.sections[1].name).toBe('New section');
+  });
+
+  it('gives each new section a unique id', () => {
+    const { sectionId: a } = addSection(deck(), 'A');
+    const { sectionId: b } = addSection(deck(), 'B');
+    expect(a).not.toBe(b);
+  });
+
+  it('returns null for a malformed deck', () => {
+    expect(addSection(null, 'X')).toBeNull();
+    expect(addSection({}, 'X')).toBeNull();
+  });
+
+  it('does not mutate the input deck', () => {
+    const d = deck();
+    addSection(d, 'X');
+    expect(d.sections).toHaveLength(1);
+  });
+});
+
+describe('renameSection', () => {
+  const deck = () => ({
+    sections: [{ id: 's1', name: 'Intro', slides: ['a'] }, { id: 's2', name: 'End', slides: [] }],
+    slides: [{ id: 'a' }],
+  });
+
+  it('renames the matching section (trimming whitespace)', () => {
+    const r = renameSection(deck(), 's2', '  Outro  ');
+    expect(r.sections[1].name).toBe('Outro');
+    expect(r.sections[0].name).toBe('Intro'); // others untouched
+  });
+
+  it('is a no-op for an unknown section', () => {
+    const d = deck();
+    expect(renameSection(d, 'nope', 'X')).toBe(d);
+  });
+
+  it('is a no-op for a blank name (keeps the old name)', () => {
+    const d = deck();
+    expect(renameSection(d, 's1', '   ')).toBe(d);
+    expect(renameSection(d, 's1', '')).toBe(d);
+  });
+
+  it('is a no-op when the (trimmed) name is unchanged — returns the same ref, no wasted update', () => {
+    const d = deck();
+    expect(renameSection(d, 's1', 'Intro')).toBe(d);   // identical
+    expect(renameSection(d, 's1', '  Intro  ')).toBe(d); // trims to the same
+  });
+
+  it('is a no-op for a malformed deck', () => {
+    expect(renameSection(null, 's1', 'X')).toBeNull();
+  });
+
+  it('does not mutate the input deck', () => {
+    const d = deck();
+    renameSection(d, 's1', 'Changed');
+    expect(d.sections[0].name).toBe('Intro');
+  });
+});
+
+describe('deleteSection', () => {
+  const deck = () => ({
+    sections: [
+      { id: 's1', name: 'A', slides: ['a', 'b'] },
+      { id: 's2', name: 'B', slides: ['c', 'd'] },
+      { id: 's3', name: 'C', slides: ['e'] },
+    ],
+    slides: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'e' }],
+  });
+  const order = (d) => flattenDeck(d).map((s) => s.id);
+
+  it('merges a middle section into the previous one, preserving slide order', () => {
+    const r = deleteSection(deck(), 's2'); // B's slides → end of A
+    expect(r.sections.map((s) => s.id)).toEqual(['s1', 's3']);
+    expect(r.sections[0].slides).toEqual(['a', 'b', 'c', 'd']);
+    expect(order(r)).toEqual(['a', 'b', 'c', 'd', 'e']); // unchanged
+  });
+
+  it('merges the first section into the next one, preserving slide order', () => {
+    const r = deleteSection(deck(), 's1'); // A's slides → front of B
+    expect(r.sections.map((s) => s.id)).toEqual(['s2', 's3']);
+    expect(r.sections[0].slides).toEqual(['a', 'b', 'c', 'd']);
+    expect(order(r)).toEqual(['a', 'b', 'c', 'd', 'e']); // unchanged
+  });
+
+  it('keeps the slide pool intact (non-destructive)', () => {
+    const r = deleteSection(deck(), 's2');
+    expect(r.slides.map((s) => s.id).sort()).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('refuses to delete the only remaining section', () => {
+    const d = { sections: [{ id: 's1', name: 'A', slides: ['a'] }], slides: [{ id: 'a' }] };
+    expect(deleteSection(d, 's1')).toBe(d);
+  });
+
+  it('is a no-op for an unknown section or malformed deck', () => {
+    const d = deck();
+    expect(deleteSection(d, 'nope')).toBe(d);
+    expect(deleteSection(null, 's1')).toBeNull();
+  });
+
+  it('does not mutate the input deck', () => {
+    const d = deck();
+    deleteSection(d, 's2');
+    expect(d.sections).toHaveLength(3);
     expect(d.sections[0].slides).toEqual(['a', 'b']);
   });
 });

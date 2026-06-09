@@ -1,7 +1,7 @@
 import Icon from '../ui/Icon.jsx';
 import { Button } from '../ui/Primitives.jsx';
 
-export default function SorterToolbar({ mode, setMode, onBack }) {
+export default function SorterToolbar({ mode, setMode, onBack, onAddSection }) {
   return (
     <div className="toolbar">
       <div className="group">
@@ -23,7 +23,7 @@ export default function SorterToolbar({ mode, setMode, onBack }) {
       </div>
       <div className="spacer"/>
       <div className="group" style={{ border: 0 }}>
-        <Button variant="ghost" icon="plus">New section</Button>
+        {onAddSection && <Button variant="ghost" icon="plus" onClick={onAddSection}>New section</Button>}
         <Button variant="ghost" icon="ai">Rearrange with AI</Button>
       </div>
     </div>

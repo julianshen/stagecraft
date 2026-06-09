@@ -32,6 +32,53 @@ let dupSeq = 0;
 const uid = (p) => `${p}-${Date.now().toString(36)}-${(dupSeq++).toString(36)}`;
 function newSlideId() { return uid('slide'); }
 
+// Append a new empty section. Immutable; returns { deck, sectionId } (the id is
+// handed back so the caller can focus/rename the fresh section) or null for a
+// malformed deck. A blank name falls back to 'New section'.
+export function addSection(deck, name) {
+  if (!deck || !Array.isArray(deck.sections)) return null;
+  const sectionId = uid('sec');
+  const section = { id: sectionId, name: name?.trim() || 'New section', slides: [] };
+  return { deck: { ...deck, sections: [...deck.sections, section] }, sectionId };
+}
+
+// Rename a section. Immutable; returns the SAME deck reference (so callers don't
+// trigger a spurious state update / sync write) for a malformed deck, an unknown
+// section, a blank name, or a name unchanged after trimming.
+export function renameSection(deck, sectionId, name) {
+  if (!deck || !Array.isArray(deck.sections)) return deck;
+  const trimmed = name?.trim();
+  const target = trimmed && deck.sections.find((sec) => sec.id === sectionId);
+  if (!target || target.name === trimmed) return deck;
+  const sections = deck.sections.map((sec) => (sec.id === sectionId ? { ...sec, name: trimmed } : sec));
+  return { ...deck, sections };
+}
+
+// Delete a section, merging its slides into a neighbour so none are lost and the
+// flattened order is preserved: a section's slides sit at the boundary they
+// already occupy, so merging up (append to the previous section) or — for the
+// first section — merging down (prepend to the next) leaves flattenDeck order
+// byte-for-byte unchanged. Immutable; the slide pool is untouched. No-op
+// (returns the deck unchanged) for a malformed deck, an unknown section, or the
+// only remaining section (a deck keeps at least one section).
+export function deleteSection(deck, sectionId) {
+  if (!deck || !Array.isArray(deck.sections)) return deck;
+  const i = deck.sections.findIndex((sec) => sec.id === sectionId);
+  if (i < 0 || deck.sections.length <= 1) return deck;
+  const targetIdx = i > 0 ? i - 1 : 1;
+  const moved = deck.sections[i].slides || [];
+  const sections = deck.sections
+    .map((sec, idx) => {
+      if (idx !== targetIdx) return sec;
+      const own = sec.slides || [];
+      // Merging up: removed section came after the target → append.
+      // Merging down (removed section was first): it came before → prepend.
+      return { ...sec, slides: i > 0 ? [...own, ...moved] : [...moved, ...own] };
+    })
+    .filter((_, idx) => idx !== i);
+  return { ...deck, sections };
+}
+
 // Duplicate slide `slideId`: a deep clone with fresh ids (slide + its elements)
 // inserted right after the original in its section. Immutable; returns
 // { deck, newId } or null if the slide/deck can't be used. The caller may pass
