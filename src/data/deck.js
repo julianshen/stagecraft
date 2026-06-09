@@ -45,7 +45,11 @@ export const SAMPLE_DECK = {
     },
 
     { id: 'chart-coverage', layout: 'chart', chartType: 'bar', title: 'Prototype → production', eyebrow: 'Coverage',
-      sub: 'Every prototype surface, ported and then extended' },
+      sub: 'Every prototype surface, ported and then extended',
+      chart: {
+        categories: ['Prototype', 'Ported', '+Export', '+Co-pilot', '+MCP'],
+        series: [{ name: 'Coverage %', values: [40, 75, 85, 92, 100] }],
+      } },
 
     { id: 'split-ds', layout: 'split', title: 'One design system', eyebrow: 'Design system',
       body: 'Every color, size, and shadow is a token. Light and dark themes, five accent palettes, and three densities all flow from the same variables — no hard-coded colors in the UI.',
@@ -73,7 +77,7 @@ export const SAMPLE_DECK = {
 
     { id: 'list-next', layout: 'list', title: 'What\'s next', eyebrow: 'Roadmap',
       items: [
-        'Render charts to images so PPTX export is pixel-perfect',
+        'Export the roadmap timeline as a native PPTX shape (charts already export natively)',
         'Code-split the bundle (pptxgenjs is the heavy bit)',
         'Persist decks to a backend instead of in-memory state',
         'Collaborative cursors and live comments',
@@ -87,7 +91,7 @@ export const SAMPLE_DECK = {
 
     { id: 'risks-limits', layout: 'risks', title: 'Honest limitations', eyebrow: 'Honest take',
       items: [
-        { sev: 'med', t: 'Charts export as placeholders', d: 'SVG charts can\'t rasterize into PPTX yet — exported as a labeled note' },
+        { sev: 'low', t: 'Roadmap layout exports as text', d: 'The timeline layout isn\'t a native PPTX shape yet (charts now export as native, editable charts)' },
         { sev: 'low', t: 'Single JS bundle',              d: '647 KB (pptxgenjs) — code-splitting is pending' },
         { sev: 'low', t: 'No persistence',                d: 'Deck state is in-memory; a backend store is on the roadmap' },
       ]

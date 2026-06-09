@@ -1,4 +1,5 @@
 import pptxgen from 'pptxgenjs';
+import { chartSpec } from './chartSpec.js';
 
 // ---- theme colours (fallback to indigo) ----
 const THEME_COLORS = {
@@ -142,6 +143,26 @@ function addTableSlide(pptx, slide, tc) {
   }
 }
 
+// Real, editable PPTX chart (native pptxgenjs chart) instead of a text placeholder.
+function addChartSlide(pptx, slide, tc) {
+  const sld = pptx.addSlide();
+  sld.background = { color: tc.bg };
+  sld.addText(slide.title || 'Chart', {
+    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, bold: true, color: tc.ink, fontFace: 'Inter',
+  });
+  const { type, barDir, data } = chartSpec(slide);
+  sld.addChart(type, data, {
+    x: 0.5, y: 1.0, w: 9, h: 4.0,
+    chartColors: [tc.accent, '8888AA', '555577', 'AAAACC', '6E6E9E'],
+    showLegend: data.length > 1, legendPos: 'b', legendColor: 'AAAAAA', legendFontFace: 'Inter',
+    showTitle: false,
+    catAxisLabelColor: '888888', valAxisLabelColor: '888888',
+    catAxisLabelFontFace: 'Inter', valAxisLabelFontFace: 'Inter',
+    ...(barDir ? { barDir } : {}),
+    ...(type === 'doughnut' ? { holeSize: 60 } : {}),
+  });
+}
+
 function addSplitSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
@@ -256,7 +277,7 @@ export async function exportToPPTX(deck) {
       case 'risks':    addRisksSlide(pptx, slide, tc);   break;
       case 'roadmap':  addRoadmapSlide(pptx, slide, tc); break;
       case 'thanks':   addThanksSlide(pptx, slide, tc);  break;
-      case 'chart':    addGenericSlide(pptx, slide, tc); break;
+      case 'chart':    addChartSlide(pptx, slide, tc);   break;
       default:         addGenericSlide(pptx, slide, tc); break;
     }
   }

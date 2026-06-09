@@ -359,7 +359,7 @@ The store carries a monotonic **`rev`** counter, bumped on every mutation (deck 
 
 ---
 
-## 12. PPTX export — `lib/pptxExport.js` 🟢 / 🟡 charts
+## 12. PPTX export — `lib/pptxExport.js` 🟢
 
 `exportToPPTX(deck)` builds a `pptxgenjs` deck and triggers a download. Per-layout builders map slide schema → PPTX text/shape/table objects, using a **hex theme palette** keyed by `deck.theme` (indigo/amber/emerald/magenta/coral).
 
@@ -372,9 +372,9 @@ The store carries a monotonic **`rev`** counter, bumped on every mutation (deck 
 | split | two-column text + stats |
 | text / list / thanks | title + body/bullets |
 | risks / roadmap | text representation 🟡 |
-| **chart** | 🟡 **placeholder note** — SVG charts aren't rasterized |
+| **chart** | 🟢 **native PPTX chart** (`addChart`) — `chartType` (bar/line/area/pie/donut→doughnut) + the slide's `chart: { categories, series }` mapped to pptxgenjs series via the pure `chartSpec` helper (`lib/chartSpec.js`); editable in PowerPoint, with sensible defaults when a slide carries no data |
 
-**Spec (⚪):** render each chart's SVG to PNG (canvas) and place as an image; expand roadmap to a real table/shape timeline; honor export-modal range/quality/notes options.
+**Spec (⚪):** expand roadmap to a real table/shape timeline; honor export-modal range/quality/notes options.
 
 ---
 
@@ -424,7 +424,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 | MCP API (REST + tools) | 🟢 |
 | LLM proxy + Co-pilot edits the current slide | 🟢 |
 | Settings: AI + Appearance | 🟢 (🟡 top-p) |
-| PPTX export | 🟢 (🟡 charts/roadmap) |
+| PPTX export | 🟢 (🟡 roadmap layout) |
 | Presenter | 🟡 |
 | Canvas selection / direct manipulation | 🟢 core + multi-select/marquee/move/resize/rotate/align (H+V)/distribute |
 | Inspector Design/Animate, timeline | 🔴 |
@@ -443,7 +443,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 3. ~~**Real selection & direct manipulation** — element model + click/drag/resize/rotate; multi-select/align/distribute.~~ ✅ **Done** — free-form `elements` layer with select/marquee/move/resize/rotate + align (H+V)/distribute (§9). _(Properties panel binds the single selection; per-element typography still ⚪.)_
 4. ~~**Durable persistence + multi-deck library**~~ ✅ **Done** — disk-persisted deck library; Home lists/opens/creates/renames/deletes real decks (§7.1, §17). _Follow-up: seed via `POST /api/decks` to remove the last untagged-write window; list-view rename/delete._
 5. **Drag-to-reorder** — ✅ Thumbs (left rail) via `moveSlide` (§7.2.3); ⚪ remaining: Sorter view + section reordering/CRUD. _(§7.3)_
-6. **Chart-to-image in PPTX** + roadmap timeline; wire export options. _(§12, §13)_
+6. ~~**Chart in PPTX**~~ ✅ **Done** — native editable `addChart` via `chartSpec` (§12). ⚪ Remaining: roadmap-layout timeline; wire export-modal range/quality/notes options. _(§12, §13)_
 7. **Templates seed real decks**; persist top-p; genericize Home/`DeckCover` strings; duplicate-slide. _(§14, §7.4, §7.1, §7.2.1)_
 8. **Presenter** laser-tracks-pointer + blackout. _(§7.5)_
 9. **Collaboration** presence + comments. _(§16)_
