@@ -105,8 +105,9 @@ export default function App() {
   const handlePickTemplate = async (template) => {
     try {
       const meta = await createDeck(template?.name, templateDeck(template));
+      if (!meta?.id) return;          // no deck created — leave the picker open
       setModal(null);
-      if (meta?.id) await handleOpenDeck(meta.id);
+      await handleOpenDeck(meta.id);
     } catch { /* server error — leave the picker open */ }
   };
   const handleRenameDeck = async (id, name) => {
