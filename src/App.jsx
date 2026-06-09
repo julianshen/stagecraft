@@ -13,6 +13,7 @@ import TemplatePicker from './components/modals/TemplatePicker.jsx';
 
 import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
 import { useDeckSync } from './hooks/useDeckSync.js';
+import { listDecks, createDeck, openDeck } from './lib/decksApi.js';
 
 const VIEW_LABELS = { home: 'Home', editor: 'Editor', sorter: 'Sorter', settings: 'Settings' };
 const VIEW_ORDER = ['home', 'editor', 'sorter', 'settings'];
@@ -51,7 +52,36 @@ export default function App() {
 
   // Two-way sync with the in-memory MCP server: push local edits and adopt
   // external (MCP/agent) edits live. Runs app-wide so it works in every view.
-  useDeckSync(deck, setDeck);
+  // Returns `adoptDeck(deck, rev)` for adopting an authoritative server deck
+  // (e.g. on open) without echoing it back as a fresh edit.
+  const adoptDeck = useDeckSync(deck, setDeck);
+
+  // ---- deck library (multi-deck) ----
+  const [decks, setDecks] = useState([]);
+  // Refresh the library whenever Home is shown (badges/edited times stay current).
+  useEffect(() => {
+    if (view !== 'home') return;
+    let cancelled = false;
+    listDecks().then((d) => { if (!cancelled) setDecks(d); }).catch(() => { /* server absent */ });
+    return () => { cancelled = true; };
+  }, [view]);
+
+  // Open a saved deck: activate it server-side, adopt its content, go to the
+  // editor. Stay on Home if the request fails.
+  const handleOpenDeck = async (id) => {
+    try {
+      const { deck: opened, rev } = await openDeck(id);
+      if (opened) adoptDeck(opened, rev);
+      setView('editor');
+    } catch { /* server error — stay on Home */ }
+  };
+  // Create a blank deck (server creates + activates it), then open it.
+  const handleNewDeck = async () => {
+    try {
+      const meta = await createDeck();
+      if (meta?.id) await handleOpenDeck(meta.id);
+    } catch { /* server error — stay on Home */ }
+  };
 
   // ---- apply theme + density + accent ----
   useEffect(() => {
@@ -84,8 +114,9 @@ export default function App() {
       {/* ---- views ---- */}
       {view === 'home' && (
         <HomeView
-          onOpenDeck={() => setView('editor')}
-          onNewDeck={() => setView('editor')}
+          decks={decks}
+          onOpenDeck={handleOpenDeck}
+          onNewDeck={handleNewDeck}
           onOpenTemplates={() => setModal('templates')}
         />
       )}

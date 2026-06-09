@@ -103,4 +103,9 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
     }, intervalMs);
     return () => { stopped = true; clearInterval(id); };
   }, [intervalMs, adopt]);
+
+  // Expose `adopt` so callers that already hold an authoritative server deck+rev
+  // (e.g. opening a deck via POST /api/decks/:id/activate) can adopt it directly
+  // — marking it as ours so the push effect doesn't echo it back as a fresh edit.
+  return adopt;
 }

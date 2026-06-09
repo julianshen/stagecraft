@@ -30,8 +30,8 @@ function makeServer(initial = { deck: null, rev: 0 }) {
 // onExternalDeck. `controls` exposes the live deck + a setter to drive edits.
 function Harness({ initialDeck = localDeck, intervalMs = 1000, fetchFn, controls }) {
   const [deck, setDeck] = useState(initialDeck);
-  useDeckSync(deck, setDeck, { intervalMs, fetchFn });
-  if (controls) { controls.deck = deck; controls.setDeck = setDeck; }
+  const adopt = useDeckSync(deck, setDeck, { intervalMs, fetchFn });
+  if (controls) { controls.deck = deck; controls.setDeck = setDeck; controls.adopt = adopt; }
   return null;
 }
 
@@ -85,6 +85,21 @@ describe('useDeckSync', () => {
     await flush();      // seed → rev 1
     await flush(1000);  // poll sees rev 1 == lastRev
     expect(srv.puts).toEqual([localDeck]); // no echo PUT
+  });
+
+  it('returns an adopt() that adopts a server deck without echoing it back', async () => {
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush(); // seed → rev 1
+    const putsAfterSeed = srv.puts.length;
+    const opened = { id: 'opened', theme: 'amber', slides: [], sections: [] };
+    // Simulate the server having activated `opened` (as openDeck() does server-side).
+    srv.state.deck = opened; srv.state.rev = 42;
+    await act(async () => { controls.adopt(opened, 42); });
+    await flush(1000); // a poll tick
+    expect(controls.deck).toBe(opened);          // adopted into local state
+    expect(srv.puts).toHaveLength(putsAfterSeed); // and NOT echoed back as an edit
   });
 
   it('pushes a local edit to the server', async () => {
