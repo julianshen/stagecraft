@@ -264,6 +264,7 @@ export async function handleApiRequest(store, req, deps = {}) {
       if (!rec) return ok({ error: 'Not found' }, 404);
       if (body && typeof body.name === 'string') {
         rec.name = body.name;
+        if (rec.deck) rec.deck.title = body.name; // the title is the name — keep content in step
         bump(store, rec); // stamp the renamed deck, even if it isn't the active one
       }
       return ok({ id, name: rec.name });

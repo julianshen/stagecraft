@@ -170,6 +170,14 @@ describe('decks library REST', () => {
     expect((await handleApiRequest(store, req('PUT', '/api/decks/nope', { name: 'x' }))).status).toBe(404);
   });
 
+  it('PUT /api/decks/:id rename also updates the deck content title (single source)', async () => {
+    const store = createDeckStore(deck());
+    const id = store.activeId;
+    await handleApiRequest(store, req('PUT', `/api/decks/${id}`, { name: 'Renamed' }));
+    expect(store.decks[id].name).toBe('Renamed');
+    expect(store.decks[id].deck.title).toBe('Renamed'); // chrome reads deck.title — keep it in step
+  });
+
   it('PUT /api/decks/:id without a valid name is a no-op (no rev bump)', async () => {
     const store = createDeckStore(deck());
     const id = store.activeId;
