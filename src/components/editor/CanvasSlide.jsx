@@ -117,6 +117,8 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   // the elements it overlaps on pointer-up. A click (no drag) deselects.
   function startMarquee(e) {
     if (dragCleanup.current) return;
+    // Primary button only — let right/middle clicks through to the context menu.
+    if (e.button !== 0) return;
     const frame = frameRef.current;
     if (!frame) { onSelectElement?.(null); return; }
     e.preventDefault();

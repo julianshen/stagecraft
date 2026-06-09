@@ -149,6 +149,20 @@ describe('CanvasSlide drag', () => {
     expect(onMarqueeSelect).not.toHaveBeenCalled();
   });
 
+  it('ignores non-primary (right) button presses so the context menu still works', () => {
+    const onSelectElement = vi.fn();
+    const onMarqueeSelect = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={onSelectElement} onUpdateElements={vi.fn()} onMarqueeSelect={onMarqueeSelect} />,
+    );
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 0, clientY: 0, button: 2 }); // right button
+    fire(window, 'pointerup', { button: 2 });
+    expect(onSelectElement).not.toHaveBeenCalled();  // selection preserved for the menu
+    expect(onMarqueeSelect).not.toHaveBeenCalled();
+  });
+
   it('treats a sub-threshold tremor as a click, not a marquee', () => {
     const onSelectElement = vi.fn();
     const onMarqueeSelect = vi.fn();
