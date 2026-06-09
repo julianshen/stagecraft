@@ -71,6 +71,13 @@ describe('deck REST', () => {
     expect(store.deck.title).toBe('OK');
   });
 
+  it('PUT /api/deck returns the active deck id so writes can be tagged immediately', async () => {
+    const store = createDeckStore();
+    const r = await handleApiRequest(store, req('PUT', '/api/deck', deck())); // seed creates + activates
+    expect(r.body.activeId).toBe(store.activeId);
+    expect(r.body.activeId).not.toBeNull();
+  });
+
   it('keeps the library name in step with the deck title on a content write', async () => {
     const store = createDeckStore(deck()); // title 'Demo' → name 'Demo'
     const id = store.activeId;
@@ -436,7 +443,7 @@ describe('deck revisions (round-trip sync)', () => {
   it('PUT /api/deck bumps rev and returns it', async () => {
     const store = createDeckStore(deck());
     const r1 = await handleApiRequest(store, req('PUT', '/api/deck', { id: 'd2', slides: [], sections: [] }));
-    expect(r1.body).toEqual({ ok: true, rev: 1 });
+    expect(r1.body).toEqual({ ok: true, rev: 1, activeId: store.activeId });
     const r2 = await handleApiRequest(store, req('PUT', '/api/deck', { id: 'd3', slides: [], sections: [] }));
     expect(r2.body.rev).toBe(2);
     expect(store.rev).toBe(2);

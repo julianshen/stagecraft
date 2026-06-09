@@ -284,10 +284,12 @@ export async function handleApiRequest(store, req, deps = {}) {
       // active deck has since switched, so a stale in-flight PUT can't clobber a
       // different deck the user just opened.
       const forId = new URLSearchParams(req.url.split('?')[1] || '').get('forId');
-      if (forId != null && forId !== store.activeId) return ok({ ok: false, ignored: true, rev: store.rev });
+      // Always report activeId so the client can tag subsequent writes right
+      // away — notably after a fresh-store seed that just created the active deck.
+      if (forId != null && forId !== store.activeId) return ok({ ok: false, ignored: true, rev: store.rev, activeId: store.activeId });
       store.deck = body;
       bump(store);
-      return ok({ ok: true, rev: store.rev });
+      return ok({ ok: true, rev: store.rev, activeId: store.activeId });
     }
   }
 

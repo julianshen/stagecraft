@@ -21,8 +21,9 @@ function makeServer(initial = { deck: null, rev: 0 }) {
       puts.push(body);
       putUrls.push(url);
       state.deck = body;
+      if (state.activeId == null) state.activeId = 'seeded'; // a seed creates + activates a deck
       state.rev += 1;
-      return Promise.resolve({ json: async () => ({ ok: true, rev: state.rev }) });
+      return Promise.resolve({ json: async () => ({ ok: true, rev: state.rev, activeId: state.activeId }) });
     }
     return Promise.resolve({ json: async () => ({}) });
   });
@@ -119,6 +120,17 @@ describe('useDeckSync', () => {
     const edited = { id: 'B', theme: 'coral', slides: [], sections: [] };
     await act(async () => { controls.setDeck(edited); await vi.advanceTimersByTimeAsync(0); });
     expect(srv.putUrls.at(-1)).toBe('/api/deck?forId=B');
+  });
+
+  it('tags writes immediately after a seed using the activeId from the PUT response', async () => {
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush(); // mount → seed PUT (untagged); its response carries the new activeId
+    const edited = { id: 'local', theme: 'magenta', slides: [], sections: [] };
+    await act(async () => { controls.setDeck(edited); await vi.advanceTimersByTimeAsync(0); });
+    // No poll has run yet, but the seed response already taught us the active id.
+    expect(srv.putUrls.at(-1)).toBe('/api/deck?forId=seeded');
   });
 
   it('pushes a local edit to the server', async () => {

@@ -87,7 +87,13 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
     const url = activeId.current != null ? `/api/deck?forId=${encodeURIComponent(activeId.current)}` : '/api/deck';
     fetchRef.current(url, putInit(deck))
       .then((r) => r.json())
-      .then((body) => { if (!cancelled && body && typeof body.rev === 'number') lastRev.current = body.rev; })
+      .then((body) => {
+        if (cancelled || !body) return;
+        if (typeof body.rev === 'number') lastRev.current = body.rev;
+        // Learn the active id from the write response (e.g. right after a seed
+        // created it) so the very next edit is tagged without waiting for a poll.
+        if (body.activeId !== undefined) activeId.current = body.activeId;
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [deck, initialized]);
