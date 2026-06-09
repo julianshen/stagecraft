@@ -116,7 +116,11 @@ export default function App() {
           if (opened) adoptDeck(opened, rev, promoted.id);
           setActiveDeckId(promoted.id);
         } else {
+          // No decks remain: reset the editor to a fresh deck and clear the write
+          // tag (forId=null) so the next edit seeds a brand-new deck rather than
+          // being dropped as a stale write against the deleted one.
           setActiveDeckId(null);
+          adoptDeck(JSON.parse(JSON.stringify(SAMPLE_DECK)), 0, null);
         }
       }
     } catch { /* ignore */ }
