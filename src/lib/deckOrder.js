@@ -21,7 +21,7 @@ export function moveSlide(deck, slideId, toSectionId, toIndex) {
   if (!found || !stripped.some((sec) => sec.id === toSectionId)) return deck;
   const sections = stripped.map((sec) => {
     if (sec.id !== toSectionId) return sec;
-    const slides = [...sec.slides];
+    const slides = [...(sec.slides || [])]; // a section may carry no slides array
     slides.splice(Math.max(0, Math.min(toIndex, slides.length)), 0, slideId);
     return { ...sec, slides };
   });

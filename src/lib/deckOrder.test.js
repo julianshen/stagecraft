@@ -74,6 +74,13 @@ describe('moveSlide', () => {
     expect(moveSlide(d, 'a', 'nope', 0)).toBe(d);
   });
 
+  it('handles a target section that has no slides array', () => {
+    const d = { sections: [{ id: 's1', name: 'A', slides: ['a'] }, { id: 's2', name: 'B' }], slides: [{ id: 'a' }] };
+    const r = moveSlide(d, 'a', 's2', 0);
+    expect(r.sections[0].slides).toEqual([]);
+    expect(r.sections[1].slides).toEqual(['a']);
+  });
+
   it('does not mutate the input deck', () => {
     const d = deck();
     moveSlide(d, 'a', 's2', 0);

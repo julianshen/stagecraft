@@ -47,7 +47,7 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
                   className={`thumb ${sid === curId ? 'active' : ''}`}
                   onClick={() => onPick(sid)}
                   draggable
-                  onDragStart={() => { dragId.current = sid; }}
+                  onDragStart={(e) => { dragId.current = sid; e.dataTransfer?.setData?.('text/plain', sid); }}
                   onDragEnd={() => { dragId.current = null; }}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => { e.preventDefault(); handleDrop(sid, sec); }}
