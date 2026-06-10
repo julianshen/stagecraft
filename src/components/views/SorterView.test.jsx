@@ -270,6 +270,16 @@ describe('SorterView — Rearrange with AI', () => {
     await waitFor(() => expect(queryByText(/check your AI settings/)).toBeNull());
   });
 
+  it('does not leave a stale error message after switching to read-only', async () => {
+    suggestSlideOrder.mockRejectedValue(new Error('boom'));
+    const editable = { onBack: vi.fn(), onOpenSlide: vi.fn(), onDeckChange: vi.fn() };
+    const { getByText, queryByText, rerender } = render(<SorterView deck={makeDeck()} {...editable} />);
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(getByText(/check your AI settings/)).toBeTruthy());
+    rerender(<SorterView deck={makeDeck()} onBack={vi.fn()} onOpenSlide={vi.fn()} />); // read-only
+    expect(queryByText(/check your AI settings/)).toBeNull(); // error hidden with the feature
+  });
+
   it('hides the button in read-only mode (no onDeckChange)', () => {
     const { queryByText } = render(
       <SorterView deck={makeDeck()} onBack={vi.fn()} onOpenSlide={vi.fn()} />,

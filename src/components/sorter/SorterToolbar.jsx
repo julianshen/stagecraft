@@ -29,7 +29,7 @@ export default function SorterToolbar({ mode, setMode, onBack, onAddSection, onR
             {rearranging ? 'Rearranging…' : 'Rearrange with AI'}
           </Button>
         )}
-        {rearrangeError && (
+        {onRearrange && rearrangeError && (
           <span role="status" style={{ marginLeft: 8, fontSize: 12, color: 'var(--warn)' }}>{rearrangeError}</span>
         )}
       </div>
