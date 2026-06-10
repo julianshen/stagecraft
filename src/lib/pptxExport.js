@@ -193,14 +193,16 @@ function addRisksSlide(pptx, slide, tc) {
   sld.addText(slide.title || '', {
     x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, bold: true, color: tc.ink, fontFace: 'Inter',
   });
-  const items = slide.items || [];
+  // Drop falsy items like the canvas renderer does, so a malformed deck can't
+  // crash the export on it.sev/it.t.
+  const items = (Array.isArray(slide.items) ? slide.items : []).filter(Boolean);
   items.forEach((it, i) => {
     const y = 1.1 + i * 1.3;
     // Severity colours come from the shared palette (exact sRGB of the canvas
     // oklch), so the export bullet matches the on-screen severity colour.
     sld.addText('●', { x: 0.5, y: y + 0.05, w: 0.4, h: 0.4, fontSize: 16, color: SEVERITY_HEX[it.sev] || SEVERITY_HEX.fallback });
-    sld.addText(it.t, { x: 1.0, y, w: 8.5, h: 0.45, fontSize: 15, bold: true, color: tc.ink, fontFace: 'Inter' });
-    sld.addText(it.d, { x: 1.0, y: y + 0.45, w: 8.5, h: 0.5, fontSize: 12, color: 'AAAAAA', fontFace: 'Inter', wrap: true });
+    sld.addText(it.t || '', { x: 1.0, y, w: 8.5, h: 0.45, fontSize: 15, bold: true, color: tc.ink, fontFace: 'Inter' });
+    sld.addText(it.d || '', { x: 1.0, y: y + 0.45, w: 8.5, h: 0.5, fontSize: 12, color: 'AAAAAA', fontFace: 'Inter', wrap: true });
   });
 }
 

@@ -117,8 +117,9 @@ describe('addRisksSlide (PPTX risks)', () => {
       sections: [{ id: 's1', name: 'X', slides: ['r'] }],
       slides: [{ id: 'r', layout: 'risks', title: 'Risks', items: [
         { sev: 'high', t: 'H', d: 'hd' },
+        null,                            // malformed item → dropped, no crash (like the canvas)
         { sev: 'low', t: 'L', d: 'ld' },
-        { sev: 'wat', t: 'U', d: 'ud' }, // unknown severity → fallback grey
+        { t: 'no sev' },                 // missing severity → fallback grey
       ] }],
     });
     const bullets = last().texts.filter((x) => x.t === '●').map((x) => x.o.color);

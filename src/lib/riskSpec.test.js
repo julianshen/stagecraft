@@ -14,6 +14,7 @@ describe('risk severity palette', () => {
     expect(SEVERITY_HEX.fallback).toBe('AAAAAA');
     expect(Object.isFrozen(SEVERITY_OKLCH)).toBe(true);
     expect(Object.isFrozen(SEVERITY_HEX)).toBe(true);
+    expect(Object.isFrozen(SEVERITIES)).toBe(true);
   });
 
   it('keeps each hex the exact sRGB of its oklch sibling, so the two cannot drift', () => {
