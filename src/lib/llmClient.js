@@ -1,6 +1,8 @@
 // LLM client — reads settings from localStorage 'stagecraft.ai'
 // Supports Anthropic and OpenAI-compatible APIs
 
+import { flattenDeck } from './deckOrder.js';
+
 function getAISettings() {
   try {
     const raw = localStorage.getItem('stagecraft.ai');
@@ -116,6 +118,40 @@ text, roadmap, risks, list, thanks. Do not include an "id".`;
     if (patch && typeof patch === 'object' && !Array.isArray(patch)) {
       delete patch.id; // id is immutable (applySlidePatch also enforces this)
       return patch;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ask the model to reorder a deck's slides for the best narrative flow.
+ * Sends a compact outline (id + title + layout + section, in current order) and
+ * expects a JSON array of slide ids. Returns the proposed id array (string
+ * entries only), or `null` if the reply isn't a usable array — callers feed it
+ * to `applySlideOrder`, which tolerates dropped/duplicate/omitted ids.
+ */
+export async function suggestSlideOrder(deck) {
+  const outline = flattenDeck(deck).map((s) => ({ id: s.id, title: s.title || s.subtitle || '', layout: s.layout, section: s.sectionName }));
+  const system = `You reorder the slides of a presentation for the best narrative flow.
+Given a deck outline (an array of slides, each with id, title, layout, section),
+respond with ONLY a JSON array of the slide ids in the new recommended order —
+every id exactly once, no markdown, no prose, no code fences.
+The ids are filled back into the existing sections in the order you give, each
+section keeping its current number of slides — so order them as one continuous
+narrative; a slide's section follows from its position, you don't assign it.`;
+
+  const messages = [
+    { role: 'user', content: `Deck title: ${deck?.title || 'Untitled'}\nOutline:\n${JSON.stringify(outline)}\n\nNew order (JSON array of ids):` },
+  ];
+
+  const text = await callLLM(messages, { system, maxTokens: 1024, temperature: 0.3 });
+  try {
+    const order = parseJsonReply(text);
+    if (Array.isArray(order)) {
+      const ids = order.filter((x) => typeof x === 'string');
+      return ids.length ? ids : null;
     }
     return null;
   } catch {

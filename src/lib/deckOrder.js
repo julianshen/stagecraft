@@ -101,6 +101,41 @@ export function duplicateSlide(deck, slideId, newId = newSlideId()) {
   return { deck: { ...deck, slides: [...deck.slides, clone], sections }, newId };
 }
 
+// Apply a proposed global slide order (an array of ids — e.g. from the AI
+// "Rearrange") while preserving the deck's section structure: the new sequence
+// is re-chunked back into the sections by each section's current (pool-present)
+// slide count. Robust to a model's mistakes — unknown/duplicate ids are dropped
+// and any omitted slide is appended in its current order, so no slide is ever
+// lost. Immutable; returns the SAME deck reference for a malformed deck, a
+// non-array order, or an order that doesn't change anything (so the caller
+// doesn't trigger a needless sync write).
+export function applySlideOrder(deck, order) {
+  if (!deck || !Array.isArray(deck.sections) || !Array.isArray(deck.slides) || !Array.isArray(order)) return deck;
+  const flat = flattenDeck(deck).map((s) => s.id);
+  const valid = new Set(flat);
+  const seen = new Set();
+  const desired = [];
+  for (const id of order) {
+    if (valid.has(id) && !seen.has(id)) { seen.add(id); desired.push(id); }
+  }
+  for (const id of flat) { // append any slide the model omitted, in its current order
+    if (!seen.has(id)) { seen.add(id); desired.push(id); }
+  }
+  // Unchanged → return the same ref (no spurious sync write). The length check
+  // is load-bearing: a malformed deck with a slide id in two sections makes
+  // `flat` longer than the de-duplicated `desired`, where an element-wise match
+  // alone would prefix-match and wrongly no-op (leaving the duplicate in place).
+  if (desired.length === flat.length && desired.every((id, i) => id === flat[i])) return deck;
+  let cursor = 0;
+  const sections = deck.sections.map((sec) => {
+    const count = (sec.slides || []).filter((id) => valid.has(id)).length;
+    const slides = desired.slice(cursor, cursor + count);
+    cursor += count;
+    return { ...sec, slides };
+  });
+  return { ...deck, sections };
+}
+
 export function flattenDeck(deck) {
   const arr = [];
   if (!deck || !Array.isArray(deck.sections) || !Array.isArray(deck.slides)) return arr;

@@ -1,10 +1,14 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import { render, fireEvent, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { render, fireEvent, within, waitFor } from '@testing-library/react';
 import SorterView from './SorterView.jsx';
+import { suggestSlideOrder } from '../../lib/llmClient.js';
+
+vi.mock('../../lib/llmClient.js', () => ({ suggestSlideOrder: vi.fn() }));
 
 const origRO = globalThis.ResizeObserver;
 beforeAll(() => { globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }; });
 afterAll(() => { globalThis.ResizeObserver = origRO; });
+beforeEach(() => { suggestSlideOrder.mockReset(); });
 
 const makeDeck = () => ({
   title: 'Deck',
@@ -180,5 +184,86 @@ describe('SorterView — navigation', () => {
     // outline rows carry the slide titles; grid cards (data-sid) are gone
     expect(getByText('A')).toBeTruthy();
     expect(card(container, 'a')).toBeNull();
+  });
+});
+
+describe('SorterView — Rearrange with AI', () => {
+  it('asks the model for an order and applies it via the deck updater', async () => {
+    suggestSlideOrder.mockResolvedValue(['c', 'a', 'b']);
+    const { getByText, onDeckChange } = renderSorter();
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(onDeckChange).toHaveBeenCalledTimes(1));
+    expect(suggestSlideOrder).toHaveBeenCalledWith(expect.objectContaining({ title: 'Deck' }));
+    const next = applyUpdater(onDeckChange, makeDeck());
+    // section counts preserved: Intro keeps 2, End keeps 1
+    expect(next.sections[0].slides).toEqual(['c', 'a']);
+    expect(next.sections[1].slides).toEqual(['b']);
+  });
+
+  it('drops a stale AI order if the deck order changed while the request was in flight', async () => {
+    suggestSlideOrder.mockResolvedValue(['c', 'a', 'b']);
+    const { getByText, onDeckChange } = renderSorter();
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(onDeckChange).toHaveBeenCalledTimes(1));
+    // A manual reorder (or MCP edit) landed first: the deck now has a different order.
+    const changed = { ...makeDeck(), sections: [{ id: 's1', name: 'Intro', slides: ['b', 'a'] }, { id: 's2', name: 'End', slides: ['c'] }] };
+    const updater = onDeckChange.mock.calls[0][0];
+    expect(updater(changed)).toBe(changed); // stale order not applied — fresh intent preserved
+  });
+
+  it('drops a stale order on a cross-section move even when the flat id order is unchanged', async () => {
+    suggestSlideOrder.mockResolvedValue(['c', 'a', 'b']);
+    const { getByText, onDeckChange } = renderSorter(); // Intro [a,b], End [c]
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(onDeckChange).toHaveBeenCalledTimes(1));
+    // User moved `b` across the boundary: flat order is still a,b,c, but sections changed.
+    const moved = { ...makeDeck(), sections: [{ id: 's1', name: 'Intro', slides: ['a'] }, { id: 's2', name: 'End', slides: ['b', 'c'] }] };
+    const updater = onDeckChange.mock.calls[0][0];
+    expect(updater(moved)).toBe(moved); // section structure changed → stale order dropped
+  });
+
+  it('shows a busy label while the request is in flight', async () => {
+    let resolve;
+    suggestSlideOrder.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const { getByText, queryByText } = renderSorter();
+    fireEvent.click(getByText('Rearrange with AI'));
+    expect(getByText('Rearranging…')).toBeTruthy();
+    resolve(null);
+    await waitFor(() => expect(queryByText('Rearranging…')).toBeNull());
+  });
+
+  it('does nothing (no deck change) when the model returns null or throws', async () => {
+    suggestSlideOrder.mockResolvedValue(null);
+    const { getByText, onDeckChange } = renderSorter();
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(getByText('Rearrange with AI')).toBeTruthy());
+    expect(onDeckChange).not.toHaveBeenCalled();
+
+    suggestSlideOrder.mockRejectedValue(new Error('no api key'));
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(getByText('Rearrange with AI')).toBeTruthy());
+    expect(onDeckChange).not.toHaveBeenCalled();
+  });
+
+  it('hides the button in read-only mode (no onDeckChange)', () => {
+    const { queryByText } = render(
+      <SorterView deck={makeDeck()} onBack={vi.fn()} onOpenSlide={vi.fn()} />,
+    );
+    expect(queryByText('Rearrange with AI')).toBeNull();
+  });
+
+  it('skips the API call when there are fewer than 2 slides to reorder', () => {
+    const oneSlide = {
+      title: 'D',
+      sections: [{ id: 's1', name: 'Only', slides: ['a'] }],
+      slides: [{ id: 'a', layout: 'cover', title: 'A' }],
+    };
+    const onDeckChange = vi.fn();
+    const { getByText } = render(
+      <SorterView deck={oneSlide} onBack={vi.fn()} onOpenSlide={vi.fn()} onDeckChange={onDeckChange} />,
+    );
+    fireEvent.click(getByText('Rearrange with AI'));
+    expect(suggestSlideOrder).not.toHaveBeenCalled();
+    expect(onDeckChange).not.toHaveBeenCalled();
   });
 });
