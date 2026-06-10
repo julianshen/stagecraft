@@ -77,7 +77,7 @@ export const SAMPLE_DECK = {
 
     { id: 'list-next', layout: 'list', title: 'What\'s next', eyebrow: 'Roadmap',
       items: [
-        'Rearrange slides and sections with the AI Co-pilot',
+        'Inspector editing for chart series and roadmap lanes (JSON-authored today)',
         'Code-split the bundle (pptxgenjs is the heavy bit)',
         'Persist decks to a backend instead of in-memory state',
         'Collaborative cursors and live comments',

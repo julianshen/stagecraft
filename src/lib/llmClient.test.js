@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { callLLM, generateSlide, rewriteText, suggestImprovements, editSlide } from './llmClient.js';
+import { callLLM, generateSlide, rewriteText, suggestImprovements, editSlide, suggestSlideOrder } from './llmClient.js';
 
 function res(body, { ok = true, status = 200 } = {}) {
   return { ok, status, json: async () => body, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) };
@@ -201,5 +201,51 @@ describe('editSlide non-object replies', () => {
   it('returns null when the reply is valid JSON but not an object', async () => {
     fetchMock.mockResolvedValue(res({ text: '[1, 2, 3]' }));
     expect(await editSlide({ id: 'a' }, 'x')).toBeNull();
+  });
+});
+
+describe('suggestSlideOrder', () => {
+  const deck = {
+    title: 'D',
+    sections: [
+      { id: 's1', name: 'Intro', slides: ['a', 'b'] },
+      { id: 's2', name: 'End', slides: ['c'] },
+    ],
+    slides: [
+      { id: 'a', layout: 'cover', title: 'Welcome' },
+      { id: 'b', layout: 'text', title: 'Context' },
+      { id: 'c', layout: 'thanks', title: 'Bye' },
+    ],
+  };
+
+  it('sends the deck outline (ids + titles) and returns the proposed id array', async () => {
+    fetchMock.mockResolvedValue(res({ text: '["b","a","c"]' }));
+    expect(await suggestSlideOrder(deck)).toEqual(['b', 'a', 'c']);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.messages[0].content).toContain('"a"');
+    expect(body.messages[0].content).toContain('Welcome');
+    expect(body.system).toMatch(/order/i);
+  });
+
+  it('strips markdown code fences around the array', async () => {
+    fetchMock.mockResolvedValue(res({ text: '```json\n["c","b","a"]\n```' }));
+    expect(await suggestSlideOrder(deck)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('keeps only string entries from a mixed reply', async () => {
+    fetchMock.mockResolvedValue(res({ text: '["a", 2, null, "b"]' }));
+    expect(await suggestSlideOrder(deck)).toEqual(['a', 'b']);
+  });
+
+  it('returns null for a non-array or unparseable reply', async () => {
+    fetchMock.mockResolvedValue(res({ text: '{"order":["a"]}' }));
+    expect(await suggestSlideOrder(deck)).toBeNull();
+    fetchMock.mockResolvedValue(res({ text: 'Sure! Here is a better order: a, b, c' }));
+    expect(await suggestSlideOrder(deck)).toBeNull();
+  });
+
+  it('returns null when the reply is an array with no usable ids', async () => {
+    fetchMock.mockResolvedValue(res({ text: '[1, 2]' }));
+    expect(await suggestSlideOrder(deck)).toBeNull();
   });
 });

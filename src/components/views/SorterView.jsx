@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import SorterToolbar from '../sorter/SorterToolbar.jsx';
 import SorterGrid from '../sorter/SorterGrid.jsx';
 import SorterOutline from '../sorter/SorterOutline.jsx';
-import { flattenDeck, moveSlide, addSection, renameSection, deleteSection } from '../../lib/deckOrder.js';
+import { flattenDeck, moveSlide, addSection, renameSection, deleteSection, applySlideOrder } from '../../lib/deckOrder.js';
+import { suggestSlideOrder } from '../../lib/llmClient.js';
 
 const EMPTY_DECK = { sections: [], slides: [] };
 
@@ -24,6 +25,21 @@ export default function SorterView({ deck, onBack, onOpenSlide, onDeckChange }) 
   const editable = typeof onDeckChange === 'function';
   // "Add section" is a toolbar-only op; the grid gets the per-section ops.
   const onAddSection = editable ? () => onDeckChange((prev) => addSection(prev)?.deck ?? prev) : undefined;
+
+  // Rearrange with AI: ask the model for a slide order, then apply it through
+  // the freshest-deck updater. applySlideOrder tolerates the model dropping or
+  // duplicating ids, and any AI error (no key, bad reply) just leaves the deck
+  // untouched. `rearranging` drives the toolbar's busy label.
+  const [rearranging, setRearranging] = useState(false);
+  const onRearrange = editable ? async () => {
+    if (rearranging) return;
+    setRearranging(true);
+    try {
+      const order = await suggestSlideOrder(deck);
+      if (order) onDeckChange((prev) => applySlideOrder(prev, order));
+    } catch { /* AI errors are non-fatal — the deck just isn't reordered */ }
+    finally { setRearranging(false); }
+  } : undefined;
   const sectionOps = editable
     ? {
         onReorder: (slideId, toSectionId, toIndex) => onDeckChange((prev) => moveSlide(prev, slideId, toSectionId, toIndex)),
@@ -34,7 +50,7 @@ export default function SorterView({ deck, onBack, onOpenSlide, onDeckChange }) 
 
   return (
     <>
-      <SorterToolbar mode={mode} setMode={setMode} onBack={onBack} onAddSection={onAddSection} />
+      <SorterToolbar mode={mode} setMode={setMode} onBack={onBack} onAddSection={onAddSection} onRearrange={onRearrange} rearranging={rearranging} />
       {mode === 'grid' ? (
         <SorterGrid deck={safeDeck} flat={flat} active={active} setActive={setActive} onOpenSlide={onOpenSlide} editable={editable} {...sectionOps} />
       ) : (

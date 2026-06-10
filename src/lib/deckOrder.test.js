@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { flattenDeck, moveSlide, duplicateSlide, addSection, renameSection, deleteSection } from './deckOrder.js';
+import { flattenDeck, moveSlide, duplicateSlide, addSection, renameSection, deleteSection, applySlideOrder } from './deckOrder.js';
 
 describe('flattenDeck', () => {
   const deck = {
@@ -277,5 +277,65 @@ describe('deleteSection', () => {
     deleteSection(d, 's2');
     expect(d.sections).toHaveLength(3);
     expect(d.sections[0].slides).toEqual(['a', 'b']);
+  });
+});
+
+describe('applySlideOrder', () => {
+  const deck = () => ({
+    sections: [
+      { id: 's1', name: 'Intro', slides: ['a', 'b'] },
+      { id: 's2', name: 'Body', slides: ['c', 'd', 'e'] },
+    ],
+    slides: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'e' }],
+  });
+  const order = (d) => flattenDeck(d).map((s) => s.id);
+
+  it('applies a full permutation, preserving each section\'s slide count', () => {
+    const r = applySlideOrder(deck(), ['e', 'c', 'a', 'd', 'b']);
+    expect(r.sections[0].slides).toEqual(['e', 'c']);          // Intro keeps 2
+    expect(r.sections[1].slides).toEqual(['a', 'd', 'b']);     // Body keeps 3
+    expect(order(r)).toEqual(['e', 'c', 'a', 'd', 'b']);
+  });
+
+  it('drops unknown ids and appends missing ones in their current order (no slide lost)', () => {
+    const r = applySlideOrder(deck(), ['d', 'ghost', 'a']); // partial + hallucinated id
+    expect(order(r)).toEqual(['d', 'a', 'b', 'c', 'e']);    // d,a first; b,c,e keep relative order
+    expect(order(r)).toHaveLength(5);
+  });
+
+  it('ignores duplicate ids in the proposed order', () => {
+    const r = applySlideOrder(deck(), ['b', 'b', 'a', 'a', 'c', 'd', 'e']);
+    expect(order(r)).toEqual(['b', 'a', 'c', 'd', 'e']);
+  });
+
+  it('is a no-op (same ref) for a malformed deck or a non-array order', () => {
+    const d = deck();
+    expect(applySlideOrder(d, null)).toBe(d);
+    expect(applySlideOrder(d, 'abc')).toBe(d);
+    expect(applySlideOrder(null, ['a'])).toBeNull();
+  });
+
+  it('is a no-op (same ref) when the proposed order equals the current order', () => {
+    const d = deck();
+    expect(applySlideOrder(d, ['a', 'b', 'c', 'd', 'e'])).toBe(d);
+  });
+
+  it('normalizes a malformed deck whose slide id is referenced by two sections', () => {
+    // 'a' is double-referenced — flat has a duplicate, so the current order must
+    // NOT prefix-match into a false no-op; it should rebuild + drop the stray.
+    const d = {
+      sections: [{ id: 's1', name: 'A', slides: ['a', 'b'] }, { id: 's2', name: 'B', slides: ['c', 'a'] }],
+      slides: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+    };
+    const r = applySlideOrder(d, ['a', 'b', 'c']);
+    expect(r).not.toBe(d);                          // not a false no-op
+    expect(order(r)).toEqual(['a', 'b', 'c']);       // each slide once, no duplicate
+  });
+
+  it('does not mutate the input deck', () => {
+    const d = deck();
+    applySlideOrder(d, ['e', 'd', 'c', 'b', 'a']);
+    expect(d.sections[0].slides).toEqual(['a', 'b']);
+    expect(d.sections[1].slides).toEqual(['c', 'd', 'e']);
   });
 });
