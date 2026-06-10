@@ -33,10 +33,18 @@ export default function SorterView({ deck, onBack, onOpenSlide, onDeckChange }) 
   const [rearranging, setRearranging] = useState(false);
   const onRearrange = editable ? async () => {
     if (rearranging || flat.length < 2) return; // nothing to reorder → skip the API call
+    const before = flat.map((s) => s.id); // the order the user saw / the model reasoned about
     setRearranging(true);
     try {
       const order = await suggestSlideOrder(safeDeck);
-      if (order) onDeckChange((prev) => applySlideOrder(prev, order));
+      if (order) onDeckChange((prev) => {
+        // The Sorter stays editable during the request — if a manual drag/rename
+        // /delete or an MCP edit changed the slide order while it was in flight,
+        // the AI order is stale; drop it rather than clobber the fresh intent.
+        const now = flattenDeck(prev).map((s) => s.id);
+        if (now.length !== before.length || now.some((id, i) => id !== before[i])) return prev;
+        return applySlideOrder(prev, order);
+      });
     } catch { /* AI errors are non-fatal — the deck just isn't reordered */ }
     finally { setRearranging(false); }
   } : undefined;

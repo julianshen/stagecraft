@@ -200,6 +200,17 @@ describe('SorterView — Rearrange with AI', () => {
     expect(next.sections[1].slides).toEqual(['b']);
   });
 
+  it('drops a stale AI order if the deck order changed while the request was in flight', async () => {
+    suggestSlideOrder.mockResolvedValue(['c', 'a', 'b']);
+    const { getByText, onDeckChange } = renderSorter();
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(onDeckChange).toHaveBeenCalledTimes(1));
+    // A manual reorder (or MCP edit) landed first: the deck now has a different order.
+    const changed = { ...makeDeck(), sections: [{ id: 's1', name: 'Intro', slides: ['b', 'a'] }, { id: 's2', name: 'End', slides: ['c'] }] };
+    const updater = onDeckChange.mock.calls[0][0];
+    expect(updater(changed)).toBe(changed); // stale order not applied — fresh intent preserved
+  });
+
   it('shows a busy label while the request is in flight', async () => {
     let resolve;
     suggestSlideOrder.mockReturnValue(new Promise((r) => { resolve = r; }));
