@@ -1,7 +1,7 @@
 import Icon from '../ui/Icon.jsx';
 import { Button } from '../ui/Primitives.jsx';
 
-export default function SorterToolbar({ mode, setMode, onBack, onAddSection, onRearrange, rearranging }) {
+export default function SorterToolbar({ mode, setMode, onBack, onAddSection, onRearrange, rearranging, rearrangeError }) {
   return (
     <div className="toolbar">
       <div className="group">
@@ -28,6 +28,9 @@ export default function SorterToolbar({ mode, setMode, onBack, onAddSection, onR
           <Button variant="ghost" icon="ai" onClick={onRearrange} disabled={rearranging}>
             {rearranging ? 'Rearranging…' : 'Rearrange with AI'}
           </Button>
+        )}
+        {onRearrange && rearrangeError && (
+          <span role="status" style={{ marginLeft: 8, fontSize: 12, color: 'var(--warn)' }}>{rearrangeError}</span>
         )}
       </div>
     </div>
