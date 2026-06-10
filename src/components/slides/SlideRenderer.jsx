@@ -3,6 +3,7 @@
 import { useId } from 'react';
 import { chartData, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
 import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
+import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 
 export function SlideChrome({ slide, deck }) {
   return (
@@ -566,7 +567,7 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
             <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 60px' }}>{slide.title}</h1>
             <div style={{ display:'flex', flexDirection:'column', gap:28 }}>
               {(Array.isArray(slide.items) ? slide.items : []).filter(Boolean).map((it,i)=>{
-                const sevC = { high:'oklch(0.55 0.2 25)', med:'oklch(0.65 0.15 75)', low:'oklch(0.55 0.1 260)' }[it.sev];
+                const sevC = SEVERITY_OKLCH[it.sev] || SEVERITY_OKLCH.fallback;
                 return (
                   <div key={i} style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:40, padding:'32px 36px', border:'1px solid #eee', borderLeft:`6px solid ${sevC}`, borderRadius:6, background:'white' }}>
                     <div style={{ fontFamily:'var(--f-mono)', fontSize:18, letterSpacing:'0.08em', textTransform:'uppercase', color:sevC, fontWeight:600, paddingTop:6 }}>{it.sev} risk</div>

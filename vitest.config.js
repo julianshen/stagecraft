@@ -22,6 +22,7 @@ export default defineConfig({
         'src/lib/decksApi.js',
         'src/lib/chartSpec.js',
         'src/lib/roadmapSpec.js',
+        'src/lib/riskSpec.js',
         'src/lib/templateDeck.js',
         'src/hooks/useDeckSync.js',
         'src/hooks/useReorderDrag.js',

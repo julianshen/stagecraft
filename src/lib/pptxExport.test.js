@@ -26,6 +26,7 @@ vi.mock('pptxgenjs', () => {
 
 import { exportToPPTX } from './pptxExport.js';
 import { CHART_SERIES_HEX } from './chartSpec.js';
+import { SEVERITY_HEX } from './riskSpec.js';
 
 const deckOf = (roadmap) => ({
   title: 'D', theme: 'indigo',
@@ -106,5 +107,21 @@ describe('addChartSlide (PPTX chart)', () => {
     expect(chart.o.chartColors).not.toBe(CHART_SERIES_HEX); // a copy, so pptxgenjs can't mutate the frozen source
     expect(chart.data).toHaveLength(2);      // both series exported
     expect(chart.o.showLegend).toBe(true);   // multi-series legend
+  });
+});
+
+describe('addRisksSlide (PPTX risks)', () => {
+  it('colours severity bullets from the shared palette (matching the canvas), with a fallback', async () => {
+    await exportToPPTX({
+      title: 'D', theme: 'indigo',
+      sections: [{ id: 's1', name: 'X', slides: ['r'] }],
+      slides: [{ id: 'r', layout: 'risks', title: 'Risks', items: [
+        { sev: 'high', t: 'H', d: 'hd' },
+        { sev: 'low', t: 'L', d: 'ld' },
+        { sev: 'wat', t: 'U', d: 'ud' }, // unknown severity → fallback grey
+      ] }],
+    });
+    const bullets = last().texts.filter((x) => x.t === '●').map((x) => x.o.color);
+    expect(bullets).toEqual([SEVERITY_HEX.high, SEVERITY_HEX.low, SEVERITY_HEX.fallback]);
   });
 });
