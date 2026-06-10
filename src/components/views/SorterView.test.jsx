@@ -211,6 +211,17 @@ describe('SorterView — Rearrange with AI', () => {
     expect(updater(changed)).toBe(changed); // stale order not applied — fresh intent preserved
   });
 
+  it('drops a stale order on a cross-section move even when the flat id order is unchanged', async () => {
+    suggestSlideOrder.mockResolvedValue(['c', 'a', 'b']);
+    const { getByText, onDeckChange } = renderSorter(); // Intro [a,b], End [c]
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(onDeckChange).toHaveBeenCalledTimes(1));
+    // User moved `b` across the boundary: flat order is still a,b,c, but sections changed.
+    const moved = { ...makeDeck(), sections: [{ id: 's1', name: 'Intro', slides: ['a'] }, { id: 's2', name: 'End', slides: ['b', 'c'] }] };
+    const updater = onDeckChange.mock.calls[0][0];
+    expect(updater(moved)).toBe(moved); // section structure changed → stale order dropped
+  });
+
   it('shows a busy label while the request is in flight', async () => {
     let resolve;
     suggestSlideOrder.mockReturnValue(new Promise((r) => { resolve = r; }));

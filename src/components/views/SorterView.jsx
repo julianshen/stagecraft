@@ -33,18 +33,19 @@ export default function SorterView({ deck, onBack, onOpenSlide, onDeckChange }) 
   const [rearranging, setRearranging] = useState(false);
   const onRearrange = editable ? async () => {
     if (rearranging || flat.length < 2) return; // nothing to reorder → skip the API call
-    const before = flat.map((s) => s.id); // the order the user saw / the model reasoned about
+    // Signature of the section structure the model reasoned about: both the slide
+    // order AND its section membership (applySlideOrder re-chunks by section size,
+    // so a cross-section move with an unchanged flat order would otherwise slip
+    // through). `/` and `|` can't appear in generated ids.
+    const sig = (d) => flattenDeck(d).map((s) => `${s.sectionId}/${s.id}`).join('|');
+    const before = sig(safeDeck);
     setRearranging(true);
     try {
       const order = await suggestSlideOrder(safeDeck);
-      if (order) onDeckChange((prev) => {
-        // The Sorter stays editable during the request — if a manual drag/rename
-        // /delete or an MCP edit changed the slide order while it was in flight,
-        // the AI order is stale; drop it rather than clobber the fresh intent.
-        const now = flattenDeck(prev).map((s) => s.id);
-        if (now.length !== before.length || now.some((id, i) => id !== before[i])) return prev;
-        return applySlideOrder(prev, order);
-      });
+      // The Sorter stays editable during the request — if a manual drag/rename
+      // /delete or an MCP edit changed the structure while it was in flight, the
+      // AI order is stale; drop it rather than clobber the fresh intent.
+      if (order) onDeckChange((prev) => (sig(prev) === before ? applySlideOrder(prev, order) : prev));
     } catch { /* AI errors are non-fatal — the deck just isn't reordered */ }
     finally { setRearranging(false); }
   } : undefined;
