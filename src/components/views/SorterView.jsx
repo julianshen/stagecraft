@@ -31,7 +31,12 @@ export default function SorterView({ deck, onBack, onOpenSlide, onDeckChange }) 
   // duplicating ids, and any AI error (no key, bad reply) just leaves the deck
   // untouched. `rearranging` drives the toolbar's busy label.
   const [rearranging, setRearranging] = useState(false);
+  // A failed/empty AI rearrange used to be a silent no-op, indistinguishable from
+  // "already optimal" — surface it. Null = nothing to show (success or genuinely
+  // no change); a string is shown by the toolbar and cleared on the next attempt.
+  const [rearrangeError, setRearrangeError] = useState(null);
   const onRearrange = editable ? async () => {
+    setRearrangeError(null); // any fresh attempt clears stale feedback, even a no-op one
     if (rearranging || flat.length < 2) return; // nothing to reorder → skip the API call
     // Signature of the section structure the model reasoned about: both the slide
     // order AND its section membership (applySlideOrder re-chunks by section size,
@@ -40,14 +45,21 @@ export default function SorterView({ deck, onBack, onOpenSlide, onDeckChange }) 
     const sig = (d) => flattenDeck(d).map((s) => `${s.sectionId}/${s.id}`).join('|');
     const before = sig(safeDeck);
     setRearranging(true);
+    // One honest message: the proxy collapses a provider/auth error into a 200
+    // whose text fails to parse → null (same as a genuinely bad reply), so a
+    // failure can't be reliably told apart from a transport throw at this layer.
+    // No API key is the most likely cause, so point at the AI settings.
+    const failMsg = 'Couldn’t rearrange — check your AI settings and try again.';
     try {
       const order = await suggestSlideOrder(safeDeck);
+      if (!order) { setRearrangeError(failMsg); return; }
       // The Sorter stays editable during the request — if a manual drag/rename
       // /delete or an MCP edit changed the structure while it was in flight, the
       // AI order is stale; drop it rather than clobber the fresh intent.
-      if (order) onDeckChange((prev) => (sig(prev) === before ? applySlideOrder(prev, order) : prev));
-    } catch { /* AI errors are non-fatal — the deck just isn't reordered */ }
-    finally { setRearranging(false); }
+      onDeckChange((prev) => (sig(prev) === before ? applySlideOrder(prev, order) : prev));
+    } catch {
+      setRearrangeError(failMsg);
+    } finally { setRearranging(false); }
   } : undefined;
   const sectionOps = editable
     ? {
@@ -59,7 +71,7 @@ export default function SorterView({ deck, onBack, onOpenSlide, onDeckChange }) 
 
   return (
     <>
-      <SorterToolbar mode={mode} setMode={setMode} onBack={onBack} onAddSection={onAddSection} onRearrange={onRearrange} rearranging={rearranging} />
+      <SorterToolbar mode={mode} setMode={setMode} onBack={onBack} onAddSection={onAddSection} onRearrange={onRearrange} rearranging={rearranging} rearrangeError={rearrangeError} />
       {mode === 'grid' ? (
         <SorterGrid deck={safeDeck} flat={flat} active={active} setActive={setActive} onOpenSlide={onOpenSlide} editable={editable} {...sectionOps} />
       ) : (

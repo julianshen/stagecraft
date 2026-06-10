@@ -232,17 +232,42 @@ describe('SorterView — Rearrange with AI', () => {
     await waitFor(() => expect(queryByText('Rearranging…')).toBeNull());
   });
 
-  it('does nothing (no deck change) when the model returns null or throws', async () => {
+  it('surfaces a message (and makes no deck change) when the model returns null or throws', async () => {
+    // Both an unusable reply (null) and a transport throw fail the same way at
+    // this layer — no API key collapses to null via the proxy — so both show the
+    // one "check your AI settings" message.
     suggestSlideOrder.mockResolvedValue(null);
     const { getByText, onDeckChange } = renderSorter();
     fireEvent.click(getByText('Rearrange with AI'));
-    await waitFor(() => expect(getByText('Rearrange with AI')).toBeTruthy());
+    await waitFor(() => expect(getByText(/check your AI settings/)).toBeTruthy());
     expect(onDeckChange).not.toHaveBeenCalled();
 
-    suggestSlideOrder.mockRejectedValue(new Error('no api key'));
+    suggestSlideOrder.mockRejectedValue(new Error('boom'));
     fireEvent.click(getByText('Rearrange with AI'));
-    await waitFor(() => expect(getByText('Rearrange with AI')).toBeTruthy());
+    await waitFor(() => expect(getByText(/check your AI settings/)).toBeTruthy());
     expect(onDeckChange).not.toHaveBeenCalled();
+  });
+
+  it('clears a stale error on the next click even when there is nothing to rearrange', async () => {
+    suggestSlideOrder.mockRejectedValue(new Error('boom'));
+    const props = { onBack: vi.fn(), onOpenSlide: vi.fn(), onDeckChange: vi.fn() };
+    const { getByText, queryByText, rerender } = render(<SorterView deck={makeDeck()} {...props} />);
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(getByText(/check your AI settings/)).toBeTruthy());
+    // Deck shrinks below 2 slides: a click is now a no-op, but should still clear the stale message.
+    const oneSlide = { title: 'D', sections: [{ id: 's1', name: 'O', slides: ['a'] }], slides: [{ id: 'a', layout: 'cover', title: 'A' }] };
+    rerender(<SorterView deck={oneSlide} {...props} />);
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(queryByText(/check your AI settings/)).toBeNull());
+  });
+
+  it('clears the error message after a successful rearrange', async () => {
+    suggestSlideOrder.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(['c', 'a', 'b']);
+    const { getByText, queryByText } = renderSorter();
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(getByText(/check your AI settings/)).toBeTruthy());
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(queryByText(/check your AI settings/)).toBeNull());
   });
 
   it('hides the button in read-only mode (no onDeckChange)', () => {
