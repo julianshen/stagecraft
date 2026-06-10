@@ -32,10 +32,10 @@ export default function SorterView({ deck, onBack, onOpenSlide, onDeckChange }) 
   // untouched. `rearranging` drives the toolbar's busy label.
   const [rearranging, setRearranging] = useState(false);
   const onRearrange = editable ? async () => {
-    if (rearranging) return;
+    if (rearranging || flat.length < 2) return; // nothing to reorder → skip the API call
     setRearranging(true);
     try {
-      const order = await suggestSlideOrder(deck);
+      const order = await suggestSlideOrder(safeDeck);
       if (order) onDeckChange((prev) => applySlideOrder(prev, order));
     } catch { /* AI errors are non-fatal — the deck just isn't reordered */ }
     finally { setRearranging(false); }

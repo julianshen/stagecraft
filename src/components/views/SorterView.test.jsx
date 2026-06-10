@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { render, fireEvent, within, waitFor } from '@testing-library/react';
 import SorterView from './SorterView.jsx';
 import { suggestSlideOrder } from '../../lib/llmClient.js';
@@ -8,6 +8,7 @@ vi.mock('../../lib/llmClient.js', () => ({ suggestSlideOrder: vi.fn() }));
 const origRO = globalThis.ResizeObserver;
 beforeAll(() => { globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }; });
 afterAll(() => { globalThis.ResizeObserver = origRO; });
+beforeEach(() => { suggestSlideOrder.mockReset(); });
 
 const makeDeck = () => ({
   title: 'Deck',
@@ -227,5 +228,20 @@ describe('SorterView — Rearrange with AI', () => {
       <SorterView deck={makeDeck()} onBack={vi.fn()} onOpenSlide={vi.fn()} />,
     );
     expect(queryByText('Rearrange with AI')).toBeNull();
+  });
+
+  it('skips the API call when there are fewer than 2 slides to reorder', () => {
+    const oneSlide = {
+      title: 'D',
+      sections: [{ id: 's1', name: 'Only', slides: ['a'] }],
+      slides: [{ id: 'a', layout: 'cover', title: 'A' }],
+    };
+    const onDeckChange = vi.fn();
+    const { getByText } = render(
+      <SorterView deck={oneSlide} onBack={vi.fn()} onOpenSlide={vi.fn()} onDeckChange={onDeckChange} />,
+    );
+    fireEvent.click(getByText('Rearrange with AI'));
+    expect(suggestSlideOrder).not.toHaveBeenCalled();
+    expect(onDeckChange).not.toHaveBeenCalled();
   });
 });
