@@ -205,7 +205,7 @@ Each is a fixed visual composition driven by the slide schema (§3.2):
 - **text** — title + body paragraph (eyebrow = section name by default).
 - **list** — title + bulleted points.
 - **roadmap** — swimlane Gantt graphic. 🟢 data-driven via `roadmapModel` (`lib/roadmapSpec.js`), shared by the canvas and the PPTX export; a slide may supply `months`/`lanes`/`todayIndex`, and falls back to the built-in demo when omitted. ⚪ No in-app authoring path yet — the schema is set via MCP/agent or hand-authored JSON; the inspector can't edit lanes (same staged rollout the chart layout had).
-- **risks** — severity-coded rows (high/med/low).
+- **risks** — severity-coded rows (high/med/low). 🟢 Severity colours are single-sourced in `lib/riskSpec.js` (`SEVERITY_OKLCH` for the canvas, `SEVERITY_HEX` — exact sRGB — for the export), so the on-screen accents and the exported bullets match; unknown severities fall back to grey on both.
 - **thanks** — closing slide.
 
 ### 6.4 Charts (SVG) 🟢 render / 🟡 data
@@ -373,7 +373,7 @@ The store carries a monotonic **`rev`** counter, bumped on every mutation (deck 
 | table | native PPTX table (header + rows) |
 | split | two-column text + stats |
 | text / list / thanks | title + body/bullets |
-| risks | text representation 🟡 |
+| risks | text representation 🟡 — severity bullet colours come from the shared `SEVERITY_HEX` (`lib/riskSpec.js`, the exact sRGB of the canvas `SEVERITY_OKLCH`), so the export matches the on-screen severity colours; unknown severities fall back to grey on both surfaces. |
 | **roadmap** | 🟢 **native PPTX timeline** — month axis, status-coloured lane bars, optional TODAY marker, and a legend, built from the same `roadmapModel` (`lib/roadmapSpec.js`) the canvas uses, so they match. |
 | **chart** | 🟢 **native PPTX chart** (`addChart`) — editable in PowerPoint. Both the canvas SVG renderers and the export read the slide's `chart: { categories, series }` through the shared **`chartData`** helper (`lib/chartSpec.js`), so they show the same numbers; `chartSpec` maps the type (bar→vertical columns, line, area, pie/donut→doughnut, default line) for pptxgenjs. Both fall back to matching demo data when a slide carries none. |
 

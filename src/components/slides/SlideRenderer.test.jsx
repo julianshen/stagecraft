@@ -182,3 +182,17 @@ describe('Slide — roadmap legend', () => {
     ['Shipped', 'In-flight', 'At risk', 'Planned'].forEach((l) => expect(screen.getByText(l)).toBeTruthy());
   });
 });
+
+describe('Slide — risks severity colours', () => {
+  it('renders rows for known severities and falls back (no "undefined" style) for unknown ones', () => {
+    const slide = { layout: 'risks', title: 'R', items: [
+      { sev: 'high', t: 'H', d: 'hd' },
+      { sev: 'wat', t: 'U', d: 'ud' }, // unknown severity
+    ] };
+    const { container } = render(<Slide slide={slide} deck={{ title: 'D' }} />);
+    expect(screen.getByText('high risk')).toBeTruthy();
+    expect(screen.getByText('wat risk')).toBeTruthy();
+    // The old code produced `border-left: 6px solid undefined` for unknown sevs.
+    expect(container.innerHTML).not.toContain('solid undefined');
+  });
+});
