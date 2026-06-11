@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { callLLM, generateSlide, rewriteText, suggestImprovements, editSlide, suggestSlideOrder, LLMError, describeLLMError } from './llmClient.js';
 
 function res(body, { ok = true, status = 200 } = {}) {
-  return { ok, status, json: async () => body, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) };
+  return { ok, status, json: async () => body };
 }
 
 // Minimal localStorage mock — jsdom in vitest doesn't expose localStorage
@@ -122,11 +122,27 @@ describe('callLLM', () => {
     expect(err.reason).toBe('network');
   });
 
-  it('falls back to a status message when the error body is not JSON', async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => { throw new Error('not json'); } });
+  it('classifies a non-proxy error response (non-JSON body) as network', async () => {
+    // The /api/* middleware only exists under `npm run dev` — a static server
+    // answers /api/llm with an HTML 404. That's "couldn't reach the backend",
+    // not a provider failure.
+    fetchMock.mockResolvedValue({ ok: false, status: 404, json: async () => { throw new Error('not json'); } });
     const err = await callLLM([]).catch((e) => e);
-    expect(err.reason).toBe('provider');
-    expect(err.message).toMatch(/500/);
+    expect(err.reason).toBe('network');
+    expect(err.message).toMatch(/404/);
+  });
+
+  it('forwards a configured baseUrl to the proxy (keyless local servers)', async () => {
+    localStorage.setItem('stagecraft.ai', JSON.stringify({ provider: 'local', baseUrl: 'http://localhost:11434/v1' }));
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).baseUrl).toBe('http://localhost:11434/v1');
+  });
+
+  it('omits baseUrl from the body when none is configured', async () => {
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('baseUrl');
   });
 
   it('forwards system prompt in the request body', async () => {
@@ -308,5 +324,12 @@ describe('describeLLMError', () => {
     expect(describeLLMError(new Error('boom'))).toMatch(/try again/i);
     expect(describeLLMError(new LLMError('mystery', 'x'))).toMatch(/try again/i);
     expect(describeLLMError(undefined)).toMatch(/try again/i);
+  });
+
+  it('surfaces the provider detail for provider failures (deterministic 4xxs are actionable)', () => {
+    const msg = describeLLMError(new LLMError('provider', 'model claude-haiku-3.5 not found'));
+    expect(msg).toMatch(/model claude-haiku-3.5 not found/);
+    // and still falls back to canned copy when there is no detail
+    expect(describeLLMError(new LLMError('provider', ''))).toMatch(/provider returned an error/i);
   });
 });

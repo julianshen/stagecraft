@@ -118,18 +118,21 @@ function llmError(status, message, reason) {
 }
 
 // Parse a provider response, throwing (with the provider's status and a
-// classified reason) on non-2xx so auth/rate-limit failures reach the client
-// as errors instead of being returned as assistant "text".
+// classified reason) on any failure so auth/rate-limit/provider errors reach
+// the client as errors instead of being returned as assistant "text". That
+// includes a 2xx reply carrying an error body — some OpenAI-compatible local
+// servers report errors that way.
 async function providerJson(res) {
   const data = await res.json().catch(() => ({}));
+  const errMsg = data?.error?.message
+    || (typeof data?.error === 'string' ? data.error : `Provider error (${res.status})`);
   if (!res.ok) {
-    const msg = data?.error?.message
-      || (typeof data?.error === 'string' ? data.error : `Provider error (${res.status})`);
     const reason = res.status === 401 || res.status === 403 ? 'auth'
       : res.status === 429 ? 'rate-limit'
       : 'provider';
-    throw llmError(res.status, msg, reason);
+    throw llmError(res.status, errMsg, reason);
   }
+  if (data?.error) throw llmError(502, errMsg, 'provider');
   return data;
 }
 
@@ -162,7 +165,7 @@ async function proxyLLM(body, fetchFn) {
       body: JSON.stringify(reqBody),
     });
     const data = await providerJson(res);
-    return data.content?.[0]?.text || data.error?.message || 'No response';
+    return data.content?.[0]?.text || 'No response';
   }
 
   // OpenAI-compatible
@@ -178,7 +181,7 @@ async function proxyLLM(body, fetchFn) {
     body: JSON.stringify(reqBody),
   });
   const data = await providerJson(res);
-  return data.choices?.[0]?.message?.content || data.error?.message || 'No response';
+  return data.choices?.[0]?.message?.content || 'No response';
 }
 
 function runTool(store, name, args = {}) {
@@ -371,9 +374,9 @@ export async function handleApiRequest(store, req, deps = {}) {
       // Provider 4xx (bad key, rate limit, bad request) pass through; anything
       // else upstream — a 5xx or a network throw — is a bad gateway. The client
       // maps the body's `reason` to user copy, not the status.
-      const status = err.status >= 400 && err.status < 500 ? err.status : 502;
-      const out = { error: err.message || String(err) };
-      if (err.reason) out.reason = err.reason;
+      const status = err?.status >= 400 && err?.status < 500 ? err.status : 502;
+      const out = { error: err?.message || String(err) };
+      if (err?.reason) out.reason = err.reason;
       return ok(out, status);
     }
   }

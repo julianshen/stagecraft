@@ -533,10 +533,14 @@ describe('LLM proxy', () => {
     vi.unstubAllGlobals();
   });
 
-  it('surfaces a 200-with-error-body provider reply as its message text', async () => {
-    const fetch = vi.fn().mockResolvedValue(providerRes({ error: { message: 'bad key' } }));
+  it('classifies a 200-with-error-body provider reply as a provider failure (not assistant text)', async () => {
+    // Some OpenAI-compatible local servers report errors in a 2xx body; that
+    // must reach the client as a classified error, never as a "reply".
+    const fetch = vi.fn().mockResolvedValue(providerRes({ error: { message: 'model not loaded' } }));
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k' }), { fetch });
-    expect(r.body.text).toBe('bad key');
+    expect(r.status).toBe(502);
+    expect(r.body.error).toBe('model not loaded');
+    expect(r.body.reason).toBe('provider');
   });
 
   it('forwards empty-string system prompt to Anthropic (not omitted)', async () => {
@@ -640,5 +644,22 @@ describe('LLM proxy error classification', () => {
     expect(r.status).toBe(502);
     expect(r.body.error).toBe('Provider error (503)');
     expect(r.body.reason).toBe('provider');
+  });
+
+  it('answers 502 (not a crash) when the upstream rejects with a nullish value', async () => {
+    const fetch = vi.fn().mockRejectedValue(null);
+    const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [] }), { fetch });
+    expect(r.status).toBe(502);
+  });
+
+  it('every reason the proxy mints maps to specific (non-fallback) client copy', async () => {
+    // Parity lock: the reason strings are a cross-module contract (minted here,
+    // mapped in llmClient's LLM_ERROR_MESSAGES). A rename on one side must fail
+    // this test instead of silently degrading to the generic fallback copy.
+    const { describeLLMError } = await import('../lib/llmClient.js');
+    const generic = describeLLMError(new Error('unclassified'));
+    for (const reason of ['unconfigured', 'auth', 'rate-limit', 'provider']) {
+      expect(describeLLMError({ reason, message: 'x' })).not.toBe(generic);
+    }
   });
 });

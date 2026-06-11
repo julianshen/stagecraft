@@ -26,6 +26,9 @@ const LLM_ERROR_MESSAGES = {
 
 /** User-facing message for any error thrown by an LLM call. */
 export function describeLLMError(err) {
+  // Provider failures include deterministic 4xxs (bad model id, oversized
+  // request) where "try again" can never help — surface the provider's detail.
+  if (err?.reason === 'provider' && err.message) return `The AI provider returned an error: ${err.message}`;
   return LLM_ERROR_MESSAGES[err?.reason] || 'Something went wrong talking to the AI — try again.';
 }
 
@@ -55,6 +58,10 @@ export async function callLLM(messages, options = {}) {
 
   const body = { provider, model, apiKey, messages, maxTokens, temperature: temp };
   if (options.system != null) body.system = options.system;
+  // Forwarded so the proxy's keyless carve-out (custom OpenAI-compatible
+  // endpoints, e.g. Ollama) is reachable when a base URL is configured.
+  const baseUrl = options.baseUrl || settings.baseUrl;
+  if (baseUrl) body.baseUrl = baseUrl;
 
   // Route through our own Vite middleware so we never expose keys in the browser
   let res;
@@ -70,9 +77,12 @@ export async function callLLM(messages, options = {}) {
 
   if (!res.ok) {
     // The proxy answers errors as JSON { error, reason } — it owns the
-    // classification; a body without a reason is a generic upstream failure.
+    // classification. A response without even an `error` field didn't come
+    // from the proxy at all (e.g. a static server's HTML 404 when the dev
+    // middleware isn't running) — that's a network problem, not a provider one.
     const data = await res.json().catch(() => null);
-    throw new LLMError(data?.reason || 'provider', data?.error || `LLM request failed (${res.status})`);
+    const reason = data?.reason || (data?.error != null ? 'provider' : 'network');
+    throw new LLMError(reason, data?.error || `LLM request failed (${res.status})`);
   }
 
   const data = await res.json();
