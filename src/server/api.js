@@ -5,6 +5,8 @@
 // in-memory store: given a request, it returns { status, body } or null when the
 // route is unhandled (the caller then falls through to next()).
 
+import { LOCAL_DEFAULT_BASE } from '../lib/llmClient.js';
+
 let deckSeq = 0;
 function newDeckId() {
   return `deck-${Date.now().toString(36)}-${(deckSeq++).toString(36)}`;
@@ -137,10 +139,6 @@ async function providerJson(res) {
   if (data?.error) throw llmError(502, errMsg, 'provider');
   return data;
 }
-
-// Where the Settings "Local" provider points when no baseUrl is sent —
-// Ollama's default endpoint (the same default the Settings UI displays).
-const LOCAL_DEFAULT_BASE = 'http://localhost:11434/v1';
 
 async function proxyLLM(body, fetchFn) {
   const { messages, provider, model, apiKey, temperature, maxTokens, system } = body || {};

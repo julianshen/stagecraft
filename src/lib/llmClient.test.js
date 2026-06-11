@@ -1,29 +1,17 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { callLLM, generateSlide, rewriteText, suggestImprovements, editSlide, suggestSlideOrder, LLMError, describeLLMError } from './llmClient.js';
+import { stubLocalStorage } from '../test/localStorage.js';
 
 function res(body, { ok = true, status = 200 } = {}) {
   return { ok, status, json: async () => body };
 }
 
-// Minimal localStorage mock — jsdom in vitest doesn't expose localStorage
-// unless --localstorage-file is set; stub it ourselves.
-const store = new Map();
-const localStorageMock = {
-  getItem:    (k) => store.has(k) ? store.get(k) : null,
-  setItem:    (k, v) => store.set(k, String(v)),
-  removeItem: (k) => store.delete(k),
-  clear:      () => store.clear(),
-};
+stubLocalStorage();
 
 let fetchMock;
 beforeEach(() => {
-  store.clear();
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
-  vi.stubGlobal('localStorage', localStorageMock);
-});
-afterEach(() => {
-  vi.unstubAllGlobals();
 });
 
 describe('callLLM', () => {
@@ -150,6 +138,44 @@ describe('callLLM', () => {
     fetchMock.mockResolvedValue(res({ text: 'ok' }));
     await callLLM([]);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('baseUrl');
+  });
+
+  it('does NOT forward a stored baseUrl for providers with fixed endpoints', async () => {
+    // A leftover Local URL must never hijack an OpenAI/Anthropic request (it
+    // would send the bearer key to the stale host and defeat the key guard).
+    localStorage.setItem('stagecraft.ai', JSON.stringify({ provider: 'openai', apiKey: 'sk-x', baseUrl: 'http://lmstudio:1234/v1' }));
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('baseUrl');
+  });
+
+  it('does not send a saved API key for the keyless local provider', async () => {
+    // A key saved for OpenAI/Anthropic must not ride along as a bearer token
+    // to a Local endpoint the user believes is keyless (the UI hides the key).
+    localStorage.setItem('stagecraft.ai', JSON.stringify({ provider: 'local', apiKey: 'sk-secret', baseUrl: 'http://lmstudio:1234/v1' }));
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).apiKey).toBe('');
+  });
+
+  it('an explicit options.apiKey is still sent for the local provider', async () => {
+    localStorage.setItem('stagecraft.ai', JSON.stringify({ provider: 'local' }));
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([], { apiKey: 'deliberate' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).apiKey).toBe('deliberate');
+  });
+
+  it('forwards a stored baseUrl for the custom provider', async () => {
+    localStorage.setItem('stagecraft.ai', JSON.stringify({ provider: 'custom', apiKey: 'k', baseUrl: 'https://gw.example/v1' }));
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).baseUrl).toBe('https://gw.example/v1');
+  });
+
+  it('an explicit options.baseUrl is forwarded regardless of provider', async () => {
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([], { provider: 'openai', baseUrl: 'https://proxy.example/v1' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).baseUrl).toBe('https://proxy.example/v1');
   });
 
   it('forwards system prompt in the request body', async () => {

@@ -272,7 +272,7 @@ Left nav: General / Appearance / AI & Co-pilot / Export defaults / Shortcuts.
 
 | Section | Status |
 |---|---|
-| **AI & Co-pilot** | 🟢 provider cards (6), API key (show/hide, persisted), "Test connection" (real ping via `/api/llm`), model picker, **Temperature** + **Max tokens** persisted, per-task **routing** select. 🟡 **Top-p** is local-only (not persisted). |
+| **AI & Co-pilot** | 🟢 provider cards (6), API key (show/hide, persisted), "Test connection" (routes through `callLLM`, shows the classified failure reason via `describeLLMError` in an always-mounted `role="status"` region; any settings edit resets the verdict and discards an in-flight test via a sequence token), **Base URL persisted** for the endpoint-configurable providers (Local + Custom, `hasBaseUrl` catalog flag; unset shows the effective default as a placeholder; `callLLM` forwards `settings.baseUrl` *only* for those providers so a stale Local URL can't hijack OpenAI/Anthropic requests; "Reset to defaults" clears it), model picker, **Temperature** + **Max tokens** persisted, per-task **routing** select. 🟡 **Top-p** is local-only (not persisted). |
 | **Appearance** | 🟢 theme / accent / density / editor-layout — all bound to `tw`/`setTw`, live + persisted. |
 | **General** | 🔴 autosave and similar toggles are `onChange = () => {}`. |
 | **Export defaults** | 🔴 aspect ratio, default quality toggles are no-ops. |

@@ -1,5 +1,9 @@
 // LLM client — reads settings from localStorage 'stagecraft.ai'
 // Supports Anthropic and OpenAI-compatible APIs
+//
+// NOTE: this module must stay Node-import-safe (no browser globals at module
+// scope) — the server proxy (src/server/api.js) imports LOCAL_DEFAULT_BASE
+// from here and is itself loaded at Vite config time.
 
 import { flattenDeck } from './deckOrder.js';
 
@@ -32,6 +36,12 @@ export function describeLLMError(err) {
   return LLM_ERROR_MESSAGES[err?.reason] || 'Something went wrong talking to the AI — try again.';
 }
 
+// Where the keyless "Local" provider (Ollama / LM Studio) points by default —
+// displayed by the Settings Base URL field and applied by the /api/llm proxy
+// when a local request arrives without a baseUrl. Single-sourced here so what
+// the user sees and where the request goes can't drift apart.
+export const LOCAL_DEFAULT_BASE = 'http://localhost:11434/v1';
+
 function getAISettings() {
   try {
     const raw = localStorage.getItem('stagecraft.ai');
@@ -52,15 +62,21 @@ export async function callLLM(messages, options = {}) {
   const settings = getAISettings();
   const provider  = options.provider  || settings.provider  || 'anthropic';
   const model     = options.model     || settings.model      || 'claude-sonnet-4';
-  const apiKey    = options.apiKey    || settings.apiKey     || '';
+  // A saved key belongs to the keyed providers — never ship it as a bearer
+  // token to a Local endpoint the user believes is keyless (the Settings UI
+  // hides the key field there). An explicit options.apiKey is deliberate.
+  const apiKey    = options.apiKey    || (provider === 'local' ? '' : settings.apiKey) || '';
   const maxTokens = options.maxTokens || settings.maxTokens  || 2048;
   const temp      = options.temperature ?? settings.temperature ?? 0.6;
 
   const body = { provider, model, apiKey, messages, maxTokens, temperature: temp };
   if (options.system != null) body.system = options.system;
-  // Forwarded so the proxy's keyless carve-out (custom OpenAI-compatible
-  // endpoints, e.g. Ollama) is reachable when a base URL is configured.
-  const baseUrl = options.baseUrl || settings.baseUrl;
+  // A stored baseUrl belongs only to the endpoint-configurable providers — a
+  // leftover Local URL must never hijack an OpenAI/Anthropic request (it would
+  // send the bearer key to the stale host and defeat the proxy's key guard).
+  // An explicit options.baseUrl is a deliberate override and always wins.
+  const configurable = provider === 'local' || provider === 'custom';
+  const baseUrl = options.baseUrl || (configurable ? settings.baseUrl : '');
   if (baseUrl) body.baseUrl = baseUrl;
 
   // Route through our own Vite middleware so we never expose keys in the browser
