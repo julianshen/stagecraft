@@ -123,7 +123,9 @@ function llmError(status, message, reason) {
 // includes a 2xx reply carrying an error body — some OpenAI-compatible local
 // servers report errors that way.
 async function providerJson(res) {
-  const data = await res.json().catch(() => ({}));
+  // `|| {}` — a body of literal `null` is valid JSON and would crash the
+  // `data.content`/`data.choices` reads in proxyLLM.
+  const data = (await res.json().catch(() => ({}))) || {};
   const errMsg = data?.error?.message
     || (typeof data?.error === 'string' ? data.error : `Provider error (${res.status})`);
   if (!res.ok) {

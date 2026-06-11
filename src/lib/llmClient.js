@@ -85,7 +85,9 @@ export async function callLLM(messages, options = {}) {
     throw new LLMError(reason, data?.error || `LLM request failed (${res.status})`);
   }
 
-  const data = await res.json();
+  // Tolerate a 2xx whose body is literal `null` or not JSON at all — the
+  // shape-normalisation below must never throw on a "successful" response.
+  const data = (await res.json().catch(() => ({}))) || {};
 
   // Normalise Anthropic vs OpenAI response shapes
   if (data.content && Array.isArray(data.content)) {

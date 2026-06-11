@@ -646,6 +646,13 @@ describe('LLM proxy error classification', () => {
     expect(r.body.reason).toBe('provider');
   });
 
+  it('answers "No response" (not a crash) when a 2xx provider body is literal null', async () => {
+    const fetch = vi.fn().mockResolvedValue(providerRes(null));
+    const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [] }), { fetch });
+    expect(r.status).toBe(200);
+    expect(r.body.text).toBe('No response');
+  });
+
   it('answers 502 (not a crash) when the upstream rejects with a nullish value', async () => {
     const fetch = vi.fn().mockRejectedValue(null);
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [] }), { fetch });

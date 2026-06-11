@@ -122,6 +122,13 @@ describe('callLLM', () => {
     expect(err.reason).toBe('network');
   });
 
+  it('does not throw on a 200 whose body is literal null or not JSON', async () => {
+    fetchMock.mockResolvedValue(res(null));
+    await expect(callLLM([])).resolves.toBeTypeOf('string');
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => { throw new Error('not json'); } });
+    await expect(callLLM([])).resolves.toBeTypeOf('string');
+  });
+
   it('classifies a non-proxy error response (non-JSON body) as network', async () => {
     // The /api/* middleware only exists under `npm run dev` — a static server
     // answers /api/llm with an HTML 404. That's "couldn't reach the backend",
