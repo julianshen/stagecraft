@@ -266,7 +266,7 @@ function AISettings() {
         <div className="param-grid">
           <ParamSlider label="Temperature" value={temp} min={0} max={1} step={0.05} onChange={v => save({ temperature: v })}
             hint={temp <= 0.3 ? 'Precise' : temp >= 0.8 ? 'Creative' : 'Balanced'}/>
-          <ParamSlider label="Top-p" value={topP} min={0} max={1} step={0.05} onChange={v => save({ topP: v })} hint="Nucleus"/>
+          <ParamSlider label="Top-p" value={topP} min={0} max={1} step={0.05} onChange={v => save({ topP: v === 1 ? undefined : v })} hint="Nucleus"/>
           <div className="param-cell">
             <div className="param-head"><span>Max tokens</span><span className="param-val">{maxTok}</span></div>
             <input type="range" min="512" max="16384" step="512" value={maxTok}
