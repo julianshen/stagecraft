@@ -113,8 +113,11 @@ function AISettings() {
   // discarding a still-in-flight test that no longer describes the config.
   const [test, setTest] = useState({ phase: 'idle' });
   const testSeq = useRef(0);
-  const [temp, setTemp] = useState(settings.temperature ?? 0.6);
-  const [maxTok, setMaxTok] = useState(settings.maxTokens ?? 4096);
+  // Temperature / max tokens render straight from the saved settings — no
+  // mirror state to drift from storage (e.g. on Reset). Top-p has no
+  // persisted backing yet (SPEC: local-only), so it stays component state.
+  const temp = settings.temperature ?? 0.6;
+  const maxTok = settings.maxTokens ?? 4096;
   const [topP, setTopP] = useState(1.0);
 
   const [routing, setRouting] = useState({
@@ -234,7 +237,8 @@ function AISettings() {
                   style={{ fontFamily: 'var(--f-mono)', fontSize: 11.5 }}
                 />
               </div>
-              {testButton}
+              {/* Keyed providers (Custom) already have the button on the key row. */}
+              {!prov?.needsKey && testButton}
             </div>
           </div>
         )}
@@ -261,13 +265,13 @@ function AISettings() {
 
       <Section label="Generation parameters" desc={`Tuning for ${curModel?.name || 'the selected model'}.`}>
         <div className="param-grid">
-          <ParamSlider label="Temperature" value={temp} min={0} max={1} step={0.05} onChange={v => { setTemp(v); save({ temperature: v }); }}
+          <ParamSlider label="Temperature" value={temp} min={0} max={1} step={0.05} onChange={v => save({ temperature: v })}
             hint={temp <= 0.3 ? 'Precise' : temp >= 0.8 ? 'Creative' : 'Balanced'}/>
           <ParamSlider label="Top-p" value={topP} min={0} max={1} step={0.05} onChange={setTopP} hint="Nucleus"/>
           <div className="param-cell">
             <div className="param-head"><span>Max tokens</span><span className="param-val">{maxTok}</span></div>
             <input type="range" min="512" max="16384" step="512" value={maxTok}
-              onChange={e => { setMaxTok(+e.target.value); save({ maxTokens: +e.target.value }); }}
+              onChange={e => save({ maxTokens: +e.target.value })}
               className="range"/>
             <div className="param-hint">Per response ceiling</div>
           </div>
@@ -314,7 +318,10 @@ function AISettings() {
       <div className="settings-footer-actions">
         <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-4)' }}>Changes save automatically</span>
         <div style={{ flex: 1 }}/>
-        <Button variant="ghost" onClick={() => { save({ provider: 'anthropic', model: 'claude-sonnet-4', temperature: 0.6, maxTokens: 4096, apiKey: '', baseUrl: undefined }); }}>Reset to defaults</Button>
+        <Button variant="ghost" onClick={() => {
+          save({ provider: 'anthropic', model: 'claude-sonnet-4', temperature: 0.6, maxTokens: 4096, apiKey: '', baseUrl: undefined });
+          setTopP(1.0); // the one tuning knob without persisted backing
+        }}>Reset to defaults</Button>
         <Button variant="accent" icon="check">Saved</Button>
       </div>
     </div>

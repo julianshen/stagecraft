@@ -130,6 +130,25 @@ describe('AI settings — Test connection', () => {
 });
 
 describe('settings interactions', () => {
+  it('Reset to defaults snaps the sliders back too (no UI/storage divergence)', () => {
+    const { container } = renderSettings();
+    const ranges = container.querySelectorAll('input[type="range"]');
+    fireEvent.change(ranges[0], { target: { value: '0.9' } });  // temperature
+    fireEvent.change(ranges[1], { target: { value: '0.5' } });  // top-p
+    fireEvent.change(ranges[2], { target: { value: '1024' } }); // max tokens
+    fireEvent.click(screen.getByText('Reset to defaults'));
+    expect(ranges[0].value).toBe('0.6');
+    expect(ranges[1].value).toBe('1');
+    expect(ranges[2].value).toBe('4096');
+    expect(JSON.parse(store.get('stagecraft.ai'))).toMatchObject({ temperature: 0.6, maxTokens: 4096 });
+  });
+
+  it('renders exactly one Test connection button for the Custom provider (key + Base URL rows)', () => {
+    renderSettings();
+    fireEvent.click(screen.getByText('Custom'));
+    expect(screen.getAllByRole('button', { name: /Test connection/ })).toHaveLength(1);
+  });
+
   it('exercises the AI section controls (model, sliders, routing, reset, key)', () => {
     const { container } = renderSettings();
     fireEvent.click(container.querySelector('.input-group .iconbtn')); // show/hide key
