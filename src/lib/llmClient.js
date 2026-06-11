@@ -62,7 +62,10 @@ export async function callLLM(messages, options = {}) {
   const settings = getAISettings();
   const provider  = options.provider  || settings.provider  || 'anthropic';
   const model     = options.model     || settings.model      || 'claude-sonnet-4';
-  const apiKey    = options.apiKey    || settings.apiKey     || '';
+  // A saved key belongs to the keyed providers — never ship it as a bearer
+  // token to a Local endpoint the user believes is keyless (the Settings UI
+  // hides the key field there). An explicit options.apiKey is deliberate.
+  const apiKey    = options.apiKey    || (provider === 'local' ? '' : settings.apiKey) || '';
   const maxTokens = options.maxTokens || settings.maxTokens  || 2048;
   const temp      = options.temperature ?? settings.temperature ?? 0.6;
 
