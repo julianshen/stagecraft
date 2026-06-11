@@ -140,6 +140,28 @@ describe('callLLM', () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('baseUrl');
   });
 
+  it('does NOT forward a stored baseUrl for providers with fixed endpoints', async () => {
+    // A leftover Local URL must never hijack an OpenAI/Anthropic request (it
+    // would send the bearer key to the stale host and defeat the key guard).
+    localStorage.setItem('stagecraft.ai', JSON.stringify({ provider: 'openai', apiKey: 'sk-x', baseUrl: 'http://lmstudio:1234/v1' }));
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('baseUrl');
+  });
+
+  it('forwards a stored baseUrl for the custom provider', async () => {
+    localStorage.setItem('stagecraft.ai', JSON.stringify({ provider: 'custom', apiKey: 'k', baseUrl: 'https://gw.example/v1' }));
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).baseUrl).toBe('https://gw.example/v1');
+  });
+
+  it('an explicit options.baseUrl is forwarded regardless of provider', async () => {
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([], { provider: 'openai', baseUrl: 'https://proxy.example/v1' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).baseUrl).toBe('https://proxy.example/v1');
+  });
+
   it('forwards system prompt in the request body', async () => {
     fetchMock.mockResolvedValue(res({ text: 'ok' }));
     await callLLM([], { system: 'You are a helpful assistant.' });

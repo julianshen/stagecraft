@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, Seg, FieldRow } from '../ui/Primitives.jsx';
 import { ACCENTS } from '../../data/deck.js';
@@ -10,8 +10,8 @@ const PROVIDERS = [
   { id: 'openai',     name: 'OpenAI',     mark: 'O',   hint: 'GPT family',                         endpoint: 'api.openai.com',                     needsKey: true },
   { id: 'google',     name: 'Google',     mark: 'G',   hint: 'Gemini family',                      endpoint: 'generativelanguage.googleapis.com',  needsKey: true },
   { id: 'openrouter', name: 'OpenRouter', mark: 'OR',  hint: '400+ models, one key',               endpoint: 'openrouter.ai/api/v1',               needsKey: true },
-  { id: 'local',      name: 'Local',      mark: '·',   hint: 'Ollama / LM Studio',                 endpoint: 'localhost:11434',                    needsKey: false },
-  { id: 'custom',     name: 'Custom',     mark: '{}',  hint: 'OpenAI / Anthropic-compatible',      endpoint: 'your-endpoint',                      needsKey: true, custom: true },
+  { id: 'local',      name: 'Local',      mark: '·',   hint: 'Ollama / LM Studio',                 endpoint: new URL(LOCAL_DEFAULT_BASE).host,     needsKey: false, hasBaseUrl: true },
+  { id: 'custom',     name: 'Custom',     mark: '{}',  hint: 'OpenAI / Anthropic-compatible',      endpoint: 'your-endpoint',                      needsKey: true, hasBaseUrl: true, custom: true },
 ];
 
 const MODELS = {
@@ -108,9 +108,11 @@ function AISettings() {
   });
 
   const [keyShown, setKeyShown] = useState(false);
-  // One state for the connection test: phase idle | testing | ok | error,
-  // with `error` carrying the classified copy only in the 'error' phase.
-  const [test, setTest] = useState({ phase: 'idle', error: null });
+  // Connection test: phase idle | testing | ok | error (+ classified copy).
+  // Any settings edit bumps `testSeq`, both resetting the visible result and
+  // discarding a still-in-flight test that no longer describes the config.
+  const [test, setTest] = useState({ phase: 'idle' });
+  const testSeq = useRef(0);
   const [temp, setTemp] = useState(settings.temperature ?? 0.6);
   const [maxTok, setMaxTok] = useState(settings.maxTokens ?? 4096);
   const [topP, setTopP] = useState(1.0);
@@ -133,25 +135,27 @@ function AISettings() {
     const next = { ...settings, ...patch };
     setSettings(next);
     try { localStorage.setItem('stagecraft.ai', JSON.stringify(next)); } catch {}
+    // The config changed — a previous (or in-flight) test no longer describes it.
+    testSeq.current += 1;
+    setTest({ phase: 'idle' });
   }
 
   function pickProvider(id) {
     const first = (MODELS[id] || [])[0];
     save({ provider: id, model: first ? first.id : '' });
-    setTest({ phase: 'idle', error: null });
   }
 
   async function testConn() {
-    if (test.phase === 'testing') return;
-    setTest({ phase: 'testing', error: null });
+    const seq = ++testSeq.current;
+    setTest({ phase: 'testing' });
     try {
       // Everything but the test-specific tuning comes from the saved settings
       // (kept current by save()), same as every other callLLM caller; a
       // failure throws a classified LLMError so the panel can say *why*.
       await callLLM([{ role: 'user', content: 'ping' }], { maxTokens: 10, temperature: 0 });
-      setTest({ phase: 'ok', error: null });
+      if (seq === testSeq.current) setTest({ phase: 'ok' });
     } catch (err) {
-      setTest({ phase: 'error', error: describeLLMError(err) });
+      if (seq === testSeq.current) setTest({ phase: 'error', error: describeLLMError(err) });
     }
   }
 
@@ -159,11 +163,11 @@ function AISettings() {
     list.map(m => ({ ...m, providerName: PROVIDERS.find(p => p.id === pid)?.name || pid })));
 
   const testButton = (
-    <button className="btn outline" onClick={testConn} style={{ height: 30 }}>
+    <button className="btn outline" onClick={testConn} disabled={test.phase === 'testing'} style={{ height: 30 }}>
       {test.phase === 'testing' ? <><Icon name="refresh" size={12} style={{ animation: 'spin .65s linear infinite' }}/> Testing…</>
        : test.phase === 'ok'    ? <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={12}/> Connected</span>
        : test.phase === 'error' ? <span style={{ color: 'var(--warn)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="x" size={12}/> Failed</span>
-       : <>Test connection</>}
+       : 'Test connection'}
     </button>
   );
 
@@ -214,18 +218,19 @@ function AISettings() {
             </div>
           </div>
         )}
-        {!prov?.needsKey && (
+        {prov?.hasBaseUrl && (
           <div className="set-row">
             <div className="set-row-label">
               <div className="srl-title">Base URL</div>
-              <div className="srl-sub">Point at a local Ollama or LM Studio server.</div>
+              <div className="srl-sub">{prov?.needsKey ? 'OpenAI-compatible endpoint for your gateway.' : 'Point at a local Ollama or LM Studio server.'}</div>
             </div>
             <div className="set-row-control" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <div className="input-group" style={{ width: 280 }}>
                 <span className="ico"><Icon name="link" size={12}/></span>
                 <input
-                  value={settings.baseUrl ?? LOCAL_DEFAULT_BASE}
-                  onChange={e => save({ baseUrl: e.target.value })}
+                  value={settings.baseUrl ?? ''}
+                  placeholder={provider === 'local' ? LOCAL_DEFAULT_BASE : 'https://your-endpoint/v1'}
+                  onChange={e => save({ baseUrl: e.target.value.trim() || undefined })}
                   style={{ fontFamily: 'var(--f-mono)', fontSize: 11.5 }}
                 />
               </div>
@@ -233,9 +238,8 @@ function AISettings() {
             </div>
           </div>
         )}
-        {test.error && (
-          <div role="status" style={{ padding: '8px 0 0', fontSize: 12, color: 'var(--warn)' }}>{test.error}</div>
-        )}
+        {/* Always mounted so the role="status" live region announces changes. */}
+        <div role="status" style={{ padding: test.error ? '8px 0 0' : 0, fontSize: 12, color: 'var(--warn)' }}>{test.error || ''}</div>
       </Section>
 
       <Section label="Default model" desc="Used unless a task below overrides it.">
@@ -310,7 +314,7 @@ function AISettings() {
       <div className="settings-footer-actions">
         <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-4)' }}>Changes save automatically</span>
         <div style={{ flex: 1 }}/>
-        <Button variant="ghost" onClick={() => { save({ provider: 'anthropic', model: 'claude-sonnet-4', temperature: 0.6, maxTokens: 4096, apiKey: '' }); }}>Reset to defaults</Button>
+        <Button variant="ghost" onClick={() => { save({ provider: 'anthropic', model: 'claude-sonnet-4', temperature: 0.6, maxTokens: 4096, apiKey: '', baseUrl: undefined }); }}>Reset to defaults</Button>
         <Button variant="accent" icon="check">Saved</Button>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import SettingsView from './SettingsView.jsx';
 import { callLLM, LLMError, LOCAL_DEFAULT_BASE } from '../../lib/llmClient.js';
 import { stubLocalStorage } from '../../test/localStorage.js';
@@ -22,7 +22,8 @@ describe('AI settings — Base URL persistence', () => {
   it('persists an edited Base URL for the keyless Local provider', () => {
     renderSettings();
     fireEvent.click(screen.getByText('Local'));
-    const input = screen.getByDisplayValue(LOCAL_DEFAULT_BASE);
+    // Unset state shows the effective default as a placeholder, not a value.
+    const input = screen.getByPlaceholderText(LOCAL_DEFAULT_BASE);
     fireEvent.change(input, { target: { value: 'http://lmstudio:1234/v1' } });
     expect(JSON.parse(store.get('stagecraft.ai')).baseUrl).toBe('http://lmstudio:1234/v1');
   });
@@ -31,6 +32,27 @@ describe('AI settings — Base URL persistence', () => {
     store.set('stagecraft.ai', JSON.stringify({ provider: 'local', model: 'llama-3.3-70b', baseUrl: 'http://lmstudio:1234/v1' }));
     renderSettings();
     expect(screen.getByDisplayValue('http://lmstudio:1234/v1')).toBeInTheDocument();
+  });
+
+  it('clearing (or blanking) the field removes the stored baseUrl entirely', () => {
+    store.set('stagecraft.ai', JSON.stringify({ provider: 'local', model: 'llama-3.3-70b', baseUrl: 'http://lmstudio:1234/v1' }));
+    renderSettings();
+    fireEvent.change(screen.getByDisplayValue('http://lmstudio:1234/v1'), { target: { value: '   ' } });
+    expect(JSON.parse(store.get('stagecraft.ai'))).not.toHaveProperty('baseUrl');
+  });
+
+  it('offers the Base URL field for the Custom provider too (it needs a key AND an endpoint)', () => {
+    renderSettings();
+    fireEvent.click(screen.getByText('Custom'));
+    expect(screen.getByText('Base URL')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('sk-…')).toBeInTheDocument();
+  });
+
+  it('Reset to defaults clears the stored baseUrl', () => {
+    store.set('stagecraft.ai', JSON.stringify({ provider: 'local', model: 'llama-3.3-70b', baseUrl: 'http://lmstudio:1234/v1' }));
+    renderSettings();
+    fireEvent.click(screen.getByText('Reset to defaults'));
+    expect(JSON.parse(store.get('stagecraft.ai'))).not.toHaveProperty('baseUrl');
   });
 });
 
@@ -41,8 +63,6 @@ describe('AI settings — Test connection', () => {
     renderSettings();
     fireEvent.click(screen.getByText('Test connection'));
     expect(await screen.findByText('Connected')).toBeInTheDocument();
-    // Only the test-specific tuning is overridden — provider/model/key/baseUrl
-    // come from the saved settings, same as every other callLLM caller.
     expect(callLLM).toHaveBeenCalledWith(
       [{ role: 'user', content: 'ping' }],
       { maxTokens: 10, temperature: 0 },
@@ -74,6 +94,27 @@ describe('AI settings — Test connection', () => {
     fireEvent.click(screen.getByText('OpenAI'));
     expect(screen.queryByText('Failed')).toBeNull();
     expect(screen.queryByText(/rejected your API key/)).toBeNull();
+  });
+
+  it('editing a setting invalidates the previous test result', async () => {
+    callLLM.mockRejectedValue(new LLMError('auth', 'bad key'));
+    renderSettings();
+    fireEvent.click(screen.getByText('Test connection'));
+    expect(await screen.findByText('Failed')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('sk-…'), { target: { value: 'sk-fixed' } });
+    expect(screen.queryByText('Failed')).toBeNull(); // result no longer describes the new config
+    expect(screen.queryByText(/rejected your API key/)).toBeNull();
+  });
+
+  it('discards an in-flight result that lands after a provider switch', async () => {
+    let reject;
+    callLLM.mockReturnValue(new Promise((_, r) => { reject = r; }));
+    renderSettings();
+    fireEvent.click(screen.getByText('Test connection'));
+    fireEvent.click(screen.getByText('OpenAI')); // switch while the test is in flight
+    await act(async () => { reject(new LLMError('auth', 'bad key')); }); // settle + flush React
+    expect(screen.queryByText('Failed')).toBeNull(); // stale verdict not applied to the new provider
+    expect(screen.getByText('Test connection')).toBeInTheDocument();
   });
 
   it('ignores clicks while a test is in flight', async () => {
@@ -125,13 +166,15 @@ describe('settings interactions', () => {
   });
 
   it('general and export rows respond to clicks', () => {
-    renderSettings();
+    const { container } = renderSettings();
     fireEvent.click(screen.getByText('General'));
     fireEvent.click(screen.getByText('4:3'));       // Seg
-    fireEvent.click(screen.getByText('Autosave'));  // ToggleRow
+    fireEvent.click(screen.getByText('Autosave'));  // ToggleRow: switch flips off
+    expect(container.querySelectorAll('.switch.on').length).toBe(3);
     fireEvent.click(screen.getByText('Export defaults'));
     fireEvent.click(screen.getByText('Standard'));      // Seg
     fireEvent.click(screen.getByText('Speaker notes')); // ToggleRow
+    expect(container.querySelectorAll('.switch.on').length).toBe(2);
   });
 });
 

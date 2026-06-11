@@ -1,5 +1,9 @@
 // LLM client — reads settings from localStorage 'stagecraft.ai'
 // Supports Anthropic and OpenAI-compatible APIs
+//
+// NOTE: this module must stay Node-import-safe (no browser globals at module
+// scope) — the server proxy (src/server/api.js) imports LOCAL_DEFAULT_BASE
+// from here and is itself loaded at Vite config time.
 
 import { flattenDeck } from './deckOrder.js';
 
@@ -64,9 +68,12 @@ export async function callLLM(messages, options = {}) {
 
   const body = { provider, model, apiKey, messages, maxTokens, temperature: temp };
   if (options.system != null) body.system = options.system;
-  // Forwarded so the proxy's keyless carve-out (custom OpenAI-compatible
-  // endpoints, e.g. Ollama) is reachable when a base URL is configured.
-  const baseUrl = options.baseUrl || settings.baseUrl;
+  // A stored baseUrl belongs only to the endpoint-configurable providers — a
+  // leftover Local URL must never hijack an OpenAI/Anthropic request (it would
+  // send the bearer key to the stale host and defeat the proxy's key guard).
+  // An explicit options.baseUrl is a deliberate override and always wins.
+  const configurable = provider === 'local' || provider === 'custom';
+  const baseUrl = options.baseUrl || (configurable ? settings.baseUrl : '');
   if (baseUrl) body.baseUrl = baseUrl;
 
   // Route through our own Vite middleware so we never expose keys in the browser
