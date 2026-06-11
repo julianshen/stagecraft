@@ -29,6 +29,7 @@ export default defineConfig({
         'src/data/deck.js',
         'src/components/editor/CanvasSlide.jsx',
         'src/components/views/SorterView.jsx',
+        'src/components/views/SettingsView.jsx',
         'src/components/sorter/SorterGrid.jsx',
         'src/components/sorter/SorterToolbar.jsx',
       ],

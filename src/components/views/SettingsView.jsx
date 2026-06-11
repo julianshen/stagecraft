@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, Seg, FieldRow } from '../ui/Primitives.jsx';
 import { ACCENTS } from '../../data/deck.js';
+import { callLLM, describeLLMError } from '../../lib/llmClient.js';
 
 // ---- provider + model catalog ----
 const PROVIDERS = [
@@ -108,6 +109,7 @@ function AISettings() {
 
   const [keyShown, setKeyShown] = useState(false);
   const [tested, setTested] = useState('idle'); // idle | testing | ok | error
+  const [testError, setTestError] = useState(null); // classified copy for the 'error' state
   const [temp, setTemp] = useState(settings.temperature ?? 0.6);
   const [maxTok, setMaxTok] = useState(settings.maxTokens ?? 4096);
   const [topP, setTopP] = useState(1.0);
@@ -136,29 +138,36 @@ function AISettings() {
     const first = (MODELS[id] || [])[0];
     save({ provider: id, model: first ? first.id : '' });
     setTested('idle');
+    setTestError(null);
   }
 
-  function testConn() {
+  async function testConn() {
+    if (tested === 'testing') return;
     setTested('testing');
-    // Proxy a tiny test message through our /api/llm route
-    fetch('/api/llm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider,
-        model,
-        apiKey: settings.apiKey || '',
-        messages: [{ role: 'user', content: 'ping' }],
-        maxTokens: 10,
-        temperature: 0,
-      }),
-    })
-      .then(r => setTested(r.ok ? 'ok' : 'error'))
-      .catch(() => setTested('error'));
+    setTestError(null);
+    try {
+      // callLLM reads apiKey/baseUrl from the saved settings (kept current by
+      // save()) and throws a classified LLMError on failure — so the button
+      // can say *why* a test failed, not just that it did.
+      await callLLM([{ role: 'user', content: 'ping' }], { provider, model, maxTokens: 10, temperature: 0 });
+      setTested('ok');
+    } catch (err) {
+      setTestError(describeLLMError(err));
+      setTested('error');
+    }
   }
 
   const allModels = Object.entries(MODELS).flatMap(([pid, list]) =>
     list.map(m => ({ ...m, providerName: PROVIDERS.find(p => p.id === pid)?.name || pid })));
+
+  const testButton = (
+    <button className="btn outline" onClick={testConn} style={{ height: 30 }}>
+      {tested === 'testing' ? <><Icon name="refresh" size={12} style={{ animation: 'spin .65s linear infinite' }}/> Testing…</>
+       : tested === 'ok'    ? <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={12}/> Connected</span>
+       : tested === 'error' ? <span style={{ color: 'var(--warn)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="x" size={12}/> Failed</span>
+       : <>Test connection</>}
+    </button>
+  );
 
   return (
     <div className="settings-scroll">
@@ -203,12 +212,7 @@ function AISettings() {
                   <Icon name={keyShown ? 'eye-off' : 'eye'} size={12}/>
                 </button>
               </div>
-              <button className="btn outline" onClick={testConn} style={{ height: 30 }}>
-                {tested === 'testing' ? <><Icon name="refresh" size={12} style={{ animation: 'spin .65s linear infinite' }}/> Testing…</>
-                 : tested === 'ok'    ? <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={12}/> Connected</span>
-                 : tested === 'error' ? <span style={{ color: 'var(--warn)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="x" size={12}/> Failed</span>
-                 : <>Test connection</>}
-              </button>
+              {testButton}
             </div>
           </div>
         )}
@@ -218,16 +222,21 @@ function AISettings() {
               <div className="srl-title">Base URL</div>
               <div className="srl-sub">Point at a local Ollama or LM Studio server.</div>
             </div>
-            <div className="set-row-control">
+            <div className="set-row-control" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <div className="input-group" style={{ width: 280 }}>
                 <span className="ico"><Icon name="link" size={12}/></span>
                 <input
-                  defaultValue="http://localhost:11434/v1"
+                  value={settings.baseUrl ?? 'http://localhost:11434/v1'}
+                  onChange={e => save({ baseUrl: e.target.value })}
                   style={{ fontFamily: 'var(--f-mono)', fontSize: 11.5 }}
                 />
               </div>
+              {testButton}
             </div>
           </div>
+        )}
+        {tested === 'error' && testError && (
+          <div role="status" style={{ padding: '8px 0 0', fontSize: 12, color: 'var(--warn)' }}>{testError}</div>
         )}
       </Section>
 
