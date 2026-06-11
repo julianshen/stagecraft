@@ -3,6 +3,35 @@
 
 import { flattenDeck } from './deckOrder.js';
 
+/**
+ * A classified LLM failure — `reason` keys into LLM_ERROR_MESSAGES below.
+ * Reasons are minted by the /api/llm proxy (see api.js), except 'network'.
+ */
+export class LLMError extends Error {
+  constructor(reason, message) {
+    super(message);
+    this.name = 'LLMError';
+    this.reason = reason;
+  }
+}
+
+const LLM_ERROR_MESSAGES = {
+  unconfigured: 'No API key configured — add one in Settings.',
+  auth: 'The provider rejected your API key — check it in Settings.',
+  'rate-limit': 'The provider is rate-limiting requests — try again in a moment.',
+  // network = our own /api/llm proxy was unreachable, not a provider failure
+  network: 'Couldn’t reach the Stagecraft server — is the dev server running?',
+  provider: 'The AI provider returned an error — try again.',
+};
+
+/** User-facing message for any error thrown by an LLM call. */
+export function describeLLMError(err) {
+  // Provider failures include deterministic 4xxs (bad model id, oversized
+  // request) where "try again" can never help — surface the provider's detail.
+  if (err?.reason === 'provider' && err.message) return `The AI provider returned an error: ${err.message}`;
+  return LLM_ERROR_MESSAGES[err?.reason] || 'Something went wrong talking to the AI — try again.';
+}
+
 function getAISettings() {
   try {
     const raw = localStorage.getItem('stagecraft.ai');
@@ -29,20 +58,36 @@ export async function callLLM(messages, options = {}) {
 
   const body = { provider, model, apiKey, messages, maxTokens, temperature: temp };
   if (options.system != null) body.system = options.system;
+  // Forwarded so the proxy's keyless carve-out (custom OpenAI-compatible
+  // endpoints, e.g. Ollama) is reachable when a base URL is configured.
+  const baseUrl = options.baseUrl || settings.baseUrl;
+  if (baseUrl) body.baseUrl = baseUrl;
 
   // Route through our own Vite middleware so we never expose keys in the browser
-  const res = await fetch('/api/llm', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const err = await res.text().catch(() => res.statusText);
-    throw new Error(`LLM request failed (${res.status}): ${err}`);
+  let res;
+  try {
+    res = await fetch('/api/llm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    throw new LLMError('network', `Couldn’t reach /api/llm: ${err?.message || err}`);
   }
 
-  const data = await res.json();
+  if (!res.ok) {
+    // The proxy answers errors as JSON { error, reason } — it owns the
+    // classification. A response without even an `error` field didn't come
+    // from the proxy at all (e.g. a static server's HTML 404 when the dev
+    // middleware isn't running) — that's a network problem, not a provider one.
+    const data = await res.json().catch(() => null);
+    const reason = data?.reason || (data?.error != null ? 'provider' : 'network');
+    throw new LLMError(reason, data?.error || `LLM request failed (${res.status})`);
+  }
+
+  // Tolerate a 2xx whose body is literal `null` or not JSON at all — the
+  // shape-normalisation below must never throw on a "successful" response.
+  const data = (await res.json().catch(() => ({}))) || {};
 
   // Normalise Anthropic vs OpenAI response shapes
   if (data.content && Array.isArray(data.content)) {

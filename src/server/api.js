@@ -107,11 +107,58 @@ function newSlideId() {
   return `slide-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+// An LLM proxy failure carries the HTTP status the route should answer with,
+// plus a machine-readable `reason` — the single source of the error taxonomy
+// the client (llmClient.js describeLLMError) maps to user-facing copy.
+function llmError(status, message, reason) {
+  const err = new Error(message);
+  err.status = status;
+  err.reason = reason;
+  return err;
+}
+
+// Parse a provider response, throwing (with the provider's status and a
+// classified reason) on any failure so auth/rate-limit/provider errors reach
+// the client as errors instead of being returned as assistant "text". That
+// includes a 2xx reply carrying an error body — some OpenAI-compatible local
+// servers report errors that way.
+async function providerJson(res) {
+  // `|| {}` — a body of literal `null` is valid JSON and would crash the
+  // `data.content`/`data.choices` reads in proxyLLM.
+  const data = (await res.json().catch(() => ({}))) || {};
+  const errMsg = data?.error?.message
+    || (typeof data?.error === 'string' ? data.error : `Provider error (${res.status})`);
+  if (!res.ok) {
+    const reason = res.status === 401 || res.status === 403 ? 'auth'
+      : res.status === 429 ? 'rate-limit'
+      : 'provider';
+    throw llmError(res.status, errMsg, reason);
+  }
+  if (data?.error) throw llmError(502, errMsg, 'provider');
+  return data;
+}
+
+// Where the Settings "Local" provider points when no baseUrl is sent —
+// Ollama's default endpoint (the same default the Settings UI displays).
+const LOCAL_DEFAULT_BASE = 'http://localhost:11434/v1';
+
 async function proxyLLM(body, fetchFn) {
-  const { messages, provider, model, apiKey, baseUrl, temperature, maxTokens, system } = body || {};
+  const { messages, provider, model, apiKey, temperature, maxTokens, system } = body || {};
 
   // Common defaults shared by both providers
   const isAnthropic = provider === 'anthropic' || !provider;
+  // The 'local' provider (Ollama / LM Studio) is keyless by design — give it
+  // its default endpoint rather than rejecting it or routing it to OpenAI.
+  const baseUrl = (body && body.baseUrl) || (provider === 'local' ? LOCAL_DEFAULT_BASE : '');
+
+  // Anthropic always requires a key; OpenAI-compatible only on the default
+  // endpoint (a custom or local baseUrl is typically a server that takes none).
+  // Catching this before the provider call distinguishes "never configured"
+  // from "provider rejected the key" (both arrive as 401s otherwise).
+  if (!apiKey && (isAnthropic || !baseUrl)) {
+    throw llmError(401, 'No API key configured', 'unconfigured');
+  }
+
   const reqBody = {
     model: model || (isAnthropic ? 'claude-sonnet-4' : 'gpt-4o'),
     max_tokens: maxTokens || 2048,
@@ -126,8 +173,8 @@ async function proxyLLM(body, fetchFn) {
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey || '', 'anthropic-version': '2023-06-01' },
       body: JSON.stringify(reqBody),
     });
-    const data = await res.json();
-    return data.content?.[0]?.text || data.error?.message || 'No response';
+    const data = await providerJson(res);
+    return data.content?.[0]?.text || 'No response';
   }
 
   // OpenAI-compatible
@@ -142,8 +189,8 @@ async function proxyLLM(body, fetchFn) {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey || ''}` },
     body: JSON.stringify(reqBody),
   });
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || data.error?.message || 'No response';
+  const data = await providerJson(res);
+  return data.choices?.[0]?.message?.content || 'No response';
 }
 
 function runTool(store, name, args = {}) {
@@ -333,7 +380,13 @@ export async function handleApiRequest(store, req, deps = {}) {
     try {
       return ok({ text: await proxyLLM(body, fetchFn) });
     } catch (err) {
-      return ok({ error: err.message || String(err) }, 500);
+      // Provider 4xx (bad key, rate limit, bad request) pass through; anything
+      // else upstream — a 5xx or a network throw — is a bad gateway. The client
+      // maps the body's `reason` to user copy, not the status.
+      const status = err?.status >= 400 && err?.status < 500 ? err.status : 502;
+      const out = { error: err?.message || String(err) };
+      if (err?.reason) out.reason = err.reason;
+      return ok(out, status);
     }
   }
 

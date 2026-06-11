@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { render, fireEvent, within, waitFor } from '@testing-library/react';
 import SorterView from './SorterView.jsx';
-import { suggestSlideOrder } from '../../lib/llmClient.js';
+import { suggestSlideOrder, LLMError } from '../../lib/llmClient.js';
 
-vi.mock('../../lib/llmClient.js', () => ({ suggestSlideOrder: vi.fn() }));
+// Stub only the network-bound call; keep the real LLMError/describeLLMError so
+// these tests assert the actual user-facing copy.
+vi.mock('../../lib/llmClient.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  suggestSlideOrder: vi.fn(),
+}));
 
 const origRO = globalThis.ResizeObserver;
 beforeAll(() => { globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }; });
@@ -232,19 +237,27 @@ describe('SorterView — Rearrange with AI', () => {
     await waitFor(() => expect(queryByText('Rearranging…')).toBeNull());
   });
 
-  it('surfaces a message (and makes no deck change) when the model returns null or throws', async () => {
-    // Both an unusable reply (null) and a transport throw fail the same way at
-    // this layer — no API key collapses to null via the proxy — so both show the
-    // one "check your AI settings" message.
+  it('surfaces a usable-order message (and makes no deck change) when the model returns null', async () => {
     suggestSlideOrder.mockResolvedValue(null);
     const { getByText, onDeckChange } = renderSorter();
     fireEvent.click(getByText('Rearrange with AI'));
-    await waitFor(() => expect(getByText(/check your AI settings/)).toBeTruthy());
+    await waitFor(() => expect(getByText(/usable slide order/)).toBeTruthy());
     expect(onDeckChange).not.toHaveBeenCalled();
+  });
 
-    suggestSlideOrder.mockRejectedValue(new Error('boom'));
+  it('maps a classified LLM error to its actionable message', async () => {
+    suggestSlideOrder.mockRejectedValue(new LLMError('unconfigured', 'No API key configured'));
+    const { getByText, onDeckChange } = renderSorter();
     fireEvent.click(getByText('Rearrange with AI'));
-    await waitFor(() => expect(getByText(/check your AI settings/)).toBeTruthy());
+    await waitFor(() => expect(getByText(/No API key configured — add one in Settings/)).toBeTruthy());
+    expect(onDeckChange).not.toHaveBeenCalled();
+  });
+
+  it('shows the generic fallback for an unclassified throw', async () => {
+    suggestSlideOrder.mockRejectedValue(new Error('boom'));
+    const { getByText, onDeckChange } = renderSorter();
+    fireEvent.click(getByText('Rearrange with AI'));
+    await waitFor(() => expect(getByText(/Something went wrong/)).toBeTruthy());
     expect(onDeckChange).not.toHaveBeenCalled();
   });
 
@@ -253,21 +266,21 @@ describe('SorterView — Rearrange with AI', () => {
     const props = { onBack: vi.fn(), onOpenSlide: vi.fn(), onDeckChange: vi.fn() };
     const { getByText, queryByText, rerender } = render(<SorterView deck={makeDeck()} {...props} />);
     fireEvent.click(getByText('Rearrange with AI'));
-    await waitFor(() => expect(getByText(/check your AI settings/)).toBeTruthy());
+    await waitFor(() => expect(getByText(/Something went wrong/)).toBeTruthy());
     // Deck shrinks below 2 slides: a click is now a no-op, but should still clear the stale message.
     const oneSlide = { title: 'D', sections: [{ id: 's1', name: 'O', slides: ['a'] }], slides: [{ id: 'a', layout: 'cover', title: 'A' }] };
     rerender(<SorterView deck={oneSlide} {...props} />);
     fireEvent.click(getByText('Rearrange with AI'));
-    await waitFor(() => expect(queryByText(/check your AI settings/)).toBeNull());
+    await waitFor(() => expect(queryByText(/Something went wrong/)).toBeNull());
   });
 
   it('clears the error message after a successful rearrange', async () => {
     suggestSlideOrder.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(['c', 'a', 'b']);
     const { getByText, queryByText } = renderSorter();
     fireEvent.click(getByText('Rearrange with AI'));
-    await waitFor(() => expect(getByText(/check your AI settings/)).toBeTruthy());
+    await waitFor(() => expect(getByText(/Something went wrong/)).toBeTruthy());
     fireEvent.click(getByText('Rearrange with AI'));
-    await waitFor(() => expect(queryByText(/check your AI settings/)).toBeNull());
+    await waitFor(() => expect(queryByText(/Something went wrong/)).toBeNull());
   });
 
   it('does not leave a stale error message after switching to read-only', async () => {
@@ -275,9 +288,9 @@ describe('SorterView — Rearrange with AI', () => {
     const editable = { onBack: vi.fn(), onOpenSlide: vi.fn(), onDeckChange: vi.fn() };
     const { getByText, queryByText, rerender } = render(<SorterView deck={makeDeck()} {...editable} />);
     fireEvent.click(getByText('Rearrange with AI'));
-    await waitFor(() => expect(getByText(/check your AI settings/)).toBeTruthy());
+    await waitFor(() => expect(getByText(/Something went wrong/)).toBeTruthy());
     rerender(<SorterView deck={makeDeck()} onBack={vi.fn()} onOpenSlide={vi.fn()} />); // read-only
-    expect(queryByText(/check your AI settings/)).toBeNull(); // error hidden with the feature
+    expect(queryByText(/Something went wrong/)).toBeNull(); // error hidden with the feature
   });
 
   it('hides the button in read-only mode (no onDeckChange)', () => {

@@ -3,13 +3,21 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const { editSlideMock } = vi.hoisted(() => ({ editSlideMock: vi.fn() }));
-vi.mock('../../../lib/llmClient.js', () => ({ editSlide: editSlideMock }));
+// Stub only the network-bound call; keep the real LLMError/describeLLMError so
+// the error test asserts the actual user-facing copy.
+vi.mock('../../../lib/llmClient.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  editSlide: editSlideMock,
+}));
 
 import DefaultAIDrawer from './DefaultAIDrawer.jsx';
+import { LLMError } from '../../../lib/llmClient.js';
 
 const slide = { id: 'a', layout: 'text', title: 'Old' };
 
-beforeEach(() => editSlideMock.mockReset());
+// Braces matter: vitest runs a function returned from beforeEach as a cleanup
+// hook, and mockReset() chainably returns the mock.
+beforeEach(() => { editSlideMock.mockReset(); });
 
 // onApplyPatch is the source of truth: it returns the patch keys that actually
 // applied against the latest deck (or [] when nothing applied).
@@ -68,6 +76,14 @@ describe('DefaultAIDrawer', () => {
     render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(editSlideMock).not.toHaveBeenCalled();
+  });
+
+  it('maps a classified LLM error to its actionable message', async () => {
+    editSlideMock.mockRejectedValue(new LLMError('auth', 'invalid x-api-key'));
+    render(<DefaultAIDrawer onClose={vi.fn()} slideNum={1} slide={slide} onApplyPatch={vi.fn()} />);
+    await userEvent.click(screen.getByText('Make it more concise'));
+    expect(await screen.findByText(/rejected your API key/i)).toBeInTheDocument();
+    expect(editSlideMock).toHaveBeenCalledWith(slide, 'Make it more concise');
   });
 
   it('shows the fallback when nothing applied (every field rejected or slide gone)', async () => {
