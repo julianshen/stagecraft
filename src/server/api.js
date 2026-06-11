@@ -138,14 +138,21 @@ async function providerJson(res) {
   return data;
 }
 
+// Where the Settings "Local" provider points when no baseUrl is sent —
+// Ollama's default endpoint (the same default the Settings UI displays).
+const LOCAL_DEFAULT_BASE = 'http://localhost:11434/v1';
+
 async function proxyLLM(body, fetchFn) {
-  const { messages, provider, model, apiKey, baseUrl, temperature, maxTokens, system } = body || {};
+  const { messages, provider, model, apiKey, temperature, maxTokens, system } = body || {};
 
   // Common defaults shared by both providers
   const isAnthropic = provider === 'anthropic' || !provider;
+  // The 'local' provider (Ollama / LM Studio) is keyless by design — give it
+  // its default endpoint rather than rejecting it or routing it to OpenAI.
+  const baseUrl = (body && body.baseUrl) || (provider === 'local' ? LOCAL_DEFAULT_BASE : '');
 
   // Anthropic always requires a key; OpenAI-compatible only on the default
-  // endpoint (a custom baseUrl is typically a local server that takes none).
+  // endpoint (a custom or local baseUrl is typically a server that takes none).
   // Catching this before the provider call distinguishes "never configured"
   // from "provider rejected the key" (both arrive as 401s otherwise).
   if (!apiKey && (isAnthropic || !baseUrl)) {

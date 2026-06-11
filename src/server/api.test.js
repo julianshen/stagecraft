@@ -607,6 +607,21 @@ describe('LLM proxy error classification', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('routes a keyless local-provider call to the default Ollama endpoint (not unconfigured, not api.openai.com)', async () => {
+    // The Settings "Local" provider sends no apiKey and (today) no baseUrl.
+    const fetch = vi.fn().mockResolvedValue(providerRes({ choices: [{ message: { content: 'hi from ollama' } }] }));
+    const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'local', messages: [] }), { fetch });
+    expect(fetch.mock.calls[0][0]).toBe('http://localhost:11434/v1/chat/completions');
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ text: 'hi from ollama' });
+  });
+
+  it('lets an explicit baseUrl override the local default', async () => {
+    const fetch = vi.fn().mockResolvedValue(providerRes({ choices: [{ message: { content: 'x' } }] }));
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'local', baseUrl: 'http://lmstudio:1234/v1', messages: [] }), { fetch });
+    expect(fetch.mock.calls[0][0]).toBe('http://lmstudio:1234/v1/chat/completions');
+  });
+
   it('proxies a keyless openai call when a custom baseUrl is set (local servers)', async () => {
     const fetch = vi.fn().mockResolvedValue(providerRes({ choices: [{ message: { content: 'local hi' } }] }));
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'openai', baseUrl: 'http://localhost:11434/v1', messages: [] }), { fetch });
