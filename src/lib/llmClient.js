@@ -71,6 +71,10 @@ export async function callLLM(messages, options = {}) {
 
   const body = { provider, model, apiKey, messages, maxTokens, temperature: temp };
   if (options.system != null) body.system = options.system;
+  // top_p is optional tuning — only sent when actually configured (0 is a
+  // real value, so nullish checks throughout, never truthiness).
+  const topP = options.topP ?? settings.topP;
+  if (topP != null) body.topP = topP;
   // A stored baseUrl belongs only to the endpoint-configurable providers — a
   // leftover Local URL must never hijack an OpenAI/Anthropic request (it would
   // send the bearer key to the stale host and defeat the proxy's key guard).

@@ -141,7 +141,7 @@ async function providerJson(res) {
 }
 
 async function proxyLLM(body, fetchFn) {
-  const { messages, provider, model, apiKey, temperature, maxTokens, system } = body || {};
+  const { messages, provider, model, apiKey, temperature, maxTokens, system, topP } = body || {};
 
   // Common defaults shared by both providers
   const isAnthropic = provider === 'anthropic' || !provider;
@@ -163,6 +163,8 @@ async function proxyLLM(body, fetchFn) {
     temperature: temperature ?? 0.7,
     messages: messages || [],
   };
+  // Optional tuning: both providers accept top_p; 0 is a real value (nullish check).
+  if (topP != null) reqBody.top_p = topP;
 
   if (isAnthropic) {
     if (system != null) reqBody.system = system;

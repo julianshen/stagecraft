@@ -524,6 +524,17 @@ describe('LLM proxy', () => {
     expect(sent).toMatchObject({ model: 'gpt-4.1', max_tokens: 256, temperature: 0.9 });
   });
 
+  it('forwards top_p to the provider when given, omits it otherwise', async () => {
+    const fetch = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'x' }] }));
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', topP: 0.9, messages: [] }), { fetch });
+    expect(JSON.parse(fetch.mock.calls[0][1].body).top_p).toBe(0.9);
+    fetch.mockResolvedValue(providerRes({ choices: [{ message: { content: 'x' } }] }));
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'openai', apiKey: 'k', topP: 0, messages: [] }), { fetch });
+    expect(JSON.parse(fetch.mock.calls[1][1].body).top_p).toBe(0); // 0 is a real value, not "unset"
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [] }), { fetch });
+    expect(JSON.parse(fetch.mock.calls[2][1].body)).not.toHaveProperty('top_p');
+  });
+
   it('uses globalThis.fetch when no fetch dependency is injected', async () => {
     const g = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'global' }] }));
     vi.stubGlobal('fetch', g);

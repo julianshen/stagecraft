@@ -162,6 +162,7 @@ describe('settings interactions', () => {
     fireEvent.change(ranges[0], { target: { value: '0.9' } });
     expect(screen.getByText('Creative')).toBeInTheDocument();
     fireEvent.change(ranges[1], { target: { value: '0.5' } }); // top-p
+    expect(JSON.parse(store.get('stagecraft.ai')).topP).toBe(0.5);
     fireEvent.change(ranges[2], { target: { value: '1024' } }); // max tokens
     expect(JSON.parse(store.get('stagecraft.ai')).maxTokens).toBe(1024);
     const routing = container.querySelectorAll('.routing-select select')[0];

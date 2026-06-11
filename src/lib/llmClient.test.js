@@ -140,6 +140,26 @@ describe('callLLM', () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('baseUrl');
   });
 
+  it('forwards a configured topP to the proxy', async () => {
+    localStorage.setItem('stagecraft.ai', JSON.stringify({ provider: 'anthropic', apiKey: 'k', topP: 0.9 }));
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).topP).toBe(0.9);
+  });
+
+  it('lets options.topP override the stored value, including 0', async () => {
+    localStorage.setItem('stagecraft.ai', JSON.stringify({ provider: 'anthropic', apiKey: 'k', topP: 0.9 }));
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([], { topP: 0 });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).topP).toBe(0);
+  });
+
+  it('omits topP from the body when none is configured', async () => {
+    fetchMock.mockResolvedValue(res({ text: 'ok' }));
+    await callLLM([]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('topP');
+  });
+
   it('does NOT forward a stored baseUrl for providers with fixed endpoints', async () => {
     // A leftover Local URL must never hijack an OpenAI/Anthropic request (it
     // would send the bearer key to the stale host and defeat the key guard).
