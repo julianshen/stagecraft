@@ -160,11 +160,13 @@ async function proxyLLM(body, fetchFn) {
   const reqBody = {
     model: model || (isAnthropic ? 'claude-sonnet-4' : 'gpt-4o'),
     max_tokens: maxTokens || 2048,
-    temperature: temperature ?? 0.7,
     messages: messages || [],
   };
-  // Optional tuning: both providers accept top_p; 0 is a real value (nullish check).
+  // Sampling params are exclusive: Claude 4+ rejects temperature + top_p
+  // together, and OpenAI documents "alter one, not both" — so an explicitly
+  // configured top_p replaces temperature. 0 is a real value (nullish check).
   if (topP != null) reqBody.top_p = topP;
+  else reqBody.temperature = temperature ?? 0.7;
 
   if (isAnthropic) {
     if (system != null) reqBody.system = system;

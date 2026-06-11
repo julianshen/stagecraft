@@ -535,6 +535,16 @@ describe('LLM proxy', () => {
     expect(JSON.parse(fetch.mock.calls[2][1].body)).not.toHaveProperty('top_p');
   });
 
+  it('sends top_p INSTEAD of temperature — sampling params are exclusive', async () => {
+    // Claude 4+ rejects requests carrying both temperature and top_p (OpenAI
+    // documents "alter one, not both"); the explicitly-configured one wins.
+    const fetch = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'x' }] }));
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', topP: 0.9, temperature: 0.6, messages: [] }), { fetch });
+    const sent = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(sent.top_p).toBe(0.9);
+    expect(sent).not.toHaveProperty('temperature');
+  });
+
   it('uses globalThis.fetch when no fetch dependency is injected', async () => {
     const g = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'global' }] }));
     vi.stubGlobal('fetch', g);

@@ -349,7 +349,7 @@ In-memory `deckState` (one deck). CORS `*`. JSON bodies.
 `POST /api/mcp/tools/call` with `{ name, arguments }`. Dispatches the six tools against `deckState`. `add_slide` mints `slide-<ts>` and appends to the last section; `reorder_slides` reorders the pool by id list; `set_theme` sets `deck.theme`. Errors: `400` when no deck loaded / unknown tool, `404` not found.
 
 ### 11.4 LLM proxy
-`POST /api/llm` with `{ messages, provider, model, apiKey, baseUrl, apiFormat, temperature, maxTokens, topP }` (`topP` optional → provider `top_p`; 0 is a real value, nullish-checked).
+`POST /api/llm` with `{ messages, provider, model, apiKey, baseUrl, apiFormat, temperature, maxTokens, topP }` (`topP` optional → provider `top_p`; 0 is a real value, nullish-checked; **sampling params are exclusive** — a configured `top_p` replaces `temperature`, since Claude 4+ rejects both together; `callLLM` treats `topP: 1` as unset).
 - `anthropic` → `POST https://api.anthropic.com/v1/messages` (`x-api-key`, `anthropic-version: 2023-06-01`).
 - otherwise → `POST {baseUrl||https://api.openai.com/v1}/chat/completions` (`Authorization: Bearer`).
 Returns `{ text }`. Errors return `{ error, reason? }` with a real status: **401 `unconfigured`** when no key is set and the endpoint needs one (Anthropic, or OpenAI-compatible without a custom `baseUrl`) — caught before any provider call; provider **4xx pass through** classified (`auth` for 401/403, `rate-limit` for 429, else `provider`); everything else upstream (5xx, network throw, 2xx-with-error-body) is **502**. `callLLM` maps these to a typed `LLMError({ reason })`, adds `network` for an unreachable proxy, and `describeLLMError` renders the user copy (taxonomy minted server-side, parity-locked by a test).

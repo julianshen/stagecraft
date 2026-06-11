@@ -177,6 +177,7 @@ describe('settings interactions', () => {
     fireEvent.click(screen.getByText('Reset to defaults'));
     expect(JSON.parse(store.get('stagecraft.ai')).provider).toBe('anthropic');
     expect(JSON.parse(store.get('stagecraft.ai')).apiKey).toBe('');
+    expect(JSON.parse(store.get('stagecraft.ai'))).not.toHaveProperty('topP'); // the 0.5 set above is wiped
   });
 
   it('appearance controls call setTw for every axis', () => {
