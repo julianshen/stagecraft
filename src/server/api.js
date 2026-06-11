@@ -164,8 +164,10 @@ async function proxyLLM(body, fetchFn) {
   };
   // Sampling params are exclusive: Claude 4+ rejects temperature + top_p
   // together, and OpenAI documents "alter one, not both" — so an explicitly
-  // configured top_p replaces temperature. 0 is a real value (nullish check).
-  if (topP != null) reqBody.top_p = topP;
+  // configured top_p replaces temperature. 0 is a real value (nullish check);
+  // 1 ≡ full nucleus ≡ unset (normalized here too — external callers bypass
+  // callLLM's normalization and must not lose temperature to a no-op top_p).
+  if (topP != null && topP !== 1) reqBody.top_p = topP;
   else reqBody.temperature = temperature ?? 0.7;
 
   if (isAnthropic) {

@@ -143,6 +143,15 @@ describe('settings interactions', () => {
     expect(JSON.parse(store.get('stagecraft.ai'))).toMatchObject({ temperature: 0.6, maxTokens: 4096 });
   });
 
+  it('flags the Temperature slider as overridden while Top-p is set', () => {
+    const { container } = renderSettings();
+    const ranges = container.querySelectorAll('input[type="range"]');
+    fireEvent.change(ranges[1], { target: { value: '0.5' } }); // set top-p
+    expect(screen.getByText(/Overridden by Top-p/i)).toBeInTheDocument();
+    fireEvent.change(ranges[1], { target: { value: '1' } });   // back to unset
+    expect(screen.queryByText(/Overridden by Top-p/i)).toBeNull();
+  });
+
   it('renders exactly one Test connection button for the Custom provider (key + Base URL rows)', () => {
     renderSettings();
     fireEvent.click(screen.getByText('Custom'));

@@ -535,6 +535,14 @@ describe('LLM proxy', () => {
     expect(JSON.parse(fetch.mock.calls[2][1].body)).not.toHaveProperty('top_p');
   });
 
+  it('treats topP of 1 as unset — temperature stays (external callers bypass callLLM)', async () => {
+    const fetch = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'x' }] }));
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', topP: 1, temperature: 0.6, messages: [] }), { fetch });
+    const sent = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(sent).not.toHaveProperty('top_p');
+    expect(sent.temperature).toBe(0.6);
+  });
+
   it('sends top_p INSTEAD of temperature — sampling params are exclusive', async () => {
     // Claude 4+ rejects requests carrying both temperature and top_p (OpenAI
     // documents "alter one, not both"); the explicitly-configured one wins.
