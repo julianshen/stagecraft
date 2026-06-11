@@ -15,9 +15,8 @@ import { LLMError } from '../../../lib/llmClient.js';
 
 const slide = { id: 'a', layout: 'text', title: 'Old' };
 
-// Braces matter: a concise arrow would RETURN the mock (mockReset is chainable),
-// and vitest runs a function returned from beforeEach as a cleanup hook — i.e.
-// the mock itself would be invoked after every test.
+// Braces matter: vitest runs a function returned from beforeEach as a cleanup
+// hook, and mockReset() chainably returns the mock.
 beforeEach(() => { editSlideMock.mockReset(); });
 
 // onApplyPatch is the source of truth: it returns the patch keys that actually

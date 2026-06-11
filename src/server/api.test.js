@@ -486,43 +486,46 @@ describe('deck revisions (round-trip sync)', () => {
   });
 });
 
+// Provider-response stub: a 2xx JSON reply unless overridden.
+const providerRes = (body, { ok = true, status = 200 } = {}) => ({ ok, status, json: async () => body });
+
 describe('LLM proxy', () => {
   it('routes anthropic and extracts content text', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ content: [{ text: 'hi from claude' }] }) });
+    const fetch = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'hi from claude' }] }));
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [] }), { fetch });
     expect(fetch.mock.calls[0][0]).toContain('api.anthropic.com');
     expect(r.body).toEqual({ text: 'hi from claude' });
   });
 
   it('defaults to anthropic when provider is omitted', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ content: [{ text: 'x' }] }) });
+    const fetch = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'x' }] }));
     await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { apiKey: 'k', messages: [] }), { fetch });
     expect(fetch.mock.calls[0][0]).toContain('anthropic');
   });
 
   it('routes OpenAI-compatible providers and honors baseUrl', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ choices: [{ message: { content: 'hi from gpt' } }] }) });
+    const fetch = vi.fn().mockResolvedValue(providerRes({ choices: [{ message: { content: 'hi from gpt' } }] }));
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'openai', baseUrl: 'http://local:1234/v1', messages: [] }), { fetch });
     expect(fetch.mock.calls[0][0]).toBe('http://local:1234/v1/chat/completions');
     expect(r.body).toEqual({ text: 'hi from gpt' });
   });
 
   it('forwards explicit model / maxTokens / temperature to anthropic', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ content: [{ text: 'x' }] }) });
+    const fetch = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'x' }] }));
     await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', model: 'claude-opus-4', maxTokens: 512, temperature: 0.1, apiKey: 'k', messages: [] }), { fetch });
     const sent = JSON.parse(fetch.mock.calls[0][1].body);
     expect(sent).toMatchObject({ model: 'claude-opus-4', max_tokens: 512, temperature: 0.1 });
   });
 
   it('forwards explicit model / maxTokens / temperature to openai-compatible', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ choices: [{ message: { content: 'x' } }] }) });
+    const fetch = vi.fn().mockResolvedValue(providerRes({ choices: [{ message: { content: 'x' } }] }));
     await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'openai', model: 'gpt-4.1', maxTokens: 256, temperature: 0.9, apiKey: 'k', messages: [] }), { fetch });
     const sent = JSON.parse(fetch.mock.calls[0][1].body);
     expect(sent).toMatchObject({ model: 'gpt-4.1', max_tokens: 256, temperature: 0.9 });
   });
 
   it('uses globalThis.fetch when no fetch dependency is injected', async () => {
-    const g = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ content: [{ text: 'global' }] }) });
+    const g = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'global' }] }));
     vi.stubGlobal('fetch', g);
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [] }));
     expect(g).toHaveBeenCalled();
@@ -531,20 +534,20 @@ describe('LLM proxy', () => {
   });
 
   it('surfaces a 200-with-error-body provider reply as its message text', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ error: { message: 'bad key' } }) });
+    const fetch = vi.fn().mockResolvedValue(providerRes({ error: { message: 'bad key' } }));
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k' }), { fetch });
     expect(r.body.text).toBe('bad key');
   });
 
   it('forwards empty-string system prompt to Anthropic (not omitted)', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ content: [{ text: 'hi' }] }) });
+    const fetch = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'hi' }] }));
     await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [], system: '' }), { fetch });
     const sent = JSON.parse(fetch.mock.calls[0][1].body);
     expect(sent).toHaveProperty('system', '');
   });
 
   it('deduplicates existing system messages for OpenAI-compatible providers', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ choices: [{ message: { content: 'hi' } }] }) });
+    const fetch = vi.fn().mockResolvedValue(providerRes({ choices: [{ message: { content: 'hi' } }] }));
     await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'openai', apiKey: 'k', messages: [{ role: 'system', content: 'old' }, { role: 'user', content: 'test' }], system: 'new' }), { fetch });
     const sent = JSON.parse(fetch.mock.calls[0][1].body);
     expect(sent.messages).toHaveLength(2);
@@ -567,14 +570,14 @@ describe('LLM proxy', () => {
   });
 
   it('forwards system prompt to Anthropic', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ content: [{ text: 'hi' }] }) });
+    const fetch = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'hi' }] }));
     await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [], system: 'You are a slide assistant.' }), { fetch });
     const sent = JSON.parse(fetch.mock.calls[0][1].body);
     expect(sent.system).toBe('You are a slide assistant.');
   });
 
   it('converts system prompt to a system message for OpenAI-compatible providers', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ choices: [{ message: { content: 'hi' } }] }) });
+    const fetch = vi.fn().mockResolvedValue(providerRes({ choices: [{ message: { content: 'hi' } }] }));
     await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'openai', apiKey: 'k', messages: [{ role: 'user', content: 'test' }], system: 'You are a slide assistant.' }), { fetch });
     const sent = JSON.parse(fetch.mock.calls[0][1].body);
     expect(sent.messages[0]).toEqual({ role: 'system', content: 'You are a slide assistant.' });
@@ -601,32 +604,34 @@ describe('LLM proxy error classification', () => {
   });
 
   it('proxies a keyless openai call when a custom baseUrl is set (local servers)', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ choices: [{ message: { content: 'local hi' } }] }) });
+    const fetch = vi.fn().mockResolvedValue(providerRes({ choices: [{ message: { content: 'local hi' } }] }));
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'openai', baseUrl: 'http://localhost:11434/v1', messages: [] }), { fetch });
     expect(r.status).toBe(200);
     expect(r.body).toEqual({ text: 'local hi' });
   });
 
-  it('passes a provider 401 through with the provider message (no unconfigured reason)', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: { message: 'invalid x-api-key' } }) });
+  it('passes a provider 401 through classified as auth (not unconfigured)', async () => {
+    const fetch = vi.fn().mockResolvedValue(providerRes({ error: { message: 'invalid x-api-key' } }, { ok: false, status: 401 }));
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'bad', messages: [] }), { fetch });
     expect(r.status).toBe(401);
     expect(r.body.error).toBe('invalid x-api-key');
-    expect(r.body.reason).toBeUndefined();
+    expect(r.body.reason).toBe('auth');
   });
 
-  it('passes a provider 429 through', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: false, status: 429, json: async () => ({ error: { message: 'rate limited' } }) });
+  it('passes a provider 429 through classified as rate-limit', async () => {
+    const fetch = vi.fn().mockResolvedValue(providerRes({ error: { message: 'rate limited' } }, { ok: false, status: 429 }));
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [] }), { fetch });
     expect(r.status).toBe(429);
     expect(r.body.error).toBe('rate limited');
+    expect(r.body.reason).toBe('rate-limit');
   });
 
-  it('maps other provider failures to 502 (bad gateway)', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: 'overloaded' }) });
+  it('maps provider 5xx failures to 502 (bad gateway)', async () => {
+    const fetch = vi.fn().mockResolvedValue(providerRes({ error: 'overloaded' }, { ok: false, status: 500 }));
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [] }), { fetch });
     expect(r.status).toBe(502);
     expect(r.body.error).toBe('overloaded');
+    expect(r.body.reason).toBe('provider');
   });
 
   it('falls back to a generic message when the provider error body is unreadable', async () => {
@@ -634,5 +639,6 @@ describe('LLM proxy error classification', () => {
     const r = await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [] }), { fetch });
     expect(r.status).toBe(502);
     expect(r.body.error).toBe('Provider error (503)');
+    expect(r.body.reason).toBe('provider');
   });
 });

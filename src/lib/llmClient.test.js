@@ -94,27 +94,21 @@ describe('callLLM', () => {
     expect(err.message).toBe('No API key configured');
   });
 
-  it('classifies a 401 without an unconfigured reason as auth', async () => {
-    fetchMock.mockResolvedValue(res({ error: 'invalid x-api-key' }, { ok: false, status: 401 }));
+  it('adopts the proxy-classified reason from the error body (auth)', async () => {
+    fetchMock.mockResolvedValue(res({ error: 'invalid x-api-key', reason: 'auth' }, { ok: false, status: 401 }));
     const err = await callLLM([]).catch((e) => e);
     expect(err).toBeInstanceOf(LLMError);
     expect(err.reason).toBe('auth');
     expect(err.message).toBe('invalid x-api-key');
   });
 
-  it('classifies a 403 as auth', async () => {
-    fetchMock.mockResolvedValue(res({ error: 'forbidden' }, { ok: false, status: 403 }));
-    const err = await callLLM([]).catch((e) => e);
-    expect(err.reason).toBe('auth');
-  });
-
-  it('classifies a 429 as rate-limit', async () => {
-    fetchMock.mockResolvedValue(res({ error: 'slow down' }, { ok: false, status: 429 }));
+  it('adopts the proxy-classified rate-limit reason', async () => {
+    fetchMock.mockResolvedValue(res({ error: 'slow down', reason: 'rate-limit' }, { ok: false, status: 429 }));
     const err = await callLLM([]).catch((e) => e);
     expect(err.reason).toBe('rate-limit');
   });
 
-  it('classifies any other non-ok status as provider', async () => {
+  it('falls back to provider when the error body carries no reason', async () => {
     fetchMock.mockResolvedValue(res({ error: 'overloaded' }, { ok: false, status: 502 }));
     const err = await callLLM([]).catch((e) => e);
     expect(err.reason).toBe('provider');

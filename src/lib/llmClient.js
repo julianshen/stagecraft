@@ -4,13 +4,8 @@
 import { flattenDeck } from './deckOrder.js';
 
 /**
- * A classified LLM failure. `reason` is machine-readable so each UI surface can
- * map it to its own copy (or use `describeLLMError`'s defaults):
- *   'unconfigured' — no API key has been set up
- *   'auth'         — the provider rejected the key
- *   'rate-limit'   — the provider is throttling
- *   'network'      — the request to our own /api/llm proxy never completed
- *   'provider'     — any other upstream failure
+ * A classified LLM failure — `reason` keys into LLM_ERROR_MESSAGES below.
+ * Reasons are minted by the /api/llm proxy (see api.js), except 'network'.
  */
 export class LLMError extends Error {
   constructor(reason, message) {
@@ -24,6 +19,7 @@ const LLM_ERROR_MESSAGES = {
   unconfigured: 'No API key configured — add one in Settings.',
   auth: 'The provider rejected your API key — check it in Settings.',
   'rate-limit': 'The provider is rate-limiting requests — try again in a moment.',
+  // network = our own /api/llm proxy was unreachable, not a provider failure
   network: 'Couldn’t reach the Stagecraft server — is the dev server running?',
   provider: 'The AI provider returned an error — try again.',
 };
@@ -73,14 +69,10 @@ export async function callLLM(messages, options = {}) {
   }
 
   if (!res.ok) {
-    // The proxy answers errors as JSON { error, reason? } — reason marks
-    // "unconfigured" (vs a provider-rejected key, which is also a 401).
+    // The proxy answers errors as JSON { error, reason } — it owns the
+    // classification; a body without a reason is a generic upstream failure.
     const data = await res.json().catch(() => null);
-    const reason = data?.reason === 'unconfigured' ? 'unconfigured'
-      : res.status === 401 || res.status === 403 ? 'auth'
-      : res.status === 429 ? 'rate-limit'
-      : 'provider';
-    throw new LLMError(reason, data?.error || `LLM request failed (${res.status})`);
+    throw new LLMError(data?.reason || 'provider', data?.error || `LLM request failed (${res.status})`);
   }
 
   const data = await res.json();

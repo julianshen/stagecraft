@@ -108,23 +108,27 @@ function newSlideId() {
 }
 
 // An LLM proxy failure carries the HTTP status the route should answer with,
-// plus an optional machine-readable `reason` the client classifies on.
+// plus a machine-readable `reason` — the single source of the error taxonomy
+// the client (llmClient.js describeLLMError) maps to user-facing copy.
 function llmError(status, message, reason) {
   const err = new Error(message);
   err.status = status;
-  if (reason) err.reason = reason;
+  err.reason = reason;
   return err;
 }
 
-// Parse a provider response, throwing (with the provider's status) on non-2xx
-// so auth/rate-limit failures reach the client as errors instead of being
-// returned as assistant "text".
+// Parse a provider response, throwing (with the provider's status and a
+// classified reason) on non-2xx so auth/rate-limit failures reach the client
+// as errors instead of being returned as assistant "text".
 async function providerJson(res) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = data?.error?.message
       || (typeof data?.error === 'string' ? data.error : `Provider error (${res.status})`);
-    throw llmError(res.status, msg);
+    const reason = res.status === 401 || res.status === 403 ? 'auth'
+      : res.status === 429 ? 'rate-limit'
+      : 'provider';
+    throw llmError(res.status, msg, reason);
   }
   return data;
 }
@@ -364,9 +368,10 @@ export async function handleApiRequest(store, req, deps = {}) {
     try {
       return ok({ text: await proxyLLM(body, fetchFn) });
     } catch (err) {
-      // Pass through the statuses the client classifies on (auth, rate limit);
-      // any other upstream failure — including a network throw — is a bad gateway.
-      const status = [401, 403, 429].includes(err.status) ? err.status : 502;
+      // Provider 4xx (bad key, rate limit, bad request) pass through; anything
+      // else upstream — a 5xx or a network throw — is a bad gateway. The client
+      // maps the body's `reason` to user copy, not the status.
+      const status = err.status >= 400 && err.status < 500 ? err.status : 502;
       const out = { error: err.message || String(err) };
       if (err.reason) out.reason = err.reason;
       return ok(out, status);
