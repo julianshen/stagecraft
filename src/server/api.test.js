@@ -524,6 +524,35 @@ describe('LLM proxy', () => {
     expect(sent).toMatchObject({ model: 'gpt-4.1', max_tokens: 256, temperature: 0.9 });
   });
 
+  it('forwards top_p to the provider when given, omits it otherwise', async () => {
+    const fetch = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'x' }] }));
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', topP: 0.9, messages: [] }), { fetch });
+    expect(JSON.parse(fetch.mock.calls[0][1].body).top_p).toBe(0.9);
+    fetch.mockResolvedValue(providerRes({ choices: [{ message: { content: 'x' } }] }));
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'openai', apiKey: 'k', topP: 0, messages: [] }), { fetch });
+    expect(JSON.parse(fetch.mock.calls[1][1].body).top_p).toBe(0); // 0 is a real value, not "unset"
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', messages: [] }), { fetch });
+    expect(JSON.parse(fetch.mock.calls[2][1].body)).not.toHaveProperty('top_p');
+  });
+
+  it('treats topP of 1 as unset — temperature stays (external callers bypass callLLM)', async () => {
+    const fetch = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'x' }] }));
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', topP: 1, temperature: 0.6, messages: [] }), { fetch });
+    const sent = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(sent).not.toHaveProperty('top_p');
+    expect(sent.temperature).toBe(0.6);
+  });
+
+  it('sends top_p INSTEAD of temperature — sampling params are exclusive', async () => {
+    // Claude 4+ rejects requests carrying both temperature and top_p (OpenAI
+    // documents "alter one, not both"); the explicitly-configured one wins.
+    const fetch = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'x' }] }));
+    await handleApiRequest(createDeckStore(), req('POST', '/api/llm', { provider: 'anthropic', apiKey: 'k', topP: 0.9, temperature: 0.6, messages: [] }), { fetch });
+    const sent = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(sent.top_p).toBe(0.9);
+    expect(sent).not.toHaveProperty('temperature');
+  });
+
   it('uses globalThis.fetch when no fetch dependency is injected', async () => {
     const g = vi.fn().mockResolvedValue(providerRes({ content: [{ text: 'global' }] }));
     vi.stubGlobal('fetch', g);

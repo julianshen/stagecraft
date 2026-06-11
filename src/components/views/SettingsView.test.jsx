@@ -143,6 +143,15 @@ describe('settings interactions', () => {
     expect(JSON.parse(store.get('stagecraft.ai'))).toMatchObject({ temperature: 0.6, maxTokens: 4096 });
   });
 
+  it('flags the Temperature slider as overridden while Top-p is set', () => {
+    const { container } = renderSettings();
+    const ranges = container.querySelectorAll('input[type="range"]');
+    fireEvent.change(ranges[1], { target: { value: '0.5' } }); // set top-p
+    expect(screen.getByText(/Overridden by Top-p/i)).toBeInTheDocument();
+    fireEvent.change(ranges[1], { target: { value: '1' } });   // back to unset
+    expect(screen.queryByText(/Overridden by Top-p/i)).toBeNull();
+  });
+
   it('renders exactly one Test connection button for the Custom provider (key + Base URL rows)', () => {
     renderSettings();
     fireEvent.click(screen.getByText('Custom'));
@@ -162,6 +171,12 @@ describe('settings interactions', () => {
     fireEvent.change(ranges[0], { target: { value: '0.9' } });
     expect(screen.getByText('Creative')).toBeInTheDocument();
     fireEvent.change(ranges[1], { target: { value: '0.5' } }); // top-p
+    expect(JSON.parse(store.get('stagecraft.ai')).topP).toBe(0.5);
+    // Sliding back to 1.0 (≡ full nucleus ≡ unset) removes the key, so the
+    // proxy stops sending top_p alongside temperature.
+    fireEvent.change(ranges[1], { target: { value: '1' } });
+    expect(JSON.parse(store.get('stagecraft.ai'))).not.toHaveProperty('topP');
+    fireEvent.change(ranges[1], { target: { value: '0.5' } }); // back for the reset test below
     fireEvent.change(ranges[2], { target: { value: '1024' } }); // max tokens
     expect(JSON.parse(store.get('stagecraft.ai')).maxTokens).toBe(1024);
     const routing = container.querySelectorAll('.routing-select select')[0];
@@ -171,6 +186,7 @@ describe('settings interactions', () => {
     fireEvent.click(screen.getByText('Reset to defaults'));
     expect(JSON.parse(store.get('stagecraft.ai')).provider).toBe('anthropic');
     expect(JSON.parse(store.get('stagecraft.ai')).apiKey).toBe('');
+    expect(JSON.parse(store.get('stagecraft.ai'))).not.toHaveProperty('topP'); // the 0.5 set above is wiped
   });
 
   it('appearance controls call setTw for every axis', () => {

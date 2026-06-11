@@ -272,7 +272,7 @@ Left nav: General / Appearance / AI & Co-pilot / Export defaults / Shortcuts.
 
 | Section | Status |
 |---|---|
-| **AI & Co-pilot** | 🟢 provider cards (6), API key (show/hide, persisted), "Test connection" (routes through `callLLM`, shows the classified failure reason via `describeLLMError` in an always-mounted `role="status"` region; any settings edit resets the verdict and discards an in-flight test via a sequence token), **Base URL persisted** for the endpoint-configurable providers (Local + Custom, `hasBaseUrl` catalog flag; unset shows the effective default as a placeholder; `callLLM` forwards `settings.baseUrl` *only* for those providers so a stale Local URL can't hijack OpenAI/Anthropic requests; "Reset to defaults" clears it), model picker, **Temperature** + **Max tokens** persisted, per-task **routing** select. 🟡 **Top-p** is local-only (not persisted). |
+| **AI & Co-pilot** | 🟢 provider cards (6), API key (show/hide, persisted), "Test connection" (routes through `callLLM`, shows the classified failure reason via `describeLLMError` in an always-mounted `role="status"` region; any settings edit resets the verdict and discards an in-flight test via a sequence token), **Base URL persisted** for the endpoint-configurable providers (Local + Custom, `hasBaseUrl` catalog flag; unset shows the effective default as a placeholder; `callLLM` forwards `settings.baseUrl` *only* for those providers so a stale Local URL can't hijack OpenAI/Anthropic requests; "Reset to defaults" clears it), model picker, **Temperature** + **Max tokens** persisted, per-task **routing** select. **Top-p** persisted and forwarded end-to-end (`settings.topP` → `callLLM` → proxy `top_p`). |
 | **Appearance** | 🟢 theme / accent / density / editor-layout — all bound to `tw`/`setTw`, live + persisted. |
 | **General** | 🔴 autosave and similar toggles are `onChange = () => {}`. |
 | **Export defaults** | 🔴 aspect ratio, default quality toggles are no-ops. |
@@ -349,7 +349,7 @@ In-memory `deckState` (one deck). CORS `*`. JSON bodies.
 `POST /api/mcp/tools/call` with `{ name, arguments }`. Dispatches the six tools against `deckState`. `add_slide` mints `slide-<ts>` and appends to the last section; `reorder_slides` reorders the pool by id list; `set_theme` sets `deck.theme`. Errors: `400` when no deck loaded / unknown tool, `404` not found.
 
 ### 11.4 LLM proxy
-`POST /api/llm` with `{ messages, provider, model, apiKey, baseUrl, apiFormat, temperature, maxTokens }`.
+`POST /api/llm` with `{ messages, provider, model, apiKey, baseUrl, apiFormat, temperature, maxTokens, topP }` (`topP` optional → provider `top_p`; 0 is a real value, nullish-checked; **sampling params are exclusive** — a configured `top_p` replaces `temperature`, since Claude 4+ rejects both together; `callLLM` treats `topP: 1` as unset).
 - `anthropic` → `POST https://api.anthropic.com/v1/messages` (`x-api-key`, `anthropic-version: 2023-06-01`).
 - otherwise → `POST {baseUrl||https://api.openai.com/v1}/chat/completions` (`Authorization: Bearer`).
 Returns `{ text }`. Errors return `{ error, reason? }` with a real status: **401 `unconfigured`** when no key is set and the endpoint needs one (Anthropic, or OpenAI-compatible without a custom `baseUrl`) — caught before any provider call; provider **4xx pass through** classified (`auth` for 401/403, `rate-limit` for 429, else `provider`); everything else upstream (5xx, network throw, 2xx-with-error-body) is **502**. `callLLM` maps these to a typed `LLMError({ reason })`, adds `network` for an unreachable proxy, and `describeLLMError` renders the user copy (taxonomy minted server-side, parity-locked by a test).
@@ -411,7 +411,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 | Data | Store | Status |
 |---|---|---|
 | Tweaks (theme/accent/density/layout) | `localStorage['stagecraft.tw']` | 🟢 |
-| AI settings | `localStorage['stagecraft.ai']` | 🟢 (🟡 top-p excluded) |
+| AI settings | `localStorage['stagecraft.ai']` | 🟢 |
 | Active view | `localStorage['stagecraft.view']` | 🟢 |
 | Deck content | React state + in-memory server | 🟢 |
 | Deck library | JSON snapshot `.stagecraft-decks.json` (load on boot, debounced write on `rev`, flush on exit) | 🟢 durable |
@@ -431,7 +431,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 | Toolbar insert menus (component/text/table/chart) | 🟢 |
 | MCP API (REST + tools) | 🟢 |
 | LLM proxy + Co-pilot edits the current slide | 🟢 |
-| Settings: AI + Appearance | 🟢 (🟡 top-p) |
+| Settings: AI + Appearance | 🟢 |
 | PPTX export | 🟢 (🟡 roadmap layout) |
 | Presenter | 🟡 |
 | Canvas selection / direct manipulation | 🟢 core + multi-select/marquee/move/resize/rotate/align (H+V)/distribute |
@@ -452,6 +452,6 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 4. ~~**Durable persistence + multi-deck library**~~ ✅ **Done** — disk-persisted deck library; Home lists/opens/creates/renames/deletes real decks (§7.1, §17). _Follow-up: seed via `POST /api/decks` to remove the last untagged-write window; list-view rename/delete._
 5. ~~**Drag-to-reorder + section CRUD + AI reorder**~~ ✅ **Done** — Thumbs rail (§7.2.3) and Sorter grid (§7.3) both reorder via `moveSlide`; Sorter adds section create/rename/delete (`addSection`/`renameSection`/`deleteSection`); **Rearrange with AI** sends the outline to the Co-pilot (`suggestSlideOrder`) and applies the order via `applySlideOrder` (all in `lib/deckOrder.js`/`lib/llmClient.js`). _(§7.3)_
 6. ~~**Chart + roadmap in PPTX**~~ ✅ **Done** — native editable `addChart` via `chartSpec`; canvas + export share `chartData` so charts are data-driven and match (§12). Roadmap now exports as a native timeline (month axis, status-coloured lane bars, TODAY marker, legend), built from the shared `roadmapModel` (`lib/roadmapSpec.js`) so canvas and export match. ⚪ Remaining: multi-series chart canvas rendering; wire export-modal range/quality/notes options. _(§12, §13)_
-7. ~~**Templates seed real decks**~~ ✅ **Done** — the picker creates a themed library deck via `templateDeck` + `createDeck` (§14). ⚪ Remaining: persist top-p; genericize the `DeckCover` chrome string; per-template multi-slide skeletons. _(§7.4, §7.1)_ (Duplicate-slide ✅ §7.2.1.)
+7. ~~**Templates seed real decks**~~ ✅ **Done** — the picker creates a themed library deck via `templateDeck` + `createDeck` (§14). ⚪ Remaining: genericize the `DeckCover` chrome string; per-template multi-slide skeletons. (Top-p persistence ✅ §7.4.) _(§7.4, §7.1)_ (Duplicate-slide ✅ §7.2.1.)
 8. **Presenter** laser-tracks-pointer + blackout. _(§7.5)_
 9. **Collaboration** presence + comments. _(§16)_
