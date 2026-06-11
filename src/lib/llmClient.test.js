@@ -1,29 +1,17 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { callLLM, generateSlide, rewriteText, suggestImprovements, editSlide, suggestSlideOrder, LLMError, describeLLMError } from './llmClient.js';
+import { stubLocalStorage } from '../test/localStorage.js';
 
 function res(body, { ok = true, status = 200 } = {}) {
   return { ok, status, json: async () => body };
 }
 
-// Minimal localStorage mock — jsdom in vitest doesn't expose localStorage
-// unless --localstorage-file is set; stub it ourselves.
-const store = new Map();
-const localStorageMock = {
-  getItem:    (k) => store.has(k) ? store.get(k) : null,
-  setItem:    (k, v) => store.set(k, String(v)),
-  removeItem: (k) => store.delete(k),
-  clear:      () => store.clear(),
-};
+stubLocalStorage();
 
 let fetchMock;
 beforeEach(() => {
-  store.clear();
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
-  vi.stubGlobal('localStorage', localStorageMock);
-});
-afterEach(() => {
-  vi.unstubAllGlobals();
 });
 
 describe('callLLM', () => {

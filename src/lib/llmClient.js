@@ -32,6 +32,12 @@ export function describeLLMError(err) {
   return LLM_ERROR_MESSAGES[err?.reason] || 'Something went wrong talking to the AI — try again.';
 }
 
+// Where the keyless "Local" provider (Ollama / LM Studio) points by default —
+// displayed by the Settings Base URL field and applied by the /api/llm proxy
+// when a local request arrives without a baseUrl. Single-sourced here so what
+// the user sees and where the request goes can't drift apart.
+export const LOCAL_DEFAULT_BASE = 'http://localhost:11434/v1';
+
 function getAISettings() {
   try {
     const raw = localStorage.getItem('stagecraft.ai');

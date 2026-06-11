@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, Seg, FieldRow } from '../ui/Primitives.jsx';
 import { ACCENTS } from '../../data/deck.js';
-import { callLLM, describeLLMError } from '../../lib/llmClient.js';
+import { callLLM, describeLLMError, LOCAL_DEFAULT_BASE } from '../../lib/llmClient.js';
 
 // ---- provider + model catalog ----
 const PROVIDERS = [
@@ -108,8 +108,9 @@ function AISettings() {
   });
 
   const [keyShown, setKeyShown] = useState(false);
-  const [tested, setTested] = useState('idle'); // idle | testing | ok | error
-  const [testError, setTestError] = useState(null); // classified copy for the 'error' state
+  // One state for the connection test: phase idle | testing | ok | error,
+  // with `error` carrying the classified copy only in the 'error' phase.
+  const [test, setTest] = useState({ phase: 'idle', error: null });
   const [temp, setTemp] = useState(settings.temperature ?? 0.6);
   const [maxTok, setMaxTok] = useState(settings.maxTokens ?? 4096);
   const [topP, setTopP] = useState(1.0);
@@ -137,23 +138,20 @@ function AISettings() {
   function pickProvider(id) {
     const first = (MODELS[id] || [])[0];
     save({ provider: id, model: first ? first.id : '' });
-    setTested('idle');
-    setTestError(null);
+    setTest({ phase: 'idle', error: null });
   }
 
   async function testConn() {
-    if (tested === 'testing') return;
-    setTested('testing');
-    setTestError(null);
+    if (test.phase === 'testing') return;
+    setTest({ phase: 'testing', error: null });
     try {
-      // callLLM reads apiKey/baseUrl from the saved settings (kept current by
-      // save()) and throws a classified LLMError on failure — so the button
-      // can say *why* a test failed, not just that it did.
-      await callLLM([{ role: 'user', content: 'ping' }], { provider, model, maxTokens: 10, temperature: 0 });
-      setTested('ok');
+      // Everything but the test-specific tuning comes from the saved settings
+      // (kept current by save()), same as every other callLLM caller; a
+      // failure throws a classified LLMError so the panel can say *why*.
+      await callLLM([{ role: 'user', content: 'ping' }], { maxTokens: 10, temperature: 0 });
+      setTest({ phase: 'ok', error: null });
     } catch (err) {
-      setTestError(describeLLMError(err));
-      setTested('error');
+      setTest({ phase: 'error', error: describeLLMError(err) });
     }
   }
 
@@ -162,9 +160,9 @@ function AISettings() {
 
   const testButton = (
     <button className="btn outline" onClick={testConn} style={{ height: 30 }}>
-      {tested === 'testing' ? <><Icon name="refresh" size={12} style={{ animation: 'spin .65s linear infinite' }}/> Testing…</>
-       : tested === 'ok'    ? <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={12}/> Connected</span>
-       : tested === 'error' ? <span style={{ color: 'var(--warn)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="x" size={12}/> Failed</span>
+      {test.phase === 'testing' ? <><Icon name="refresh" size={12} style={{ animation: 'spin .65s linear infinite' }}/> Testing…</>
+       : test.phase === 'ok'    ? <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={12}/> Connected</span>
+       : test.phase === 'error' ? <span style={{ color: 'var(--warn)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="x" size={12}/> Failed</span>
        : <>Test connection</>}
     </button>
   );
@@ -226,7 +224,7 @@ function AISettings() {
               <div className="input-group" style={{ width: 280 }}>
                 <span className="ico"><Icon name="link" size={12}/></span>
                 <input
-                  value={settings.baseUrl ?? 'http://localhost:11434/v1'}
+                  value={settings.baseUrl ?? LOCAL_DEFAULT_BASE}
                   onChange={e => save({ baseUrl: e.target.value })}
                   style={{ fontFamily: 'var(--f-mono)', fontSize: 11.5 }}
                 />
@@ -235,8 +233,8 @@ function AISettings() {
             </div>
           </div>
         )}
-        {tested === 'error' && testError && (
-          <div role="status" style={{ padding: '8px 0 0', fontSize: 12, color: 'var(--warn)' }}>{testError}</div>
+        {test.error && (
+          <div role="status" style={{ padding: '8px 0 0', fontSize: 12, color: 'var(--warn)' }}>{test.error}</div>
         )}
       </Section>
 

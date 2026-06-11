@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import SettingsView from './SettingsView.jsx';
-import { callLLM, LLMError } from '../../lib/llmClient.js';
+import { callLLM, LLMError, LOCAL_DEFAULT_BASE } from '../../lib/llmClient.js';
+import { stubLocalStorage } from '../../test/localStorage.js';
 
 // Stub only the network-bound call; keep the real LLMError/describeLLMError so
 // these tests assert the actual user-facing copy.
@@ -10,31 +11,18 @@ vi.mock('../../lib/llmClient.js', async (importOriginal) => ({
   callLLM: vi.fn(),
 }));
 
-// Minimal localStorage mock — jsdom in vitest doesn't expose localStorage
-// unless --localstorage-file is set; stub it ourselves.
-const store = new Map();
-const localStorageMock = {
-  getItem:    (k) => store.has(k) ? store.get(k) : null,
-  setItem:    (k, v) => store.set(k, String(v)),
-  removeItem: (k) => store.delete(k),
-  clear:      () => store.clear(),
-};
+const store = stubLocalStorage();
 
 const tw = { theme: 'light', accent: 'indigo', density: 'default', layout: 'default' };
 const renderSettings = () => render(<SettingsView tw={tw} setTw={vi.fn()} />);
 
-beforeEach(() => {
-  store.clear();
-  callLLM.mockReset();
-  vi.stubGlobal('localStorage', localStorageMock);
-});
-afterEach(() => { vi.unstubAllGlobals(); });
+beforeEach(() => { callLLM.mockReset(); });
 
 describe('AI settings — Base URL persistence', () => {
   it('persists an edited Base URL for the keyless Local provider', () => {
     renderSettings();
     fireEvent.click(screen.getByText('Local'));
-    const input = screen.getByDisplayValue('http://localhost:11434/v1');
+    const input = screen.getByDisplayValue(LOCAL_DEFAULT_BASE);
     fireEvent.change(input, { target: { value: 'http://lmstudio:1234/v1' } });
     expect(JSON.parse(store.get('stagecraft.ai')).baseUrl).toBe('http://lmstudio:1234/v1');
   });
@@ -53,9 +41,11 @@ describe('AI settings — Test connection', () => {
     renderSettings();
     fireEvent.click(screen.getByText('Test connection'));
     expect(await screen.findByText('Connected')).toBeInTheDocument();
+    // Only the test-specific tuning is overridden — provider/model/key/baseUrl
+    // come from the saved settings, same as every other callLLM caller.
     expect(callLLM).toHaveBeenCalledWith(
       [{ role: 'user', content: 'ping' }],
-      expect.objectContaining({ provider: 'anthropic', model: 'claude-sonnet-4', maxTokens: 10, temperature: 0 }),
+      { maxTokens: 10, temperature: 0 },
     );
   });
 
