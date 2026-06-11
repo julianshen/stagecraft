@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Icon from '../../ui/Icon.jsx';
 import { IconButton } from '../../ui/Primitives.jsx';
-import { editSlide } from '../../../lib/llmClient.js';
+import { editSlide, describeLLMError } from '../../../lib/llmClient.js';
 
 export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch }) {
   const [prompt, setPrompt] = useState('');
@@ -33,7 +33,7 @@ export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch
         ? `✓ Applied changes to: ${applied.join(', ')}`
         : "I couldn't turn that into a slide edit — try rephrasing the instruction.");
     } catch (err) {
-      setResponse(`Error: ${err.message}`);
+      setResponse(describeLLMError(err));
     }
     setLoading(false);
   }

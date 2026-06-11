@@ -107,11 +107,42 @@ function newSlideId() {
   return `slide-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+// An LLM proxy failure carries the HTTP status the route should answer with,
+// plus an optional machine-readable `reason` the client classifies on.
+function llmError(status, message, reason) {
+  const err = new Error(message);
+  err.status = status;
+  if (reason) err.reason = reason;
+  return err;
+}
+
+// Parse a provider response, throwing (with the provider's status) on non-2xx
+// so auth/rate-limit failures reach the client as errors instead of being
+// returned as assistant "text".
+async function providerJson(res) {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.error?.message
+      || (typeof data?.error === 'string' ? data.error : `Provider error (${res.status})`);
+    throw llmError(res.status, msg);
+  }
+  return data;
+}
+
 async function proxyLLM(body, fetchFn) {
   const { messages, provider, model, apiKey, baseUrl, temperature, maxTokens, system } = body || {};
 
   // Common defaults shared by both providers
   const isAnthropic = provider === 'anthropic' || !provider;
+
+  // Anthropic always requires a key; OpenAI-compatible only on the default
+  // endpoint (a custom baseUrl is typically a local server that takes none).
+  // Catching this before the provider call distinguishes "never configured"
+  // from "provider rejected the key" (both arrive as 401s otherwise).
+  if (!apiKey && (isAnthropic || !baseUrl)) {
+    throw llmError(401, 'No API key configured', 'unconfigured');
+  }
+
   const reqBody = {
     model: model || (isAnthropic ? 'claude-sonnet-4' : 'gpt-4o'),
     max_tokens: maxTokens || 2048,
@@ -126,7 +157,7 @@ async function proxyLLM(body, fetchFn) {
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey || '', 'anthropic-version': '2023-06-01' },
       body: JSON.stringify(reqBody),
     });
-    const data = await res.json();
+    const data = await providerJson(res);
     return data.content?.[0]?.text || data.error?.message || 'No response';
   }
 
@@ -142,7 +173,7 @@ async function proxyLLM(body, fetchFn) {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey || ''}` },
     body: JSON.stringify(reqBody),
   });
-  const data = await res.json();
+  const data = await providerJson(res);
   return data.choices?.[0]?.message?.content || data.error?.message || 'No response';
 }
 
@@ -333,7 +364,12 @@ export async function handleApiRequest(store, req, deps = {}) {
     try {
       return ok({ text: await proxyLLM(body, fetchFn) });
     } catch (err) {
-      return ok({ error: err.message || String(err) }, 500);
+      // Pass through the statuses the client classifies on (auth, rate limit);
+      // any other upstream failure — including a network throw — is a bad gateway.
+      const status = [401, 403, 429].includes(err.status) ? err.status : 502;
+      const out = { error: err.message || String(err) };
+      if (err.reason) out.reason = err.reason;
+      return ok(out, status);
     }
   }
 

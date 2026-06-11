@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { callLLM, generateSlide, rewriteText, suggestImprovements, editSlide, suggestSlideOrder } from './llmClient.js';
+import { callLLM, generateSlide, rewriteText, suggestImprovements, editSlide, suggestSlideOrder, LLMError, describeLLMError } from './llmClient.js';
 
 function res(body, { ok = true, status = 200 } = {}) {
   return { ok, status, json: async () => body, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) };
@@ -84,6 +84,55 @@ describe('callLLM', () => {
   it('throws on a non-ok response', async () => {
     fetchMock.mockResolvedValue(res('boom', { ok: false, status: 502 }));
     await expect(callLLM([])).rejects.toThrow(/502/);
+  });
+
+  it('classifies the proxy "unconfigured" reason', async () => {
+    fetchMock.mockResolvedValue(res({ error: 'No API key configured', reason: 'unconfigured' }, { ok: false, status: 401 }));
+    const err = await callLLM([]).catch((e) => e);
+    expect(err).toBeInstanceOf(LLMError);
+    expect(err.reason).toBe('unconfigured');
+    expect(err.message).toBe('No API key configured');
+  });
+
+  it('classifies a 401 without an unconfigured reason as auth', async () => {
+    fetchMock.mockResolvedValue(res({ error: 'invalid x-api-key' }, { ok: false, status: 401 }));
+    const err = await callLLM([]).catch((e) => e);
+    expect(err).toBeInstanceOf(LLMError);
+    expect(err.reason).toBe('auth');
+    expect(err.message).toBe('invalid x-api-key');
+  });
+
+  it('classifies a 403 as auth', async () => {
+    fetchMock.mockResolvedValue(res({ error: 'forbidden' }, { ok: false, status: 403 }));
+    const err = await callLLM([]).catch((e) => e);
+    expect(err.reason).toBe('auth');
+  });
+
+  it('classifies a 429 as rate-limit', async () => {
+    fetchMock.mockResolvedValue(res({ error: 'slow down' }, { ok: false, status: 429 }));
+    const err = await callLLM([]).catch((e) => e);
+    expect(err.reason).toBe('rate-limit');
+  });
+
+  it('classifies any other non-ok status as provider', async () => {
+    fetchMock.mockResolvedValue(res({ error: 'overloaded' }, { ok: false, status: 502 }));
+    const err = await callLLM([]).catch((e) => e);
+    expect(err.reason).toBe('provider');
+    expect(err.message).toBe('overloaded');
+  });
+
+  it('classifies a fetch rejection as network', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    const err = await callLLM([]).catch((e) => e);
+    expect(err).toBeInstanceOf(LLMError);
+    expect(err.reason).toBe('network');
+  });
+
+  it('falls back to a status message when the error body is not JSON', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => { throw new Error('not json'); } });
+    const err = await callLLM([]).catch((e) => e);
+    expect(err.reason).toBe('provider');
+    expect(err.message).toMatch(/500/);
   });
 
   it('forwards system prompt in the request body', async () => {
@@ -247,5 +296,23 @@ describe('suggestSlideOrder', () => {
   it('returns null when the reply is an array with no usable ids', async () => {
     fetchMock.mockResolvedValue(res({ text: '[1, 2]' }));
     expect(await suggestSlideOrder(deck)).toBeNull();
+  });
+});
+
+describe('describeLLMError', () => {
+  it.each([
+    ['unconfigured', /add one in Settings/i],
+    ['auth', /rejected your API key/i],
+    ['rate-limit', /rate.limiting/i],
+    ['network', /reach the Stagecraft server/i],
+    ['provider', /provider returned an error/i],
+  ])('maps reason %s to an actionable message', (reason, pattern) => {
+    expect(describeLLMError(new LLMError(reason, 'raw detail'))).toMatch(pattern);
+  });
+
+  it('falls back to a generic message for a plain Error, an unknown reason, and undefined', () => {
+    expect(describeLLMError(new Error('boom'))).toMatch(/try again/i);
+    expect(describeLLMError(new LLMError('mystery', 'x'))).toMatch(/try again/i);
+    expect(describeLLMError(undefined)).toMatch(/try again/i);
   });
 });

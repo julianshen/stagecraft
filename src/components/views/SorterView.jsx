@@ -3,7 +3,7 @@ import SorterToolbar from '../sorter/SorterToolbar.jsx';
 import SorterGrid from '../sorter/SorterGrid.jsx';
 import SorterOutline from '../sorter/SorterOutline.jsx';
 import { flattenDeck, moveSlide, addSection, renameSection, deleteSection, applySlideOrder } from '../../lib/deckOrder.js';
-import { suggestSlideOrder } from '../../lib/llmClient.js';
+import { suggestSlideOrder, describeLLMError } from '../../lib/llmClient.js';
 
 const EMPTY_DECK = { sections: [], slides: [] };
 
@@ -28,8 +28,8 @@ export default function SorterView({ deck, onBack, onOpenSlide, onDeckChange }) 
 
   // Rearrange with AI: ask the model for a slide order, then apply it through
   // the freshest-deck updater. applySlideOrder tolerates the model dropping or
-  // duplicating ids, and any AI error (no key, bad reply) just leaves the deck
-  // untouched. `rearranging` drives the toolbar's busy label.
+  // duplicating ids; any AI failure leaves the deck untouched and surfaces a
+  // classified message in the toolbar. `rearranging` drives the busy label.
   const [rearranging, setRearranging] = useState(false);
   // A failed/empty AI rearrange used to be a silent no-op, indistinguishable from
   // "already optimal" — surface it. Null = nothing to show (success or genuinely
@@ -45,20 +45,17 @@ export default function SorterView({ deck, onBack, onOpenSlide, onDeckChange }) 
     const sig = (d) => flattenDeck(d).map((s) => `${s.sectionId}/${s.id}`).join('|');
     const before = sig(safeDeck);
     setRearranging(true);
-    // One honest message: the proxy collapses a provider/auth error into a 200
-    // whose text fails to parse → null (same as a genuinely bad reply), so a
-    // failure can't be reliably told apart from a transport throw at this layer.
-    // No API key is the most likely cause, so point at the AI settings.
-    const failMsg = 'Couldn’t rearrange — check your AI settings and try again.';
     try {
       const order = await suggestSlideOrder(safeDeck);
-      if (!order) { setRearrangeError(failMsg); return; }
+      // Transport/auth failures throw a classified LLMError (handled below), so
+      // null here genuinely means the model answered with an unusable order.
+      if (!order) { setRearrangeError('The AI didn’t return a usable slide order — try again.'); return; }
       // The Sorter stays editable during the request — if a manual drag/rename
       // /delete or an MCP edit changed the structure while it was in flight, the
       // AI order is stale; drop it rather than clobber the fresh intent.
       onDeckChange((prev) => (sig(prev) === before ? applySlideOrder(prev, order) : prev));
-    } catch {
-      setRearrangeError(failMsg);
+    } catch (err) {
+      setRearrangeError(describeLLMError(err));
     } finally { setRearranging(false); }
   } : undefined;
   const sectionOps = editable

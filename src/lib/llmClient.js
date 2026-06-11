@@ -3,6 +3,36 @@
 
 import { flattenDeck } from './deckOrder.js';
 
+/**
+ * A classified LLM failure. `reason` is machine-readable so each UI surface can
+ * map it to its own copy (or use `describeLLMError`'s defaults):
+ *   'unconfigured' — no API key has been set up
+ *   'auth'         — the provider rejected the key
+ *   'rate-limit'   — the provider is throttling
+ *   'network'      — the request to our own /api/llm proxy never completed
+ *   'provider'     — any other upstream failure
+ */
+export class LLMError extends Error {
+  constructor(reason, message) {
+    super(message);
+    this.name = 'LLMError';
+    this.reason = reason;
+  }
+}
+
+const LLM_ERROR_MESSAGES = {
+  unconfigured: 'No API key configured — add one in Settings.',
+  auth: 'The provider rejected your API key — check it in Settings.',
+  'rate-limit': 'The provider is rate-limiting requests — try again in a moment.',
+  network: 'Couldn’t reach the Stagecraft server — is the dev server running?',
+  provider: 'The AI provider returned an error — try again.',
+};
+
+/** User-facing message for any error thrown by an LLM call. */
+export function describeLLMError(err) {
+  return LLM_ERROR_MESSAGES[err?.reason] || 'Something went wrong talking to the AI — try again.';
+}
+
 function getAISettings() {
   try {
     const raw = localStorage.getItem('stagecraft.ai');
@@ -31,15 +61,26 @@ export async function callLLM(messages, options = {}) {
   if (options.system != null) body.system = options.system;
 
   // Route through our own Vite middleware so we never expose keys in the browser
-  const res = await fetch('/api/llm', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch('/api/llm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    throw new LLMError('network', `Couldn’t reach /api/llm: ${err?.message || err}`);
+  }
 
   if (!res.ok) {
-    const err = await res.text().catch(() => res.statusText);
-    throw new Error(`LLM request failed (${res.status}): ${err}`);
+    // The proxy answers errors as JSON { error, reason? } — reason marks
+    // "unconfigured" (vs a provider-rejected key, which is also a 401).
+    const data = await res.json().catch(() => null);
+    const reason = data?.reason === 'unconfigured' ? 'unconfigured'
+      : res.status === 401 || res.status === 403 ? 'auth'
+      : res.status === 429 ? 'rate-limit'
+      : 'provider';
+    throw new LLMError(reason, data?.error || `LLM request failed (${res.status})`);
   }
 
   const data = await res.json();
