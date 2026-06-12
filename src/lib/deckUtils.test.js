@@ -352,3 +352,21 @@ describe('sanitizeSlidePatch — roadmap item positions must be numeric', () => 
     expect(sanitizeSlidePatch(ok, 'roadmap')).toEqual(ok);
   });
 });
+
+describe('sanitizeSlidePatch — data fields are gated to their layouts', () => {
+  const chart = { categories: ['A'], series: [{ values: [1] }] };
+
+  it('rejects a chart payload on a non-chart slide (nothing would render it)', () => {
+    expect(sanitizeSlidePatch({ chart }, 'text')).toEqual({});
+  });
+
+  it('accepts a chart payload when the same patch switches the slide to chart', () => {
+    expect(sanitizeSlidePatch({ layout: 'chart', chart }, 'text')).toEqual({ layout: 'chart', chart });
+  });
+
+  it('rejects roadmap data fields on a non-roadmap slide', () => {
+    expect(sanitizeSlidePatch({ lanes: [{ name: 'A', items: [] }] }, 'kpi')).toEqual({});
+    expect(sanitizeSlidePatch({ months: ['Jan'] }, 'kpi')).toEqual({});
+    expect(sanitizeSlidePatch({ todayIndex: 2 }, 'kpi')).toEqual({});
+  });
+});

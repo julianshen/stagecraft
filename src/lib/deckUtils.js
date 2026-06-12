@@ -93,12 +93,15 @@ function fieldOk(key, value, layout) {
   if (key === 'items') return Array.isArray(value) && value.every(layout === 'list' ? isPrimitive : isFlatRecord);
   // kpis/stats are always object-backed (k.label/k.val, st.lbl/st.val).
   if (key === 'kpis' || key === 'stats') return Array.isArray(value) && value.every(isFlatRecord);
-  if (key === 'chart') return isChartShape(value);
-  if (key === 'lanes') return Array.isArray(value) && value.every(isLane);
-  if (key === 'months') return Array.isArray(value) && value.every(isPrimitive);
+  // The data fields below only render on their own layout (the effective
+  // layout includes a same-patch switch) — accepting them elsewhere would
+  // persist an invisible "applied" edit.
+  if (key === 'chart') return layout === 'chart' && isChartShape(value);
+  if (key === 'lanes') return layout === 'roadmap' && Array.isArray(value) && value.every(isLane);
+  if (key === 'months') return layout === 'roadmap' && Array.isArray(value) && value.every(isPrimitive);
   // roadmapModel only honors finite numbers (explicit null = "no marker");
   // a string "3" would pass as a primitive but silently render nothing.
-  if (key === 'todayIndex') return value === null || Number.isFinite(value);
+  if (key === 'todayIndex') return layout === 'roadmap' && (value === null || Number.isFinite(value));
   return isPrimitive(value);
 }
 
