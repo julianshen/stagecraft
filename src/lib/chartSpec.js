@@ -30,8 +30,7 @@ export const CHART_SERIES_HEX = Object.freeze(['537FEB', '349D62', 'D48E00', 'BE
 // and the on-canvas chart renderers so both draw the same numbers. Falls back to
 // sensible defaults; clips an over-long series and pads a short one with 0 so
 // every series aligns with the categories.
-// The chart pipeline's one numeric policy: anything non-finite becomes 0.
-// Exported so data editors coerce exactly the way the renderer/export will.
+// The chart pipeline's numeric policy: anything non-finite becomes 0.
 export const coerceNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 export function chartData(slide) {

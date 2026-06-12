@@ -67,7 +67,10 @@ export default function SlideEditor(props) {
   // instead of leaving the user with a silently frozen input.
   const applyPatchToCurrent = (patch) => {
     const applied = callbacks.onApplyAIPatch?.(patch, cur?.id);
-    if (applied && applied.length === 0) console.warn('Inspector patch rejected by the slide-schema gate', patch);
+    if (applied) {
+      const dropped = Object.keys(patch).filter((k) => !applied.includes(k));
+      if (dropped.length) console.warn('Inspector patch fields not applied (schema-gate drift, or the slide was removed):', dropped);
+    }
     return applied;
   };
 

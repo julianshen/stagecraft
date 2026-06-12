@@ -5,8 +5,9 @@ import AnimPanel from './AnimPanel.jsx';
 import DataPanel from './DataPanel.jsx';
 
 // The tab strip + panel switch shared by the docked (InspectorPane) and
-// floating (FloatingInspector) shells — one place to wire a new tab. `labels`
-// supplies the per-shell button copy; its key order is the tab order.
+// floating (FloatingInspector) shells. `labels` supplies the per-shell button
+// copy and its key order is the tab order — so a new tab is wired here (the
+// panel switch) plus a label entry in each shell.
 export default function InspectorBody({ labels, tab, setTab, selection, setSelection, count, extras, slide, onApplyPatch }) {
   return (
     <>

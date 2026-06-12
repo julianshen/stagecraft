@@ -9,6 +9,7 @@ export default function DataPanel({ slide, onApply }) {
   const hint = (text) => (
     <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{text}</div>
   );
+  if (!onApply) return hint('Data editing is unavailable here.');
   if (!slide) return hint('Select a slide.');
   // key by slide id so a focused input doesn't carry over to the next slide
   if (slide.layout === 'chart') return <ChartDataEditor key={slide.id} slide={slide} onApply={onApply} />;

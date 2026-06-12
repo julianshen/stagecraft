@@ -77,7 +77,7 @@ export const SAMPLE_DECK = {
 
     { id: 'list-next', layout: 'list', title: 'What\'s next', eyebrow: 'Roadmap',
       items: [
-        'Code-split the export modal flow (range/quality/notes options are mocked)',
+        'Wire the export modal options (range, quality, and notes are mocked)',
         'Code-split the bundle (pptxgenjs is the heavy bit)',
         'Persist decks to a backend instead of in-memory state',
         'Collaborative cursors and live comments',

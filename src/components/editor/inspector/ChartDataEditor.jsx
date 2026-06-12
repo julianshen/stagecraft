@@ -1,11 +1,15 @@
 import React from 'react';
 import { Button, IconButton } from '../../ui/Primitives.jsx';
-import { chartData, coerceNum } from '../../../lib/chartSpec.js';
+import NumberCell from './NumberCell.jsx';
+import { chartData } from '../../../lib/chartSpec.js';
 
 // Inspector editor for a chart slide's data. Renders the same normalized view
 // the canvas and the PPTX export draw (chartData — including its demo fallback,
 // so a data-less starter chart materializes as editable rows), and commits
 // every edit as a full `{ chart }` patch through the validated patch gate.
+// Honest trade-off: committing the normalized view persists its normalization —
+// values beyond the category count are clipped and non-{name,values} series
+// extras are dropped on the first edit, exactly as the canvas/export resolve them.
 
 export default function ChartDataEditor({ slide, onApply }) {
   const { categories, series } = chartData(slide);
@@ -15,8 +19,8 @@ export default function ChartDataEditor({ slide, onApply }) {
 
   const setCategory = (ci, v) => commit(categories.map((c, i) => (i === ci ? v : c)), series);
   const setName = (si, v) => commit(categories, series.map((s, i) => (i === si ? { ...s, name: v } : s)));
-  const setValue = (si, ci, v) =>
-    commit(categories, mapSeries((s, i) => (i === si ? s.values.map((x, j) => (j === ci ? coerceNum(v) : x)) : s.values)));
+  const setValue = (si, ci, n) =>
+    commit(categories, mapSeries((s, i) => (i === si ? s.values.map((x, j) => (j === ci ? n : x)) : s.values)));
   const addSeries = () => commit(categories, [...series, { name: `Series ${series.length + 1}`, values: categories.map(() => 0) }]);
   const removeSeries = (si) => commit(categories, series.filter((_, i) => i !== si));
   const addRow = () => commit([...categories, `Category ${categories.length + 1}`], mapSeries((s) => [...s.values, 0]));
@@ -36,14 +40,13 @@ export default function ChartDataEditor({ slide, onApply }) {
           <React.Fragment key={`r${ci}`}>
             <input className="cell-input" value={c} title="Category" onChange={(e) => setCategory(ci, e.target.value)} />
             {series.map((s, si) => (
-              <input key={`v${si}`} className="cell-input" type="number" value={s.values[ci]} title="Value"
-                onChange={(e) => setValue(si, ci, e.target.value)} />
+              <NumberCell key={`v${si}`} value={s.values[ci]} title="Value" onCommit={(n) => setValue(si, ci, n)} />
             ))}
             <IconButton name="x" size={10} title="Remove row" disabled={categories.length <= 1} onClick={() => removeRow(ci)} />
           </React.Fragment>
         ))}
         <span />
-        {series.map((s, si) => (
+        {series.map((_, si) => (
           <IconButton key={`d${si}`} name="x" size={10} title="Remove series" disabled={series.length <= 1}
             onClick={() => removeSeries(si)} style={{ justifySelf: 'center' }} />
         ))}

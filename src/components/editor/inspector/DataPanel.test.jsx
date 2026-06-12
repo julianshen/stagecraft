@@ -13,6 +13,11 @@ describe('DataPanel', () => {
     expect(screen.getByText('Add lane')).toBeInTheDocument();
   });
 
+  it('shows an unavailable hint when no apply path is wired (generic shell embeds)', () => {
+    render(<DataPanel slide={chartSlide} onApply={undefined} />);
+    expect(screen.getByText(/unavailable/i)).toBeInTheDocument();
+  });
+
   it('shows a hint for slides without editable data, and when nothing is selected', () => {
     render(<DataPanel slide={{ id: 't', layout: 'text' }} onApply={vi.fn()} />);
     expect(screen.getByText(/chart and roadmap slides/i)).toBeInTheDocument();

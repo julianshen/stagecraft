@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button, IconButton } from '../../ui/Primitives.jsx';
-import { coerceNum } from '../../../lib/chartSpec.js';
+import NumberCell from './NumberCell.jsx';
 import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS } from '../../../lib/roadmapSpec.js';
 
 // Inspector editor for a roadmap slide's lanes. Renders the same normalized
@@ -9,6 +9,9 @@ import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS } from '../../../lib/roadm
 // Every edit commits the WHOLE model ({ lanes, months, todayIndex }): a
 // lanes-only patch would flip roadmapModel off its demo fallback and silently
 // drop the TODAY marker / month axis the user was looking at.
+// Honest trade-off: committing the normalized view persists its normalization —
+// out-of-range t/d are clamped and non-{t,d,lbl,state} item extras are dropped
+// on the first edit, exactly as the canvas/export resolve them.
 
 export default function RoadmapLanesEditor({ slide, onApply }) {
   const { lanes, months, todayIndex } = roadmapModel(slide);
@@ -33,10 +36,8 @@ export default function RoadmapLanesEditor({ slide, onApply }) {
             <div key={ii} style={{ display: 'grid', gridTemplateColumns: '1fr 44px 44px 86px 20px', gap: 4, alignItems: 'center', marginBottom: 4 }}>
               <input className="cell-input" value={it.lbl} title="Milestone label"
                 onChange={(e) => patchItem(li, ii, { lbl: e.target.value })} />
-              <input className="cell-input" type="number" value={it.t} title="Start month"
-                onChange={(e) => patchItem(li, ii, { t: coerceNum(e.target.value) })} />
-              <input className="cell-input" type="number" value={it.d} title="Duration (months)"
-                onChange={(e) => patchItem(li, ii, { d: coerceNum(e.target.value) })} />
+              <NumberCell value={it.t} title="Start month" onCommit={(n) => patchItem(li, ii, { t: n })} />
+              <NumberCell value={it.d} title="Duration (months)" onCommit={(n) => patchItem(li, ii, { d: n })} />
               <select className="cell-input" value={it.state} title="State"
                 onChange={(e) => patchItem(li, ii, { state: e.target.value })}>
                 {ROADMAP_STATES.map((s) => <option key={s} value={s}>{ROADMAP_LABELS[s]}</option>)}
@@ -45,7 +46,7 @@ export default function RoadmapLanesEditor({ slide, onApply }) {
                 onClick={() => patchLane(li, (l) => ({ ...l, items: l.items.filter((_, j) => j !== ii) }))} />
             </div>
           ))}
-          <Button variant="outline" style={{ height: 24, fontSize: 11 }}
+          <Button variant="outline" style={{ height: 26, fontSize: 11 }}
             onClick={() => patchLane(li, (l) => ({ ...l, items: [...l.items, { t: 0, d: 2, lbl: 'New milestone', state: 'planned' }] }))}>
             Add milestone
           </Button>

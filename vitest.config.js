@@ -30,6 +30,8 @@ export default defineConfig({
         'src/data/deck.js',
         'src/components/editor/CanvasSlide.jsx',
         'src/components/editor/inspector/DataPanel.jsx',
+        'src/components/editor/inspector/InspectorBody.jsx',
+        'src/components/editor/inspector/NumberCell.jsx',
         'src/components/editor/inspector/ChartDataEditor.jsx',
         'src/components/editor/inspector/RoadmapLanesEditor.jsx',
         'src/components/views/SorterView.jsx',

@@ -33,10 +33,20 @@ describe('ChartDataEditor', () => {
     expect(sanitizeSlidePatch(patch, 'chart')).toEqual(patch);
   });
 
-  it('coerces non-numeric values to 0', () => {
+  it('supports negative values and does not commit incomplete input', () => {
     const { onApply } = renderEditor();
-    fireEvent.change(screen.getByDisplayValue('2'), { target: { value: 'abc' } });
-    expect(onApply.mock.calls[0][0].chart.series[0].values).toEqual([1, 0]);
+    const cell = screen.getByDisplayValue('2');
+    // a number input reports '' for partial entries like a lone minus —
+    // nothing commits, so the keystroke isn't snapped to 0 under the cursor
+    fireEvent.change(cell, { target: { value: '' } });
+    expect(onApply).not.toHaveBeenCalled();
+    fireEvent.change(cell, { target: { value: '-3' } });
+    expect(onApply.mock.calls[0][0].chart.series[0].values).toEqual([1, -3]);
+    // blur with nothing committed restores the model value (the mock onApply
+    // never applies the patch, so the model here is still the original 2)
+    fireEvent.change(cell, { target: { value: '' } });
+    fireEvent.blur(cell);
+    expect(cell.value).toBe('2');
   });
 
   it('renaming a category and a series commits', () => {
