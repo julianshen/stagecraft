@@ -377,3 +377,14 @@ describe('appendSlide', () => {
     expect(d.slides).toHaveLength(3);
   });
 });
+
+describe('appendSlide guards', () => {
+  it('returns malformed decks unchanged (nullish or missing sections), like its siblings', () => {
+    expect(appendSlide(null, { id: 'n' })).toBeNull();
+    expect(appendSlide(undefined, { id: 'n' })).toBeUndefined();
+    const noSections = { slides: [] };
+    expect(appendSlide(noSections, { id: 'n' })).toBe(noSections);
+    const empty = { sections: [], slides: [] };
+    expect(appendSlide(empty, { id: 'n' })).toBe(empty); // nowhere to register it — a slide outside sections never renders
+  });
+});

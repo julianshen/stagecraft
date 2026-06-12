@@ -156,9 +156,9 @@ export function flattenDeck(deck) {
  * Pure: returns a new deck, input untouched.
  */
 export function appendSlide(deck, slide) {
-  const sections = deck.sections || [];
+  if (!deck || !Array.isArray(deck.sections) || !deck.sections.length) return deck;
+  const sections = deck.sections;
   const slides = [...(deck.slides || []), slide];
-  if (!sections.length) return { ...deck, slides };
   const lastIdx = sections.length - 1;
   const ids = [...(sections[lastIdx].slides || [])];
   const lastSlide = (deck.slides || []).find((s) => s.id === ids[ids.length - 1]);
