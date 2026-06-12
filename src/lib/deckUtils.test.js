@@ -275,3 +275,31 @@ describe('sanitizeSlidePatch', () => {
   });
 });
 
+
+describe('sanitizeSlidePatch — chart and roadmap data fields', () => {
+  it('accepts a well-shaped chart object', () => {
+    const patch = { chart: { categories: ['A', 'B'], series: [{ name: 'S1', values: [1, 2] }] } };
+    expect(sanitizeSlidePatch(patch, 'chart')).toEqual(patch);
+  });
+
+  it('rejects malformed chart values (array, non-array series values, object categories)', () => {
+    expect(sanitizeSlidePatch({ chart: [1, 2] }, 'chart')).toEqual({});
+    expect(sanitizeSlidePatch({ chart: { series: [{ values: 'nope' }] } }, 'chart')).toEqual({});
+    expect(sanitizeSlidePatch({ chart: { categories: [{ q: 1 }] } }, 'chart')).toEqual({});
+  });
+
+  it('accepts well-shaped roadmap lanes, months, and todayIndex', () => {
+    const patch = {
+      lanes: [{ name: 'A', items: [{ t: 0, d: 2, lbl: 'M1', state: 'done' }] }, { name: 'B' }],
+      months: ['Jan', 'Feb'],
+      todayIndex: 1.5,
+    };
+    expect(sanitizeSlidePatch(patch, 'roadmap')).toEqual(patch);
+  });
+
+  it('rejects malformed lanes (nested non-flat items, non-object lane) and months', () => {
+    expect(sanitizeSlidePatch({ lanes: [{ items: [{ deep: { x: 1 } }] }] }, 'roadmap')).toEqual({});
+    expect(sanitizeSlidePatch({ lanes: ['a'] }, 'roadmap')).toEqual({});
+    expect(sanitizeSlidePatch({ months: [{ m: 'Jan' }] }, 'roadmap')).toEqual({});
+  });
+});

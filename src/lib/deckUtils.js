@@ -47,12 +47,25 @@ const SLIDE_FIELDS = new Set([
   'layout', 'title', 'subtitle', 'sub', 'body', 'eyebrow', 'kicker',
   'chapter', 'note', 'notes', 'bg', 'chartType',
   'items', 'kpis', 'stats', 'rows', 'columns',
+  'chart', 'lanes', 'months', 'todayIndex',
 ]);
 const isPrimitive = (x) => x === null || typeof x !== 'object';
 // A flat record: a non-array object whose own values are all primitives. Used
 // for agenda/risk items and kpi/stat entries, which the renderer reads field by
 // field (it.t, k.label, st.val) — a nested object would render as a React child.
 const isFlatRecord = (x) => x !== null && typeof x === 'object' && !Array.isArray(x) && Object.values(x).every(isPrimitive);
+const isPlainObject = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+// chart: { categories?: primitive[], series?: { name?, values: primitive[] }[] }
+// — the shape chartData (canvas + export) reads.
+const isChartShape = (v) => isPlainObject(v)
+  && (v.categories === undefined || (Array.isArray(v.categories) && v.categories.every(isPrimitive)))
+  && (v.series === undefined || (Array.isArray(v.series) && v.series.every((s) =>
+    isPlainObject(s) && Array.isArray(s.values) && s.values.every(isPrimitive)
+    && (s.name === undefined || isPrimitive(s.name)))));
+// lane: { name?, items?: flat-record[] } — the shape roadmapModel reads.
+const isLane = (l) => isPlainObject(l)
+  && (l.name === undefined || isPrimitive(l.name))
+  && (l.items === undefined || (Array.isArray(l.items) && l.items.every(isFlatRecord)));
 
 // Accept a patch field only if its value matches the slide schema's shape for
 // the target layout — a value of the wrong shape (e.g. `title: { text }`, a
@@ -68,7 +81,10 @@ function fieldOk(key, value, layout) {
   if (key === 'items') return Array.isArray(value) && value.every(layout === 'list' ? isPrimitive : isFlatRecord);
   // kpis/stats are always object-backed (k.label/k.val, st.lbl/st.val).
   if (key === 'kpis' || key === 'stats') return Array.isArray(value) && value.every(isFlatRecord);
-  return isPrimitive(value);
+  if (key === 'chart') return isChartShape(value);
+  if (key === 'lanes') return Array.isArray(value) && value.every(isLane);
+  if (key === 'months') return Array.isArray(value) && value.every(isPrimitive);
+  return isPrimitive(value); // todayIndex and all remaining scalar fields
 }
 
 /**
