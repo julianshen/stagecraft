@@ -35,7 +35,7 @@ const UNSAFE_PATCH_KEYS = new Set(['id', '__proto__', 'constructor', 'prototype'
 // The discriminated-union layouts the renderer/exporter understand. An AI patch
 // setting `layout` to anything else would fall through to the default render
 // path and silently lose the slide's content, so it's rejected.
-const SLIDE_LAYOUTS = new Set([
+export const SLIDE_LAYOUTS = new Set([
   'cover', 'agenda', 'divider', 'kpi', 'chart', 'split',
   'table', 'text', 'roadmap', 'risks', 'list', 'thanks',
 ]);

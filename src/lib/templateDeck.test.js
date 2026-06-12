@@ -2,8 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { templateDeck, vibeTheme } from './templateDeck.js';
 import { flattenDeck } from './deckOrder.js';
 import { TEMPLATES } from '../data/deck.js';
-
-const LAYOUTS = ['cover', 'agenda', 'divider', 'kpi', 'chart', 'split', 'table', 'text', 'list', 'roadmap', 'risks', 'thanks'];
+import { SLIDE_LAYOUTS } from './deckUtils.js';
 
 describe('vibeTheme', () => {
   it('maps a template vibe to a known deck theme, defaulting to indigo', () => {
@@ -15,15 +14,6 @@ describe('vibeTheme', () => {
 });
 
 describe('templateDeck', () => {
-  it('builds a valid starter deck titled and themed from the template', () => {
-    const d = templateDeck({ id: 't5', name: 'Atlas', cat: 'Corporate', vibe: 'atlas' });
-    expect(d.title).toBe('Atlas');
-    expect(d.theme).toBe(vibeTheme('atlas'));
-    expect(d.slides[0].layout).toBe('cover');
-    expect(d.slides[0].title).toBe('Atlas');
-    expect(d.slides.length).toBeGreaterThanOrEqual(2);
-  });
-
   it('gives every slide a unique id, even across calls', () => {
     const a = templateDeck({ name: 'A', vibe: 'mono' });
     const b = templateDeck({ name: 'B', vibe: 'mono' });
@@ -44,9 +34,11 @@ describe('per-template skeletons', () => {
     expect(d.sections.flatMap((s) => s.slides)).toEqual(d.slides.map((s) => s.id));
     expect(flattenDeck(d).map((s) => s.id)).toEqual(d.slides.map((s) => s.id));
     // only known layouts, cover first and titled after the template
-    for (const s of d.slides) expect(LAYOUTS).toContain(s.layout);
+    for (const s of d.slides) expect(SLIDE_LAYOUTS.has(s.layout)).toBe(true);
     expect(d.slides[0].layout).toBe('cover');
     expect(d.slides[0].title).toBe(t.name);
+    expect(d.title).toBe(t.name);
+    expect(d.theme).toBe(vibeTheme(t.vibe));
     // every section is named and non-empty
     for (const sec of d.sections) {
       expect(sec.name).toBeTruthy();

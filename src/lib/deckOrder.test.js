@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { flattenDeck, moveSlide, duplicateSlide, addSection, renameSection, deleteSection, applySlideOrder } from './deckOrder.js';
+import { flattenDeck, moveSlide, duplicateSlide, addSection, renameSection, deleteSection, applySlideOrder, appendSlide } from './deckOrder.js';
 
 describe('flattenDeck', () => {
   const deck = {
@@ -337,5 +337,43 @@ describe('applySlideOrder', () => {
     applySlideOrder(d, ['e', 'd', 'c', 'b', 'a']);
     expect(d.sections[0].slides).toEqual(['a', 'b']);
     expect(d.sections[1].slides).toEqual(['c', 'd', 'e']);
+  });
+});
+
+describe('appendSlide', () => {
+  const deckWith = (lastSectionSlides, slides) => ({
+    title: 'D',
+    sections: [
+      { id: 's1', name: 'A', slides: ['a'] },
+      { id: 's2', name: 'B', slides: lastSectionSlides },
+    ],
+    slides,
+  });
+
+  it('appends to the pool and the last section', () => {
+    const d = deckWith(['b'], [{ id: 'a', layout: 'cover' }, { id: 'b', layout: 'text' }]);
+    const r = appendSlide(d, { id: 'n', layout: 'table' });
+    expect(r.slides.map((s) => s.id)).toEqual(['a', 'b', 'n']);
+    expect(r.sections[1].slides).toEqual(['b', 'n']);
+  });
+
+  it('keeps a closing thanks slide last — new slides insert just before it', () => {
+    const d = deckWith(['b', 'z'], [{ id: 'a', layout: 'cover' }, { id: 'b', layout: 'text' }, { id: 'z', layout: 'thanks' }]);
+    const r = appendSlide(d, { id: 'n', layout: 'table' });
+    expect(r.sections[1].slides).toEqual(['b', 'n', 'z']);
+    expect(r.slides.map((s) => s.id)).toEqual(['a', 'b', 'z', 'n']); // pool order is irrelevant to render order
+  });
+
+  it('appends normally when the last slide is not a thanks, and into an empty last section', () => {
+    const d = deckWith([], [{ id: 'a', layout: 'cover' }]);
+    const r = appendSlide(d, { id: 'n', layout: 'text' });
+    expect(r.sections[1].slides).toEqual(['n']);
+  });
+
+  it('does not mutate the input deck', () => {
+    const d = deckWith(['b', 'z'], [{ id: 'a', layout: 'cover' }, { id: 'b', layout: 'text' }, { id: 'z', layout: 'thanks' }]);
+    appendSlide(d, { id: 'n', layout: 'table' });
+    expect(d.sections[1].slides).toEqual(['b', 'z']);
+    expect(d.slides).toHaveLength(3);
   });
 });

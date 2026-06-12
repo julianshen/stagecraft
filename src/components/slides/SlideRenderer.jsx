@@ -395,7 +395,7 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:200, left:80, right:80 }}>
             <div className="slide-eyebrow">{slide.eyebrow || 'Agenda · 4 parts'}</div>
-            <h1 style={{ fontSize:96, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 80px', lineHeight:1 }}>What we'll cover</h1>
+            <h1 style={{ fontSize:96, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 80px', lineHeight:1 }}>{slide.title || "What we'll cover"}</h1>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'40px 80px', maxWidth:1700 }}>
               {(Array.isArray(slide.items) ? slide.items : []).filter(Boolean).map(it => (
                 <div key={it.n} style={{ display:'grid', gridTemplateColumns:'80px 1fr', gap:20, paddingBottom:24, borderBottom:'1px solid #eee' }}>
@@ -415,7 +415,7 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
         <div className={`slide ${slide.bg || 'ink'}`}>
           <div style={{ position:'absolute', top:60, left:80, right:80, display:'flex', justifyContent:'space-between', fontFamily:'var(--f-mono)', fontSize:18, opacity:0.5 }}>
             <span>CHAPTER {slide.chapter}</span>
-            <span>ATLAS · QBR · Q3 FY26</span>
+            <span>{String(deck?.title || '').toUpperCase()}</span>
           </div>
           <div style={{ position:'absolute', left:80, top:'50%', transform:'translateY(-50%)' }}>
             <div style={{ fontFamily:'var(--f-mono)', fontSize:240, fontWeight:400, opacity:0.15, letterSpacing:'-0.04em', lineHeight:0.8 }}>{slide.chapter}</div>
@@ -604,8 +604,8 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
       return (
         <div className="slide ink">
           <div style={{ position:'absolute', left:80, top:'50%', transform:'translateY(-50%)' }}>
-            <div style={{ fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.5, marginBottom:40 }}>END OF REVIEW</div>
-            <h1 style={{ fontSize:220, fontWeight:600, letterSpacing:'-0.05em', margin:0, lineHeight:0.9 }}>Thanks.</h1>
+            <div style={{ fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.5, marginBottom:40 }}>{slide.eyebrow || 'END OF REVIEW'}</div>
+            <h1 style={{ fontSize:220, fontWeight:600, letterSpacing:'-0.05em', margin:0, lineHeight:0.9 }}>{slide.title || 'Thanks'}.</h1>
             <div style={{ fontSize:32, opacity:0.7, marginTop:40 }}>{slide.subtitle}</div>
           </div>
           <div style={{ position:'absolute', right:100, top:100, width:320, height:320, border:'2px solid rgba(255,255,255,0.1)', borderRadius:'50%' }}/>

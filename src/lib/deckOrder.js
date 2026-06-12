@@ -147,3 +147,26 @@ export function flattenDeck(deck) {
   });
   return arr;
 }
+
+/**
+ * Append a new slide to the deck: into the pool and the last section. A
+ * closing 'thanks' slide stays the deck's final slide — new slides are
+ * inserted just before it (template skeletons end with one; appending after
+ * the closer would put every toolbar insert past the end of the deck).
+ * Pure: returns a new deck, input untouched.
+ */
+export function appendSlide(deck, slide) {
+  const sections = deck.sections || [];
+  const slides = [...(deck.slides || []), slide];
+  if (!sections.length) return { ...deck, slides };
+  const lastIdx = sections.length - 1;
+  const ids = [...(sections[lastIdx].slides || [])];
+  const lastSlide = (deck.slides || []).find((s) => s.id === ids[ids.length - 1]);
+  if (lastSlide?.layout === 'thanks') ids.splice(ids.length - 1, 0, slide.id);
+  else ids.push(slide.id);
+  return {
+    ...deck,
+    slides,
+    sections: sections.map((sec, i) => (i === lastIdx ? { ...sec, slides: ids } : sec)),
+  };
+}
