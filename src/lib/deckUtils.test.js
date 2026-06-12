@@ -332,3 +332,11 @@ describe('sanitizeSlidePatch — todayIndex must be numeric', () => {
     expect(sanitizeSlidePatch({ todayIndex: Infinity }, 'roadmap')).toEqual({});
   });
 });
+
+describe('sanitizeSlidePatch — empty chart payloads', () => {
+  it('rejects empty categories/series (chartData treats empty as missing → demo fallback)', () => {
+    expect(sanitizeSlidePatch({ chart: { categories: [], series: [] } }, 'chart')).toEqual({});
+    expect(sanitizeSlidePatch({ chart: { categories: ['A'], series: [] } }, 'chart')).toEqual({});
+    expect(sanitizeSlidePatch({ chart: { categories: [], series: [{ values: [1] }] } }, 'chart')).toEqual({});
+  });
+});

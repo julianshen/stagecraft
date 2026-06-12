@@ -61,8 +61,10 @@ const isPlainObject = (x) => x !== null && typeof x === 'object' && !Array.isArr
 // (e.g. { labels, datasets }) would silently blank the chart into the demo
 // fallback while the Co-pilot claims the edit applied.
 const isChartShape = (v) => isPlainObject(v)
-  && Array.isArray(v.categories) && v.categories.every(isPrimitive)
-  && Array.isArray(v.series) && v.series.every((s) =>
+  // non-empty required: chartData treats empty arrays as missing and falls
+  // back to the demo data — an "applied" edit would show fabricated numbers.
+  && Array.isArray(v.categories) && v.categories.length > 0 && v.categories.every(isPrimitive)
+  && Array.isArray(v.series) && v.series.length > 0 && v.series.every((s) =>
     isPlainObject(s) && Array.isArray(s.values) && s.values.every(isPrimitive)
     && (s.name === undefined || isPrimitive(s.name)));
 // lane: { name?, items: flat-record[] } — what roadmapModel reads; `items` is
