@@ -24,6 +24,7 @@ export default defineConfig({
         'src/lib/roadmapSpec.js',
         'src/lib/riskSpec.js',
         'src/lib/templateDeck.js',
+        'src/lib/slideFactories.js',
         'src/hooks/useDeckSync.js',
         'src/hooks/useReorderDrag.js',
         'src/data/deck.js',

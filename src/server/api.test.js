@@ -714,3 +714,30 @@ describe('LLM proxy error classification', () => {
     }
   });
 });
+
+describe('slide insertion keeps a closing thanks slide last', () => {
+  const closerDeck = () => ({
+    title: 'T',
+    sections: [{ id: 's1', name: 'Main', slides: ['a', 'z'] }],
+    slides: [{ id: 'a', layout: 'text', title: 'A' }, { id: 'z', layout: 'thanks', title: 'Thanks' }],
+  });
+
+  it('MCP add_slide inserts before a trailing thanks closer', async () => {
+    const store = createDeckStore(closerDeck());
+    const r = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'add_slide', arguments: { title: 'New' } }));
+    const id = r.body.result.id;
+    expect(store.deck.sections[0].slides).toEqual(['a', id, 'z']);
+  });
+
+  it('POST /api/slides inserts before a trailing thanks closer', async () => {
+    const store = createDeckStore(closerDeck());
+    const r = await handleApiRequest(store, req('POST', '/api/slides', { title: 'New' }));
+    expect(store.deck.sections[0].slides).toEqual(['a', r.body.id, 'z']);
+  });
+
+  it('appends normally when the deck does not end in a thanks slide', async () => {
+    const store = createDeckStore({ title: 'T', sections: [{ id: 's1', name: 'M', slides: ['a'] }], slides: [{ id: 'a', layout: 'text' }] });
+    const r = await handleApiRequest(store, req('POST', '/api/slides', { title: 'New' }));
+    expect(store.deck.sections[0].slides).toEqual(['a', r.body.id]);
+  });
+});

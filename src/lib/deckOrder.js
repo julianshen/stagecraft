@@ -147,3 +147,40 @@ export function flattenDeck(deck) {
   });
   return arr;
 }
+
+/**
+ * Append a new slide to the deck: into the pool and the last section. A
+ * closing 'thanks' slide stays the deck's final slide — new slides are
+ * inserted just before it (template skeletons end with one; appending after
+ * the closer would put every toolbar insert past the end of the deck).
+ * Pure: returns a new deck, input untouched.
+ */
+export function appendSlide(deck, slide) {
+  if (!deck || !Array.isArray(deck.sections) || !deck.sections.length) return deck;
+  const sections = deck.sections;
+  const slides = [...(deck.slides || [])];
+  // The closer rule keys off the deck's last RENDERED slide, via flattenDeck —
+  // so neither a trailing empty section (added in the Sorter after "Close")
+  // nor a dangling id with no pool slide can defeat it.
+  const flat = flattenDeck(deck);
+  const last = flat[flat.length - 1];
+  let targetIdx = sections.length - 1;
+  let closerId = null;
+  if (last?.layout === 'thanks') {
+    closerId = last.id;
+    targetIdx = sections.findIndex((sec) => sec.id === last.sectionId);
+    // Keep the pool order tracking the render order — API surfaces (GET
+    // /api/slides, MCP reorder_slides) read the pool directly.
+    slides.splice(slides.findIndex((s) => s.id === closerId), 0, slide);
+  } else {
+    slides.push(slide);
+  }
+  const ids = [...(sections[targetIdx].slides || [])];
+  if (closerId != null) ids.splice(ids.indexOf(closerId), 0, slide.id);
+  else ids.push(slide.id);
+  return {
+    ...deck,
+    slides,
+    sections: sections.map((sec, i) => (i === targetIdx ? { ...sec, slides: ids } : sec)),
+  };
+}

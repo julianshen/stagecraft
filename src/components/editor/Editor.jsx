@@ -4,13 +4,12 @@ import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
 import { createElement, updateSlideElements, alignElements, distributeElements } from '../../lib/elements.js';
-import { moveSlide, duplicateSlide } from '../../lib/deckOrder.js';
+import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
-  const [curId, setCurId] = useState(() => {
-    const flat = getFlatSlideIds(deck);
-    return flat[3] || flat[0] || null;
-  });
+  // Open on the first slide — for a freshly created deck that's the cover the
+  // user just named. (Previously flat[3], a heuristic tuned to the sample deck.)
+  const [curId, setCurId] = useState(() => getFlatSlideIds(deck)[0] || null);
 
   // Always-latest deck, so callbacks captured by an earlier render (e.g. the
   // Co-pilot's apply handler held across an in-flight request) read current state.
@@ -28,12 +27,9 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   }, [deck]);
 
   function pushSlide(slide) {
-    onDeckChange(prev => {
-      const next = JSON.parse(JSON.stringify(prev));
-      next.slides.push(slide);
-      next.sections[next.sections.length - 1].slides.push(slide.id);
-      return next;
-    });
+    // appendSlide keeps a closing 'thanks' slide last (template skeletons end
+    // with one), so inserts land before the closer instead of after the end.
+    onDeckChange(prev => appendSlide(prev, slide));
     setCurId(slide.id);
   }
 

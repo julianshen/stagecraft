@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { flattenDeck, moveSlide, duplicateSlide, addSection, renameSection, deleteSection, applySlideOrder } from './deckOrder.js';
+import { flattenDeck, moveSlide, duplicateSlide, addSection, renameSection, deleteSection, applySlideOrder, appendSlide } from './deckOrder.js';
 
 describe('flattenDeck', () => {
   const deck = {
@@ -337,5 +337,93 @@ describe('applySlideOrder', () => {
     applySlideOrder(d, ['e', 'd', 'c', 'b', 'a']);
     expect(d.sections[0].slides).toEqual(['a', 'b']);
     expect(d.sections[1].slides).toEqual(['c', 'd', 'e']);
+  });
+});
+
+describe('appendSlide', () => {
+  const deckWith = (lastSectionSlides, slides) => ({
+    title: 'D',
+    sections: [
+      { id: 's1', name: 'A', slides: ['a'] },
+      { id: 's2', name: 'B', slides: lastSectionSlides },
+    ],
+    slides,
+  });
+
+  it('appends to the pool and the last section', () => {
+    const d = deckWith(['b'], [{ id: 'a', layout: 'cover' }, { id: 'b', layout: 'text' }]);
+    const r = appendSlide(d, { id: 'n', layout: 'table' });
+    expect(r.slides.map((s) => s.id)).toEqual(['a', 'b', 'n']);
+    expect(r.sections[1].slides).toEqual(['b', 'n']);
+  });
+
+  it('keeps a closing thanks slide last — new slides insert just before it', () => {
+    const d = deckWith(['b', 'z'], [{ id: 'a', layout: 'cover' }, { id: 'b', layout: 'text' }, { id: 'z', layout: 'thanks' }]);
+    const r = appendSlide(d, { id: 'n', layout: 'table' });
+    expect(r.sections[1].slides).toEqual(['b', 'n', 'z']);
+    // pool order tracks render order — GET /api/slides and MCP reorder read it
+    expect(r.slides.map((s) => s.id)).toEqual(['a', 'b', 'n', 'z']);
+  });
+
+  it('appends normally when the last slide is not a thanks, and into an empty last section', () => {
+    const d = deckWith([], [{ id: 'a', layout: 'cover' }]);
+    const r = appendSlide(d, { id: 'n', layout: 'text' });
+    expect(r.sections[1].slides).toEqual(['n']);
+  });
+
+  it('does not mutate the input deck', () => {
+    const d = deckWith(['b', 'z'], [{ id: 'a', layout: 'cover' }, { id: 'b', layout: 'text' }, { id: 'z', layout: 'thanks' }]);
+    appendSlide(d, { id: 'n', layout: 'table' });
+    expect(d.sections[1].slides).toEqual(['b', 'z']);
+    expect(d.slides).toHaveLength(3);
+  });
+});
+
+describe('appendSlide guards', () => {
+  it('returns malformed decks unchanged (nullish or missing sections), like its siblings', () => {
+    expect(appendSlide(null, { id: 'n' })).toBeNull();
+    expect(appendSlide(undefined, { id: 'n' })).toBeUndefined();
+    const noSections = { slides: [] };
+    expect(appendSlide(noSections, { id: 'n' })).toBe(noSections);
+    const empty = { sections: [], slides: [] };
+    expect(appendSlide(empty, { id: 'n' })).toBe(empty); // nowhere to register it — a slide outside sections never renders
+  });
+});
+
+describe('appendSlide with trailing empty sections', () => {
+  it('keys the closer rule off the last RENDERED slide, inserting beside it in its own section', () => {
+    const d = {
+      sections: [
+        { id: 's1', name: 'Main', slides: ['a', 'z'] },
+        { id: 's2', name: 'New section', slides: [] }, // added in Sorter after the closer
+      ],
+      slides: [{ id: 'a', layout: 'text' }, { id: 'z', layout: 'thanks' }],
+    };
+    const r = appendSlide(d, { id: 'n', layout: 'table' });
+    expect(r.sections[0].slides).toEqual(['a', 'n', 'z']); // before the closer, in the closer's section
+    expect(r.sections[1].slides).toEqual([]);
+  });
+
+  it('still appends to the last section when the last rendered slide is not a thanks', () => {
+    const d = {
+      sections: [
+        { id: 's1', name: 'A', slides: ['z'] },
+        { id: 's2', name: 'B', slides: ['b'] }, // a thanks exists but is not the deck's last rendered slide
+      ],
+      slides: [{ id: 'z', layout: 'thanks' }, { id: 'b', layout: 'text' }],
+    };
+    const r = appendSlide(d, { id: 'n', layout: 'table' });
+    expect(r.sections[1].slides).toEqual(['b', 'n']);
+  });
+});
+
+describe('appendSlide with dangling section references', () => {
+  it('honors the actual rendered closer when a stale id trails it', () => {
+    const d = {
+      sections: [{ id: 's1', name: 'Main', slides: ['a', 'z', 'ghost'] }], // 'ghost' has no pool slide
+      slides: [{ id: 'a', layout: 'text' }, { id: 'z', layout: 'thanks' }],
+    };
+    const r = appendSlide(d, { id: 'n', layout: 'table' });
+    expect(r.sections[0].slides).toEqual(['a', 'n', 'z', 'ghost']); // before the rendered closer
   });
 });

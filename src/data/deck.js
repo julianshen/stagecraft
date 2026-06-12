@@ -24,7 +24,7 @@ export const SAMPLE_DECK = {
   slides: [
     { id: 'cover', layout: 'cover', title: 'Meet Stagecraft', subtitle: 'A dense, pro presentation editor · Built with Claude', bg: 'ink' },
 
-    { id: 'agenda', layout: 'agenda', title: 'Agenda', eyebrow: 'Overview · 4 parts', items: [
+    { id: 'agenda', layout: 'agenda', title: 'What we\'ll cover', eyebrow: 'Overview · 4 parts', items: [
       { n: '01', t: 'Why Stagecraft', d: 'What it is and who it is for' },
       { n: '02', t: 'What\'s inside',  d: 'Twelve layouts, charts, theming' },
       { n: '03', t: 'How it\'s built', d: 'Vite + React, MCP, Co-pilot' },

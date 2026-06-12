@@ -35,7 +35,7 @@ const UNSAFE_PATCH_KEYS = new Set(['id', '__proto__', 'constructor', 'prototype'
 // The discriminated-union layouts the renderer/exporter understand. An AI patch
 // setting `layout` to anything else would fall through to the default render
 // path and silently lose the slide's content, so it's rejected.
-const SLIDE_LAYOUTS = new Set([
+export const SLIDE_LAYOUTS = new Set([
   'cover', 'agenda', 'divider', 'kpi', 'chart', 'split',
   'table', 'text', 'roadmap', 'risks', 'list', 'thanks',
 ]);
@@ -47,12 +47,37 @@ const SLIDE_FIELDS = new Set([
   'layout', 'title', 'subtitle', 'sub', 'body', 'eyebrow', 'kicker',
   'chapter', 'note', 'notes', 'bg', 'chartType',
   'items', 'kpis', 'stats', 'rows', 'columns',
+  'chart', 'lanes', 'months', 'todayIndex',
 ]);
 const isPrimitive = (x) => x === null || typeof x !== 'object';
 // A flat record: a non-array object whose own values are all primitives. Used
 // for agenda/risk items and kpi/stat entries, which the renderer reads field by
 // field (it.t, k.label, st.val) — a nested object would render as a React child.
 const isFlatRecord = (x) => x !== null && typeof x === 'object' && !Array.isArray(x) && Object.values(x).every(isPrimitive);
+const isPlainObject = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+// chart: { categories: primitive[], series: { name?, values: primitive[] }[] }
+// — exactly what chartData (canvas + export) reads. Both keys are REQUIRED:
+// the patch replaces the whole object, so a plausible-but-different shape
+// (e.g. { labels, datasets }) would silently blank the chart into the demo
+// fallback while the Co-pilot claims the edit applied.
+const isChartShape = (v) => isPlainObject(v)
+  // non-empty required: chartData treats empty arrays as missing and falls
+  // back to the demo data — an "applied" edit would show fabricated numbers.
+  && Array.isArray(v.categories) && v.categories.length > 0 && v.categories.every(isPrimitive)
+  && Array.isArray(v.series) && v.series.length > 0 && v.series.every((s) =>
+    isPlainObject(s) && Array.isArray(s.values) && s.values.every(isPrimitive)
+    && (s.name === undefined || isPrimitive(s.name)));
+// lane: { name?, items: flat-record[] } — what roadmapModel reads; `items` is
+// REQUIRED for the same replace-not-merge reason ({ title, tasks } would
+// normalize to an empty lane and blank the roadmap). Item positions t/d must
+// be numbers when present — roadmapModel normalizes a string "3" to t:0/d:1,
+// silently misplacing the bar while the edit reports as applied.
+const isLaneItem = (it) => isFlatRecord(it)
+  && (it.t === undefined || Number.isFinite(it.t))
+  && (it.d === undefined || Number.isFinite(it.d));
+const isLane = (l) => isPlainObject(l)
+  && (l.name === undefined || isPrimitive(l.name))
+  && Array.isArray(l.items) && l.items.every(isLaneItem);
 
 // Accept a patch field only if its value matches the slide schema's shape for
 // the target layout — a value of the wrong shape (e.g. `title: { text }`, a
@@ -68,6 +93,15 @@ function fieldOk(key, value, layout) {
   if (key === 'items') return Array.isArray(value) && value.every(layout === 'list' ? isPrimitive : isFlatRecord);
   // kpis/stats are always object-backed (k.label/k.val, st.lbl/st.val).
   if (key === 'kpis' || key === 'stats') return Array.isArray(value) && value.every(isFlatRecord);
+  // The data fields below only render on their own layout (the effective
+  // layout includes a same-patch switch) — accepting them elsewhere would
+  // persist an invisible "applied" edit.
+  if (key === 'chart') return layout === 'chart' && isChartShape(value);
+  if (key === 'lanes') return layout === 'roadmap' && Array.isArray(value) && value.every(isLane);
+  if (key === 'months') return layout === 'roadmap' && Array.isArray(value) && value.every(isPrimitive);
+  // roadmapModel only honors finite numbers (explicit null = "no marker");
+  // a string "3" would pass as a primitive but silently render nothing.
+  if (key === 'todayIndex') return layout === 'roadmap' && (value === null || Number.isFinite(value));
   return isPrimitive(value);
 }
 

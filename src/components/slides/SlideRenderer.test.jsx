@@ -196,3 +196,35 @@ describe('Slide — risks severity colours', () => {
     expect(container.innerHTML).not.toContain('solid undefined');
   });
 });
+
+describe('slide chrome is content-driven, not sample-deck copy', () => {
+  it('agenda renders the slide title, falling back to the stock heading', () => {
+    const { container } = render(
+      <Slide slide={{ id: 'a', layout: 'agenda', title: 'Our plan', items: [] }} deck={{ title: 'D' }} num={1} total={2} />,
+    );
+    expect(container.textContent).toContain('Our plan');
+    const { container: c2 } = render(
+      <Slide slide={{ id: 'a', layout: 'agenda', items: [] }} deck={{ title: 'D' }} num={1} total={2} />,
+    );
+    expect(c2.textContent).toContain("What we'll cover");
+  });
+
+  it('divider footer shows the deck title, not the sample-deck QBR string', () => {
+    const { container } = render(
+      <Slide slide={{ id: 'd', layout: 'divider', chapter: '01', title: 'Part one' }} deck={{ title: 'My Pitch' }} num={1} total={2} />,
+    );
+    expect(container.textContent).not.toContain('ATLAS · QBR');
+    expect(container.textContent).toContain('MY PITCH');
+  });
+
+  it('thanks renders the slide title, falling back to Thanks.', () => {
+    const { container } = render(
+      <Slide slide={{ id: 't', layout: 'thanks', title: 'Merci', subtitle: 'à bientôt' }} deck={{ title: 'D' }} num={1} total={1} />,
+    );
+    expect(container.textContent).toContain('Merci.');
+    const { container: c2 } = render(
+      <Slide slide={{ id: 't', layout: 'thanks' }} deck={{ title: 'D' }} num={1} total={1} />,
+    );
+    expect(c2.textContent).toContain('Thanks.');
+  });
+});

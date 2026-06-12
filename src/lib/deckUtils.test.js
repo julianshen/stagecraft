@@ -275,3 +275,98 @@ describe('sanitizeSlidePatch', () => {
   });
 });
 
+
+describe('sanitizeSlidePatch — chart and roadmap data fields', () => {
+  it('accepts a well-shaped chart object', () => {
+    const patch = { chart: { categories: ['A', 'B'], series: [{ name: 'S1', values: [1, 2] }] } };
+    expect(sanitizeSlidePatch(patch, 'chart')).toEqual(patch);
+  });
+
+  it('rejects malformed chart values (array, non-array series values, object categories)', () => {
+    expect(sanitizeSlidePatch({ chart: [1, 2] }, 'chart')).toEqual({});
+    expect(sanitizeSlidePatch({ chart: { categories: ['A'], series: [{ values: 'nope' }] } }, 'chart')).toEqual({});
+    expect(sanitizeSlidePatch({ chart: { categories: [{ q: 1 }], series: [] } }, 'chart')).toEqual({});
+  });
+
+  it('rejects plausible-but-unsupported chart shapes that would blank the slide', () => {
+    // chartData only reads categories/series — a replace with neither present
+    // would silently fall back to the demo data while Co-pilot claims success.
+    expect(sanitizeSlidePatch({ chart: { labels: ['A'], datasets: [{ data: [1] }] } }, 'chart')).toEqual({});
+    expect(sanitizeSlidePatch({ chart: { categories: ['A'] } }, 'chart')).toEqual({}); // replace loses series
+    expect(sanitizeSlidePatch({ chart: { series: [{ values: [1] }] } }, 'chart')).toEqual({}); // and vice versa
+  });
+
+  it('accepts well-shaped roadmap lanes, months, and todayIndex', () => {
+    const patch = {
+      lanes: [{ name: 'A', items: [{ t: 0, d: 2, lbl: 'M1', state: 'done' }] }, { name: 'B', items: [] }],
+      months: ['Jan', 'Feb'],
+      todayIndex: 1.5,
+    };
+    expect(sanitizeSlidePatch(patch, 'roadmap')).toEqual(patch);
+  });
+
+  it('rejects plausible-but-unsupported lane shapes that would blank the roadmap', () => {
+    // roadmapModel reads name/items — a {title, tasks} lane normalizes to an
+    // empty lane, leaving the roadmap blank while Co-pilot claims success.
+    expect(sanitizeSlidePatch({ lanes: [{ title: 'A', tasks: [] }] }, 'roadmap')).toEqual({});
+    expect(sanitizeSlidePatch({ lanes: [{ name: 'A' }] }, 'roadmap')).toEqual({}); // items required
+  });
+
+  it('rejects malformed lanes (nested non-flat items, non-object lane) and months', () => {
+    expect(sanitizeSlidePatch({ lanes: [{ items: [{ deep: { x: 1 } }] }] }, 'roadmap')).toEqual({});
+    expect(sanitizeSlidePatch({ lanes: ['a'] }, 'roadmap')).toEqual({});
+    expect(sanitizeSlidePatch({ months: [{ m: 'Jan' }] }, 'roadmap')).toEqual({});
+  });
+});
+
+describe('sanitizeSlidePatch — todayIndex must be numeric', () => {
+  it('accepts finite numbers and explicit null (meaning "no marker")', () => {
+    expect(sanitizeSlidePatch({ todayIndex: 3 }, 'roadmap')).toEqual({ todayIndex: 3 });
+    expect(sanitizeSlidePatch({ todayIndex: 0 }, 'roadmap')).toEqual({ todayIndex: 0 });
+    expect(sanitizeSlidePatch({ todayIndex: null }, 'roadmap')).toEqual({ todayIndex: null });
+  });
+
+  it('rejects strings and non-finite values roadmapModel would silently ignore', () => {
+    expect(sanitizeSlidePatch({ todayIndex: '3' }, 'roadmap')).toEqual({});
+    expect(sanitizeSlidePatch({ todayIndex: NaN }, 'roadmap')).toEqual({});
+    expect(sanitizeSlidePatch({ todayIndex: Infinity }, 'roadmap')).toEqual({});
+  });
+});
+
+describe('sanitizeSlidePatch — empty chart payloads', () => {
+  it('rejects empty categories/series (chartData treats empty as missing → demo fallback)', () => {
+    expect(sanitizeSlidePatch({ chart: { categories: [], series: [] } }, 'chart')).toEqual({});
+    expect(sanitizeSlidePatch({ chart: { categories: ['A'], series: [] } }, 'chart')).toEqual({});
+    expect(sanitizeSlidePatch({ chart: { categories: [], series: [{ values: [1] }] } }, 'chart')).toEqual({});
+  });
+});
+
+describe('sanitizeSlidePatch — roadmap item positions must be numeric', () => {
+  it('rejects string t/d positions roadmapModel would normalize to 0/1', () => {
+    expect(sanitizeSlidePatch({ lanes: [{ name: 'A', items: [{ t: '3', d: 2, lbl: 'M', state: 'done' }] }] }, 'roadmap')).toEqual({});
+    expect(sanitizeSlidePatch({ lanes: [{ name: 'A', items: [{ t: 3, d: '2', lbl: 'M', state: 'done' }] }] }, 'roadmap')).toEqual({});
+  });
+
+  it('accepts numeric positions and omitted t/d (normItem defaults them)', () => {
+    const ok = { lanes: [{ name: 'A', items: [{ t: 3, d: 2, lbl: 'M', state: 'done' }, { lbl: 'No pos' }] }] };
+    expect(sanitizeSlidePatch(ok, 'roadmap')).toEqual(ok);
+  });
+});
+
+describe('sanitizeSlidePatch — data fields are gated to their layouts', () => {
+  const chart = { categories: ['A'], series: [{ values: [1] }] };
+
+  it('rejects a chart payload on a non-chart slide (nothing would render it)', () => {
+    expect(sanitizeSlidePatch({ chart }, 'text')).toEqual({});
+  });
+
+  it('accepts a chart payload when the same patch switches the slide to chart', () => {
+    expect(sanitizeSlidePatch({ layout: 'chart', chart }, 'text')).toEqual({ layout: 'chart', chart });
+  });
+
+  it('rejects roadmap data fields on a non-roadmap slide', () => {
+    expect(sanitizeSlidePatch({ lanes: [{ name: 'A', items: [] }] }, 'kpi')).toEqual({});
+    expect(sanitizeSlidePatch({ months: ['Jan'] }, 'kpi')).toEqual({});
+    expect(sanitizeSlidePatch({ todayIndex: 2 }, 'kpi')).toEqual({});
+  });
+});
