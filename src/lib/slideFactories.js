@@ -53,6 +53,11 @@ export function createComponentSlide(id) {
       { label: 'Metric three', val: '0.0', delta: '-0',   target: 'vs target', good: false },
     ]},
     roadmap: { layout: 'roadmap', title: 'Roadmap' },
+    split:   { layout: 'split', title: 'One key idea', body: 'Pair a short narrative with the numbers that back it up.', stats: [
+      { lbl: 'Stat one', val: '—' },
+      { lbl: 'Stat two', val: '—' },
+    ]},
+    thanks:  { layout: 'thanks', title: 'Thanks', subtitle: 'Questions & discussion' },
     risks:   { layout: 'risks', title: 'Top risks', items: [
       { sev: 'high', t: 'First risk',  d: 'Describe the exposure and magnitude' },
       { sev: 'med',  t: 'Second risk', d: 'Describe the exposure and magnitude' },

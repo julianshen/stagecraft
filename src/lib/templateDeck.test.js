@@ -24,12 +24,6 @@ describe('templateDeck', () => {
     expect(d.slides.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('section membership references every slide exactly once, in slide-pool order', () => {
-    const d = templateDeck({ name: 'Ledger', vibe: 'ledger' });
-    expect(d.sections.flatMap((s) => s.slides)).toEqual(d.slides.map((s) => s.id));
-    expect(flattenDeck(d).map((s) => s.id)).toEqual(d.slides.map((s) => s.id));
-  });
-
   it('gives every slide a unique id, even across calls', () => {
     const a = templateDeck({ name: 'A', vibe: 'mono' });
     const b = templateDeck({ name: 'B', vibe: 'mono' });
@@ -44,11 +38,11 @@ describe('templateDeck', () => {
 });
 
 describe('per-template skeletons', () => {
-  it.each(TEMPLATES.map((t) => [t.name, t]))('%s yields a structurally valid deck', (_, t) => {
+  it.each(TEMPLATES)('$name yields a structurally valid deck', (t) => {
     const d = templateDeck(t);
     // every slide referenced exactly once, render order == pool order
     expect(d.sections.flatMap((s) => s.slides)).toEqual(d.slides.map((s) => s.id));
-    expect(flattenDeck(d)).toHaveLength(d.slides.length);
+    expect(flattenDeck(d).map((s) => s.id)).toEqual(d.slides.map((s) => s.id));
     // only known layouts, cover first and titled after the template
     for (const s of d.slides) expect(LAYOUTS).toContain(s.layout);
     expect(d.slides[0].layout).toBe('cover');
@@ -89,8 +83,9 @@ describe('per-template skeletons', () => {
     expect(by('kpi').kpis.length).toBeGreaterThan(0);
     expect(by('kpi').kpis[0]).toHaveProperty('label');
     expect(by('kpi').kpis[0]).toHaveProperty('val');
-    expect(by('chart').chart.categories.length).toBeGreaterThan(0);
-    expect(by('chart').chart.series[0].values).toHaveLength(by('chart').chart.categories.length);
+    // chart starters are title-only — canvas and export share chartData's
+    // demo fallback, same as a toolbar-inserted chart
+    expect(by('chart').chartType).toBeTruthy();
     expect(by('table').columns.length).toBeGreaterThan(0);
     for (const row of by('table').rows) expect(row).toHaveLength(by('table').columns.length);
     for (const item of by('risks').items) {
