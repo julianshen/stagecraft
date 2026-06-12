@@ -284,17 +284,32 @@ describe('sanitizeSlidePatch — chart and roadmap data fields', () => {
 
   it('rejects malformed chart values (array, non-array series values, object categories)', () => {
     expect(sanitizeSlidePatch({ chart: [1, 2] }, 'chart')).toEqual({});
-    expect(sanitizeSlidePatch({ chart: { series: [{ values: 'nope' }] } }, 'chart')).toEqual({});
-    expect(sanitizeSlidePatch({ chart: { categories: [{ q: 1 }] } }, 'chart')).toEqual({});
+    expect(sanitizeSlidePatch({ chart: { categories: ['A'], series: [{ values: 'nope' }] } }, 'chart')).toEqual({});
+    expect(sanitizeSlidePatch({ chart: { categories: [{ q: 1 }], series: [] } }, 'chart')).toEqual({});
+  });
+
+  it('rejects plausible-but-unsupported chart shapes that would blank the slide', () => {
+    // chartData only reads categories/series — a replace with neither present
+    // would silently fall back to the demo data while Co-pilot claims success.
+    expect(sanitizeSlidePatch({ chart: { labels: ['A'], datasets: [{ data: [1] }] } }, 'chart')).toEqual({});
+    expect(sanitizeSlidePatch({ chart: { categories: ['A'] } }, 'chart')).toEqual({}); // replace loses series
+    expect(sanitizeSlidePatch({ chart: { series: [{ values: [1] }] } }, 'chart')).toEqual({}); // and vice versa
   });
 
   it('accepts well-shaped roadmap lanes, months, and todayIndex', () => {
     const patch = {
-      lanes: [{ name: 'A', items: [{ t: 0, d: 2, lbl: 'M1', state: 'done' }] }, { name: 'B' }],
+      lanes: [{ name: 'A', items: [{ t: 0, d: 2, lbl: 'M1', state: 'done' }] }, { name: 'B', items: [] }],
       months: ['Jan', 'Feb'],
       todayIndex: 1.5,
     };
     expect(sanitizeSlidePatch(patch, 'roadmap')).toEqual(patch);
+  });
+
+  it('rejects plausible-but-unsupported lane shapes that would blank the roadmap', () => {
+    // roadmapModel reads name/items — a {title, tasks} lane normalizes to an
+    // empty lane, leaving the roadmap blank while Co-pilot claims success.
+    expect(sanitizeSlidePatch({ lanes: [{ title: 'A', tasks: [] }] }, 'roadmap')).toEqual({});
+    expect(sanitizeSlidePatch({ lanes: [{ name: 'A' }] }, 'roadmap')).toEqual({}); // items required
   });
 
   it('rejects malformed lanes (nested non-flat items, non-object lane) and months', () => {

@@ -55,17 +55,22 @@ const isPrimitive = (x) => x === null || typeof x !== 'object';
 // field (it.t, k.label, st.val) — a nested object would render as a React child.
 const isFlatRecord = (x) => x !== null && typeof x === 'object' && !Array.isArray(x) && Object.values(x).every(isPrimitive);
 const isPlainObject = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
-// chart: { categories?: primitive[], series?: { name?, values: primitive[] }[] }
-// — the shape chartData (canvas + export) reads.
+// chart: { categories: primitive[], series: { name?, values: primitive[] }[] }
+// — exactly what chartData (canvas + export) reads. Both keys are REQUIRED:
+// the patch replaces the whole object, so a plausible-but-different shape
+// (e.g. { labels, datasets }) would silently blank the chart into the demo
+// fallback while the Co-pilot claims the edit applied.
 const isChartShape = (v) => isPlainObject(v)
-  && (v.categories === undefined || (Array.isArray(v.categories) && v.categories.every(isPrimitive)))
-  && (v.series === undefined || (Array.isArray(v.series) && v.series.every((s) =>
+  && Array.isArray(v.categories) && v.categories.every(isPrimitive)
+  && Array.isArray(v.series) && v.series.every((s) =>
     isPlainObject(s) && Array.isArray(s.values) && s.values.every(isPrimitive)
-    && (s.name === undefined || isPrimitive(s.name)))));
-// lane: { name?, items?: flat-record[] } — the shape roadmapModel reads.
+    && (s.name === undefined || isPrimitive(s.name)));
+// lane: { name?, items: flat-record[] } — what roadmapModel reads; `items` is
+// REQUIRED for the same replace-not-merge reason ({ title, tasks } would
+// normalize to an empty lane and blank the roadmap).
 const isLane = (l) => isPlainObject(l)
   && (l.name === undefined || isPrimitive(l.name))
-  && (l.items === undefined || (Array.isArray(l.items) && l.items.every(isFlatRecord)));
+  && Array.isArray(l.items) && l.items.every(isFlatRecord);
 
 // Accept a patch field only if its value matches the slide schema's shape for
 // the target layout — a value of the wrong shape (e.g. `title: { text }`, a
