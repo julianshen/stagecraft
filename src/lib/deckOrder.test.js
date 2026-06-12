@@ -415,3 +415,14 @@ describe('appendSlide with trailing empty sections', () => {
     expect(r.sections[1].slides).toEqual(['b', 'n']);
   });
 });
+
+describe('appendSlide with dangling section references', () => {
+  it('honors the actual rendered closer when a stale id trails it', () => {
+    const d = {
+      sections: [{ id: 's1', name: 'Main', slides: ['a', 'z', 'ghost'] }], // 'ghost' has no pool slide
+      slides: [{ id: 'a', layout: 'text' }, { id: 'z', layout: 'thanks' }],
+    };
+    const r = appendSlide(d, { id: 'n', layout: 'table' });
+    expect(r.sections[0].slides).toEqual(['a', 'n', 'z', 'ghost']); // before the rendered closer
+  });
+});

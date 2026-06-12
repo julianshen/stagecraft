@@ -159,20 +159,19 @@ export function appendSlide(deck, slide) {
   if (!deck || !Array.isArray(deck.sections) || !deck.sections.length) return deck;
   const sections = deck.sections;
   const slides = [...(deck.slides || []), slide];
-  // The closer rule keys off the deck's last RENDERED slide — a trailing
-  // empty section (e.g. added in the Sorter after "Close") must not defeat it.
-  const flatIds = sections.flatMap((sec) => sec?.slides || []);
-  const lastRendered = (deck.slides || []).find((s) => s.id === flatIds[flatIds.length - 1]);
+  // The closer rule keys off the deck's last RENDERED slide, via flattenDeck —
+  // so neither a trailing empty section (added in the Sorter after "Close")
+  // nor a dangling id with no pool slide can defeat it.
+  const flat = flattenDeck(deck);
+  const last = flat[flat.length - 1];
   let targetIdx = sections.length - 1;
-  let beforeCloser = false;
-  if (lastRendered?.layout === 'thanks') {
-    for (let i = sections.length - 1; i >= 0; i--) {
-      if ((sections[i]?.slides || []).includes(lastRendered.id)) { targetIdx = i; break; }
-    }
-    beforeCloser = true;
+  let closerId = null;
+  if (last?.layout === 'thanks') {
+    closerId = last.id;
+    targetIdx = sections.findIndex((sec) => sec.id === last.sectionId);
   }
   const ids = [...(sections[targetIdx].slides || [])];
-  if (beforeCloser) ids.splice(ids.length - 1, 0, slide.id);
+  if (closerId != null) ids.splice(ids.indexOf(closerId), 0, slide.id);
   else ids.push(slide.id);
   return {
     ...deck,
