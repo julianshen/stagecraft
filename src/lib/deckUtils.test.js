@@ -318,3 +318,17 @@ describe('sanitizeSlidePatch — chart and roadmap data fields', () => {
     expect(sanitizeSlidePatch({ months: [{ m: 'Jan' }] }, 'roadmap')).toEqual({});
   });
 });
+
+describe('sanitizeSlidePatch — todayIndex must be numeric', () => {
+  it('accepts finite numbers and explicit null (meaning "no marker")', () => {
+    expect(sanitizeSlidePatch({ todayIndex: 3 }, 'roadmap')).toEqual({ todayIndex: 3 });
+    expect(sanitizeSlidePatch({ todayIndex: 0 }, 'roadmap')).toEqual({ todayIndex: 0 });
+    expect(sanitizeSlidePatch({ todayIndex: null }, 'roadmap')).toEqual({ todayIndex: null });
+  });
+
+  it('rejects strings and non-finite values roadmapModel would silently ignore', () => {
+    expect(sanitizeSlidePatch({ todayIndex: '3' }, 'roadmap')).toEqual({});
+    expect(sanitizeSlidePatch({ todayIndex: NaN }, 'roadmap')).toEqual({});
+    expect(sanitizeSlidePatch({ todayIndex: Infinity }, 'roadmap')).toEqual({});
+  });
+});

@@ -89,7 +89,10 @@ function fieldOk(key, value, layout) {
   if (key === 'chart') return isChartShape(value);
   if (key === 'lanes') return Array.isArray(value) && value.every(isLane);
   if (key === 'months') return Array.isArray(value) && value.every(isPrimitive);
-  return isPrimitive(value); // todayIndex and all remaining scalar fields
+  // roadmapModel only honors finite numbers (explicit null = "no marker");
+  // a string "3" would pass as a primitive but silently render nothing.
+  if (key === 'todayIndex') return value === null || Number.isFinite(value);
+  return isPrimitive(value);
 }
 
 /**
