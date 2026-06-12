@@ -63,4 +63,15 @@ describe('RoadmapLanesEditor', () => {
     expect(screen.getByDisplayValue('Platform')).toBeInTheDocument(); // roadmapModel default lanes
     expect(screen.getByDisplayValue('Enterprise')).toBeInTheDocument();
   });
+
+  it('commits the WHOLE materialized model — todayIndex and months ride along with lanes', () => {
+    // Committing only { lanes } would flip roadmapModel off the demo fallback
+    // and silently drop the TODAY marker the user was looking at.
+    const { onApply } = renderEditor({ id: 'r2', layout: 'roadmap', title: 'R' });
+    fireEvent.change(screen.getByDisplayValue('Workflow GA'), { target: { value: 'X' } });
+    const patch = onApply.mock.calls[0][0];
+    expect(patch.todayIndex).toBe(3.5); // the demo marker survives the fork
+    expect(patch.months).toHaveLength(12);
+    expect(sanitizeSlidePatch(patch, 'roadmap')).toEqual(patch);
+  });
 });

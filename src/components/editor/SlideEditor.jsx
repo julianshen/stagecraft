@@ -61,6 +61,16 @@ export default function SlideEditor(props) {
   // values bypass the drag clamps) before forwarding as a patch.
   const updateSelEl = (el) => { if (el?.id) callbacks.onUpdateElement?.(el.id, clampElement(el)); };
 
+  // Inspector Data-tab edits commit to the CURRENT slide through the Co-pilot's
+  // validated patch path. The editors are built to emit gate-valid payloads, so
+  // a rejection means the editor and the schema gate have drifted — warn loudly
+  // instead of leaving the user with a silently frozen input.
+  const applyPatchToCurrent = (patch) => {
+    const applied = callbacks.onApplyAIPatch?.(patch, cur?.id);
+    if (applied && applied.length === 0) console.warn('Inspector patch rejected by the slide-schema gate', patch);
+    return applied;
+  };
+
   // Delete/Backspace removes the selected element (unless typing in a field).
   // Callbacks go through a ref so the listener isn't re-bound every render (the
   // `callbacks` object is a fresh literal each parent render).
@@ -242,7 +252,7 @@ export default function SlideEditor(props) {
             count={props.selectedElementCount}
             extras={slots.inspectorExtra}
             slide={cur}
-            onApplyPatch={(patch) => callbacks.onApplyAIPatch?.(patch, cur?.id)}
+            onApplyPatch={applyPatchToCurrent}
           />
         )}
         {layoutVariant === 'floating' && (
@@ -254,7 +264,7 @@ export default function SlideEditor(props) {
             count={props.selectedElementCount}
             extras={slots.inspectorExtra}
             slide={cur}
-            onApplyPatch={(patch) => callbacks.onApplyAIPatch?.(patch, cur?.id)}
+            onApplyPatch={applyPatchToCurrent}
           />
         )}
       </div>

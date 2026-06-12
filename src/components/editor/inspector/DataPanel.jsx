@@ -10,7 +10,7 @@ export default function DataPanel({ slide, onApply }) {
     <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{text}</div>
   );
   if (!slide) return hint('Select a slide.');
-  // key by slide id so switching slides remounts the editors with fresh state
+  // key by slide id so a focused input doesn't carry over to the next slide
   if (slide.layout === 'chart') return <ChartDataEditor key={slide.id} slide={slide} onApply={onApply} />;
   if (slide.layout === 'roadmap') return <RoadmapLanesEditor key={slide.id} slide={slide} onApply={onApply} />;
   return hint('Data editing applies to chart and roadmap slides — select one on the canvas.');

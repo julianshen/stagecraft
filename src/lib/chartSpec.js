@@ -30,6 +30,10 @@ export const CHART_SERIES_HEX = Object.freeze(['537FEB', '349D62', 'D48E00', 'BE
 // and the on-canvas chart renderers so both draw the same numbers. Falls back to
 // sensible defaults; clips an over-long series and pads a short one with 0 so
 // every series aligns with the categories.
+// The chart pipeline's one numeric policy: anything non-finite becomes 0.
+// Exported so data editors coerce exactly the way the renderer/export will.
+export const coerceNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
 export function chartData(slide) {
   const chart = (slide && slide.chart) || {};
   const categories = Array.isArray(chart.categories) && chart.categories.length ? chart.categories : DEFAULT_CATEGORIES;
@@ -38,7 +42,7 @@ export function chartData(slide) {
   const series = rawSeries.map((s, i) => {
     // Coerce to finite numbers (non-numeric → 0) so neither the SVG coords nor
     // the pptxgenjs chart XML get NaN; clip to and pad to the category count.
-    const values = (s && Array.isArray(s.values) ? s.values : []).slice(0, n).map((v) => (Number.isFinite(Number(v)) ? Number(v) : 0));
+    const values = (s && Array.isArray(s.values) ? s.values : []).slice(0, n).map(coerceNum);
     while (values.length < n) values.push(0);
     return { name: (s && s.name) || `Series ${i + 1}`, values };
   });
