@@ -392,7 +392,7 @@ Format chooser: **PPTX 🟢**; Keynote / PDF / PNG seq / MP4 / Link 🔴 (close 
 ---
 
 ## 14. Templates — `TemplatePicker.jsx` 🟢
-Category-filtered gallery with visual `TemplatePreview` per `vibe`. 🟢 filter; 🟢 **picking a template creates a real library deck** — `templateDeck(template)` (`lib/templateDeck.js`) builds a themed starter (`vibe`→theme via `vibeTheme`, a cover titled after the template + a starter content slide), which `App.handlePickTemplate` persists via `createDeck(name, deck)` (`POST /api/decks`) and opens in the editor. 🔴 search. ⚪ Per-template bespoke multi-slide skeletons (currently one shared cover+intro starter).
+Category-filtered gallery with visual `TemplatePreview` per `vibe`. 🟢 filter; 🟢 **picking a template creates a real library deck** — `templateDeck(template)` (`lib/templateDeck.js`) builds a themed starter (`vibe`→theme via `vibeTheme`, a cover titled after the template + a **per-vibe multi-section skeleton** of placeholder slides in the layouts that fit the category — e.g. Ledger: kpi/chart/table/risks, Substrate: agenda/chart/roadmap/risks — closing with a thanks slide; Blank and unknown vibes stay minimal cover+text), which `App.handlePickTemplate` persists via `createDeck(name, deck)` (`POST /api/decks`) and opens in the editor. 🔴 search.
 
 ---
 
@@ -437,7 +437,7 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 | Canvas selection / direct manipulation | 🟢 core + multi-select/marquee/move/resize/rotate/align (H+V)/distribute |
 | Inspector Design/Animate, timeline | 🔴 |
 | Home/Sorter secondary controls, drag-reorder | 🔴 → ⚪ |
-| Templates → real starter decks | 🟡 → ⚪ |
+| Templates → real starter decks (per-template skeletons) | 🟢 |
 | Editor ↔ server round-trip | 🟢 |
 | Collaboration | 🔴 → ⚪ |
 | Durable persistence + multi-deck library | 🟢 |
@@ -452,6 +452,6 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 4. ~~**Durable persistence + multi-deck library**~~ ✅ **Done** — disk-persisted deck library; Home lists/opens/creates/renames/deletes real decks (§7.1, §17). _Follow-up: seed via `POST /api/decks` to remove the last untagged-write window; list-view rename/delete._
 5. ~~**Drag-to-reorder + section CRUD + AI reorder**~~ ✅ **Done** — Thumbs rail (§7.2.3) and Sorter grid (§7.3) both reorder via `moveSlide`; Sorter adds section create/rename/delete (`addSection`/`renameSection`/`deleteSection`); **Rearrange with AI** sends the outline to the Co-pilot (`suggestSlideOrder`) and applies the order via `applySlideOrder` (all in `lib/deckOrder.js`/`lib/llmClient.js`). _(§7.3)_
 6. ~~**Chart + roadmap in PPTX**~~ ✅ **Done** — native editable `addChart` via `chartSpec`; canvas + export share `chartData` so charts are data-driven and match (§12). Roadmap now exports as a native timeline (month axis, status-coloured lane bars, TODAY marker, legend), built from the shared `roadmapModel` (`lib/roadmapSpec.js`) so canvas and export match. ⚪ Remaining: multi-series chart canvas rendering; wire export-modal range/quality/notes options. _(§12, §13)_
-7. ~~**Templates seed real decks**~~ ✅ **Done** — the picker creates a themed library deck via `templateDeck` + `createDeck` (§14). ⚪ Remaining: genericize the `DeckCover` chrome string; per-template multi-slide skeletons. (Top-p persistence ✅ §7.4.) _(§7.4, §7.1)_ (Duplicate-slide ✅ §7.2.1.)
+7. ~~**Templates seed real decks**~~ ✅ **Done** — the picker creates a themed library deck via `templateDeck` + `createDeck` (§14). ⚪ Remaining: genericize the `DeckCover` chrome string. (Top-p persistence ✅ §7.4; per-template skeletons ✅ §14.) _(§7.4, §7.1)_ (Duplicate-slide ✅ §7.2.1.)
 8. **Presenter** laser-tracks-pointer + blackout. _(§7.5)_
 9. **Collaboration** presence + comments. _(§16)_
