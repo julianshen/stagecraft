@@ -158,7 +158,7 @@ export function flattenDeck(deck) {
 export function appendSlide(deck, slide) {
   if (!deck || !Array.isArray(deck.sections) || !deck.sections.length) return deck;
   const sections = deck.sections;
-  const slides = [...(deck.slides || []), slide];
+  const slides = [...(deck.slides || [])];
   // The closer rule keys off the deck's last RENDERED slide, via flattenDeck —
   // so neither a trailing empty section (added in the Sorter after "Close")
   // nor a dangling id with no pool slide can defeat it.
@@ -169,6 +169,11 @@ export function appendSlide(deck, slide) {
   if (last?.layout === 'thanks') {
     closerId = last.id;
     targetIdx = sections.findIndex((sec) => sec.id === last.sectionId);
+    // Keep the pool order tracking the render order — API surfaces (GET
+    // /api/slides, MCP reorder_slides) read the pool directly.
+    slides.splice(slides.findIndex((s) => s.id === closerId), 0, slide);
+  } else {
+    slides.push(slide);
   }
   const ids = [...(sections[targetIdx].slides || [])];
   if (closerId != null) ids.splice(ids.indexOf(closerId), 0, slide.id);

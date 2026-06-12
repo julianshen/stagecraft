@@ -361,7 +361,8 @@ describe('appendSlide', () => {
     const d = deckWith(['b', 'z'], [{ id: 'a', layout: 'cover' }, { id: 'b', layout: 'text' }, { id: 'z', layout: 'thanks' }]);
     const r = appendSlide(d, { id: 'n', layout: 'table' });
     expect(r.sections[1].slides).toEqual(['b', 'n', 'z']);
-    expect(r.slides.map((s) => s.id)).toEqual(['a', 'b', 'z', 'n']); // pool order is irrelevant to render order
+    // pool order tracks render order — GET /api/slides and MCP reorder read it
+    expect(r.slides.map((s) => s.id)).toEqual(['a', 'b', 'n', 'z']);
   });
 
   it('appends normally when the last slide is not a thanks, and into an empty last section', () => {
