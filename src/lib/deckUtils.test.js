@@ -340,3 +340,15 @@ describe('sanitizeSlidePatch — empty chart payloads', () => {
     expect(sanitizeSlidePatch({ chart: { categories: [], series: [{ values: [1] }] } }, 'chart')).toEqual({});
   });
 });
+
+describe('sanitizeSlidePatch — roadmap item positions must be numeric', () => {
+  it('rejects string t/d positions roadmapModel would normalize to 0/1', () => {
+    expect(sanitizeSlidePatch({ lanes: [{ name: 'A', items: [{ t: '3', d: 2, lbl: 'M', state: 'done' }] }] }, 'roadmap')).toEqual({});
+    expect(sanitizeSlidePatch({ lanes: [{ name: 'A', items: [{ t: 3, d: '2', lbl: 'M', state: 'done' }] }] }, 'roadmap')).toEqual({});
+  });
+
+  it('accepts numeric positions and omitted t/d (normItem defaults them)', () => {
+    const ok = { lanes: [{ name: 'A', items: [{ t: 3, d: 2, lbl: 'M', state: 'done' }, { lbl: 'No pos' }] }] };
+    expect(sanitizeSlidePatch(ok, 'roadmap')).toEqual(ok);
+  });
+});

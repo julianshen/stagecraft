@@ -69,10 +69,15 @@ const isChartShape = (v) => isPlainObject(v)
     && (s.name === undefined || isPrimitive(s.name)));
 // lane: { name?, items: flat-record[] } — what roadmapModel reads; `items` is
 // REQUIRED for the same replace-not-merge reason ({ title, tasks } would
-// normalize to an empty lane and blank the roadmap).
+// normalize to an empty lane and blank the roadmap). Item positions t/d must
+// be numbers when present — roadmapModel normalizes a string "3" to t:0/d:1,
+// silently misplacing the bar while the edit reports as applied.
+const isLaneItem = (it) => isFlatRecord(it)
+  && (it.t === undefined || Number.isFinite(it.t))
+  && (it.d === undefined || Number.isFinite(it.d));
 const isLane = (l) => isPlainObject(l)
   && (l.name === undefined || isPrimitive(l.name))
-  && Array.isArray(l.items) && l.items.every(isFlatRecord);
+  && Array.isArray(l.items) && l.items.every(isLaneItem);
 
 // Accept a patch field only if its value matches the slide schema's shape for
 // the target layout — a value of the wrong shape (e.g. `title: { text }`, a
