@@ -241,6 +241,8 @@ export default function SlideEditor(props) {
             setSelection={updateSelEl}
             count={props.selectedElementCount}
             extras={slots.inspectorExtra}
+            slide={cur}
+            onApplyPatch={(patch) => callbacks.onApplyAIPatch?.(patch, cur?.id)}
           />
         )}
         {layoutVariant === 'floating' && (
@@ -251,6 +253,8 @@ export default function SlideEditor(props) {
             setSelection={updateSelEl}
             count={props.selectedElementCount}
             extras={slots.inspectorExtra}
+            slide={cur}
+            onApplyPatch={(patch) => callbacks.onApplyAIPatch?.(patch, cur?.id)}
           />
         )}
       </div>

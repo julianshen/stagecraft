@@ -204,7 +204,7 @@ Each is a fixed visual composition driven by the slide schema (§3.2):
 - **table** — header row + data grid; 6-column decks get a tuned column-width template and a "health" pill in the last cell.
 - **text** — title + body paragraph (eyebrow = section name by default).
 - **list** — title + bulleted points.
-- **roadmap** — swimlane Gantt graphic. 🟢 data-driven via `roadmapModel` (`lib/roadmapSpec.js`), shared by the canvas and the PPTX export; a slide may supply `months`/`lanes`/`todayIndex`, and falls back to the built-in demo when omitted. ⚪ No in-app authoring path yet — the schema is set via MCP/agent or hand-authored JSON; the inspector can't edit lanes (same staged rollout the chart layout had).
+- **roadmap** — swimlane Gantt graphic. 🟢 data-driven via `roadmapModel` (`lib/roadmapSpec.js`), shared by the canvas and the PPTX export; a slide may supply `months`/`lanes`/`todayIndex`, and falls back to the built-in demo when omitted. 🟢 In-app authoring via the inspector's **Data** tab (§7.2.5); the schema is also settable via MCP/agent or the Co-pilot.
 - **risks** — severity-coded rows (high/med/low). 🟢 Severity colours are single-sourced in `lib/riskSpec.js` (`SEVERITY_OKLCH` for the canvas, `SEVERITY_HEX` — exact sRGB — for the export), so the on-screen accents and the exported bullets match; unknown severities fall back to grey on both.
 - **thanks** — closing slide.
 
@@ -252,9 +252,10 @@ Section-grouped live thumbnails (real `<Slide>` via `ScaledSlide`), active-state
 - 🟢 Right-click context menu (paste / generate / change layout / apply theme / duplicate / delete) — 🟡 only duplicate & delete are wired.
 
 #### 7.2.5 Right inspector (`InspectorPane` / `FloatingInspector`) 🟡
-Tabs: **Design / Properties / Animate**.
+Tabs: **Design / Properties / Data / Animate**.
 - **Design panel** 🔴 — layout grid, theme swatches, token rows, component rail are all display-only.
 - **Properties panel** 🟡 — `X/Y/W/H` edit the selection box live; angle, opacity, font family/style/size, align, fill are 🔴 static.
+- **Data panel** 🟢 — in-app authoring for the data-driven layouts (`DataPanel`): a chart slide gets a categories×series grid (`ChartDataEditor`), a roadmap slide gets a lanes/milestones editor with state selects (`RoadmapLanesEditor`); other layouts show a hint. Both editors render the same normalized model the canvas/export draw (`chartData` / `roadmapModel` — a data-less starter materializes its fallback as editable rows) and commit full `{ chart }` / `{ lanes }` patches through the Co-pilot's validated patch path (`onApplyAIPatch` → `sanitizeSlidePatch`), so the inspector and the AI share one schema gate.
 - **Animate panel** 🔴 — transition/builds are fake.
 
 #### 7.2.6 Timeline drawer 🔴
@@ -452,6 +453,6 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 4. ~~**Durable persistence + multi-deck library**~~ ✅ **Done** — disk-persisted deck library; Home lists/opens/creates/renames/deletes real decks (§7.1, §17). _Follow-up: seed via `POST /api/decks` to remove the last untagged-write window; list-view rename/delete._
 5. ~~**Drag-to-reorder + section CRUD + AI reorder**~~ ✅ **Done** — Thumbs rail (§7.2.3) and Sorter grid (§7.3) both reorder via `moveSlide`; Sorter adds section create/rename/delete (`addSection`/`renameSection`/`deleteSection`); **Rearrange with AI** sends the outline to the Co-pilot (`suggestSlideOrder`) and applies the order via `applySlideOrder` (all in `lib/deckOrder.js`/`lib/llmClient.js`). _(§7.3)_
 6. ~~**Chart + roadmap in PPTX**~~ ✅ **Done** — native editable `addChart` via `chartSpec`; canvas + export share `chartData` so charts are data-driven and match (§12). Roadmap now exports as a native timeline (month axis, status-coloured lane bars, TODAY marker, legend), built from the shared `roadmapModel` (`lib/roadmapSpec.js`) so canvas and export match. ⚪ Remaining: multi-series chart canvas rendering; wire export-modal range/quality/notes options. _(§12, §13)_
-7. ~~**Templates seed real decks**~~ ✅ **Done** — the picker creates a themed library deck via `templateDeck` + `createDeck` (§14). ⚪ Remaining: genericize the `DeckCover` (Home tile) chrome string. (Top-p persistence ✅ §7.4; per-template skeletons ✅ §14; slide-renderer chrome — agenda heading, divider footer, thanks headline — is now slide/deck-driven instead of sample-deck copy.) _(§7.4, §7.1)_ (Duplicate-slide ✅ §7.2.1.)
+7. ~~**Templates seed real decks**~~ ✅ **Done** — the picker creates a themed library deck via `templateDeck` + `createDeck` (§14). (Top-p persistence ✅ §7.4; per-template skeletons ✅ §14; slide-renderer chrome is slide/deck-driven; the `DeckCover` chrome string was genericized back in the multi-deck PR — stale note removed; **inspector Data tab** ✅ §7.2.5.) _(§7.4, §7.1)_ (Duplicate-slide ✅ §7.2.1.)
 8. **Presenter** laser-tracks-pointer + blackout. _(§7.5)_
 9. **Collaboration** presence + comments. _(§16)_
