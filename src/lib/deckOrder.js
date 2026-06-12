@@ -159,14 +159,24 @@ export function appendSlide(deck, slide) {
   if (!deck || !Array.isArray(deck.sections) || !deck.sections.length) return deck;
   const sections = deck.sections;
   const slides = [...(deck.slides || []), slide];
-  const lastIdx = sections.length - 1;
-  const ids = [...(sections[lastIdx].slides || [])];
-  const lastSlide = (deck.slides || []).find((s) => s.id === ids[ids.length - 1]);
-  if (lastSlide?.layout === 'thanks') ids.splice(ids.length - 1, 0, slide.id);
+  // The closer rule keys off the deck's last RENDERED slide — a trailing
+  // empty section (e.g. added in the Sorter after "Close") must not defeat it.
+  const flatIds = sections.flatMap((sec) => sec?.slides || []);
+  const lastRendered = (deck.slides || []).find((s) => s.id === flatIds[flatIds.length - 1]);
+  let targetIdx = sections.length - 1;
+  let beforeCloser = false;
+  if (lastRendered?.layout === 'thanks') {
+    for (let i = sections.length - 1; i >= 0; i--) {
+      if ((sections[i]?.slides || []).includes(lastRendered.id)) { targetIdx = i; break; }
+    }
+    beforeCloser = true;
+  }
+  const ids = [...(sections[targetIdx].slides || [])];
+  if (beforeCloser) ids.splice(ids.length - 1, 0, slide.id);
   else ids.push(slide.id);
   return {
     ...deck,
     slides,
-    sections: sections.map((sec, i) => (i === lastIdx ? { ...sec, slides: ids } : sec)),
+    sections: sections.map((sec, i) => (i === targetIdx ? { ...sec, slides: ids } : sec)),
   };
 }

@@ -388,3 +388,30 @@ describe('appendSlide guards', () => {
     expect(appendSlide(empty, { id: 'n' })).toBe(empty); // nowhere to register it — a slide outside sections never renders
   });
 });
+
+describe('appendSlide with trailing empty sections', () => {
+  it('keys the closer rule off the last RENDERED slide, inserting beside it in its own section', () => {
+    const d = {
+      sections: [
+        { id: 's1', name: 'Main', slides: ['a', 'z'] },
+        { id: 's2', name: 'New section', slides: [] }, // added in Sorter after the closer
+      ],
+      slides: [{ id: 'a', layout: 'text' }, { id: 'z', layout: 'thanks' }],
+    };
+    const r = appendSlide(d, { id: 'n', layout: 'table' });
+    expect(r.sections[0].slides).toEqual(['a', 'n', 'z']); // before the closer, in the closer's section
+    expect(r.sections[1].slides).toEqual([]);
+  });
+
+  it('still appends to the last section when the last rendered slide is not a thanks', () => {
+    const d = {
+      sections: [
+        { id: 's1', name: 'A', slides: ['z'] },
+        { id: 's2', name: 'B', slides: ['b'] }, // a thanks exists but is not the deck's last rendered slide
+      ],
+      slides: [{ id: 'z', layout: 'thanks' }, { id: 'b', layout: 'text' }],
+    };
+    const r = appendSlide(d, { id: 'n', layout: 'table' });
+    expect(r.sections[1].slides).toEqual(['b', 'n']);
+  });
+});
