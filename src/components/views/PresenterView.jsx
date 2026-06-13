@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { SPEAKER_NOTES } from '../../data/deck.js';
-import LaserPointer from '../presenter/LaserPointer.jsx';
+import LaserLayer from '../presenter/LaserLayer.jsx';
 import PresenterSidePanel from '../presenter/PresenterSidePanel.jsx';
 import PresenterControls from '../presenter/PresenterControls.jsx';
 
@@ -26,6 +26,7 @@ export default function PresenterView({ deck, onExit }) {
   const [idx, setIdx] = useState(0);
   const [elapsed, setElapsed] = useState(412); // seconds
   const [laser, setLaser] = useState(false);
+  const [blackout, setBlackout] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setElapsed(e => e + 1), 1000);
@@ -37,6 +38,10 @@ export default function PresenterView({ deck, onExit }) {
       if (e.key === 'Escape') onExit();
       if (e.key === 'ArrowRight' || e.key === ' ') setIdx(i => Math.min(flat.length - 1, i + 1));
       if (e.key === 'ArrowLeft') setIdx(i => Math.max(0, i - 1));
+      // Bare B blacks out the audience screen — but not modifier chords like
+      // Ctrl+Shift+B (browser bookmarks bar) or Cmd+B, which aren't ours; and not
+      // key auto-repeat, which would flicker this persistent toggle while held.
+      if ((e.key === 'b' || e.key === 'B') && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) setBlackout(b => !b);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -62,7 +67,8 @@ export default function PresenterView({ deck, onExit }) {
           <ScaledSlide>
             <Slide slide={cur} deck={deck} sectionName={cur.sectionName} num={idx + 1} total={flat.length}/>
           </ScaledSlide>
-          <LaserPointer enabled={laser}/>
+          {laser && !blackout && <LaserLayer/>}
+          {blackout && <div className="presenter-blackout" aria-label="Screen blacked out — press B to resume"/>}
         </div>
       </div>
 
@@ -80,6 +86,8 @@ export default function PresenterView({ deck, onExit }) {
         elapsed={elapsed}
         laser={laser}
         setLaser={setLaser}
+        blackout={blackout}
+        setBlackout={setBlackout}
         onPrev={() => setIdx(i => Math.max(0, i - 1))}
         onNext={() => setIdx(i => Math.min(flat.length - 1, i + 1))}
         onExit={onExit}

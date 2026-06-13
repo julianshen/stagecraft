@@ -6,6 +6,8 @@ export default function PresenterControls({
   elapsed,
   laser,
   setLaser,
+  blackout,
+  setBlackout,
   onPrev,
   onNext,
   onExit,
@@ -39,10 +41,12 @@ export default function PresenterControls({
       <button onClick={onNext}>
         Next <Icon name="chevron-right" size={13}/>
       </button>
-      <button onClick={() => setLaser(l => !l)} style={{ color: laser ? 'oklch(0.7 0.25 25)' : '' }}>
+      <button className={laser ? 'active' : ''} onClick={() => setLaser(l => !l)}>
         <Icon name="dot" size={13}/> Laser
       </button>
-      <button><Icon name="eye" size={13}/> Blackout</button>
+      <button className={blackout ? 'active' : ''} onClick={() => setBlackout(b => !b)} title="Blackout · B">
+        <Icon name="eye" size={13}/> Blackout
+      </button>
       <button onClick={onExit}><Icon name="x" size={13}/> End · Esc</button>
     </div>
   );

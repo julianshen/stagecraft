@@ -25,6 +25,7 @@ export default defineConfig({
         'src/lib/riskSpec.js',
         'src/lib/templateDeck.js',
         'src/lib/slideFactories.js',
+        'src/lib/laser.js',
         'src/hooks/useDeckSync.js',
         'src/hooks/useReorderDrag.js',
         'src/data/deck.js',
@@ -39,6 +40,9 @@ export default defineConfig({
         'src/components/views/SettingsView.jsx',
         'src/components/sorter/SorterGrid.jsx',
         'src/components/sorter/SorterToolbar.jsx',
+        'src/components/presenter/LaserPointer.jsx',
+        'src/components/presenter/LaserLayer.jsx',
+        'src/components/presenter/PresenterControls.jsx',
       ],
       thresholds: {
         lines: 90,
