@@ -88,17 +88,27 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     // nudge an element to a non-grid position, which would otherwise turn a
     // click near a guide into a spurious move-commit. (Matches marquee/rotate.)
     const swept = (cx, cy) => Math.abs(cx - startX) > 3 || Math.abs(cy - startY) > 3;
+    // Map a screen position to the dragged elements' new geometry (+ any
+    // alignment guides). Shared by move() and up() so the release position is
+    // authoritative — a fast flick may emit no pointermove past the threshold.
+    const computeAt = (cx, cy) => {
+      const s = scaleRef.current || 1;
+      const dx = (cx - startX) / s, dy = (cy - startY) / s;
+      const map = new Map(targets.map((t) => [t.id, apply(t, dx, dy)]));
+      if (snapping) {
+        const id = targets[0].id;
+        const m = map.get(id);
+        const r = alignSnap(m, snapOthers);
+        map.set(id, { ...m, x: r.x, y: r.y });
+        return { map, guides: r.guides };
+      }
+      return { map, guides: [] };
+    };
     function move(ev) {
       if (!swept(ev.clientX, ev.clientY)) return;
-      const s = scaleRef.current || 1;
-      const dx = (ev.clientX - startX) / s, dy = (ev.clientY - startY) / s;
-      latest = new Map(targets.map((t) => [t.id, apply(t, dx, dy)]));
-      if (snapping) {
-        const [id, m] = [...latest][0];
-        const r = alignSnap(m, snapOthers);
-        latest.set(id, { ...m, x: r.x, y: r.y });
-        setGuides(r.guides);
-      }
+      const { map, guides } = computeAt(ev.clientX, ev.clientY);
+      latest = map;
+      setGuides(guides);
       setDrag(latest);
     }
     function removeListeners() {
@@ -114,9 +124,13 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       removeListeners();
       setDrag(null);
     }
-    function up() {
+    function up(ev) {
       removeListeners();
       setDrag(null);
+      // The release position is authoritative: a fast flick can deliver no
+      // pointermove past the sweep threshold, leaving `latest` empty. Recompute
+      // from the release coords when it swept (matches startRotate).
+      if (swept(ev.clientX, ev.clientY)) latest = computeAt(ev.clientX, ev.clientY).map;
       // One atomic commit, carrying only elements whose geometry actually
       // changed. A click or a snap-back-to-origin gesture moves nothing, so it
       // commits nothing and is treated as a click instead.
@@ -355,9 +369,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
           </>
         )}
 
-        {guides.map((g, i) => (
+        {guides.map((g) => (
           <div
-            key={i}
+            key={g.axis}
             className="align-guide"
             style={{
               position: 'absolute',

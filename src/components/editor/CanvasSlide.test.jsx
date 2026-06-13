@@ -96,6 +96,23 @@ describe('CanvasSlide drag', () => {
     expect([...map.keys()].sort()).toEqual(['a', 'b']);
   });
 
+  it('commits a fast flick whose only pointermove was sub-threshold, from the release position', () => {
+    const onUpdateElements = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['b']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    const [, hitB] = hits(container);
+    // A flick: the only pointermove is sub-threshold (≤3px), but the release is
+    // far away. The release position is authoritative — the move must not be
+    // dropped as a click just because no move event cleared the sweep threshold.
+    fire(hitB, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 2, clientY: 0 }); // below the 3px threshold
+    fire(window, 'pointerup', { clientX: 60, clientY: 0 });
+    expect(onUpdateElements).toHaveBeenCalledTimes(1);
+    expect(onUpdateElements.mock.calls[0][0].get('b').x).toBe(560); // 500 + 60
+  });
+
   it('shift-click-dragging a non-selected element moves the whole combined selection', () => {
     const onUpdateElements = vi.fn();
     const onSelectElement = vi.fn();
