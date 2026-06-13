@@ -1,6 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { ACCENTS, SAMPLE_DECK, SPEAKER_NOTES, TEMPLATES } from './deck.js';
+import { ACCENTS, SAMPLE_DECK, SPEAKER_NOTES, TEMPLATES, resolveNotes } from './deck.js';
 import { flattenDeck } from '../lib/deckOrder.js';
+
+describe('resolveNotes', () => {
+  it('prefers authored slide.notes, honouring an intentionally-empty string', () => {
+    expect(resolveNotes({ id: 'cover', notes: 'mine' })).toBe('mine');
+    expect(resolveNotes({ id: 'cover', notes: '' })).toBe(''); // cleared on purpose → no notes
+  });
+  it('falls back to the bundled SPEAKER_NOTES by id, then to the given fallback', () => {
+    expect(resolveNotes({ id: 'cover' })).toBe(SPEAKER_NOTES.cover);
+    expect(resolveNotes({ id: 'no-such-id' })).toBe('');               // default fallback
+    expect(resolveNotes({ id: 'no-such-id' }, 'nudge')).toBe('nudge'); // custom fallback (presenter)
+  });
+  it('returns the fallback for a missing slide instead of throwing', () => {
+    expect(resolveNotes(null)).toBe('');
+    expect(resolveNotes(undefined, 'nudge')).toBe('nudge');
+  });
+});
 
 const KNOWN_LAYOUTS = new Set([
   'cover', 'agenda', 'divider', 'kpi', 'chart', 'split', 'table', 'text', 'list', 'roadmap', 'risks', 'thanks',

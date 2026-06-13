@@ -2,6 +2,7 @@ import pptxgen from 'pptxgenjs';
 import { chartSpec, CHART_SERIES_HEX } from './chartSpec.js';
 import { SEVERITY_HEX } from './riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
+import { resolveNotes } from '../data/deck.js';
 
 // ---- theme colours (fallback to indigo) ----
 const THEME_COLORS = {
@@ -40,6 +41,7 @@ function addCoverSlide(pptx, slide, tc) {
       fontFace: 'Inter', align: 'left',
     });
   }
+  return sld;
 }
 
 function addAgendaSlide(pptx, slide, tc) {
@@ -56,6 +58,7 @@ function addAgendaSlide(pptx, slide, tc) {
     sld.addText(it.t, { x: 1.1, y, w: 5, h: 0.4, fontSize: 15, bold: true, color: tc.ink, fontFace: 'Inter' });
     sld.addText(it.d, { x: 1.1, y: y + 0.38, w: 7, h: 0.35, fontSize: 11, color: 'AAAAAA', fontFace: 'Inter' });
   });
+  return sld;
 }
 
 function addDividerSlide(pptx, slide, tc) {
@@ -72,6 +75,7 @@ function addDividerSlide(pptx, slide, tc) {
     x: 0.5, y: 3.0, w: 9, h: 0.8,
     fontSize: 36, bold: true, color: tc.ink, fontFace: 'Inter',
   });
+  return sld;
 }
 
 function addKpiSlide(pptx, slide, tc) {
@@ -93,6 +97,7 @@ function addKpiSlide(pptx, slide, tc) {
     const deltaColor = k.good === true ? '2ECC71' : k.good === false ? 'E74C3C' : 'AAAAAA';
     sld.addText(k.delta || '', { x, y: y + 1.15, w: 3, h: 0.25, fontSize: 10, color: deltaColor, align: 'center', fontFace: 'Courier New' });
   });
+  return sld;
 }
 
 function addTextSlide(pptx, slide, tc) {
@@ -109,6 +114,7 @@ function addTextSlide(pptx, slide, tc) {
       wrap: true,
     });
   }
+  return sld;
 }
 
 function addListSlide(pptx, slide, tc) {
@@ -124,6 +130,7 @@ function addListSlide(pptx, slide, tc) {
       fontSize: 14, color: 'DDDDDD', fontFace: 'Inter',
     });
   });
+  return sld;
 }
 
 function addTableSlide(pptx, slide, tc) {
@@ -144,6 +151,7 @@ function addTableSlide(pptx, slide, tc) {
       border: { type: 'solid', color: '333355', pt: 1 },
     });
   }
+  return sld;
 }
 
 // Real, editable PPTX chart (native pptxgenjs chart) instead of a text placeholder.
@@ -166,6 +174,7 @@ function addChartSlide(pptx, slide, tc) {
     ...(barDir ? { barDir } : {}),
     ...(type === 'doughnut' ? { holeSize: 60, showPercent: true, dataLabelColor: 'FFFFFF', dataLabelFontFace: 'Inter' } : {}),
   });
+  return sld;
 }
 
 function addSplitSlide(pptx, slide, tc) {
@@ -185,6 +194,7 @@ function addSplitSlide(pptx, slide, tc) {
     sld.addText(s.val, { x: 6.5, y, w: 3, h: 0.7, fontSize: 32, bold: true, color: tc.accent, align: 'center', fontFace: 'Inter' });
     sld.addText(s.lbl, { x: 6.5, y: y + 0.65, w: 3, h: 0.4, fontSize: 12, color: 'AAAAAA', align: 'center', fontFace: 'Inter' });
   });
+  return sld;
 }
 
 function addRisksSlide(pptx, slide, tc) {
@@ -212,6 +222,7 @@ function addRisksSlide(pptx, slide, tc) {
     sld.addText(it.t || '', { x: 1.1, y, w: 8.4, h: 0.45, fontSize: 15, bold: true, color: tc.ink, fontFace: 'Inter' });
     sld.addText(it.d || '', { x: 1.1, y: y + 0.45, w: 8.4, h: 0.5, fontSize: 12, color: 'AAAAAA', fontFace: 'Inter', wrap: true });
   });
+  return sld;
 }
 
 // Native, data-driven roadmap timeline (mirrors the canvas RoadmapGraphic via
@@ -275,6 +286,7 @@ function addRoadmapSlide(pptx, slide, tc) {
     sld.addShape(pptx.ShapeType.rect, { x: lx, y: legendY + 0.02, w: 0.16, h: 0.16, fill: { color: ROADMAP_HEX[st] }, line: { type: 'none' } });
     sld.addText(ROADMAP_LABELS[st], { x: lx + 0.22, y: legendY - 0.02, w: 1.3, h: 0.25, fontSize: 9, color: 'AAAAAA', fontFace: 'Inter' });
   });
+  return sld;
 }
 
 function addThanksSlide(pptx, slide, tc) {
@@ -288,6 +300,7 @@ function addThanksSlide(pptx, slide, tc) {
       x: 0.5, y: 3.6, w: 9, h: 0.5, fontSize: 15, color: 'AAAAAA', align: 'center', fontFace: 'Inter',
     });
   }
+  return sld;
 }
 
 function addGenericSlide(pptx, slide, tc) {
@@ -301,6 +314,7 @@ function addGenericSlide(pptx, slide, tc) {
       x: 0.5, y: 1.3, w: 9, h: 4, fontSize: 14, color: 'CCCCCC', fontFace: 'Inter', wrap: true, valign: 'top',
     });
   }
+  return sld;
 }
 
 // ---- main export function ----
@@ -308,7 +322,7 @@ function addGenericSlide(pptx, slide, tc) {
  * Export a deck object to a .pptx file using pptxgenjs.
  * @param {Object} deck — SAMPLE_DECK-shaped object
  */
-export async function exportToPPTX(deck) {
+export async function exportToPPTX(deck, { includeNotes = true } = {}) {
   const pptx = new pptxgen();
   pptx.layout = 'LAYOUT_16x9';
   pptx.title = deck.title || 'Stagecraft Presentation';
@@ -327,20 +341,29 @@ export async function exportToPPTX(deck) {
   });
 
   for (const slide of flat) {
+    let sld;
     switch (slide.layout) {
-      case 'cover':    addCoverSlide(pptx, slide, tc);   break;
-      case 'agenda':   addAgendaSlide(pptx, slide, tc);  break;
-      case 'divider':  addDividerSlide(pptx, slide, tc); break;
-      case 'kpi':      addKpiSlide(pptx, slide, tc);     break;
-      case 'text':     addTextSlide(pptx, slide, tc);    break;
-      case 'list':     addListSlide(pptx, slide, tc);    break;
-      case 'table':    addTableSlide(pptx, slide, tc);   break;
-      case 'split':    addSplitSlide(pptx, slide, tc);   break;
-      case 'risks':    addRisksSlide(pptx, slide, tc);   break;
-      case 'roadmap':  addRoadmapSlide(pptx, slide, tc); break;
-      case 'thanks':   addThanksSlide(pptx, slide, tc);  break;
-      case 'chart':    addChartSlide(pptx, slide, tc);   break;
-      default:         addGenericSlide(pptx, slide, tc); break;
+      case 'cover':    sld = addCoverSlide(pptx, slide, tc);   break;
+      case 'agenda':   sld = addAgendaSlide(pptx, slide, tc);  break;
+      case 'divider':  sld = addDividerSlide(pptx, slide, tc); break;
+      case 'kpi':      sld = addKpiSlide(pptx, slide, tc);     break;
+      case 'text':     sld = addTextSlide(pptx, slide, tc);    break;
+      case 'list':     sld = addListSlide(pptx, slide, tc);    break;
+      case 'table':    sld = addTableSlide(pptx, slide, tc);   break;
+      case 'split':    sld = addSplitSlide(pptx, slide, tc);   break;
+      case 'risks':    sld = addRisksSlide(pptx, slide, tc);   break;
+      case 'roadmap':  sld = addRoadmapSlide(pptx, slide, tc); break;
+      case 'thanks':   sld = addThanksSlide(pptx, slide, tc);  break;
+      case 'chart':    sld = addChartSlide(pptx, slide, tc);   break;
+      default:         sld = addGenericSlide(pptx, slide, tc); break;
+    }
+    // Each builder returns the slide it created, so notes attach at the call
+    // boundary the dispatch already owns — no reaching into the pptx instance.
+    // `&& sld` guards the return-contract: a future builder that forgot to
+    // return its slide degrades to no-notes rather than crashing the export.
+    if (includeNotes && sld) {
+      const n = resolveNotes(slide);
+      if (n) sld.addNotes(n);
     }
   }
 

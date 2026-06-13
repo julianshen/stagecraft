@@ -5,6 +5,7 @@ import { exportToPPTX } from '../../lib/pptxExport.js';
 
 export default function ExportModal({ onClose, deck }) {
   const [fmt, setFmt] = useState('pptx');
+  const [includeNotes, setIncludeNotes] = useState(true);
   const [exporting, setExporting] = useState(false);
 
   const opts = [
@@ -20,7 +21,7 @@ export default function ExportModal({ onClose, deck }) {
     if (fmt === 'pptx') {
       setExporting(true);
       try {
-        await exportToPPTX(deck);
+        await exportToPPTX(deck, { includeNotes });
       } catch (err) {
         console.error('PPTX export failed:', err);
       } finally {
@@ -61,7 +62,13 @@ export default function ExportModal({ onClose, deck }) {
                 <div className="input-group"><input value="High" readOnly/><Icon name="chevron-down" size={11}/></div>
               </FieldRow>
               <FieldRow label="NOTES">
-                <div className="input-group"><input value="Include speaker notes" readOnly/></div>
+                <div className="input-group">
+                  <select value={includeNotes ? 'include' : 'exclude'} onChange={(e) => setIncludeNotes(e.target.value === 'include')} aria-label="Speaker notes">
+                    <option value="include">Include speaker notes</option>
+                    <option value="exclude">Exclude speaker notes</option>
+                  </select>
+                  <Icon name="chevron-down" size={11}/>
+                </div>
               </FieldRow>
               <FieldRow label="COMMENTS">
                 <div className="input-group"><input value="Exclude" readOnly/></div>
