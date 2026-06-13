@@ -254,7 +254,7 @@ Section-grouped live thumbnails (real `<Slide>` via `ScaledSlide`), active-state
 
 #### 7.2.5 Right inspector (`InspectorPane` / `FloatingInspector`) 🟡
 Tabs: **Design / Properties / Data / Animate**.
-- **Design panel** 🔴 — layout grid, theme swatches, token rows, component rail are all display-only.
+- **Design panel** 🟡 — 🟢 **Theme swatches** apply a deck theme (`onChangeTheme`) and mark the active one; 🟢 **Components rail** inserts a component slide (`onAddComponent` → `createComponentSlide`). 🔴 the layout-style grid (abstract presets, not per-slide layouts) and the token rows remain display-only.
 - **Properties panel** 🟢 — `X/Y/W/H`, angle, opacity, and fill bind to the selected element live; for a **text** element, font **family**, **size**, **align**, and **bold/italic/underline** are wired too (stored on the element, rendered by `ElementView`, committed via the same `onUpdateElement` path).
 - **Data panel** 🟢 — in-app authoring for the data-driven layouts (`DataPanel`): a chart slide gets a categories×series grid (`ChartDataEditor`), a roadmap slide gets a lanes/milestones editor with state selects (`RoadmapLanesEditor`); other layouts show a hint. Both editors render the same normalized model the canvas/export draw (`chartData` / `roadmapModel` — a data-less starter materializes its fallback as editable rows) and commit full `{ chart }` / `{ lanes, months, todayIndex }` patches (the roadmap materializes its whole model so the demo TODAY marker survives the fork) through the Co-pilot's validated patch path (`onApplyAIPatch` → `sanitizeSlidePatch`), so the inspector and the AI share one schema gate.
 - **Animate panel** 🔴 — transition/builds are fake.

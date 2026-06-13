@@ -1,24 +1,51 @@
 import React from 'react';
 import Icon from '../../ui/Icon.jsx';
 
-export default function DesignPanel() {
+// The 6 deck themes (matching the toolbar Theme menu), each a representative
+// swatch colour. Clicking one applies it via onChangeTheme.
+const THEMES = [
+  { key: 'indigo', c: 'oklch(0.62 0.17 265)' },
+  { key: 'emerald', c: 'oklch(0.62 0.13 155)' },
+  { key: 'amber', c: 'oklch(0.7 0.15 75)' },
+  { key: 'coral', c: 'oklch(0.6 0.2 25)' },
+  { key: 'magenta', c: 'oklch(0.6 0.18 335)' },
+  { key: 'slate', c: 'oklch(0.55 0.03 255)' },
+];
+// Insertable components → createComponentSlide ids (via onAddComponent).
+const COMPONENTS = [
+  { label: 'KPI', id: 'kpi' }, { label: 'Chart', id: 'chart' }, { label: 'Table', id: 'table' }, { label: 'Agenda', id: 'agenda' },
+  { label: 'List', id: 'list' }, { label: 'Risks', id: 'risks' }, { label: 'Roadmap', id: 'roadmap' }, { label: 'Quote', id: 'quote' },
+];
+
+export default function DesignPanel({ deck, onChangeTheme, onAddComponent }) {
+  const theme = deck?.theme;
   return (
     <>
+      {/* Layout style presets — display-only (these are abstract layout shapes,
+          not the per-slide layouts, which the toolbar Layout menu changes). */}
       <div className="pane-section">
         <h4>Layout</h4>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
           {['frame', 'columns', 'rows', 'template', 'layers', 'list', 'outline', 'grid'].map((l, i) => (
-            <button key={l} title={l} style={{ aspectRatio: '4/3', background: i === 0 ? 'var(--accent-wash)' : 'var(--bg)', border: '1px solid var(--line)', borderRadius: 4, color: i === 0 ? 'var(--accent)' : 'var(--ink-3)', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+            <div key={l} title={l} style={{ aspectRatio: '4/3', background: i === 0 ? 'var(--accent-wash)' : 'var(--bg)', border: '1px solid var(--line)', borderRadius: 4, color: i === 0 ? 'var(--accent)' : 'var(--ink-3)', display: 'grid', placeItems: 'center' }}>
               <Icon name={l} size={14} />
-            </button>
+            </div>
           ))}
         </div>
       </div>
       <div className="pane-section">
         <h4>Theme</h4>
         <div className="swatch-grid">
-          {['oklch(0.22 0.01 85)', 'white', 'oklch(0.95 0.01 85)', 'oklch(0.62 0.17 265)', 'oklch(0.62 0.13 155)', 'oklch(0.7 0.15 75)', 'oklch(0.6 0.2 25)', 'oklch(0.6 0.18 335)'].map((c, i) => (
-            <div key={i} className={`swatch ${i === 3 ? 'active' : ''}`} style={{ background: c }} />
+          {THEMES.map(t => (
+            <div
+              key={t.key}
+              className={`swatch ${theme === t.key ? 'active' : ''}`}
+              title={t.key}
+              aria-label={`${t.key} theme`}
+              role="button"
+              style={{ background: t.c, cursor: 'pointer' }}
+              onClick={() => onChangeTheme?.(t.key)}
+            />
           ))}
         </div>
       </div>
@@ -31,10 +58,10 @@ export default function DesignPanel() {
       <div className="pane-section">
         <h4>Components</h4>
         <div className="lib-rail">
-          {['KPI', 'Chart', 'Bar', 'Quote', 'Roadmap', 'Table', 'Risks', 'Agenda'].map(n => (
-            <div className="lib-chip" key={n}>
-              <div className="lib-chip-inner"><span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>{n[0]}</span></div>
-              <div className="lib-chip-name">{n}</div>
+          {COMPONENTS.map(({ label, id }) => (
+            <div className="lib-chip" key={id} title={`Add ${label}`} role="button" style={{ cursor: 'pointer' }} onClick={() => onAddComponent?.(id)}>
+              <div className="lib-chip-inner"><span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>{label[0]}</span></div>
+              <div className="lib-chip-name">{label}</div>
             </div>
           ))}
         </div>

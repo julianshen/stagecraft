@@ -258,6 +258,9 @@ export default function SlideEditor(props) {
             extras={slots.inspectorExtra}
             slide={cur}
             onApplyPatch={applyPatchToCurrent}
+            deck={deck}
+            onChangeTheme={callbacks.onChangeTheme}
+            onAddComponent={callbacks.onAddComponent}
           />
         )}
         {layoutVariant === 'floating' && (
@@ -270,6 +273,9 @@ export default function SlideEditor(props) {
             extras={slots.inspectorExtra}
             slide={cur}
             onApplyPatch={applyPatchToCurrent}
+            deck={deck}
+            onChangeTheme={callbacks.onChangeTheme}
+            onAddComponent={callbacks.onAddComponent}
           />
         )}
       </div>
