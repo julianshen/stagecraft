@@ -35,6 +35,7 @@ export default defineConfig({
         'src/components/ui/EditableText.jsx',
         'src/components/slides/SlideRenderer.jsx',
         'src/components/editor/inspector/DataPanel.jsx',
+        'src/components/editor/inspector/PropsPanel.jsx',
         'src/components/editor/inspector/InspectorBody.jsx',
         'src/components/editor/inspector/NumberCell.jsx',
         'src/components/editor/inspector/ChartDataEditor.jsx',

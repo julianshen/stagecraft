@@ -67,10 +67,28 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
       {selected.type === 'text' && (
         <div className="pane-section">
           <h4>Type</h4>
-          <FieldRow label="FAMILY"><div className="input-group"><input value="Inter" readOnly /><Icon name="chevron-down" size={11} /></div></FieldRow>
-          <FieldRow label="STYLE"><div className="double-input"><div className="input-group"><input value="Semibold" readOnly /></div><InputGroup value="96" unit="px" /></div></FieldRow>
-          <FieldRow label="ALIGN"><Seg value="left" onChange={() => { }} options={[{ v: 'left', ico: 'align-left' }, { v: 'center', ico: 'align-center' }, { v: 'right', ico: 'align-right' }]} /></FieldRow>
-          <FieldRow label="STYLE"><div className="seg"><button className="active"><Icon name="bold" size={12} /></button><button><Icon name="italic" size={12} /></button><button><Icon name="underline" size={12} /></button></div></FieldRow>
+          <FieldRow label="FAMILY">
+            <div className="input-group">
+              <select aria-label="Font family" value={selected.fontFamily ?? 'Inter'} onChange={e => setSelected({ ...selected, fontFamily: e.target.value })}>
+                {['Inter', 'Georgia', 'JetBrains Mono', 'Courier New', 'Arial'].map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+              <Icon name="chevron-down" size={11} />
+            </div>
+          </FieldRow>
+          <FieldRow label="SIZE"><InputGroup value={selected.fontSize ?? 48} onChange={v => setSelected({ ...selected, fontSize: Math.max(1, +v || 48) })} unit="px" /></FieldRow>
+          <FieldRow label="ALIGN">
+            <Seg value={selected.align ?? 'left'} onChange={a => setSelected({ ...selected, align: a })}
+              options={[{ v: 'left', ico: 'align-left', title: 'Align left' }, { v: 'center', ico: 'align-center', title: 'Align center' }, { v: 'right', ico: 'align-right', title: 'Align right' }]} />
+          </FieldRow>
+          <FieldRow label="STYLE">
+            <div className="seg">
+              {[['bold', 'Bold'], ['italic', 'Italic'], ['underline', 'Underline']].map(([k, label]) => (
+                <button key={k} className={selected[k] ? 'active' : ''} aria-label={label} onClick={() => setSelected({ ...selected, [k]: !selected[k] })}>
+                  <Icon name={k} size={12} />
+                </button>
+              ))}
+            </div>
+          </FieldRow>
         </div>
       )}
     </>

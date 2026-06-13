@@ -340,8 +340,22 @@ function ElementView({ el }) {
     ...(el.opacity != null ? { opacity: Math.max(0, Math.min(100, el.opacity)) / 100 } : {}),
   };
   if (el.type === 'text') {
+    const align = el.align || 'left';
     return (
-      <div style={{ ...base, display: 'flex', alignItems: 'center', fontSize: 48, fontWeight: 500, color: el.fill || 'var(--ink, #15171C)', lineHeight: 1.2, overflow: 'hidden' }}>
+      <div style={{
+        ...base, display: 'flex', alignItems: 'center',
+        justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
+        fontSize: el.fontSize ?? 48,
+        fontWeight: el.bold ? 700 : 500,
+        fontStyle: el.italic ? 'italic' : 'normal',
+        textDecoration: el.underline ? 'underline' : 'none',
+        textAlign: align,
+        fontFamily: el.fontFamily || undefined,
+        // Preserve newlines/spaces typed into the Properties Content textarea
+        // (HTML collapses them by default).
+        whiteSpace: 'pre-wrap',
+        color: el.fill || 'var(--ink, #15171C)', lineHeight: 1.2, overflow: 'hidden',
+      }}>
         {el.content}
       </div>
     );
