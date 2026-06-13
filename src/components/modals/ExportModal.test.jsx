@@ -2,8 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
 import ExportModal from './ExportModal.jsx';
 
-const exportToPPTX = vi.fn(() => Promise.resolve('ok.pptx'));
-vi.mock('../../lib/pptxExport.js', () => ({ exportToPPTX: (...a) => exportToPPTX(...a) }));
+// vi.hoisted so the mock fn is initialized before the hoisted vi.mock factory
+// references it (matches pptxExport.test.js) — no reliance on a deferred-arrow
+// closure to dodge the hoist-order TDZ.
+const exportToPPTX = vi.hoisted(() => vi.fn(() => Promise.resolve('ok.pptx')));
+vi.mock('../../lib/pptxExport.js', () => ({ exportToPPTX }));
 
 const deck = { title: 'D', slides: [{ id: 'a' }, { id: 'b' }], sections: [] };
 
