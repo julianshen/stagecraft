@@ -77,7 +77,7 @@ export const SAMPLE_DECK = {
 
     { id: 'list-next', layout: 'list', title: 'What\'s next', eyebrow: 'Roadmap',
       items: [
-        'Inspector editing for chart series and roadmap lanes (JSON-authored today)',
+        'Wire the export modal options (range, quality, and notes are mocked)',
         'Code-split the bundle (pptxgenjs is the heavy bit)',
         'Persist decks to a backend instead of in-memory state',
         'Collaborative cursors and live comments',
@@ -91,7 +91,7 @@ export const SAMPLE_DECK = {
 
     { id: 'risks-limits', layout: 'risks', title: 'Honest limitations', eyebrow: 'Honest take',
       items: [
-        { sev: 'low', t: 'Data layouts are JSON-authored', d: 'Chart series and roadmap lanes are set via MCP or hand-authored JSON — the inspector can\'t edit them in-app yet (both now render multi-series / multi-lane on canvas and in PPTX)' },
+        { sev: 'low', t: 'Design/Animate panels are mocked', d: 'Chart series and roadmap lanes are editable in-app via the inspector Data tab (and MCP/Co-pilot); the Design and Animate panels remain display-only' },
         { sev: 'low', t: 'Single JS bundle',              d: '647 KB (pptxgenjs) — code-splitting is pending' },
         { sev: 'low', t: 'No persistence',                d: 'Deck state is in-memory; a backend store is on the roadmap' },
       ]

@@ -1,0 +1,68 @@
+import React from 'react';
+import { Button, IconButton } from '../../ui/Primitives.jsx';
+import NumberCell from './NumberCell.jsx';
+import { chartData } from '../../../lib/chartSpec.js';
+
+// Inspector editor for a chart slide's data. Renders the same normalized view
+// the canvas and the PPTX export draw (chartData — including its demo fallback,
+// so a data-less starter chart materializes as editable rows), and commits
+// every edit as a full `{ chart }` patch through the validated patch gate.
+// Honest trade-off: committing the normalized view persists its normalization —
+// values beyond the category count are clipped and non-{name,values} series
+// extras are dropped on the first edit, exactly as the canvas/export resolve them.
+
+export default function ChartDataEditor({ slide, onApply }) {
+  // Donut/pie render only series[0] (canvas and export both) — the editor
+  // shows and commits exactly the rendered series: extra authored series are
+  // not editable and clip away on the first edit (same normalization-persists
+  // policy as the rest of this editor), and the multi-series controls hide.
+  const singleSeries = slide.chartType === 'donut' || slide.chartType === 'pie';
+  const model = chartData(slide);
+  const categories = model.categories;
+  const series = singleSeries ? model.series.slice(0, 1) : model.series;
+
+  const commit = (cats, ser) => onApply({ chart: { categories: cats, series: ser } });
+  const mapSeries = (fn) => series.map((s, i) => ({ name: s.name, values: fn(s, i) }));
+
+  const setCategory = (ci, v) => commit(categories.map((c, i) => (i === ci ? v : c)), series);
+  const setName = (si, v) => commit(categories, series.map((s, i) => (i === si ? { ...s, name: v } : s)));
+  const setValue = (si, ci, n) =>
+    commit(categories, mapSeries((s, i) => (i === si ? s.values.map((x, j) => (j === ci ? n : x)) : s.values)));
+  const addSeries = () => commit(categories, [...series, { name: `Series ${series.length + 1}`, values: categories.map(() => 0) }]);
+  const removeSeries = (si) => commit(categories, series.filter((_, i) => i !== si));
+  const addRow = () => commit([...categories, `Category ${categories.length + 1}`], mapSeries((s) => [...s.values, 0]));
+  const removeRow = (ci) => commit(categories.filter((_, i) => i !== ci), mapSeries((s) => s.values.filter((_, j) => j !== ci)));
+
+  return (
+    <div className="pane-section">
+      <h4>Chart data</h4>
+      <div style={{ display: 'grid', gridTemplateColumns: `1.4fr repeat(${series.length}, 1fr) 20px`, gap: 4, alignItems: 'center' }}>
+        <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>CATEGORY</span>
+        {series.map((s, si) => (
+          <input key={`h${si}`} className="cell-input" value={s.name ?? ''} title="Series name"
+            onChange={(e) => setName(si, e.target.value)} />
+        ))}
+        <span />
+        {categories.map((c, ci) => (
+          <React.Fragment key={`r${ci}`}>
+            <input className="cell-input" value={c ?? ''} title="Category" onChange={(e) => setCategory(ci, e.target.value)} />
+            {series.map((s, si) => (
+              <NumberCell key={`v${si}`} value={s.values[ci]} title="Value" onCommit={(n) => setValue(si, ci, n)} />
+            ))}
+            <IconButton name="x" size={10} title="Remove row" disabled={categories.length <= 1} onClick={() => removeRow(ci)} />
+          </React.Fragment>
+        ))}
+        <span />
+        {!singleSeries && series.map((_, si) => (
+          <IconButton key={`d${si}`} name="x" size={10} title="Remove series" disabled={series.length <= 1}
+            onClick={() => removeSeries(si)} style={{ justifySelf: 'center' }} />
+        ))}
+        <span />
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <Button variant="outline" style={{ height: 26, fontSize: 11 }} onClick={addRow}>Add row</Button>
+        {!singleSeries && <Button variant="outline" style={{ height: 26, fontSize: 11 }} onClick={addSeries}>Add series</Button>}
+      </div>
+    </div>
+  );
+}

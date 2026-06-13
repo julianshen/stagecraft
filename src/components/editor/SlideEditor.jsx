@@ -61,6 +61,20 @@ export default function SlideEditor(props) {
   // values bypass the drag clamps) before forwarding as a patch.
   const updateSelEl = (el) => { if (el?.id) callbacks.onUpdateElement?.(el.id, clampElement(el)); };
 
+  // Inspector Data-tab edits commit to the CURRENT slide through the Co-pilot's
+  // validated patch path. Undefined when the host wired no patch callback, so
+  // DataPanel shows its "unavailable" hint instead of silently frozen inputs.
+  // The editors emit gate-valid payloads, so a dropped field means the editor
+  // and the schema gate have drifted — warn loudly.
+  const applyPatchToCurrent = !callbacks.onApplyAIPatch ? undefined : (patch) => {
+    const applied = callbacks.onApplyAIPatch(patch, cur?.id);
+    if (applied) {
+      const dropped = Object.keys(patch).filter((k) => !applied.includes(k));
+      if (dropped.length) console.warn('Inspector patch fields not applied (schema-gate drift, or the slide was removed):', dropped);
+    }
+    return applied;
+  };
+
   // Delete/Backspace removes the selected element (unless typing in a field).
   // Callbacks go through a ref so the listener isn't re-bound every render (the
   // `callbacks` object is a fresh literal each parent render).
@@ -71,7 +85,7 @@ export default function SlideEditor(props) {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       if (!props.selectedElementCount || !callbacksRef.current.onDeleteElements) return;
       const t = e.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       e.preventDefault();
       callbacksRef.current.onDeleteElements();
     }
@@ -241,6 +255,8 @@ export default function SlideEditor(props) {
             setSelection={updateSelEl}
             count={props.selectedElementCount}
             extras={slots.inspectorExtra}
+            slide={cur}
+            onApplyPatch={applyPatchToCurrent}
           />
         )}
         {layoutVariant === 'floating' && (
@@ -251,6 +267,8 @@ export default function SlideEditor(props) {
             setSelection={updateSelEl}
             count={props.selectedElementCount}
             extras={slots.inspectorExtra}
+            slide={cur}
+            onApplyPatch={applyPatchToCurrent}
           />
         )}
       </div>
