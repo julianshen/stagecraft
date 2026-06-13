@@ -17,6 +17,15 @@ describe('risk severity palette', () => {
     expect(Object.isFrozen(SEVERITIES)).toBe(true);
   });
 
+  it('is a traffic-light ramp — high red, med amber, low green', () => {
+    const hue = (s) => Number(SEVERITY_OKLCH[s].match(/oklch\([\d.]+ [\d.]+ ([\d.]+)\)/)[1]);
+    expect(hue('high')).toBeLessThan(45);                 // red
+    expect(hue('med')).toBeGreaterThanOrEqual(45);        // amber
+    expect(hue('med')).toBeLessThan(100);
+    expect(hue('low')).toBeGreaterThanOrEqual(100);       // green — not the old blue (~260)
+    expect(hue('low')).toBeLessThan(170);
+  });
+
   it('keeps each hex the exact sRGB of its oklch sibling, so the two cannot drift', () => {
     // Iterate the map's own keys (not the hand-maintained SEVERITIES) so adding a
     // severity to the maps is parity-checked automatically. `fallback` is grey,
