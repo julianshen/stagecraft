@@ -35,14 +35,12 @@ describe('fieldPatch', () => {
     expect(fieldPatch({}, ['meta', 'x'], 1)).toEqual({ meta: { x: 1 } });
   });
 
-  it('drops null/undefined holes from the rebuilt array (sparse → schema-valid)', () => {
-    const slide = { items: [{ n: '01', t: 'One' }, null, { n: '03', t: 'Three' }] };
-    const patch = fieldPatch(slide, ['items', 2, 't'], 'Three!');
-    expect(patch).toEqual({ items: [{ n: '01', t: 'One' }, { n: '03', t: 'Three!' }] }); // hole gone, edit kept
-  });
-
-  it('keeps falsy-but-present primitives (empty strings) when compacting', () => {
-    expect(fieldPatch({ items: ['a', '', 'c'] }, ['items', 0], 'A')).toEqual({ items: ['A', '', 'c'] });
+  it('preserves source array shape including holes (parallel arrays stay aligned)', () => {
+    // We deliberately do NOT compact holes — dropping a column hole without the
+    // matching row cell would misalign a table; a holey patch is simply rejected
+    // by the schema gate and the edit reverts (non-corrupting).
+    const patch = fieldPatch({ columns: ['A', null, 'C'] }, ['columns', 2], 'C!');
+    expect(patch).toEqual({ columns: ['A', null, 'C!'] });
   });
 
   it('creates ARRAY-shaped containers for numeric path segments, not objects', () => {
