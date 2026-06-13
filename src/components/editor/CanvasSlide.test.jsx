@@ -35,6 +35,36 @@ function drag(target, { dx = 0, dy = 0, shiftKey = false } = {}) {
   fire(window, 'pointerup', {});
 }
 
+describe('CanvasSlide alignment guides', () => {
+  it('snaps a single dragged element to another element and shows a guide, cleared on drop', () => {
+    const onUpdateElements = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    const [hitA] = hits(container);
+    fire(hitA, 'pointerdown', { clientX: 0, clientY: 0 });
+    // a.x 100 + 197 → grid 296 (right edge 496); within 6px of b.left 500 → snaps.
+    fire(window, 'pointermove', { clientX: 197, clientY: 0 });
+    expect(container.querySelector('.align-guide')).toBeTruthy(); // guide visible mid-drag
+    fire(window, 'pointerup', {});
+    expect(onUpdateElements.mock.calls[0][0].get('a').x).toBe(300); // right edge aligned to b.left 500
+    expect(container.querySelector('.align-guide')).toBeFalsy();    // cleared on drop
+  });
+
+  it('does not snap a multi-element drag (guides only for a lone element)', () => {
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a', 'b']} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} />,
+    );
+    const [hitA] = hits(container);
+    fire(hitA, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 197, clientY: 0 });
+    expect(container.querySelector('.align-guide')).toBeFalsy(); // no guides for a group drag
+    fire(window, 'pointerup', {});
+  });
+});
+
 describe('CanvasSlide drag', () => {
   it('commits a multi-element drag as a single batch update', () => {
     const onUpdateElements = vi.fn();

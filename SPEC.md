@@ -317,7 +317,7 @@ Anthropic · OpenAI · Google · OpenRouter · Local (Ollama/LM Studio, no key) 
 - ~~Per-element typography (font family/size/weight/align for text).~~ ✅ Done — the Properties panel binds family/size/align/bold/italic/underline on a text element (§7.2.5).
 - Rotate the selection overlay (resize handles + rotate knob) to track a rotated element, which also needs rotate-aware resize math (the overlay is currently axis-aligned).
 - Selection set: shift-click multi-select ✅, marquee drag-rectangle ✅, align (horizontal + vertical) ✅, distribute ✅, and a rotate handle ✅ all shipped; ⚪ shift-add-to-marquee remains.
-- Snapping to alignment guides (currently grid-only); Pen/Image tools.
+- 🟢 **Alignment guides** — dragging a single element snaps its edges/centre to other elements' edges/centres and the slide edges/centre (`alignSnap` in `lib/align.js`, within a ~6px tolerance), drawing a guide line per snapped axis; grid-snap still applies otherwise. (Multi-element drags stay grid-only.) ⚪ Pen/Image tools remain.
 - Persisting/AI-authoring elements (the `elements` field isn't in the AI-patch whitelist yet).
 
 ---
