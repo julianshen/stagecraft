@@ -111,7 +111,7 @@ describe('addChartSlide (PPTX chart)', () => {
 });
 
 describe('addRisksSlide (PPTX risks)', () => {
-  it('colours severity bullets from the shared palette (matching the canvas), with a fallback', async () => {
+  it('labels each risk with its severity WORD and colour from the shared palette (a text channel, not colour alone)', async () => {
     await exportToPPTX({
       title: 'D', theme: 'indigo',
       sections: [{ id: 's1', name: 'X', slides: ['r'] }],
@@ -119,10 +119,17 @@ describe('addRisksSlide (PPTX risks)', () => {
         { sev: 'high', t: 'H', d: 'hd' },
         null,                            // malformed item → dropped, no crash (like the canvas)
         { sev: 'low', t: 'L', d: 'ld' },
-        { t: 'no sev' },                 // missing severity → fallback grey
+        { t: 'no sev' },                 // missing severity → fallback grey, bare bullet
+        { sev: 5, t: 'N', d: 'nd' },     // non-string severity → coerced, doesn't crash the export
       ] }],
     });
-    const bullets = last().texts.filter((x) => x.t === '●').map((x) => x.o.color);
-    expect(bullets).toEqual([SEVERITY_HEX.high, SEVERITY_HEX.low, SEVERITY_HEX.fallback]);
+    const labels = last().texts.filter((x) => typeof x.t === 'string' && x.t.startsWith('●'));
+    // colour matches the canvas palette (incl. fallback for unknown/missing) …
+    expect(labels.map((x) => x.o.color)).toEqual([SEVERITY_HEX.high, SEVERITY_HEX.low, SEVERITY_HEX.fallback, SEVERITY_HEX.fallback]);
+    // … and the severity is spelled out so the export reads without colour
+    // (no trailing space when there's no word).
+    expect(labels.map((x) => x.t)).toEqual(['● HIGH', '● LOW', '●', '● 5']);
+    // The narrow gutter box must not wrap the label onto a second line.
+    labels.forEach((x) => expect(x.o.wrap).toBe(false));
   });
 });

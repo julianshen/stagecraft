@@ -375,7 +375,7 @@ The store carries a monotonic **`rev`** counter, bumped on every mutation (deck 
 | table | native PPTX table (header + rows) |
 | split | two-column text + stats |
 | text / list / thanks | title + body/bullets |
-| risks | text representation 🟡 — severity bullet colours come from the shared `SEVERITY_HEX` (`lib/riskSpec.js`, the exact sRGB of the canvas `SEVERITY_OKLCH`), so the export matches the on-screen severity colours; unknown severities fall back to grey on both surfaces. |
+| risks | text representation 🟡 — each row is labelled `● {SEV}` (the severity spelled out, so the export reads without relying on colour — the traffic-light ramp is the classic red-green colour-blind case), coloured from the shared `SEVERITY_HEX` (`lib/riskSpec.js`, the exact sRGB of the canvas `SEVERITY_OKLCH`), so the export matches the on-screen severity colours; unknown severities fall back to grey on both surfaces. |
 | **roadmap** | 🟢 **native PPTX timeline** — month axis, status-coloured lane bars, optional TODAY marker, and a legend, built from the same `roadmapModel` (`lib/roadmapSpec.js`) the canvas uses, so they match. |
 | **chart** | 🟢 **native PPTX chart** (`addChart`) — editable in PowerPoint. Both the canvas SVG renderers and the export read the slide's `chart: { categories, series }` through the shared **`chartData`** helper (`lib/chartSpec.js`), so they show the same numbers; `chartSpec` maps the type (bar→vertical columns, line, area, pie/donut→doughnut, default line) for pptxgenjs. Both fall back to matching demo data when a slide carries none. |
 
