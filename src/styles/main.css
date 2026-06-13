@@ -1482,6 +1482,17 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   position: relative;
   box-shadow: 0 20px 60px rgba(0,0,0,0.5);
 }
+/* Laser: a transparent capture layer over the slide; the dot follows the
+   pointer (positioned in % by LaserPointer). */
+.laser-layer { position: absolute; inset: 0; z-index: 1; }
+.laser-dot {
+  position: absolute;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: oklch(0.7 0.25 25);
+  box-shadow: 0 0 30px oklch(0.7 0.25 25 / 0.6);
+}
 /* Blackout overlay: covers the slide (and laser dot) with solid black. */
 .presenter-blackout {
   position: absolute;

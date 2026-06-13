@@ -41,6 +41,7 @@ export default defineConfig({
         'src/components/sorter/SorterGrid.jsx',
         'src/components/sorter/SorterToolbar.jsx',
         'src/components/presenter/LaserPointer.jsx',
+        'src/components/presenter/LaserLayer.jsx',
         'src/components/presenter/PresenterControls.jsx',
       ],
       thresholds: {
