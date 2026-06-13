@@ -1,16 +1,7 @@
 import React from 'react';
 import Icon from '../../ui/Icon.jsx';
+import { THEME_OPTIONS } from '../menus/ThemeMenu.jsx';
 
-// The 6 deck themes (matching the toolbar Theme menu), each a representative
-// swatch colour. Clicking one applies it via onChangeTheme.
-const THEMES = [
-  { key: 'indigo', c: 'oklch(0.62 0.17 265)' },
-  { key: 'emerald', c: 'oklch(0.62 0.13 155)' },
-  { key: 'amber', c: 'oklch(0.7 0.15 75)' },
-  { key: 'coral', c: 'oklch(0.6 0.2 25)' },
-  { key: 'magenta', c: 'oklch(0.6 0.18 335)' },
-  { key: 'slate', c: 'oklch(0.55 0.03 255)' },
-];
 // Insertable components → createComponentSlide ids (via onAddComponent).
 const COMPONENTS = [
   { label: 'KPI', id: 'kpi' }, { label: 'Chart', id: 'chart' }, { label: 'Table', id: 'table' }, { label: 'Agenda', id: 'agenda' },
@@ -36,15 +27,15 @@ export default function DesignPanel({ deck, onChangeTheme, onAddComponent }) {
       <div className="pane-section">
         <h4>Theme</h4>
         <div className="swatch-grid">
-          {THEMES.map(t => (
+          {THEME_OPTIONS.map(o => (
             <div
-              key={t.key}
-              className={`swatch ${theme === t.key ? 'active' : ''}`}
-              title={t.key}
-              aria-label={`${t.key} theme`}
+              key={o.id}
+              className={`swatch ${theme === o.id ? 'active' : ''}`}
+              title={o.label}
+              aria-label={`${o.id} theme`}
               role="button"
-              style={{ background: t.c, cursor: 'pointer' }}
-              onClick={() => onChangeTheme?.(t.key)}
+              style={{ background: `oklch(0.62 ${o.chroma} ${o.hue})`, cursor: 'pointer' }}
+              onClick={() => onChangeTheme?.(o.id)}
             />
           ))}
         </div>

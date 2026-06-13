@@ -3,7 +3,7 @@ import Icon from '../../ui/Icon.jsx';
 
 const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 
-const THEME_OPTIONS = [
+export const THEME_OPTIONS = [
   { id: 'indigo', label: 'Indigo', hue: 265, chroma: 0.17 },
   { id: 'emerald', label: 'Emerald', hue: 155, chroma: 0.13 },
   { id: 'amber', label: 'Amber', hue: 75, chroma: 0.15 },
