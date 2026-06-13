@@ -202,6 +202,11 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     const field = hit?.closest?.('[contenteditable="true"]');
     if (!field) return;
     field.focus();
+    // Keep the overlay out of the way for the duration of the edit so the
+    // pointer reaches the text — repositioning the caret, drag-selecting — and
+    // restore it when the field blurs (the editing session ends).
+    overlay.style.pointerEvents = 'none';
+    field.addEventListener('blur', () => { overlay.style.pointerEvents = prev; }, { once: true });
     const sel = document.getSelection?.();
     if (!sel) return;
     sel.removeAllRanges();
