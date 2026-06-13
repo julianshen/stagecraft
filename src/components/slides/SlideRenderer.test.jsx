@@ -267,6 +267,17 @@ describe('Slide inline editing (editable)', () => {
     expect(onEditField).toHaveBeenCalledWith(['items', 1, 't'], 'Two!');
   });
 
+  it('uses the ORIGINAL array index when a falsy item precedes the edited one', () => {
+    // A null at index 1 must not shift the edited item's index (filter-then-index
+    // would have written to the wrong item → data corruption).
+    const slide = { id: 'a', layout: 'agenda', title: 'T', items: [{ n: '01', t: 'One', d: 'x' }, null, { n: '03', t: 'Three', d: 'z' }] };
+    const { container, onEditField } = renderEditable(slide);
+    const target = [...container.querySelectorAll('[contenteditable="true"]')].find((n) => n.textContent === 'Three');
+    target.textContent = 'Three!';
+    fireEvent.blur(target);
+    expect(onEditField).toHaveBeenCalledWith(['items', 2, 't'], 'Three!'); // index 2, not 1
+  });
+
   it('emits the 2-D path for a table cell', () => {
     const slide = { id: 'tb', layout: 'table', title: 'T', columns: ['A', 'B'], rows: [['1', '2'], ['3', '4']] };
     const { container, onEditField } = renderEditable(slide);

@@ -33,6 +33,13 @@ function EditableField({ value, onCommit, as: Tag, className, style }) {
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); }
+        else if (e.key === 'Escape') {
+          // Cancel: restore the original text and blur — the blur then commits a
+          // no-op (next === text) so the edit is discarded.
+          e.preventDefault();
+          e.currentTarget.textContent = text;
+          e.currentTarget.blur();
+        }
       }}
     />
   );

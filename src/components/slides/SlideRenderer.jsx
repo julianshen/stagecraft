@@ -356,8 +356,12 @@ function ElementView({ el }) {
 
 export function ElementsLayer({ elements }) {
   if (!elements?.length) return null;
+  // pointer-events:none — this is the VISUAL element layer; interaction (select,
+  // drag, resize) is handled by CanvasSlide's separate overlay. Without this, the
+  // full-bleed layer would sit over the slide text and swallow the double-click
+  // that starts an inline text edit on any slide that has elements.
   return (
-    <div style={{ position: 'absolute', inset: 0 }}>
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       {elements.map((el) => <ElementView key={el.id} el={el} />)}
     </div>
   );
@@ -416,8 +420,10 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
             {E(['eyebrow'], slide.eyebrow || 'Agenda · 4 parts', { as: 'div', className: 'slide-eyebrow' })}
             {E(['title'], slide.title || "What we'll cover", { as: 'h1', style: { fontSize:96, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 80px', lineHeight:1 } })}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'40px 80px', maxWidth:1700 }}>
-              {(Array.isArray(slide.items) ? slide.items : []).filter(Boolean).map((it, i) => (
-                // Keyed by index (stable across edits): editing it.n must not remount the row.
+              {(Array.isArray(slide.items) ? slide.items : []).map((it, i) => it && (
+                // Map the ORIGINAL array (not filtered) so `i` is the true index
+                // an edit writes back to; falsy items render as nothing. Keyed by
+                // index (stable): editing it.n must not remount the row.
                 <div key={i} style={{ display:'grid', gridTemplateColumns:'80px 1fr', gap:20, paddingBottom:24, borderBottom:'1px solid #eee' }}>
                   {E(['items', i, 'n'], it.n, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:36, color:'oklch(0.62 0.17 265)', fontWeight:500 } })}
                   <div>
@@ -457,15 +463,15 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
               {E(['note'], slide.note, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:20, color:'#888' } })}
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'24px', maxWidth:1760 }}>
-              {(Array.isArray(slide.kpis) ? slide.kpis : []).filter(Boolean).map((k,i)=>(
+              {(Array.isArray(slide.kpis) ? slide.kpis : []).map((k,i)=> k && (
                 <div key={i} style={{ padding:'28px 32px', border:'1px solid #e8e5df', borderRadius:10, background:'white', position:'relative' }}>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
                     {E(['kpis', i, 'label'], k.label, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:16, letterSpacing:'0.08em', textTransform:'uppercase', color:'#888' } })}
-                    <div style={{
+                    {E(['kpis', i, 'delta'], k.delta, { as: 'div', style: {
                       fontFamily:'var(--f-mono)', fontSize:14, padding:'2px 8px', borderRadius:4,
                       background: k.good === true ? 'oklch(0.95 0.04 155)' : k.good === false ? 'oklch(0.95 0.04 25)' : '#f0ede8',
                       color: k.good === true ? 'oklch(0.45 0.14 155)' : k.good === false ? 'oklch(0.5 0.18 25)' : '#666'
-                    }}>{k.delta}</div>
+                    } })}
                   </div>
                   {E(['kpis', i, 'val'], k.val, { as: 'div', style: { fontSize:68, fontWeight:600, letterSpacing:'-0.03em', lineHeight:1, marginBottom:14 } })}
                   {E(['kpis', i, 'target'], k.target, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:16, color:'#888' } })}
@@ -504,7 +510,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
               {E(['body'], slide.body, { as: 'p', style: { fontSize:28, lineHeight:1.5, color:'#333', maxWidth:760 } })}
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
-              {(Array.isArray(slide.stats) ? slide.stats : []).filter(Boolean).map((st,i)=>(
+              {(Array.isArray(slide.stats) ? slide.stats : []).map((st,i)=> st && (
                 <div key={i} style={{ padding:'36px 40px', background:'oklch(0.97 0.01 85)', borderRadius:10, display:'flex', alignItems:'baseline', justifyContent:'space-between' }}>
                   {E(['stats', i, 'lbl'], st.lbl, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:20, color:'#555', letterSpacing:'0.05em', textTransform:'uppercase' } })}
                   {E(['stats', i, 'val'], st.val, { as: 'div', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', color: String(st.val ?? '').startsWith('-') ? 'oklch(0.55 0.18 25)' : 'oklch(0.45 0.14 155)' } })}
@@ -586,7 +592,8 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
             {E(['eyebrow'], slide.eyebrow || 'Outlook', { as: 'div', className: 'slide-eyebrow' })}
             {E(['title'], slide.title, { as: 'h1', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 60px' } })}
             <div style={{ display:'flex', flexDirection:'column', gap:28 }}>
-              {(Array.isArray(slide.items) ? slide.items : []).filter(Boolean).map((it,i)=>{
+              {(Array.isArray(slide.items) ? slide.items : []).map((it,i)=>{
+                if (!it) return null; // keep `i` the true index for onEditField
                 const sevC = SEVERITY_OKLCH[it.sev] || SEVERITY_OKLCH.fallback;
                 return (
                   <div key={i} style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:40, padding:'32px 36px', border:'1px solid #eee', borderLeft:`6px solid ${sevC}`, borderRadius:6, background:'white' }}>
@@ -610,7 +617,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
             {E(['eyebrow'], slide.eyebrow || 'Outlook', { as: 'div', className: 'slide-eyebrow' })}
             {E(['title'], slide.title, { as: 'h1', style: { fontSize:84, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 70px' } })}
             <div style={{ display:'flex', flexDirection:'column', gap:28, maxWidth:1500 }}>
-              {(Array.isArray(slide.items) ? slide.items : []).filter(Boolean).map((it,i)=>(
+              {(Array.isArray(slide.items) ? slide.items : []).map((it,i)=> it != null && (
                 <div key={i} style={{ display:'grid', gridTemplateColumns:'100px 1fr', gap:28, alignItems:'baseline', borderBottom:'1px solid #eee', paddingBottom:28 }}>
                   <div style={{ fontFamily:'var(--f-mono)', fontSize:28, color:'oklch(0.62 0.17 265)', fontWeight:500 }}>{String(i+1).padStart(2,'0')}</div>
                   {E(['items', i], typeof it === 'object' && it !== null ? '' : it, { as: 'div', style: { fontSize:38, fontWeight:500, letterSpacing:'-0.01em' } })}

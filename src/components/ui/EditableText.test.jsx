@@ -52,6 +52,17 @@ describe('EditableText', () => {
     expect(el.textContent).toBe('A'); // rejected → reverted to the stored value
   });
 
+  it('cancels the edit on Escape — restores the value and does not commit', () => {
+    const onCommit = vi.fn();
+    const { container } = render(<EditableText editable value="A" onCommit={onCommit} />);
+    const el = container.querySelector('[contenteditable]');
+    el.textContent = 'B';
+    fireEvent.keyDown(el, { key: 'Escape' });
+    expect(el.textContent).toBe('A');           // restored
+    fireEvent.blur(el);                          // blur after Escape
+    expect(onCommit).not.toHaveBeenCalled();     // no-op, discarded
+  });
+
   it('re-syncs the DOM when the value prop changes from outside', () => {
     const { container, rerender } = render(<EditableText editable value="A" onCommit={vi.fn()} />);
     rerender(<EditableText editable value="B" onCommit={vi.fn()} />);

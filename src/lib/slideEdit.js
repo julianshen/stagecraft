@@ -11,11 +11,18 @@ export function fieldPatch(slide, path, value) {
   const [key, ...rest] = path;
   if (rest.length === 0) return { [key]: value };
 
-  const clone = (v) => (Array.isArray(v) ? v.slice() : { ...(v || {}) });
-  const root = clone(slide[key]);
+  // Clone the existing container, or create one whose SHAPE matches the next
+  // path segment — a numeric segment needs an array (so a missing branch under
+  // a numeric index doesn't become an object like {1:{0:'X'}}).
+  const container = (existing, nextKey) =>
+    Array.isArray(existing) ? existing.slice()
+      : existing != null ? { ...existing }
+        : (typeof nextKey === 'number' ? [] : {});
+
+  const root = container(slide[key], rest[0]);
   let node = root;
   for (let i = 0; i < rest.length - 1; i++) {
-    node[rest[i]] = clone(node[rest[i]]);
+    node[rest[i]] = container(node[rest[i]], rest[i + 1]);
     node = node[rest[i]];
   }
   node[rest[rest.length - 1]] = value;

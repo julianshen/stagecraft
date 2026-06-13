@@ -34,4 +34,11 @@ describe('fieldPatch', () => {
   it('creates the container when the nested field is absent', () => {
     expect(fieldPatch({}, ['meta', 'x'], 1)).toEqual({ meta: { x: 1 } });
   });
+
+  it('creates ARRAY-shaped containers for numeric path segments, not objects', () => {
+    const patch = fieldPatch({}, ['rows', 0, 0], 'X');
+    expect(Array.isArray(patch.rows)).toBe(true);
+    expect(Array.isArray(patch.rows[0])).toBe(true);
+    expect(patch.rows[0][0]).toBe('X');
+  });
 });

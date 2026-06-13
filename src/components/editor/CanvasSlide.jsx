@@ -12,6 +12,20 @@ const HANDLE_POS = {
   sw: [0, 1], s: [0.5, 1], se: [1, 1],
 };
 
+// A caret Range at a viewport point, across browsers: Chrome/Safari expose
+// caretRangeFromPoint; Firefox exposes caretPositionFromPoint instead.
+function caretRangeAt(x, y) {
+  if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+  const pos = document.caretPositionFromPoint?.(x, y);
+  if (pos) {
+    const r = document.createRange();
+    r.setStart(pos.offsetNode, pos.offset);
+    r.collapse(true);
+    return r;
+  }
+  return null;
+}
+
 export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selectedIds = [], onSelectElement, onUpdateElements, onMarqueeSelect }) {
   const frameRef = useRef(null);
   const [scale, setScale] = useState(0.5);
@@ -178,14 +192,17 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     try {
       overlay.style.pointerEvents = 'none';
       hit = document.elementFromPoint?.(e.clientX, e.clientY);
-      range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+      range = caretRangeAt(e.clientX, e.clientY);
     } finally {
       overlay.style.pointerEvents = prev;
     }
+    // Our inline fields always render contenteditable="true" (EditableText sets
+    // `contentEditable`), so match that exactly — precise and testable, vs
+    // isContentEditable which jsdom doesn't compute.
     const field = hit?.closest?.('[contenteditable="true"]');
     if (!field) return;
     field.focus();
-    const sel = window.getSelection?.();
+    const sel = document.getSelection?.();
     if (!sel) return;
     sel.removeAllRanges();
     if (range && field.contains(range.startContainer)) {
