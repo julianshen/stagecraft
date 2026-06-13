@@ -12,10 +12,14 @@ import { chartData } from '../../../lib/chartSpec.js';
 // extras are dropped on the first edit, exactly as the canvas/export resolve them.
 
 export default function ChartDataEditor({ slide, onApply }) {
-  const { categories, series } = chartData(slide);
-  // Donut/pie render only series[0] (canvas and export both) — extra series
-  // would persist but never draw, so the multi-series controls hide there.
+  // Donut/pie render only series[0] (canvas and export both) — the editor
+  // shows and commits exactly the rendered series: extra authored series are
+  // not editable and clip away on the first edit (same normalization-persists
+  // policy as the rest of this editor), and the multi-series controls hide.
   const singleSeries = slide.chartType === 'donut' || slide.chartType === 'pie';
+  const model = chartData(slide);
+  const categories = model.categories;
+  const series = singleSeries ? model.series.slice(0, 1) : model.series;
 
   const commit = (cats, ser) => onApply({ chart: { categories: cats, series: ser } });
   const mapSeries = (fn) => series.map((s, i) => ({ name: s.name, values: fn(s, i) }));
