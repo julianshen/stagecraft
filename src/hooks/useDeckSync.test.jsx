@@ -32,9 +32,9 @@ function makeServer(initial = { deck: null, rev: 0 }) {
 
 // Mirrors App: owns deck state and feeds setDeck back into the hook as
 // onExternalDeck. `controls` exposes the live deck + a setter to drive edits.
-function Harness({ initialDeck = localDeck, intervalMs = 1000, fetchFn, controls }) {
+function Harness({ initialDeck = localDeck, intervalMs = 1000, pushDebounceMs, fetchFn, controls }) {
   const [deck, setDeck] = useState(initialDeck);
-  const adopt = useDeckSync(deck, setDeck, { intervalMs, fetchFn });
+  const adopt = useDeckSync(deck, setDeck, { intervalMs, pushDebounceMs, fetchFn });
   if (controls) { controls.deck = deck; controls.setDeck = setDeck; controls.adopt = adopt; }
   return null;
 }
@@ -268,16 +268,28 @@ describe('push debounce', () => {
   it('honors a custom pushDebounceMs', async () => {
     const srv = makeServer({ deck: null, rev: 0 });
     const controls = {};
-    function Custom() {
-      const [deck, setDeck] = useState(localDeck);
-      useDeckSync(deck, setDeck, { intervalMs: 60000, pushDebounceMs: 50, fetchFn: srv.fetchFn });
-      controls.setDeck = setDeck;
-      return null;
-    }
-    render(<Custom />);
+    render(<Harness fetchFn={srv.fetchFn} pushDebounceMs={50} intervalMs={60000} controls={controls} />);
     await flush();
     await act(async () => { controls.setDeck({ ...localDeck, title: 'q' }); });
     await flush(50);
     expect(srv.puts).toHaveLength(2);
+  });
+
+  it('stays debounced when the server is unreachable (the seed never acked)', async () => {
+    // Regression: keying "immediate" off lastRev===null left the debounce off
+    // forever when every PUT fails — per-keystroke fetch attempts in exactly
+    // the mode where coalescing matters most.
+    const fetchFn = vi.fn(() => Promise.reject(new Error('offline')));
+    const controls = {};
+    render(<Harness fetchFn={fetchFn} controls={controls} />);
+    await flush(); // mount + immediate seed attempt (fails)
+    const callsAfterSeed = fetchFn.mock.calls.length;
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'x' }); });
+    await flush(0);
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'xy' }); });
+    await flush(0);
+    expect(fetchFn.mock.calls.length).toBe(callsAfterSeed); // both edits still pending
+    await flush(300);
+    expect(fetchFn.mock.calls.length).toBe(callsAfterSeed + 1); // one coalesced attempt
   });
 });

@@ -19,9 +19,9 @@ function putInit(deck) {
  * - Local edits are pushed via `PUT /api/deck`, debounced (trailing,
  *   `pushDebounceMs`) so per-keystroke editing — the inspector Data tab, the
  *   Co-pilot — coalesces into one write per pause instead of one per character.
- *   The very first push (the seed, when the server holds nothing) is immediate
- *   so a fresh deck is visible to agents right away. The server-assigned `rev`
- *   is remembered as "ours".
+ *   Only the very first push (the seed, when the server holds nothing) is
+ *   immediate, so a fresh deck is visible to agents right away. The
+ *   server-assigned `rev` is remembered as "ours".
  * - It polls `GET /api/deck/state`; when the server `rev` differs from the last
  *   one we wrote, an external (MCP/agent) edit happened, so it adopts that deck
  *   via `onExternalDeck` — skipping the echo PUT for the exact object adopted.
@@ -49,6 +49,7 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   onExternalRef.current = onExternalDeck;
 
   const lastRev = useRef(null);  // the rev we last wrote or saw
+  const seeded = useRef(false);  // first push dispatched (flips synchronously, even if it fails)
   const adopted = useRef(null);  // the exact deck object we last adopted (skip its echo PUT)
   const activeId = useRef(null); // the deck our writes are for (tags PUTs so a stale write can't clobber a switched deck)
   const [initialized, setInitialized] = useState(false);
@@ -84,9 +85,10 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
 
   // Push the current deck once initialized, and on every later local edit —
   // skipping the exact object we just adopted so there's no echo loop. Edits
-  // are debounced (trailing): a new edit inside the window cancels the pending
-  // push and restarts it with the fresher deck, so rapid typing costs one PUT.
-  // The seed (nothing written or seen yet — lastRev null) goes out immediately.
+  // after the first push are debounced (trailing). `seeded` flips when the
+  // first push is DISPATCHED (not when it responds), so the debounce engages
+  // even while the seed is in flight or when the server is unreachable.
+  // Known window: a tab closed within pushDebounceMs of an edit loses it.
   useEffect(() => {
     if (!initialized || deck === adopted.current) return;
     let cancelled = false;
@@ -108,7 +110,11 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
         })
         .catch(() => {});
     };
-    if (lastRev.current === null) { push(); return () => { cancelled = true; }; }
+    if (!seeded.current && lastRev.current === null) {
+      seeded.current = true;
+      push();
+      return () => { cancelled = true; };
+    }
     const t = setTimeout(push, pushDebounceMs);
     return () => { cancelled = true; clearTimeout(t); };
   }, [deck, initialized, pushDebounceMs]);
