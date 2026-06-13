@@ -66,7 +66,7 @@ export default function PresenterView({ deck, onExit }) {
           <ScaledSlide>
             <Slide slide={cur} deck={deck} sectionName={cur.sectionName} num={idx + 1} total={flat.length}/>
           </ScaledSlide>
-          <LaserLayer enabled={laser}/>
+          <LaserLayer enabled={laser && !blackout}/>
           {blackout && <div className="presenter-blackout" aria-label="Screen blacked out — press B to resume"/>}
         </div>
       </div>

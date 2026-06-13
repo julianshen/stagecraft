@@ -63,6 +63,14 @@ describe('PresenterView', () => {
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
+  it('stops laser tracking while blacked out (no capture layer behind the black)', () => {
+    const { container, getByText } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+    fireEvent.click(getByText(/Laser/).closest('button'));
+    expect(container.querySelector('.laser-layer')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'b' }); // blackout on
+    expect(container.querySelector('.laser-layer')).toBeNull(); // nothing to track under black
+  });
+
   it('toggles the laser from the control button', () => {
     const { getByText } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
     const laserBtn = getByText(/Laser/).closest('button');
