@@ -2,6 +2,14 @@ import pptxgen from 'pptxgenjs';
 import { chartSpec, CHART_SERIES_HEX } from './chartSpec.js';
 import { SEVERITY_HEX } from './riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
+import { SPEAKER_NOTES } from '../data/deck.js';
+
+// The speaker notes for a slide, mirroring the presenter: an authored
+// `slide.notes` wins (honouring an intentionally-empty string), else the
+// bundled `SPEAKER_NOTES` for that id, else none.
+function notesFor(slide) {
+  return typeof slide.notes === 'string' ? slide.notes : (SPEAKER_NOTES[slide.id] || '');
+}
 
 // ---- theme colours (fallback to indigo) ----
 const THEME_COLORS = {
@@ -308,7 +316,7 @@ function addGenericSlide(pptx, slide, tc) {
  * Export a deck object to a .pptx file using pptxgenjs.
  * @param {Object} deck — SAMPLE_DECK-shaped object
  */
-export async function exportToPPTX(deck) {
+export async function exportToPPTX(deck, { includeNotes = true } = {}) {
   const pptx = new pptxgen();
   pptx.layout = 'LAYOUT_16x9';
   pptx.title = deck.title || 'Stagecraft Presentation';
@@ -316,6 +324,14 @@ export async function exportToPPTX(deck) {
   pptx.author = deck.author || 'Stagecraft';
 
   const tc = themeColors(deck.theme);
+
+  // Capture the slide each builder creates (one addSlide per builder) so notes
+  // can be attached at this level without threading the option through all 13
+  // layout builders. Reset per iteration; a builder that creates none leaves it
+  // null and is simply skipped.
+  let pendingSlide = null;
+  const addSlide = pptx.addSlide.bind(pptx);
+  pptx.addSlide = (...a) => { pendingSlide = addSlide(...a); return pendingSlide; };
 
   // Flatten slides in section order
   const flat = [];
@@ -327,6 +343,7 @@ export async function exportToPPTX(deck) {
   });
 
   for (const slide of flat) {
+    pendingSlide = null;
     switch (slide.layout) {
       case 'cover':    addCoverSlide(pptx, slide, tc);   break;
       case 'agenda':   addAgendaSlide(pptx, slide, tc);  break;
@@ -341,6 +358,10 @@ export async function exportToPPTX(deck) {
       case 'thanks':   addThanksSlide(pptx, slide, tc);  break;
       case 'chart':    addChartSlide(pptx, slide, tc);   break;
       default:         addGenericSlide(pptx, slide, tc); break;
+    }
+    if (includeNotes && pendingSlide) {
+      const n = notesFor(slide);
+      if (n) pendingSlide.addNotes(n);
     }
   }
 

@@ -36,6 +36,7 @@ export default defineConfig({
         'src/components/editor/inspector/NumberCell.jsx',
         'src/components/editor/inspector/ChartDataEditor.jsx',
         'src/components/editor/inspector/RoadmapLanesEditor.jsx',
+        'src/components/modals/ExportModal.jsx',
         'src/components/views/SorterView.jsx',
         'src/components/views/SettingsView.jsx',
         'src/components/sorter/SorterGrid.jsx',

@@ -10,11 +10,12 @@ vi.mock('pptxgenjs', () => {
     }
     addSlide() {
       const s = {
-        texts: [], shapes: [], charts: [], background: null,
+        texts: [], shapes: [], charts: [], background: null, notes: null,
         addText(t, o) { this.texts.push({ t, o }); },
         addShape(type, o) { this.shapes.push({ type, o }); },
         addChart(type, data, o) { this.charts.push({ type, data, o }); },
         addTable() {},
+        addNotes(t) { this.notes = t; },
       };
       rec.slides.push(s);
       return s;
@@ -27,6 +28,7 @@ vi.mock('pptxgenjs', () => {
 import { exportToPPTX } from './pptxExport.js';
 import { CHART_SERIES_HEX } from './chartSpec.js';
 import { SEVERITY_HEX } from './riskSpec.js';
+import { SPEAKER_NOTES } from '../data/deck.js';
 
 const deckOf = (roadmap) => ({
   title: 'D', theme: 'indigo',
@@ -131,5 +133,29 @@ describe('addRisksSlide (PPTX risks)', () => {
     expect(labels.map((x) => x.t)).toEqual(['● HIGH', '● LOW', '●', '● 5']);
     // The narrow gutter box must not wrap the label onto a second line.
     labels.forEach((x) => expect(x.o.wrap).toBe(false));
+  });
+});
+
+describe('exportToPPTX speaker notes', () => {
+  const notesDeck = {
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's1', name: 'X', slides: ['cover', 'b', 'c'] }],
+    slides: [
+      { id: 'cover', layout: 'cover', title: 'C' },          // no .notes → SPEAKER_NOTES['cover'] fallback
+      { id: 'b', layout: 'text', title: 'B', notes: 'authored B' }, // authored wins
+      { id: 'c', layout: 'text', title: 'C2', notes: '' },   // explicit empty → no notes attached
+    ],
+  };
+
+  it('attaches speaker notes by default — authored slide.notes, else the bundled SPEAKER_NOTES', async () => {
+    await exportToPPTX(notesDeck);
+    expect(rec.slides[0].notes).toBe(SPEAKER_NOTES.cover); // fallback to bundled
+    expect(rec.slides[1].notes).toBe('authored B');         // authored preferred
+    expect(rec.slides[2].notes).toBeNull();                 // empty string → nothing attached
+  });
+
+  it('omits all notes when includeNotes is false', async () => {
+    await exportToPPTX(notesDeck, { includeNotes: false });
+    expect(rec.slides.map((s) => s.notes)).toEqual([null, null, null]);
   });
 });
