@@ -11,11 +11,13 @@ import { useReorderDrag } from '../../hooks/useReorderDrag.js';
 // contract) matter for a thumb's pixels.
 //
 // Handler/render-prop identity is deliberately skipped. That's safe on two
-// conditions: (1) everything their closures READ (section order via secSlides,
-// numbering, deck chrome) is part of this comparison — when it changes, the
-// thumb re-renders with fresh closures; (2) everything they WRITE goes through
-// functional updaters (`onDeckChange(prev => …)`, Editor's callback contract),
-// so a stale closure still mutates the latest deck.
+// conditions: (1) everything their closures READ is part of this comparison —
+// the drag closure captures `sec`, whose `.slides` rides along as the
+// `secSlides` sentinel prop, so a section-order change trips the comparator and
+// rebuilds the closure; numbering (idx/total) and deck chrome are compared too;
+// (2) everything they WRITE goes through functional updaters
+// (`onDeckChange(prev => …)`, Editor's callback contract), so a stale closure
+// still mutates the latest deck.
 //
 // Unknown props fail CLOSED: anything not explicitly skipped is compared with
 // ===, so a future Thumb prop participates by default (worst case it defeats
@@ -101,6 +103,10 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
                   deck={deckCtx.deck}
                   renderSlide={renderSlide}
                   onPick={onPick}
+                  // Load-bearing: Thumb never reads secSlides, but the memo
+                  // comparator does — its identity changes when this section is
+                  // reordered, rebuilding the (skipped-identity) drag closure
+                  // below. Pinned by the "section-order change" memo test.
                   secSlides={sec.slides}
                   dragHandlers={dragProps(sid, sec)}
                 />

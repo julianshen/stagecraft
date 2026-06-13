@@ -88,7 +88,12 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   // after the first push are debounced (trailing). `seeded` flips when the
   // first push is DISPATCHED (not when it responds), so the debounce engages
   // even while the seed is in flight or when the server is unreachable.
-  // Known window: a tab closed within pushDebounceMs of an edit loses it.
+  // Loss windows (both consistent with the last-write-wins policy): an edit
+  // made within pushDebounceMs of (a) the tab closing, or (b) an adopt that
+  // supersedes it — a deck switch, or an external edit picked up by the poll —
+  // is dropped with the pending timer rather than pushed. (b) only bites a
+  // *buffer* of edits during sustained typing, since an isolated edit's timer
+  // fires well before any UI-driven deck switch.
   useEffect(() => {
     if (!initialized || deck === adopted.current) return;
     let cancelled = false;
