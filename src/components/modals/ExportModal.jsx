@@ -67,6 +67,7 @@ export default function ExportModal({ onClose, deck }) {
                     <option value="include">Include speaker notes</option>
                     <option value="exclude">Exclude speaker notes</option>
                   </select>
+                  <Icon name="chevron-down" size={11}/>
                 </div>
               </FieldRow>
               <FieldRow label="COMMENTS">

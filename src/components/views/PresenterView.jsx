@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
-import { SPEAKER_NOTES } from '../../data/deck.js';
+import { resolveNotes } from '../../data/deck.js';
 import LaserLayer from '../presenter/LaserLayer.jsx';
 import PresenterSidePanel from '../presenter/PresenterSidePanel.jsx';
 import PresenterControls from '../presenter/PresenterControls.jsx';
@@ -52,12 +52,9 @@ export default function PresenterView({ deck, onExit }) {
 
   if (!cur) return null;
 
-  // Prefer notes authored on the slide (e.g. the Co-pilot's "Generate speaker
-  // notes") — honoring an intentionally-cleared empty string — then the bundled
-  // sample notes, then a default nudge.
-  const note = typeof cur.notes === 'string'
-    ? cur.notes
-    : (SPEAKER_NOTES[cur.id] || "Drive the narrative: what does the audience need to walk away believing? If you don't know, the slide isn't ready.");
+  // Authored slide notes → bundled sample notes → a default nudge (the shared
+  // resolver honours an intentionally-cleared empty string as "no notes").
+  const note = resolveNotes(cur, "Drive the narrative: what does the audience need to walk away believing? If you don't know, the slide isn't ready.");
 
   return (
     <div className="presenter">

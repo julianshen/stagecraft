@@ -109,6 +109,14 @@ export const SPEAKER_NOTES = {
   'risks-limits': 'Be candid here. Naming the limits builds trust — and each one already has a concrete next step on the roadmap slide.',
 };
 
+// Resolve a slide's speaker notes: an authored `slide.notes` wins (honouring an
+// intentionally-empty string as "no notes"), else the bundled `SPEAKER_NOTES`
+// for that id, else `fallback`. Single-sourced so the presenter (which passes a
+// default-nudge fallback) and the PPTX export (which passes none) can't drift.
+export function resolveNotes(slide, fallback = '') {
+  return typeof slide.notes === 'string' ? slide.notes : (SPEAKER_NOTES[slide.id] || fallback);
+}
+
 // -------------------- templates --------------------
 export const TEMPLATES = [
   { id: 't1', name: 'Blank',              cat: 'Basic',      vibe: 'blank' },
