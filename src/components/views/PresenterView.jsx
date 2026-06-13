@@ -38,7 +38,9 @@ export default function PresenterView({ deck, onExit }) {
       if (e.key === 'Escape') onExit();
       if (e.key === 'ArrowRight' || e.key === ' ') setIdx(i => Math.min(flat.length - 1, i + 1));
       if (e.key === 'ArrowLeft') setIdx(i => Math.max(0, i - 1));
-      if (e.key === 'b' || e.key === 'B') setBlackout(b => !b); // blackout the audience screen
+      // Bare B blacks out the audience screen — but not modifier chords like
+      // Ctrl+Shift+B (browser bookmarks bar) or Cmd+B, which aren't ours.
+      if ((e.key === 'b' || e.key === 'B') && !e.metaKey && !e.ctrlKey && !e.altKey) setBlackout(b => !b);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

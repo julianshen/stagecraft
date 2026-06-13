@@ -38,6 +38,16 @@ describe('PresenterView', () => {
     expect(container.querySelector('.presenter-blackout')).toBeNull();
   });
 
+  it('does not blackout on a modifier+B chord (e.g. Ctrl+Shift+B toggles the browser bookmarks bar)', () => {
+    const { container } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+    fireEvent.keyDown(window, { key: 'b', metaKey: true });        // a single chord — must be ignored
+    expect(container.querySelector('.presenter-blackout')).toBeNull();
+    fireEvent.keyDown(window, { key: 'B', ctrlKey: true, shiftKey: true }); // Ctrl+Shift+B too
+    expect(container.querySelector('.presenter-blackout')).toBeNull();
+    fireEvent.keyDown(window, { key: 'b' });                       // bare b still works
+    expect(container.querySelector('.presenter-blackout')).toBeTruthy();
+  });
+
   it('toggles blackout from the control button too', () => {
     const { container, getByText } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
     fireEvent.click(getByText(/Blackout/).closest('button'));
