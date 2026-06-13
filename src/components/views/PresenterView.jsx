@@ -39,8 +39,9 @@ export default function PresenterView({ deck, onExit }) {
       if (e.key === 'ArrowRight' || e.key === ' ') setIdx(i => Math.min(flat.length - 1, i + 1));
       if (e.key === 'ArrowLeft') setIdx(i => Math.max(0, i - 1));
       // Bare B blacks out the audience screen — but not modifier chords like
-      // Ctrl+Shift+B (browser bookmarks bar) or Cmd+B, which aren't ours.
-      if ((e.key === 'b' || e.key === 'B') && !e.metaKey && !e.ctrlKey && !e.altKey) setBlackout(b => !b);
+      // Ctrl+Shift+B (browser bookmarks bar) or Cmd+B, which aren't ours; and not
+      // key auto-repeat, which would flicker this persistent toggle while held.
+      if ((e.key === 'b' || e.key === 'B') && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) setBlackout(b => !b);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -66,7 +67,7 @@ export default function PresenterView({ deck, onExit }) {
           <ScaledSlide>
             <Slide slide={cur} deck={deck} sectionName={cur.sectionName} num={idx + 1} total={flat.length}/>
           </ScaledSlide>
-          <LaserLayer enabled={laser && !blackout}/>
+          {laser && !blackout && <LaserLayer/>}
           {blackout && <div className="presenter-blackout" aria-label="Screen blacked out — press B to resume"/>}
         </div>
       </div>

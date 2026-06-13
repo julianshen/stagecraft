@@ -3,19 +3,17 @@ import { render, fireEvent } from '@testing-library/react';
 import LaserLayer from './LaserLayer.jsx';
 
 describe('LaserLayer', () => {
-  it('renders nothing when disabled — no capture layer, no listeners', () => {
-    const { container } = render(<LaserLayer enabled={false} />);
-    expect(container.firstChild).toBeNull();
-  });
-
-  it('mounts a capture layer when enabled (dot stays hidden until the pointer moves)', () => {
-    const { container } = render(<LaserLayer enabled />);
+  // The parent (PresenterView) mounts LaserLayer only while the laser is live,
+  // so the component itself always renders its capture layer; unmounting is how
+  // the dot state is reset.
+  it('renders a capture layer with the dot hidden until the pointer moves', () => {
+    const { container } = render(<LaserLayer />);
     expect(container.querySelector('.laser-layer')).toBeTruthy();
     expect(container.querySelector('.laser-dot')).toBeNull(); // no pointer move yet → no pos
   });
 
   it('handles pointer move and leave without crashing (no dot when the layer has no measurable area)', () => {
-    const { container } = render(<LaserLayer enabled />);
+    const { container } = render(<LaserLayer />);
     const layer = container.querySelector('.laser-layer');
     // jsdom reports a zero-area rect, so pointerToPct returns null → dot hidden,
     // but the handlers still run. Move-before-enter exercises the rect fallback;

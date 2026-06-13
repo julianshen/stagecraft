@@ -48,6 +48,32 @@ describe('PresenterView', () => {
     expect(container.querySelector('.presenter-blackout')).toBeTruthy();
   });
 
+  it('does not flicker blackout while the B key auto-repeats (held down)', () => {
+    const { container } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+    fireEvent.keyDown(window, { key: 'b' });               // intentional press → on
+    fireEvent.keyDown(window, { key: 'b', repeat: true });  // OS auto-repeat → ignored (else it toggles off)
+    expect(container.querySelector('.presenter-blackout')).toBeTruthy(); // still on, no flicker
+  });
+
+  it('clears the laser dot when toggled off, so re-enabling does not flash the old position', () => {
+    const rect = { left: 0, top: 0, width: 800, height: 400, right: 800, bottom: 400 };
+    const spy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(rect);
+    try {
+      const { container, getByText } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+      const laserBtn = getByText(/Laser/).closest('button');
+      fireEvent.click(laserBtn); // laser on
+      const layer = container.querySelector('.laser-layer');
+      fireEvent.pointerEnter(layer, { clientX: 400, clientY: 200 });
+      fireEvent.pointerMove(layer, { clientX: 400, clientY: 200 });
+      expect(container.querySelector('.laser-dot')).toBeTruthy(); // dot shows where the pointer is
+      fireEvent.click(laserBtn); // laser off
+      fireEvent.click(laserBtn); // laser on again — must start clean, no stale dot
+      expect(container.querySelector('.laser-dot')).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('toggles blackout from the control button too', () => {
     const { container, getByText } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
     fireEvent.click(getByText(/Blackout/).closest('button'));
