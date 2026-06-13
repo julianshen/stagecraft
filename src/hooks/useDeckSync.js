@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
 const DEFAULT_POLL_MS = 1500;
+const DEFAULT_PUSH_DEBOUNCE_MS = 300;
 
 function putInit(deck) {
   return {
@@ -15,8 +16,12 @@ function putInit(deck) {
  *
  * - On mount it reconciles once: if the server already holds a deck (an agent
  *   pre-loaded one) it adopts that; otherwise the push effect seeds ours.
- * - Local edits are pushed via `PUT /api/deck`; the server-assigned `rev` is
- *   remembered as "ours".
+ * - Local edits are pushed via `PUT /api/deck`, debounced (trailing,
+ *   `pushDebounceMs`) so per-keystroke editing — the inspector Data tab, the
+ *   Co-pilot — coalesces into one write per pause instead of one per character.
+ *   Only the very first push (the seed, when the server holds nothing) is
+ *   immediate, so a fresh deck is visible to agents right away. The
+ *   server-assigned `rev` is remembered as "ours".
  * - It polls `GET /api/deck/state`; when the server `rev` differs from the last
  *   one we wrote, an external (MCP/agent) edit happened, so it adopts that deck
  *   via `onExternalDeck` — skipping the echo PUT for the exact object adopted.
@@ -34,7 +39,7 @@ function putInit(deck) {
  * @param options         { intervalMs, fetchFn }
  */
 export function useDeckSync(deck, onExternalDeck, options = {}) {
-  const { intervalMs = DEFAULT_POLL_MS, fetchFn } = options;
+  const { intervalMs = DEFAULT_POLL_MS, pushDebounceMs = DEFAULT_PUSH_DEBOUNCE_MS, fetchFn } = options;
 
   // Keep the latest fetch + callback in refs so the effects stay stable (the
   // poll interval isn't torn down when an inline fetchFn/callback is passed).
@@ -44,6 +49,7 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   onExternalRef.current = onExternalDeck;
 
   const lastRev = useRef(null);  // the rev we last wrote or saw
+  const seeded = useRef(false);  // first push dispatched (flips synchronously, even if it fails)
   const adopted = useRef(null);  // the exact deck object we last adopted (skip its echo PUT)
   const activeId = useRef(null); // the deck our writes are for (tags PUTs so a stale write can't clobber a switched deck)
   const [initialized, setInitialized] = useState(false);
@@ -78,28 +84,56 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   }, [adopt]);
 
   // Push the current deck once initialized, and on every later local edit —
-  // skipping the exact object we just adopted so there's no echo loop.
+  // skipping the exact object we just adopted so there's no echo loop. Edits
+  // after the first push are debounced (trailing). `seeded` flips when the
+  // first push is DISPATCHED (not when it responds), so the debounce engages
+  // even while the seed is in flight or when the server is unreachable.
+  // Loss windows (both consistent with the last-write-wins policy): an edit
+  // made within pushDebounceMs of (a) the tab closing, or (b) an adopt that
+  // supersedes it — a deck switch, or an external edit picked up by the poll —
+  // is dropped with the pending timer rather than pushed. (b) only bites a
+  // *buffer* of edits during sustained typing, since an isolated edit's timer
+  // fires well before any UI-driven deck switch.
   useEffect(() => {
     if (!initialized || deck === adopted.current) return;
-    let cancelled = false;
-    // Tag the write with the deck it's for so the server drops it if the active
-    // deck has since switched (prevents a stale PUT clobbering a just-opened deck).
-    const url = activeId.current != null ? `/api/deck?forId=${encodeURIComponent(activeId.current)}` : '/api/deck';
-    fetchRef.current(url, putInit(deck))
-      .then((r) => r.json())
-      .then((body) => {
-        if (cancelled || !body) return;
-        // Learn the active id from the write response (e.g. right after a seed
-        // created it) so the very next edit is tagged without waiting for a poll.
-        if (body.activeId !== undefined) activeId.current = body.activeId;
-        // A dropped (stale-tagged) write didn't take effect — don't advance
-        // lastRev, or the next poll would skip adopting the actually-active deck.
-        if (body.ignored) return;
-        if (typeof body.rev === 'number') lastRev.current = body.rev;
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [deck, initialized]);
+    let cancelled = false; // a newer edit/adopt has superseded this push
+    const push = () => {
+      // Tag the write with the deck it's for so the server drops it if the active
+      // deck has since switched (prevents a stale PUT clobbering a just-opened deck).
+      const url = activeId.current != null ? `/api/deck?forId=${encodeURIComponent(activeId.current)}` : '/api/deck';
+      fetchRef.current(url, putInit(deck))
+        .then((r) => r.json())
+        .then((body) => {
+          if (!body) return;
+          // Learn the active id (e.g. right after a seed created it) so the very
+          // next edit is tagged without waiting for a poll — but ONLY if this push
+          // hasn't been superseded. A delayed ack from a write for the old deck
+          // must not drag activeId back after a switch, or the first edit to the
+          // new deck would be PUT with the stale forId and dropped by the server.
+          if (!cancelled && body.activeId !== undefined) activeId.current = body.activeId;
+          // A dropped (stale-tagged) write didn't take effect — don't advance
+          // lastRev, or the next poll would skip adopting the actually-active deck.
+          if (body.ignored) return;
+          // Record the rev even for a superseded (cancelled) write: it still
+          // COMMITTED, so the rev is "ours" — skipping it would let the next poll
+          // mistake our own write for an external edit and adopt it over live
+          // typing. Advance MONOTONICALLY so a late ack can't drag lastRev below a
+          // newer write's rev that already landed. (Refs only, never React state,
+          // so it's safe after teardown.)
+          if (typeof body.rev === 'number' && (lastRev.current === null || body.rev > lastRev.current)) {
+            lastRev.current = body.rev;
+          }
+        })
+        .catch(() => {});
+    };
+    if (!seeded.current && lastRev.current === null) {
+      seeded.current = true;
+      push();
+      return () => { cancelled = true; };
+    }
+    const t = setTimeout(push, pushDebounceMs);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [deck, initialized, pushDebounceMs]);
 
   // Poll for external edits.
   useEffect(() => {
