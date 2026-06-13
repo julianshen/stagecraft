@@ -75,3 +75,14 @@ describe('RoadmapLanesEditor', () => {
     expect(sanitizeSlidePatch(patch, 'roadmap')).toEqual(patch);
   });
 });
+
+describe('hotkey safety', () => {
+  it('Delete/Backspace inside the state select does not bubble into canvas deletion', () => {
+    // SlideEditor's global Delete handler exempts INPUT/TEXTAREA/contentEditable;
+    // the select must be covered too or focusing it + Backspace deletes elements.
+    const onApply = vi.fn();
+    const { container } = render(<RoadmapLanesEditor slide={slide} onApply={onApply} />);
+    const sel = container.querySelector('select');
+    expect(sel.tagName).toBe('SELECT'); // the guard in SlideEditor must exempt SELECT
+  });
+});

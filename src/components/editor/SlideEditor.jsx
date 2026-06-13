@@ -85,7 +85,7 @@ export default function SlideEditor(props) {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       if (!props.selectedElementCount || !callbacksRef.current.onDeleteElements) return;
       const t = e.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       e.preventDefault();
       callbacksRef.current.onDeleteElements();
     }
