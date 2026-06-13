@@ -83,7 +83,13 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     // Snap to alignment guides only for a single-element move (snapOthers given).
     const snapping = snapOthers && targets.length === 1;
     let latest = new Map();
+    // Ignore sub-threshold jitter so a click (which can emit a 0-delta
+    // pointermove) isn't treated as a drag — important now that snapping can
+    // nudge an element to a non-grid position, which would otherwise turn a
+    // click near a guide into a spurious move-commit. (Matches marquee/rotate.)
+    const swept = (cx, cy) => Math.abs(cx - startX) > 3 || Math.abs(cy - startY) > 3;
     function move(ev) {
+      if (!swept(ev.clientX, ev.clientY)) return;
       const s = scaleRef.current || 1;
       const dx = (ev.clientX - startX) / s, dy = (ev.clientY - startY) / s;
       latest = new Map(targets.map((t) => [t.id, apply(t, dx, dy)]));

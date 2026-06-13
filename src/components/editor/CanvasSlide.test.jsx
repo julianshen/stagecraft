@@ -52,6 +52,22 @@ describe('CanvasSlide alignment guides', () => {
     expect(container.querySelector('.align-guide')).toBeFalsy();    // cleared on drop
   });
 
+  it('treats a click (0-delta pointermove) as a select, not a snap/grid commit', () => {
+    const onUpdateElements = vi.fn();
+    // x=103 is off-grid: without a sweep threshold, moveElement(0,0) would
+    // grid-snap it to 104 (or alignSnap would nudge it) and commit on a click.
+    const ng = { id: 's', elements: [{ id: 'c', type: 'rect', x: 103, y: 200, w: 100, h: 50 }] };
+    const { container } = render(
+      <CanvasSlide slide={ng} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['c']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    const [hit] = hits(container);
+    fire(hit, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 0, clientY: 0 }); // click jitter, no real sweep
+    fire(window, 'pointerup', {});
+    expect(onUpdateElements).not.toHaveBeenCalled();
+  });
+
   it('does not snap a multi-element drag (guides only for a lone element)', () => {
     const { container } = render(
       <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
