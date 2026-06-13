@@ -204,7 +204,7 @@ function addRisksSlide(pptx, slide, tc) {
     // severity cue (the canvas also shows a "{sev} RISK" label), and a
     // traffic-light red/green ramp is the classic red-green colour-blind case —
     // the word keeps severity legible without relying on colour.
-    const sevLabel = `● ${(it.sev || '').toUpperCase()}`;
+    const sevLabel = it.sev ? `● ${String(it.sev).toUpperCase()}` : '●';
     sld.addText(sevLabel, { x: 0.4, y: y + 0.05, w: 0.6, h: 0.4, fontSize: 13, bold: true, color: SEVERITY_HEX[it.sev] || SEVERITY_HEX.fallback, fontFace: 'Inter' });
     sld.addText(it.t || '', { x: 1.1, y, w: 8.4, h: 0.45, fontSize: 15, bold: true, color: tc.ink, fontFace: 'Inter' });
     sld.addText(it.d || '', { x: 1.1, y: y + 0.45, w: 8.4, h: 0.5, fontSize: 12, color: 'AAAAAA', fontFace: 'Inter', wrap: true });

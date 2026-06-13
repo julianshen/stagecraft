@@ -119,13 +119,15 @@ describe('addRisksSlide (PPTX risks)', () => {
         { sev: 'high', t: 'H', d: 'hd' },
         null,                            // malformed item → dropped, no crash (like the canvas)
         { sev: 'low', t: 'L', d: 'ld' },
-        { t: 'no sev' },                 // missing severity → fallback grey, no word
+        { t: 'no sev' },                 // missing severity → fallback grey, bare bullet
+        { sev: 5, t: 'N', d: 'nd' },     // non-string severity → coerced, doesn't crash the export
       ] }],
     });
     const labels = last().texts.filter((x) => typeof x.t === 'string' && x.t.startsWith('●'));
-    // colour matches the canvas palette (incl. fallback) …
-    expect(labels.map((x) => x.o.color)).toEqual([SEVERITY_HEX.high, SEVERITY_HEX.low, SEVERITY_HEX.fallback]);
-    // … and the severity is spelled out so the export reads without colour.
-    expect(labels.map((x) => x.t)).toEqual(['● HIGH', '● LOW', '● ']);
+    // colour matches the canvas palette (incl. fallback for unknown/missing) …
+    expect(labels.map((x) => x.o.color)).toEqual([SEVERITY_HEX.high, SEVERITY_HEX.low, SEVERITY_HEX.fallback, SEVERITY_HEX.fallback]);
+    // … and the severity is spelled out so the export reads without colour
+    // (no trailing space when there's no word).
+    expect(labels.map((x) => x.t)).toEqual(['● HIGH', '● LOW', '●', '● 5']);
   });
 });
