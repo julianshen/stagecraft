@@ -281,9 +281,9 @@ Left nav: General / Appearance / AI & Co-pilot / Export defaults / Shortcuts.
 
 Persistence: `localStorage['stagecraft.ai']`. Reset-to-defaults 🟢.
 
-### 7.5 Presenter — `PresenterView.jsx` 🟡
-- 🟢 Current + next slide (scaled), section label, speaker notes from `SPEAKER_NOTES`, elapsed clock vs. 40:00 target, progress dots, prev/next, keyboard (`← → space Esc`).
-- 🟡 Laser = a fixed dot toggle. 🔴 Blackout has no handler. ⚪ Spec: laser should track the pointer; blackout should overlay.
+### 7.5 Presenter — `PresenterView.jsx` 🟢
+- 🟢 Current + next slide (scaled), section label, speaker notes from `SPEAKER_NOTES`, elapsed clock vs. 40:00 target, progress dots, prev/next, keyboard (`← → space Esc`, `B` blackout).
+- 🟢 **Laser tracks the pointer** — while enabled, the dot follows the cursor over the slide (positioned in percent of the slide container via `pointerToPct` in `lib/laser.js`, so it lands true at any scale; hidden when the pointer leaves). 🟢 **Blackout overlays** the slide with solid black, toggled by the control button or the `B` key.
 
 ---
 

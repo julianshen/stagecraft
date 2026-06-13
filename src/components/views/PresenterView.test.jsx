@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import PresenterView from './PresenterView.jsx';
 
 const origRO = globalThis.ResizeObserver;
@@ -27,5 +27,37 @@ describe('PresenterView', () => {
   it('renders nothing for an empty deck', () => {
     const { container } = render(<PresenterView deck={null} onExit={vi.fn()} />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it('toggles a blackout overlay with the B key', () => {
+    const { container } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+    expect(container.querySelector('.presenter-blackout')).toBeNull();
+    fireEvent.keyDown(window, { key: 'b' });
+    expect(container.querySelector('.presenter-blackout')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'b' });
+    expect(container.querySelector('.presenter-blackout')).toBeNull();
+  });
+
+  it('toggles blackout from the control button too', () => {
+    const { container, getByText } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+    fireEvent.click(getByText(/Blackout/).closest('button'));
+    expect(container.querySelector('.presenter-blackout')).toBeTruthy();
+  });
+
+  it('does not exit when blackout is dismissed — Esc still exits', () => {
+    const onExit = vi.fn();
+    render(<PresenterView deck={deck} onExit={onExit} />);
+    fireEvent.keyDown(window, { key: 'b' }); // blackout on
+    expect(onExit).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('toggles the laser from the control button', () => {
+    const { getByText } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+    const laserBtn = getByText(/Laser/).closest('button');
+    expect(laserBtn.className).not.toContain('active');
+    fireEvent.click(laserBtn);
+    expect(laserBtn.className).toContain('active');
   });
 });

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { SPEAKER_NOTES } from '../../data/deck.js';
+import { pointerToPct } from '../../lib/laser.js';
 import LaserPointer from '../presenter/LaserPointer.jsx';
 import PresenterSidePanel from '../presenter/PresenterSidePanel.jsx';
 import PresenterControls from '../presenter/PresenterControls.jsx';
@@ -26,6 +27,8 @@ export default function PresenterView({ deck, onExit }) {
   const [idx, setIdx] = useState(0);
   const [elapsed, setElapsed] = useState(412); // seconds
   const [laser, setLaser] = useState(false);
+  const [laserPos, setLaserPos] = useState(null); // { x, y } % over the slide, or null when off it
+  const [blackout, setBlackout] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setElapsed(e => e + 1), 1000);
@@ -37,6 +40,7 @@ export default function PresenterView({ deck, onExit }) {
       if (e.key === 'Escape') onExit();
       if (e.key === 'ArrowRight' || e.key === ' ') setIdx(i => Math.min(flat.length - 1, i + 1));
       if (e.key === 'ArrowLeft') setIdx(i => Math.max(0, i - 1));
+      if (e.key === 'b' || e.key === 'B') setBlackout(b => !b); // blackout the audience screen
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -58,11 +62,16 @@ export default function PresenterView({ deck, onExit }) {
     <div className="presenter">
       <div className="presenter-main">
         <div className="label">Now presenting · slide {idx + 1} of {flat.length} · {cur.sectionName}</div>
-        <div className="presenter-current">
+        <div
+          className="presenter-current"
+          onPointerMove={laser ? (e) => setLaserPos(pointerToPct(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY)) : undefined}
+          onPointerLeave={laser ? () => setLaserPos(null) : undefined}
+        >
           <ScaledSlide>
             <Slide slide={cur} deck={deck} sectionName={cur.sectionName} num={idx + 1} total={flat.length}/>
           </ScaledSlide>
-          <LaserPointer enabled={laser}/>
+          <LaserPointer enabled={laser} pos={laserPos}/>
+          {blackout && <div className="presenter-blackout" aria-label="Screen blacked out — press B to resume"/>}
         </div>
       </div>
 
@@ -80,6 +89,8 @@ export default function PresenterView({ deck, onExit }) {
         elapsed={elapsed}
         laser={laser}
         setLaser={setLaser}
+        blackout={blackout}
+        setBlackout={setBlackout}
         onPrev={() => setIdx(i => Math.max(0, i - 1))}
         onNext={() => setIdx(i => Math.min(flat.length - 1, i + 1))}
         onExit={onExit}
