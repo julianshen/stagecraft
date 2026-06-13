@@ -96,6 +96,7 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   // fires well before any UI-driven deck switch.
   useEffect(() => {
     if (!initialized || deck === adopted.current) return;
+    let cancelled = false; // a newer edit/adopt has superseded this push
     const push = () => {
       // Tag the write with the deck it's for so the server drops it if the active
       // deck has since switched (prevents a stale PUT clobbering a just-opened deck).
@@ -104,19 +105,21 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
         .then((r) => r.json())
         .then((body) => {
           if (!body) return;
-          // Record server truth even if this push was cancelled (superseded by a
-          // newer edit): the write still COMMITTED, so its rev is "ours". Skipping
-          // it would let the next poll mistake our own write for an external edit
-          // and adopt it — reverting what the user is still typing. (The handler
-          // touches only refs, never React state, so it's safe after teardown.)
           // Learn the active id (e.g. right after a seed created it) so the very
-          // next edit is tagged without waiting for a poll.
-          if (body.activeId !== undefined) activeId.current = body.activeId;
+          // next edit is tagged without waiting for a poll — but ONLY if this push
+          // hasn't been superseded. A delayed ack from a write for the old deck
+          // must not drag activeId back after a switch, or the first edit to the
+          // new deck would be PUT with the stale forId and dropped by the server.
+          if (!cancelled && body.activeId !== undefined) activeId.current = body.activeId;
           // A dropped (stale-tagged) write didn't take effect — don't advance
           // lastRev, or the next poll would skip adopting the actually-active deck.
           if (body.ignored) return;
-          // Advance monotonically: a late ack from a superseded write must not
-          // drag lastRev back below a newer write's rev that already landed.
+          // Record the rev even for a superseded (cancelled) write: it still
+          // COMMITTED, so the rev is "ours" — skipping it would let the next poll
+          // mistake our own write for an external edit and adopt it over live
+          // typing. Advance MONOTONICALLY so a late ack can't drag lastRev below a
+          // newer write's rev that already landed. (Refs only, never React state,
+          // so it's safe after teardown.)
           if (typeof body.rev === 'number' && (lastRev.current === null || body.rev > lastRev.current)) {
             lastRev.current = body.rev;
           }
@@ -126,10 +129,10 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
     if (!seeded.current && lastRev.current === null) {
       seeded.current = true;
       push();
-      return undefined;
+      return () => { cancelled = true; };
     }
     const t = setTimeout(push, pushDebounceMs);
-    return () => clearTimeout(t);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [deck, initialized, pushDebounceMs]);
 
   // Poll for external edits.

@@ -309,6 +309,45 @@ describe('push debounce', () => {
     expect(controls.deck.title).toBe('a'); // not reverted to the seeded deck
   });
 
+  it('ignores a stale active id from a superseded PUT, so the first edit after a deck switch is tagged for the new deck', async () => {
+    // Regression: recording rev from a cancelled write (above) must NOT also let
+    // it relearn activeId. A deck-A write whose ack is delayed past a switch to
+    // deck B would otherwise drag activeId back to A; the next edit to B is then
+    // PUT with ?forId=A, which the server's stale-write guard drops — silently
+    // losing the first edit after the switch.
+    const state = { deck: null, rev: 0, activeId: null };
+    const pendingPuts = [];
+    const putUrls = [];
+    const fetchFn = vi.fn((url, init) => {
+      if (url.split('?')[0] === '/api/deck/state') {
+        return Promise.resolve({ json: async () => ({ deck: state.deck, rev: state.rev, activeId: state.activeId }) });
+      }
+      if (init?.method === 'PUT') {
+        putUrls.push(url);
+        state.deck = JSON.parse(init.body);
+        if (state.activeId == null) state.activeId = 'A';
+        state.rev += 1;
+        const rev = state.rev, activeId = state.activeId;
+        return new Promise((res) => pendingPuts.push(() => res({ json: async () => ({ ok: true, rev, activeId }) })));
+      }
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    const controls = {};
+    render(<Harness fetchFn={fetchFn} intervalMs={100000} pushDebounceMs={1000} controls={controls} />);
+    await flush(0);                     // seed PUT for deck A (deferred)
+    pendingPuts[0](); await flush(0);   // seed ack → activeId 'A'
+    // Edit A; let the debounce fire, but hold its (deck-A) ack in flight.
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'a1' }); });
+    await flush(1000);                  // PUT for A dispatched, response deferred (pendingPuts[1])
+    // Switch to deck B (server-authoritative open): activeId → 'B'.
+    await act(async () => { controls.adopt({ ...localDeck, title: 'B' }, 5, 'B'); });
+    pendingPuts[1](); await flush(0);   // the delayed deck-A ack lands — must not relearn activeId 'A'
+    // First edit to B must be tagged for B, not the superseded A.
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'B-edit' }); });
+    await flush(1000);
+    expect(putUrls.at(-1)).toBe('/api/deck?forId=B');
+  });
+
   it('stays debounced when the server is unreachable (the seed never acked)', async () => {
     // Regression: keying "immediate" off lastRev===null left the debounce off
     // forever when every PUT fails — per-keystroke fetch attempts in exactly
