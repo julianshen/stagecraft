@@ -359,7 +359,9 @@ export async function exportToPPTX(deck, { includeNotes = true } = {}) {
     }
     // Each builder returns the slide it created, so notes attach at the call
     // boundary the dispatch already owns — no reaching into the pptx instance.
-    if (includeNotes) {
+    // `&& sld` guards the return-contract: a future builder that forgot to
+    // return its slide degrades to no-notes rather than crashing the export.
+    if (includeNotes && sld) {
       const n = resolveNotes(slide);
       if (n) sld.addNotes(n);
     }

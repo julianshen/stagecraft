@@ -12,6 +12,10 @@ describe('resolveNotes', () => {
     expect(resolveNotes({ id: 'no-such-id' })).toBe('');               // default fallback
     expect(resolveNotes({ id: 'no-such-id' }, 'nudge')).toBe('nudge'); // custom fallback (presenter)
   });
+  it('returns the fallback for a missing slide instead of throwing', () => {
+    expect(resolveNotes(null)).toBe('');
+    expect(resolveNotes(undefined, 'nudge')).toBe('nudge');
+  });
 });
 
 const KNOWN_LAYOUTS = new Set([

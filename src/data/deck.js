@@ -114,6 +114,7 @@ export const SPEAKER_NOTES = {
 // for that id, else `fallback`. Single-sourced so the presenter (which passes a
 // default-nudge fallback) and the PPTX export (which passes none) can't drift.
 export function resolveNotes(slide, fallback = '') {
+  if (!slide) return fallback;
   return typeof slide.notes === 'string' ? slide.notes : (SPEAKER_NOTES[slide.id] || fallback);
 }
 
