@@ -13,6 +13,9 @@ import { chartData } from '../../../lib/chartSpec.js';
 
 export default function ChartDataEditor({ slide, onApply }) {
   const { categories, series } = chartData(slide);
+  // Donut/pie render only series[0] (canvas and export both) — extra series
+  // would persist but never draw, so the multi-series controls hide there.
+  const singleSeries = slide.chartType === 'donut' || slide.chartType === 'pie';
 
   const commit = (cats, ser) => onApply({ chart: { categories: cats, series: ser } });
   const mapSeries = (fn) => series.map((s, i) => ({ name: s.name, values: fn(s, i) }));
@@ -46,7 +49,7 @@ export default function ChartDataEditor({ slide, onApply }) {
           </React.Fragment>
         ))}
         <span />
-        {series.map((_, si) => (
+        {!singleSeries && series.map((_, si) => (
           <IconButton key={`d${si}`} name="x" size={10} title="Remove series" disabled={series.length <= 1}
             onClick={() => removeSeries(si)} style={{ justifySelf: 'center' }} />
         ))}
@@ -54,7 +57,7 @@ export default function ChartDataEditor({ slide, onApply }) {
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         <Button variant="outline" style={{ height: 26, fontSize: 11 }} onClick={addRow}>Add row</Button>
-        <Button variant="outline" style={{ height: 26, fontSize: 11 }} onClick={addSeries}>Add series</Button>
+        {!singleSeries && <Button variant="outline" style={{ height: 26, fontSize: 11 }} onClick={addSeries}>Add series</Button>}
       </div>
     </div>
   );

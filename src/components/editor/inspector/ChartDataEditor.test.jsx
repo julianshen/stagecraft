@@ -93,3 +93,17 @@ describe('ChartDataEditor', () => {
     expect(screen.getByDisplayValue('Q1')).toBeInTheDocument(); // chartData's default categories
   });
 });
+
+describe('single-series chart types (donut/pie)', () => {
+  it('hides multi-series controls — extra series would persist but never render', () => {
+    const donut = { id: 'd1', layout: 'chart', chartType: 'donut', chart: { categories: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] } };
+    const { queryByText, container } = render(<ChartDataEditor slide={donut} onApply={vi.fn()} />);
+    expect(queryByText('Add series')).toBeNull();
+    expect(container.querySelector('[title="Remove series"]')).toBeNull();
+  });
+
+  it('keeps multi-series controls for line/bar/area', () => {
+    const { queryByText } = renderEditor(); // bar
+    expect(queryByText('Add series')).toBeTruthy();
+  });
+});
