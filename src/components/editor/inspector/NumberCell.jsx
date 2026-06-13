@@ -6,8 +6,9 @@ import React, { useState, useEffect } from 'react';
 // raw string lives here: only parseable values commit, and blur restores the
 // last committed value when the field was left empty/invalid.
 export default function NumberCell({ value, onCommit, title }) {
-  const [raw, setRaw] = useState(String(value));
-  useEffect(() => { setRaw(String(value)); }, [value]); // resync on outside edits
+  const str = (v) => (v != null ? String(v) : ''); // nullish renders empty, not "null"
+  const [raw, setRaw] = useState(str(value));
+  useEffect(() => { setRaw(str(value)); }, [value]); // resync on outside edits
 
   return (
     <input
@@ -18,7 +19,7 @@ export default function NumberCell({ value, onCommit, title }) {
         const n = Number(v);
         if (v !== '' && Number.isFinite(n)) onCommit(n);
       }}
-      onBlur={() => setRaw(String(value))}
+      onBlur={() => setRaw(str(value))}
     />
   );
 }

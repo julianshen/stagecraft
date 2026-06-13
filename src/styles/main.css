@@ -2098,3 +2098,9 @@ input.range::-moz-range-thumb {
   background: var(--bg);
   color: var(--ink);
 }
+
+.cell-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-wash);
+}

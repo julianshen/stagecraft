@@ -62,11 +62,12 @@ export default function SlideEditor(props) {
   const updateSelEl = (el) => { if (el?.id) callbacks.onUpdateElement?.(el.id, clampElement(el)); };
 
   // Inspector Data-tab edits commit to the CURRENT slide through the Co-pilot's
-  // validated patch path. The editors are built to emit gate-valid payloads, so
-  // a rejection means the editor and the schema gate have drifted — warn loudly
-  // instead of leaving the user with a silently frozen input.
-  const applyPatchToCurrent = (patch) => {
-    const applied = callbacks.onApplyAIPatch?.(patch, cur?.id);
+  // validated patch path. Undefined when the host wired no patch callback, so
+  // DataPanel shows its "unavailable" hint instead of silently frozen inputs.
+  // The editors emit gate-valid payloads, so a dropped field means the editor
+  // and the schema gate have drifted — warn loudly.
+  const applyPatchToCurrent = !callbacks.onApplyAIPatch ? undefined : (patch) => {
+    const applied = callbacks.onApplyAIPatch(patch, cur?.id);
     if (applied) {
       const dropped = Object.keys(patch).filter((k) => !applied.includes(k));
       if (dropped.length) console.warn('Inspector patch fields not applied (schema-gate drift, or the slide was removed):', dropped);

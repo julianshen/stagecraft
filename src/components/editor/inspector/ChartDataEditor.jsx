@@ -32,13 +32,13 @@ export default function ChartDataEditor({ slide, onApply }) {
       <div style={{ display: 'grid', gridTemplateColumns: `1.4fr repeat(${series.length}, 1fr) 20px`, gap: 4, alignItems: 'center' }}>
         <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>CATEGORY</span>
         {series.map((s, si) => (
-          <input key={`h${si}`} className="cell-input" value={s.name} title="Series name"
+          <input key={`h${si}`} className="cell-input" value={s.name ?? ''} title="Series name"
             onChange={(e) => setName(si, e.target.value)} />
         ))}
         <span />
         {categories.map((c, ci) => (
           <React.Fragment key={`r${ci}`}>
-            <input className="cell-input" value={c} title="Category" onChange={(e) => setCategory(ci, e.target.value)} />
+            <input className="cell-input" value={c ?? ''} title="Category" onChange={(e) => setCategory(ci, e.target.value)} />
             {series.map((s, si) => (
               <NumberCell key={`v${si}`} value={s.values[ci]} title="Value" onCommit={(n) => setValue(si, ci, n)} />
             ))}

@@ -35,4 +35,13 @@ describe('InspectorPane Data tab', () => {
     expect(screen.getByText('Data')).toBeInTheDocument();
     expect(screen.getByText('Add series')).toBeInTheDocument();
   });
+
+  it('tolerates nullish category/name values without uncontrolled-input flips', () => {
+    const ragged = { id: 'c9', layout: 'chart', chartType: 'bar', chart: { categories: ['Q1', null], series: [{ values: [1, 2] }] } };
+    const { container } = render(<DataPanel slide={ragged} onApply={vi.fn()} />);
+    for (const input of container.querySelectorAll('input')) {
+      expect(input.value).not.toBe('null');
+      expect(input.value).not.toBe('undefined');
+    }
+  });
 });

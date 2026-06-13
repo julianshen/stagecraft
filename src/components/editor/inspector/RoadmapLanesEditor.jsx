@@ -27,14 +27,14 @@ export default function RoadmapLanesEditor({ slide, onApply }) {
       {lanes.map((lane, li) => (
         <div key={li} style={{ border: '1px solid var(--line)', borderRadius: 4, padding: 8, marginBottom: 8 }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
-            <input className="cell-input" value={lane.name} title="Lane name" style={{ flex: 1 }}
+            <input className="cell-input" value={lane.name ?? ''} title="Lane name" style={{ flex: 1 }}
               onChange={(e) => patchLane(li, (l) => ({ ...l, name: e.target.value }))} />
             <IconButton name="x" size={10} title="Remove lane" disabled={lanes.length <= 1}
               onClick={() => commit(lanes.filter((_, i) => i !== li))} />
           </div>
           {lane.items.map((it, ii) => (
             <div key={ii} style={{ display: 'grid', gridTemplateColumns: '1fr 44px 44px 86px 20px', gap: 4, alignItems: 'center', marginBottom: 4 }}>
-              <input className="cell-input" value={it.lbl} title="Milestone label"
+              <input className="cell-input" value={it.lbl ?? ''} title="Milestone label"
                 onChange={(e) => patchItem(li, ii, { lbl: e.target.value })} />
               <NumberCell value={it.t} title="Start month" onCommit={(n) => patchItem(li, ii, { t: n })} />
               <NumberCell value={it.d} title="Duration (months)" onCommit={(n) => patchItem(li, ii, { d: n })} />
