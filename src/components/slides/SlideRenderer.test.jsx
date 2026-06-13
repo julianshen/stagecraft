@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ElementsLayer, Slide, ChartByType, RoadmapGraphic, LineChart } from './SlideRenderer.jsx';
+import { ElementsLayer, Slide, ChartByType, RoadmapGraphic, LineChart, DECK_CHROME_FIELDS } from './SlideRenderer.jsx';
+
+describe('DECK_CHROME_FIELDS', () => {
+  it('is frozen — it is shared across every thumbnail comparison and must not be mutated', () => {
+    expect(Object.isFrozen(DECK_CHROME_FIELDS)).toBe(true);
+  });
+});
 
 describe('ElementsLayer', () => {
   it('renders nothing when there are no elements', () => {

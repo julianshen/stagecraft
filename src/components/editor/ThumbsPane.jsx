@@ -60,7 +60,7 @@ const Thumb = React.memo(function Thumb({ slide, idx, total, isActive, nComments
   );
 }, thumbPropsEqual);
 
-export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx, comments = [], onNewSlide, onReorder }) {
+export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx = {}, comments = [], onNewSlide, onReorder }) {
   // Drag-to-reorder mechanics shared with the Sorter grid.
   const { dragProps } = useReorderDrag(onReorder);
   // Hoisted out of the thumb loop: per-slide lookups would be O(n²)/O(n·m)

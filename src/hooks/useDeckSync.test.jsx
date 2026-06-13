@@ -275,6 +275,40 @@ describe('push debounce', () => {
     expect(srv.puts).toHaveLength(2);
   });
 
+  it('records the rev of a superseded (cancelled) write so the poll does not re-adopt it over local edits', async () => {
+    // Regression: a write whose response arrives after a newer edit cancelled it
+    // still COMMITTED on the server (rev advanced). If we skip recording that rev
+    // because `cancelled` is set, the next poll sees rev != lastRev, mistakes our
+    // own write for an external edit, and adopts it — reverting what the user is
+    // still typing. A deferred-PUT server lets us supersede before the ack lands.
+    const state = { deck: null, rev: 0, activeId: null };
+    const pendingPuts = [];
+    const fetchFn = vi.fn((url, init) => {
+      if (url.split('?')[0] === '/api/deck/state') {
+        return Promise.resolve({ json: async () => ({ deck: state.deck, rev: state.rev, activeId: state.activeId }) });
+      }
+      if (init?.method === 'PUT') {
+        state.deck = JSON.parse(init.body);
+        if (state.activeId == null) state.activeId = 'seeded';
+        state.rev += 1;
+        const rev = state.rev, activeId = state.activeId;
+        return new Promise((res) => pendingPuts.push(() => res({ json: async () => ({ ok: true, rev, activeId }) })));
+      }
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    const controls = {};
+    // intervalMs (20) < pushDebounceMs (1000): we can fire a poll without the
+    // pending edit's debounce timer firing.
+    render(<Harness fetchFn={fetchFn} intervalMs={20} pushDebounceMs={1000} controls={controls} />);
+    await flush(0); // mount reconcile (server empty) → immediate seed PUT (deferred), server.rev=1
+    // Supersede the seed before its ack lands: the user starts typing.
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'a' }); });
+    pendingPuts[0](); // release the seed ack — but it was cancelled by the edit above
+    await flush(0);
+    await flush(20); // a poll tick (the 'a' debounce timer, at 1000, stays pending)
+    expect(controls.deck.title).toBe('a'); // not reverted to the seeded deck
+  });
+
   it('stays debounced when the server is unreachable (the seed never acked)', async () => {
     // Regression: keying "immediate" off lastRev===null left the debounce off
     // forever when every PUT fails — per-keystroke fetch attempts in exactly

@@ -8,7 +8,8 @@ import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 // The deck fields the slide render tree reads (chrome + cover/divider
 // fallbacks). This is the memo contract for thumbnail re-rendering
 // (ThumbsPane) — a new deck-level read must be added here or thumbs go stale.
-export const DECK_CHROME_FIELDS = ['title', 'author', 'subtitle'];
+// Frozen: it's shared across every thumb comparison; no consumer may mutate it.
+export const DECK_CHROME_FIELDS = Object.freeze(['title', 'author', 'subtitle']);
 
 export function SlideChrome({ slide, deck }) {
   return (

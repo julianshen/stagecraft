@@ -96,7 +96,6 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   // fires well before any UI-driven deck switch.
   useEffect(() => {
     if (!initialized || deck === adopted.current) return;
-    let cancelled = false;
     const push = () => {
       // Tag the write with the deck it's for so the server drops it if the active
       // deck has since switched (prevents a stale PUT clobbering a just-opened deck).
@@ -104,24 +103,33 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
       fetchRef.current(url, putInit(deck))
         .then((r) => r.json())
         .then((body) => {
-          if (cancelled || !body) return;
-          // Learn the active id from the write response (e.g. right after a seed
-          // created it) so the very next edit is tagged without waiting for a poll.
+          if (!body) return;
+          // Record server truth even if this push was cancelled (superseded by a
+          // newer edit): the write still COMMITTED, so its rev is "ours". Skipping
+          // it would let the next poll mistake our own write for an external edit
+          // and adopt it — reverting what the user is still typing. (The handler
+          // touches only refs, never React state, so it's safe after teardown.)
+          // Learn the active id (e.g. right after a seed created it) so the very
+          // next edit is tagged without waiting for a poll.
           if (body.activeId !== undefined) activeId.current = body.activeId;
           // A dropped (stale-tagged) write didn't take effect — don't advance
           // lastRev, or the next poll would skip adopting the actually-active deck.
           if (body.ignored) return;
-          if (typeof body.rev === 'number') lastRev.current = body.rev;
+          // Advance monotonically: a late ack from a superseded write must not
+          // drag lastRev back below a newer write's rev that already landed.
+          if (typeof body.rev === 'number' && (lastRev.current === null || body.rev > lastRev.current)) {
+            lastRev.current = body.rev;
+          }
         })
         .catch(() => {});
     };
     if (!seeded.current && lastRev.current === null) {
       seeded.current = true;
       push();
-      return () => { cancelled = true; };
+      return undefined;
     }
     const t = setTimeout(push, pushDebounceMs);
-    return () => { cancelled = true; clearTimeout(t); };
+    return () => clearTimeout(t);
   }, [deck, initialized, pushDebounceMs]);
 
   // Poll for external edits.
