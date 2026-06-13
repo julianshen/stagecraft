@@ -42,6 +42,16 @@ describe('EditableText', () => {
     expect(() => fireEvent.blur(el)).not.toThrow(); // no onCommit → no crash
   });
 
+  it('reverts the field when the commit is rejected (onCommit returns false)', () => {
+    const onCommit = vi.fn(() => false);
+    const { container } = render(<EditableText editable value="A" onCommit={onCommit} />);
+    const el = container.querySelector('[contenteditable]');
+    el.textContent = 'B';
+    fireEvent.blur(el);
+    expect(onCommit).toHaveBeenCalledWith('B');
+    expect(el.textContent).toBe('A'); // rejected → reverted to the stored value
+  });
+
   it('re-syncs the DOM when the value prop changes from outside', () => {
     const { container, rerender } = render(<EditableText editable value="A" onCommit={vi.fn()} />);
     rerender(<EditableText editable value="B" onCommit={vi.fn()} />);

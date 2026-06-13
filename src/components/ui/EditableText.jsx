@@ -13,6 +13,15 @@ function EditableField({ value, onCommit, as: Tag, className, style }) {
   useEffect(() => {
     if (ref.current && ref.current.textContent !== text) ref.current.textContent = text;
   }, [text]);
+  // Commit on blur. `onCommit` may return false to signal the edit was rejected
+  // (e.g. the patch failed validation) — since a rejected edit triggers no state
+  // change, the effect won't re-sync, so revert the DOM to `value` here rather
+  // than leave the unsaved text stranded in the field.
+  const commit = (e) => {
+    const next = e.currentTarget.textContent;
+    if (next === text) return;
+    if (onCommit?.(next) === false) e.currentTarget.textContent = text;
+  };
   return (
     <Tag
       ref={ref}
@@ -21,7 +30,7 @@ function EditableField({ value, onCommit, as: Tag, className, style }) {
       role="textbox"
       contentEditable
       suppressContentEditableWarning
-      onBlur={(e) => { const next = e.currentTarget.textContent; if (next !== text) onCommit?.(next); }}
+      onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); }
       }}

@@ -33,6 +33,7 @@ export default defineConfig({
         'src/components/editor/CanvasSlide.jsx',
         'src/components/editor/ThumbsPane.jsx',
         'src/components/ui/EditableText.jsx',
+        'src/components/slides/SlideRenderer.jsx',
         'src/components/editor/inspector/DataPanel.jsx',
         'src/components/editor/inspector/InspectorBody.jsx',
         'src/components/editor/inspector/NumberCell.jsx',

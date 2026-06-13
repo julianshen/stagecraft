@@ -171,11 +171,17 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     const overlay = e.currentTarget;
     const prev = overlay.style.pointerEvents;
     // Hit-test AND read the caret range while the overlay is disabled, so both
-    // resolve against the slide text beneath it (not the overlay itself).
-    overlay.style.pointerEvents = 'none';
-    const hit = document.elementFromPoint?.(e.clientX, e.clientY);
-    const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
-    overlay.style.pointerEvents = prev;
+    // resolve against the slide text beneath it (not the overlay itself). The
+    // restore is in `finally` so a throwing DOM call can't leave the overlay
+    // permanently disabled (which would kill all drag/marquee interaction).
+    let hit, range;
+    try {
+      overlay.style.pointerEvents = 'none';
+      hit = document.elementFromPoint?.(e.clientX, e.clientY);
+      range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    } finally {
+      overlay.style.pointerEvents = prev;
+    }
     const field = hit?.closest?.('[contenteditable="true"]');
     if (!field) return;
     field.focus();

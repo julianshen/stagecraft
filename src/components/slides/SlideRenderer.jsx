@@ -379,8 +379,14 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
   // canvas a commit emits the field's semantic path + value; the Editor turns
   // that into a validated patch (it owns deck mutation — the renderer stays a
   // pure view that only knows its own field paths).
+  // onCommit returns false only when the Editor reports the edit was rejected
+  // (an empty applied-keys array), so EditableText can revert the field.
+  const commit = (path, v) => {
+    const applied = onEditField?.(path, v);
+    return !Array.isArray(applied) || applied.length > 0;
+  };
   const E = (path, value, props = {}) => (
-    <EditableText editable={editable} value={value} onCommit={(v) => onEditField?.(path, v)} {...props} />
+    <EditableText {...props} editable={editable} value={value} onCommit={(v) => commit(path, v)} />
   );
   switch (slide.layout) {
     case 'cover':
@@ -411,7 +417,8 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
             {E(['title'], slide.title || "What we'll cover", { as: 'h1', style: { fontSize:96, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 80px', lineHeight:1 } })}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'40px 80px', maxWidth:1700 }}>
               {(Array.isArray(slide.items) ? slide.items : []).filter(Boolean).map((it, i) => (
-                <div key={it.n ?? i} style={{ display:'grid', gridTemplateColumns:'80px 1fr', gap:20, paddingBottom:24, borderBottom:'1px solid #eee' }}>
+                // Keyed by index (stable across edits): editing it.n must not remount the row.
+                <div key={i} style={{ display:'grid', gridTemplateColumns:'80px 1fr', gap:20, paddingBottom:24, borderBottom:'1px solid #eee' }}>
                   {E(['items', i, 'n'], it.n, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:36, color:'oklch(0.62 0.17 265)', fontWeight:500 } })}
                   <div>
                     {E(['items', i, 't'], it.t, { as: 'div', style: { fontSize:38, fontWeight:600, letterSpacing:'-0.01em', marginBottom:8 } })}
