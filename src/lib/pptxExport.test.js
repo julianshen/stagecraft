@@ -129,5 +129,7 @@ describe('addRisksSlide (PPTX risks)', () => {
     // … and the severity is spelled out so the export reads without colour
     // (no trailing space when there's no word).
     expect(labels.map((x) => x.t)).toEqual(['● HIGH', '● LOW', '●', '● 5']);
+    // The narrow gutter box must not wrap the label onto a second line.
+    labels.forEach((x) => expect(x.o.wrap).toBe(false));
   });
 });
