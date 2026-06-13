@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ElementsLayer, Slide, ChartByType, RoadmapGraphic, LineChart, DECK_CHROME_FIELDS } from './SlideRenderer.jsx';
 
 describe('DECK_CHROME_FIELDS', () => {
@@ -232,5 +232,48 @@ describe('slide chrome is content-driven, not sample-deck copy', () => {
       <Slide slide={{ id: 't', layout: 'thanks' }} deck={{ title: 'D' }} num={1} total={1} />,
     );
     expect(c2.textContent).toContain('Thanks.');
+  });
+});
+
+describe('Slide inline editing (editable)', () => {
+  const renderEditable = (slide) => {
+    const onEditField = vi.fn();
+    const utils = render(<Slide slide={slide} deck={{ title: 'D' }} editable onEditField={onEditField} />);
+    return { ...utils, onEditField };
+  };
+  const editFirst = (container, selector, text) => {
+    const el = container.querySelector(selector);
+    el.textContent = text;
+    fireEvent.blur(el);
+  };
+
+  it('is read-only by default — text fields are not contenteditable', () => {
+    const { container } = render(<Slide slide={{ id: 't', layout: 'text', title: 'A', body: 'B' }} deck={{ title: 'D' }} />);
+    expect(container.querySelector('[contenteditable]')).toBeNull();
+  });
+
+  it('commits a scalar field (text title) as a flat patch', () => {
+    const { container, onEditField } = renderEditable({ id: 't', layout: 'text', title: 'Old', body: 'B' });
+    editFirst(container, 'h1[contenteditable="true"]', 'New');
+    expect(onEditField).toHaveBeenCalledWith({ title: 'New' });
+  });
+
+  it('commits a nested agenda item by rebuilding the whole items array', () => {
+    const slide = { id: 'a', layout: 'agenda', title: 'T', items: [{ n: '01', t: 'One', d: 'x' }, { n: '02', t: 'Two', d: 'y' }] };
+    const { container, onEditField } = renderEditable(slide);
+    // the 2nd item's title is the 5th editable div in DOM order; target by text
+    const target = [...container.querySelectorAll('[contenteditable="true"]')].find((n) => n.textContent === 'Two');
+    target.textContent = 'Two!';
+    fireEvent.blur(target);
+    expect(onEditField).toHaveBeenCalledWith({ items: [{ n: '01', t: 'One', d: 'x' }, { n: '02', t: 'Two!', d: 'y' }] });
+  });
+
+  it('commits a table cell by rebuilding the rows array', () => {
+    const slide = { id: 'tb', layout: 'table', title: 'T', columns: ['A', 'B'], rows: [['1', '2'], ['3', '4']] };
+    const { container, onEditField } = renderEditable(slide);
+    const target = [...container.querySelectorAll('[contenteditable="true"]')].find((n) => n.textContent === '4');
+    target.textContent = '40';
+    fireEvent.blur(target);
+    expect(onEditField).toHaveBeenCalledWith({ rows: [['1', '2'], ['3', '40']] });
   });
 });

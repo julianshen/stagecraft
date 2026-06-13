@@ -163,6 +163,24 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     dragCleanup.current = removeListeners;
   }
 
+  // The interaction overlay sits above the slide, so a double-click on a text
+  // field never reaches it. Hit-test through the overlay (briefly disabling its
+  // own pointer events), and if the point lands on an editable field, focus it
+  // and drop the caret where the user clicked — that starts an inline text edit.
+  function focusTextUnder(e) {
+    const overlay = e.currentTarget;
+    const prev = overlay.style.pointerEvents;
+    overlay.style.pointerEvents = 'none';
+    const hit = document.elementFromPoint?.(e.clientX, e.clientY);
+    overlay.style.pointerEvents = prev;
+    const field = hit?.closest?.('[contenteditable="true"]');
+    if (!field) return;
+    field.focus();
+    const sel = window.getSelection?.();
+    const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    if (sel && range) { sel.removeAllRanges(); sel.addRange(range); }
+  }
+
   // Rubber-band selection: a drag on empty canvas sweeps a rectangle and selects
   // the elements it overlaps on pointer-up. A click (no drag) deselects.
   function startMarquee(e) {
@@ -218,7 +236,7 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       </ScaledSlide>
 
       {/* Interaction overlay — drag empty space to marquee-select, click to deselect. */}
-      <div className="elements-overlay" style={{ position: 'absolute', inset: 0 }} onPointerDown={startMarquee}>
+      <div className="elements-overlay" style={{ position: 'absolute', inset: 0 }} onPointerDown={startMarquee} onDoubleClick={focusTextUnder}>
         {elements.map((el) => (
           <div
             key={el.id}

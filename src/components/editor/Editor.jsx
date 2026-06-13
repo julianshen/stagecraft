@@ -185,12 +185,23 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     <Slide slide={slide} deck={ctx.deck} sectionName={ctx.sectionName} num={ctx.num} total={ctx.total} />
   ), []);
 
+  // Canvas-only variant: slide text is editable in place. A commit routes
+  // through applyAIPatch (the Co-pilot's validated patch path), tagged to the
+  // exact slide rendered. Thumbnails/sorter/presenter keep the read-only render.
+  const renderCanvasSlide = (slide, ctx) => (
+    <Slide
+      slide={slide} deck={ctx.deck} sectionName={ctx.sectionName} num={ctx.num} total={ctx.total}
+      editable onEditField={(patch) => applyAIPatch(patch, slide.id)}
+    />
+  );
+
   return (
     <SlideEditor
       deck={deck}
       currentSlideId={curId || undefined}
       onCurrentSlideChange={setCurId}
       renderSlide={renderSlide}
+      renderCanvasSlide={renderCanvasSlide}
       layoutVariant={layoutVariant}
       theme={{ accent, density }}
       selectedElement={selectedElement}

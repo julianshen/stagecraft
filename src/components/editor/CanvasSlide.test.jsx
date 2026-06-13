@@ -277,3 +277,40 @@ describe('CanvasSlide drag', () => {
     expect(onMarqueeSelect).not.toHaveBeenCalled();
   });
 });
+
+describe('CanvasSlide inline-text focus', () => {
+  const baseSlide = { id: 's', layout: 'text', elements: [] };
+  // jsdom has no elementFromPoint; define it so the hit-test path runs.
+  const withHit = (el, fn) => {
+    const orig = document.elementFromPoint;
+    document.elementFromPoint = () => el;
+    try { fn(); } finally { document.elementFromPoint = orig; }
+  };
+  it('double-click focuses an editable text field under the overlay', () => {
+    const field = document.createElement('div');
+    field.setAttribute('contenteditable', 'true');
+    const focusSpy = vi.spyOn(field, 'focus');
+    const { container } = render(<CanvasSlide slide={baseSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62} />);
+    withHit(field, () => fireEvent.doubleClick(container.querySelector('.elements-overlay'), { clientX: 20, clientY: 20 }));
+    expect(focusSpy).toHaveBeenCalled();
+  });
+  it('double-click on a non-editable hit focuses nothing and does not throw', () => {
+    const { container } = render(<CanvasSlide slide={baseSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62} />);
+    expect(() => withHit(document.createElement('div'), () => fireEvent.doubleClick(container.querySelector('.elements-overlay'), { clientX: 5, clientY: 5 }))).not.toThrow();
+  });
+
+  it('drops the caret at the click point when caretRangeFromPoint is available', () => {
+    const field = document.createElement('div');
+    field.setAttribute('contenteditable', 'true');
+    document.body.appendChild(field);
+    const origCaret = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => { const r = document.createRange(); r.selectNodeContents(field); return r; };
+    const { container } = render(<CanvasSlide slide={baseSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62} />);
+    try {
+      expect(() => withHit(field, () => fireEvent.doubleClick(container.querySelector('.elements-overlay'), { clientX: 9, clientY: 9 }))).not.toThrow();
+    } finally {
+      document.caretRangeFromPoint = origCaret;
+      field.remove();
+    }
+  });
+});
