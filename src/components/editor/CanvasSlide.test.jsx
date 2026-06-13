@@ -35,6 +35,52 @@ function drag(target, { dx = 0, dy = 0, shiftKey = false } = {}) {
   fire(window, 'pointerup', {});
 }
 
+describe('CanvasSlide alignment guides', () => {
+  it('snaps a single dragged element to another element and shows a guide, cleared on drop', () => {
+    const onUpdateElements = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    const [hitA] = hits(container);
+    fire(hitA, 'pointerdown', { clientX: 0, clientY: 0 });
+    // a.x 100 + 197 → grid 296 (right edge 496); within 6px of b.left 500 → snaps.
+    fire(window, 'pointermove', { clientX: 197, clientY: 0 });
+    expect(container.querySelector('.align-guide')).toBeTruthy(); // guide visible mid-drag
+    fire(window, 'pointerup', {});
+    expect(onUpdateElements.mock.calls[0][0].get('a').x).toBe(300); // right edge aligned to b.left 500
+    expect(container.querySelector('.align-guide')).toBeFalsy();    // cleared on drop
+  });
+
+  it('treats a click (0-delta pointermove) as a select, not a snap/grid commit', () => {
+    const onUpdateElements = vi.fn();
+    // x=103 is off-grid: without a sweep threshold, moveElement(0,0) would
+    // grid-snap it to 104 (or alignSnap would nudge it) and commit on a click.
+    const ng = { id: 's', elements: [{ id: 'c', type: 'rect', x: 103, y: 200, w: 100, h: 50 }] };
+    const { container } = render(
+      <CanvasSlide slide={ng} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['c']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    const [hit] = hits(container);
+    fire(hit, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 0, clientY: 0 }); // click jitter, no real sweep
+    fire(window, 'pointerup', {});
+    expect(onUpdateElements).not.toHaveBeenCalled();
+  });
+
+  it('does not snap a multi-element drag (guides only for a lone element)', () => {
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a', 'b']} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} />,
+    );
+    const [hitA] = hits(container);
+    fire(hitA, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 197, clientY: 0 });
+    expect(container.querySelector('.align-guide')).toBeFalsy(); // no guides for a group drag
+    fire(window, 'pointerup', {});
+  });
+});
+
 describe('CanvasSlide drag', () => {
   it('commits a multi-element drag as a single batch update', () => {
     const onUpdateElements = vi.fn();
@@ -48,6 +94,23 @@ describe('CanvasSlide drag', () => {
     expect(onUpdateElements).toHaveBeenCalledTimes(1);
     const map = onUpdateElements.mock.calls[0][0];
     expect([...map.keys()].sort()).toEqual(['a', 'b']);
+  });
+
+  it('commits a fast flick whose only pointermove was sub-threshold, from the release position', () => {
+    const onUpdateElements = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['b']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    const [, hitB] = hits(container);
+    // A flick: the only pointermove is sub-threshold (≤3px), but the release is
+    // far away. The release position is authoritative — the move must not be
+    // dropped as a click just because no move event cleared the sweep threshold.
+    fire(hitB, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 2, clientY: 0 }); // below the 3px threshold
+    fire(window, 'pointerup', { clientX: 60, clientY: 0 });
+    expect(onUpdateElements).toHaveBeenCalledTimes(1);
+    expect(onUpdateElements.mock.calls[0][0].get('b').x).toBe(560); // 500 + 60
   });
 
   it('shift-click-dragging a non-selected element moves the whole combined selection', () => {

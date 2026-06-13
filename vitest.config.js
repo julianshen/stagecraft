@@ -27,6 +27,7 @@ export default defineConfig({
         'src/lib/slideFactories.js',
         'src/lib/laser.js',
         'src/lib/slideEdit.js',
+        'src/lib/align.js',
         'src/hooks/useDeckSync.js',
         'src/hooks/useReorderDrag.js',
         'src/data/deck.js',

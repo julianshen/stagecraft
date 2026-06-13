@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
 import { moveElement, resizeElement, elementsInMarquee, rotateElement } from '../../lib/elements.js';
+import { alignSnap } from '../../lib/align.js';
 
 const HANDLE_CURSOR = {
   nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
@@ -48,6 +49,8 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   const [drag, setDrag] = useState(null);
   // Live marquee rectangle (slide coords) while rubber-band selecting on empty space.
   const [marquee, setMarquee] = useState(null);
+  // Active alignment guide lines (slide coords) while dragging a single element.
+  const [guides, setGuides] = useState([]);
   const dragCleanup = useRef(null);
   useEffect(() => () => dragCleanup.current?.(), []);
 
@@ -70,18 +73,42 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
 
   // Drag `targets` (array): each pointermove maps the screen delta to slide
   // coords and applies `apply(el, dx, dy)`; commits once on pointer-up.
-  function startDrag(e, targets, apply, onClick) {
+  function startDrag(e, targets, apply, onClick, snapOthers) {
     if (dragCleanup.current) return;
     e.stopPropagation();
     e.preventDefault();
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* unsupported */ }
     const startX = e.clientX, startY = e.clientY;
     const origin = new Map(targets.map((t) => [t.id, t]));
+    // Snap to alignment guides only for a single-element move (snapOthers given).
+    const snapping = snapOthers && targets.length === 1;
     let latest = new Map();
-    function move(ev) {
+    // Ignore sub-threshold jitter so a click (which can emit a 0-delta
+    // pointermove) isn't treated as a drag — important now that snapping can
+    // nudge an element to a non-grid position, which would otherwise turn a
+    // click near a guide into a spurious move-commit. (Matches marquee/rotate.)
+    const swept = (cx, cy) => Math.abs(cx - startX) > 3 || Math.abs(cy - startY) > 3;
+    // Map a screen position to the dragged elements' new geometry (+ any
+    // alignment guides). Shared by move() and up() so the release position is
+    // authoritative — a fast flick may emit no pointermove past the threshold.
+    const computeAt = (cx, cy) => {
       const s = scaleRef.current || 1;
-      const dx = (ev.clientX - startX) / s, dy = (ev.clientY - startY) / s;
-      latest = new Map(targets.map((t) => [t.id, apply(t, dx, dy)]));
+      const dx = (cx - startX) / s, dy = (cy - startY) / s;
+      const map = new Map(targets.map((t) => [t.id, apply(t, dx, dy)]));
+      if (snapping) {
+        const id = targets[0].id;
+        const m = map.get(id);
+        const r = alignSnap(m, snapOthers);
+        map.set(id, { ...m, x: r.x, y: r.y });
+        return { map, guides: r.guides };
+      }
+      return { map, guides: [] };
+    };
+    function move(ev) {
+      if (!swept(ev.clientX, ev.clientY)) return;
+      const { map, guides } = computeAt(ev.clientX, ev.clientY);
+      latest = map;
+      setGuides(guides);
       setDrag(latest);
     }
     function removeListeners() {
@@ -89,6 +116,7 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
       dragCleanup.current = null;
+      setGuides([]); // clear guides when the gesture ends
     }
     // A canceled gesture (pointercancel never fires pointerup) discards the
     // drag — detach listeners and clear the preview so the lifecycle isn't stuck.
@@ -96,9 +124,13 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       removeListeners();
       setDrag(null);
     }
-    function up() {
+    function up(ev) {
       removeListeners();
       setDrag(null);
+      // The release position is authoritative: a fast flick can deliver no
+      // pointermove past the sweep threshold, leaving `latest` empty. Recompute
+      // from the release coords when it swept (matches startRotate).
+      if (swept(ev.clientX, ev.clientY)) latest = computeAt(ev.clientX, ev.clientY).map;
       // One atomic commit, carrying only elements whose geometry actually
       // changed. A click or a snap-back-to-origin gesture moves nothing, so it
       // commits nothing and is treated as a click instead.
@@ -127,7 +159,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     // shift-grab adds this element, so drag the combined set; otherwise just it.
     const targets = inSelection ? selected : additive ? [...selected, el] : [el];
     const onClick = additive && inSelection ? () => onSelectElement?.(el.id, true) : undefined;
-    startDrag(e, targets, (t, dx, dy) => moveElement(t, dx, dy), onClick);
+    // Snap a lone dragged element against the others (and the slide edges/centre).
+    const snapOthers = targets.length === 1 ? baseElements.filter((x) => x.id !== targets[0].id) : null;
+    startDrag(e, targets, (t, dx, dy) => moveElement(t, dx, dy), onClick, snapOthers);
   }
   function startResize(e, el, handle) {
     startDrag(e, [el], (t, dx, dy) => resizeElement(t, handle, dx, dy));
@@ -334,6 +368,21 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
             />
           </>
         )}
+
+        {guides.map((g) => (
+          <div
+            key={g.axis}
+            className="align-guide"
+            style={{
+              position: 'absolute',
+              background: 'oklch(0.62 0.2 25)',
+              pointerEvents: 'none',
+              ...(g.axis === 'v'
+                ? { left: g.pos * scale, top: 0, width: 1, height: '100%' }
+                : { top: g.pos * scale, left: 0, height: 1, width: '100%' }),
+            }}
+          />
+        ))}
 
         {marquee && (
           <div
