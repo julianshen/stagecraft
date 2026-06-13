@@ -28,13 +28,13 @@ export default function DesignPanel({ deck, onChangeTheme, onAddComponent }) {
         <h4>Theme</h4>
         <div className="swatch-grid">
           {THEME_OPTIONS.map(o => (
-            <div
+            <button
               key={o.id}
+              type="button"
               className={`swatch ${theme === o.id ? 'active' : ''}`}
               title={o.label}
               aria-label={`${o.id} theme`}
-              role="button"
-              style={{ background: `oklch(0.62 ${o.chroma} ${o.hue})`, cursor: 'pointer' }}
+              style={{ background: `oklch(0.62 ${o.chroma} ${o.hue})`, padding: 0, appearance: 'none', WebkitAppearance: 'none' }}
               onClick={() => onChangeTheme?.(o.id)}
             />
           ))}
@@ -50,10 +50,10 @@ export default function DesignPanel({ deck, onChangeTheme, onAddComponent }) {
         <h4>Components</h4>
         <div className="lib-rail">
           {COMPONENTS.map(({ label, id }) => (
-            <div className="lib-chip" key={id} title={`Add ${label}`} role="button" style={{ cursor: 'pointer' }} onClick={() => onAddComponent?.(id)}>
+            <button className="lib-chip" key={id} type="button" title={`Add ${label}`} style={{ padding: 0, appearance: 'none', WebkitAppearance: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer' }} onClick={() => onAddComponent?.(id)}>
               <div className="lib-chip-inner"><span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>{label[0]}</span></div>
               <div className="lib-chip-name">{label}</div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
