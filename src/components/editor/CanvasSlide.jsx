@@ -170,15 +170,27 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   function focusTextUnder(e) {
     const overlay = e.currentTarget;
     const prev = overlay.style.pointerEvents;
+    // Hit-test AND read the caret range while the overlay is disabled, so both
+    // resolve against the slide text beneath it (not the overlay itself).
     overlay.style.pointerEvents = 'none';
     const hit = document.elementFromPoint?.(e.clientX, e.clientY);
+    const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
     overlay.style.pointerEvents = prev;
     const field = hit?.closest?.('[contenteditable="true"]');
     if (!field) return;
     field.focus();
     const sel = window.getSelection?.();
-    const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
-    if (sel && range) { sel.removeAllRanges(); sel.addRange(range); }
+    if (!sel) return;
+    sel.removeAllRanges();
+    if (range && field.contains(range.startContainer)) {
+      sel.addRange(range); // caret where the user clicked
+    } else {
+      // Click landed off the text node (padding/edge) — caret at the field's end.
+      const end = document.createRange();
+      end.selectNodeContents(field);
+      end.collapse(false);
+      sel.addRange(end);
+    }
   }
 
   // Rubber-band selection: a drag on empty canvas sweeps a rectangle and selects
