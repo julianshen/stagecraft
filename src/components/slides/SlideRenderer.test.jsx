@@ -267,6 +267,28 @@ describe('Slide inline editing (editable)', () => {
     expect(onEditField).toHaveBeenCalledWith(['items', 1, 't'], 'Two!');
   });
 
+  // One representative edit path per remaining layout — proves each hand-wired
+  // E([...path]) emits the right semantic coordinates (catches a path typo in a
+  // layout the focused tests above don't exercise).
+  it.each([
+    ['kpi val', { id: 'k', layout: 'kpi', kpis: [{ label: 'L', val: '10', delta: '+1', target: 't' }] }, '10', ['kpis', 0, 'val'], '20'],
+    ['kpi delta', { id: 'k', layout: 'kpi', kpis: [{ label: 'L', val: '10', delta: '+1', target: 't' }] }, '+1', ['kpis', 0, 'delta'], '+2'],
+    ['split body', { id: 's', layout: 'split', body: 'Body', stats: [] }, 'Body', ['body'], 'New body'],
+    ['split stat', { id: 's', layout: 'split', stats: [{ lbl: 'L', val: '5' }] }, '5', ['stats', 0, 'val'], '6'],
+    ['risks item', { id: 'r', layout: 'risks', items: [{ sev: 'low', t: 'Risk', d: 'd' }] }, 'Risk', ['items', 0, 't'], 'Risk2'],
+    ['list item', { id: 'l', layout: 'list', items: ['First'] }, 'First', ['items', 0], 'First2'],
+    ['thanks subtitle', { id: 't', layout: 'thanks', title: 'T', subtitle: 'Sub' }, 'Sub', ['subtitle'], 'Sub2'],
+    ['divider title', { id: 'd', layout: 'divider', title: 'Div', chapter: '1' }, 'Div', ['title'], 'Div2'],
+    ['cover subtitle', { id: 'c', layout: 'cover', title: 'C', subtitle: 'CS' }, 'CS', ['subtitle'], 'CS2'],
+  ])('emits the right path editing %s', (_name, slide, findText, path, newVal) => {
+    const onEditField = vi.fn();
+    const { container } = render(<Slide slide={slide} deck={{ title: 'D' }} editable onEditField={onEditField} />);
+    const target = [...container.querySelectorAll('[contenteditable="true"]')].find((n) => n.textContent === findText);
+    target.textContent = newVal;
+    fireEvent.blur(target);
+    expect(onEditField).toHaveBeenCalledWith(path, newVal);
+  });
+
   it('uses the ORIGINAL array index when a falsy item precedes the edited one', () => {
     // A null at index 1 must not shift the edited item's index (filter-then-index
     // would have written to the wrong item → data corruption).
