@@ -351,6 +351,9 @@ function ElementView({ el }) {
         textDecoration: el.underline ? 'underline' : 'none',
         textAlign: align,
         fontFamily: el.fontFamily || undefined,
+        // Preserve newlines/spaces typed into the Properties Content textarea
+        // (HTML collapses them by default).
+        whiteSpace: 'pre-wrap',
         color: el.fill || 'var(--ink, #15171C)', lineHeight: 1.2, overflow: 'hidden',
       }}>
         {el.content}
