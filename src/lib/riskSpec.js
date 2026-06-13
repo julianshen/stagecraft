@@ -8,19 +8,19 @@
 
 export const SEVERITIES = Object.freeze(['high', 'med', 'low']);
 
-// `low` is the canvas's existing blue accent (red/amber/blue), not a
-// traffic-light green — unifying here mirrors the on-screen colours. (Switching
-// the ramp to red/amber/green would be a deliberate design change to both.)
+// A traffic-light ramp — red (high) / amber (med) / green (low), the
+// universally-read risk-matrix convention. (`low` was previously the canvas's
+// blue accent; it's now green so the three severities read as stop/caution/go.)
 export const SEVERITY_OKLCH = Object.freeze({
   high: 'oklch(0.55 0.2 25)',
   med: 'oklch(0.65 0.15 75)',
-  low: 'oklch(0.55 0.1 260)',
+  low: 'oklch(0.62 0.15 150)',
   fallback: '#aaa',
 });
 
 export const SEVERITY_HEX = Object.freeze({
   high: 'CC272E',
   med: 'C37F00',
-  low: '4E72AC',
+  low: '2E9E52',
   fallback: 'AAAAAA',
 });
