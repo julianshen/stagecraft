@@ -60,4 +60,38 @@ describe('PropsPanel', () => {
     render(<PropsPanel selected={{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100 }} setSelected={vi.fn()} />);
     expect(screen.queryByText('Content')).not.toBeInTheDocument();
   });
+
+  it('binds font size and family for a text element', () => {
+    const setSelected = vi.fn();
+    render(<PropsPanel selected={el} setSelected={setSelected} />);
+    fireEvent.change(screen.getByDisplayValue('48'), { target: { value: '64' } }); // SIZE (default 48)
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ fontSize: 64 }));
+    fireEvent.change(screen.getByLabelText('Font family'), { target: { value: 'Georgia' } });
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ fontFamily: 'Georgia' }));
+  });
+
+  it('toggles bold / italic / underline for a text element', () => {
+    const setSelected = vi.fn();
+    render(<PropsPanel selected={el} setSelected={setSelected} />);
+    fireEvent.click(screen.getByLabelText('Bold'));
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ bold: true }));
+    fireEvent.click(screen.getByLabelText('Italic'));
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ italic: true }));
+    fireEvent.click(screen.getByLabelText('Underline'));
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ underline: true }));
+  });
+
+  it('toggles an active style off (bold → not bold)', () => {
+    const setSelected = vi.fn();
+    render(<PropsPanel selected={{ ...el, bold: true }} setSelected={setSelected} />);
+    fireEvent.click(screen.getByLabelText('Bold'));
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ bold: false }));
+  });
+
+  it('binds text alignment', () => {
+    const setSelected = vi.fn();
+    render(<PropsPanel selected={el} setSelected={setSelected} />);
+    fireEvent.click(screen.getByTitle('Align center'));
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ align: 'center' }));
+  });
 });

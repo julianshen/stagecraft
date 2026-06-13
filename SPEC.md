@@ -255,7 +255,7 @@ Section-grouped live thumbnails (real `<Slide>` via `ScaledSlide`), active-state
 #### 7.2.5 Right inspector (`InspectorPane` / `FloatingInspector`) 🟡
 Tabs: **Design / Properties / Data / Animate**.
 - **Design panel** 🔴 — layout grid, theme swatches, token rows, component rail are all display-only.
-- **Properties panel** 🟡 — `X/Y/W/H` edit the selection box live; angle, opacity, font family/style/size, align, fill are 🔴 static.
+- **Properties panel** 🟢 — `X/Y/W/H`, angle, opacity, and fill bind to the selected element live; for a **text** element, font **family**, **size**, **align**, and **bold/italic/underline** are wired too (stored on the element, rendered by `ElementView`, committed via the same `onUpdateElement` path).
 - **Data panel** 🟢 — in-app authoring for the data-driven layouts (`DataPanel`): a chart slide gets a categories×series grid (`ChartDataEditor`), a roadmap slide gets a lanes/milestones editor with state selects (`RoadmapLanesEditor`); other layouts show a hint. Both editors render the same normalized model the canvas/export draw (`chartData` / `roadmapModel` — a data-less starter materializes its fallback as editable rows) and commit full `{ chart }` / `{ lanes, months, todayIndex }` patches (the roadmap materializes its whole model so the demo TODAY marker survives the fork) through the Co-pilot's validated patch path (`onApplyAIPatch` → `sanitizeSlidePatch`), so the inspector and the AI share one schema gate.
 - **Animate panel** 🔴 — transition/builds are fake.
 
@@ -314,7 +314,7 @@ Anthropic · OpenAI · Google · OpenRouter · Local (Ollama/LM Studio, no key) 
 **Also 🟢:** the Properties panel binds **angle (`rot`), opacity, and fill** to the selected element, and a **Content** field edits text elements; `ElementView` renders rotation/opacity/fill. (Element schema gains optional `rot`, `opacity`, `fill`.)
 
 **Still ⚪ (follow-ups):**
-- Per-element typography (font family/size/weight/align for text).
+- ~~Per-element typography (font family/size/weight/align for text).~~ ✅ Done — the Properties panel binds family/size/align/bold/italic/underline on a text element (§7.2.5).
 - Rotate the selection overlay (resize handles + rotate knob) to track a rotated element, which also needs rotate-aware resize math (the overlay is currently axis-aligned).
 - Selection set: shift-click multi-select ✅, marquee drag-rectangle ✅, align (horizontal + vertical) ✅, distribute ✅, and a rotate handle ✅ all shipped; ⚪ shift-add-to-marquee remains.
 - Snapping to alignment guides (currently grid-only); Pen/Image tools.

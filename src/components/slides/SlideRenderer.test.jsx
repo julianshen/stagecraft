@@ -235,6 +235,29 @@ describe('slide chrome is content-driven, not sample-deck copy', () => {
   });
 });
 
+describe('ElementsLayer text typography', () => {
+  it('renders a text element with its font size/weight/style/align/family', () => {
+    const { getByText } = render(<ElementsLayer elements={[{
+      id: 't', type: 'text', x: 0, y: 0, w: 200, h: 60, content: 'Hi',
+      fontSize: 64, bold: true, italic: true, underline: true, align: 'center', fontFamily: 'Georgia',
+    }]} />);
+    const el = getByText('Hi');
+    expect(el.style.fontSize).toBe('64px');
+    expect(el.style.fontWeight).toBe('700');
+    expect(el.style.fontStyle).toBe('italic');
+    expect(el.style.textDecoration).toContain('underline');
+    expect(el.style.textAlign).toBe('center');
+    expect(el.style.fontFamily).toBe('Georgia');
+  });
+
+  it('falls back to the defaults when no typography is set', () => {
+    const { getByText } = render(<ElementsLayer elements={[{ id: 't', type: 'text', x: 0, y: 0, w: 200, h: 60, content: 'Plain' }]} />);
+    const el = getByText('Plain');
+    expect(el.style.fontSize).toBe('48px');
+    expect(el.style.fontWeight).toBe('500');
+  });
+});
+
 describe('Slide inline editing (editable)', () => {
   const renderEditable = (slide) => {
     const onEditField = vi.fn();
