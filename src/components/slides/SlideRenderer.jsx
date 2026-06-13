@@ -4,6 +4,7 @@ import { useId } from 'react';
 import { chartData, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
 import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
+import EditableText from '../ui/EditableText.jsx';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
 // fallbacks). This is the memo contract for thumbnail re-rendering
@@ -355,8 +356,12 @@ function ElementView({ el }) {
 
 export function ElementsLayer({ elements }) {
   if (!elements?.length) return null;
+  // pointer-events:none — this is the VISUAL element layer; interaction (select,
+  // drag, resize) is handled by CanvasSlide's separate overlay. Without this, the
+  // full-bleed layer would sit over the slide text and swallow the double-click
+  // that starts an inline text edit on any slide that has elements.
   return (
-    <div style={{ position: 'absolute', inset: 0 }}>
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       {elements.map((el) => <ElementView key={el.id} el={el} />)}
     </div>
   );
@@ -371,24 +376,36 @@ export function Slide(props) {
   );
 }
 
-function SlideContent({ slide, deck, sectionName, num, total }) {
+function SlideContent({ slide, deck, sectionName, num, total, editable = false, onEditField }) {
   const s = { ...slide, sectionName, num, total };
+  // Inline-edit helper. Read-only (editable=false) renders the plain tag, so the
+  // shared renderer (thumbnails, sorter, presenter) is byte-identical. On the
+  // canvas a commit emits the field's semantic path + value; the Editor turns
+  // that into a validated patch (it owns deck mutation — the renderer stays a
+  // pure view that only knows its own field paths).
+  // onCommit returns false only when the Editor reports the edit was rejected
+  // (an empty applied-keys array), so EditableText can revert the field.
+  const commit = (path, v) => {
+    const applied = onEditField?.(path, v);
+    return !Array.isArray(applied) || applied.length > 0;
+  };
+  const E = (path, value, props = {}) => (
+    <EditableText {...props} editable={editable} value={value} onCommit={(v) => commit(path, v)} />
+  );
   switch (slide.layout) {
     case 'cover':
       return (
         <div className={`slide ${slide.bg || ''}`}>
           <div style={{ position:'absolute', top:60, left:80, right:80, display:'flex', justifyContent:'space-between', fontFamily:'var(--f-mono)', fontSize:18, opacity:0.5 }}>
             <span>{(deck?.title || 'DECK').toUpperCase()}</span>
-            <span>{slide.kicker || 'CONFIDENTIAL'}</span>
+            {E(['kicker'], slide.kicker || 'CONFIDENTIAL', { as: 'span' })}
           </div>
           <div style={{ position:'absolute', left:80, bottom:160 }}>
-            {slide.eyebrow && <div style={{ fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.6, marginBottom:28 }}>{slide.eyebrow}</div>}
-            <h1 style={{ fontSize:140, fontWeight:600, lineHeight:0.95, letterSpacing:'-0.04em', margin:0, maxWidth:1500 }}>
-              {slide.title || deck?.title || 'Untitled'}
-            </h1>
+            {slide.eyebrow && E(['eyebrow'], slide.eyebrow, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.6, marginBottom:28 } })}
+            {E(['title'], slide.title || deck?.title || 'Untitled', { as: 'h1', style: { fontSize:140, fontWeight:600, lineHeight:0.95, letterSpacing:'-0.04em', margin:0, maxWidth:1500 } })}
           </div>
           <div style={{ position:'absolute', left:80, bottom:80, display:'flex', gap:40, fontFamily:'var(--f-mono)', fontSize:18, opacity:0.55 }}>
-            <span>{slide.subtitle || deck?.subtitle || deck?.author || ''}</span>
+            {E(['subtitle'], slide.subtitle || deck?.subtitle || deck?.author || '', { as: 'span' })}
           </div>
           <div style={{ position:'absolute', right:100, top:'50%', transform:'translateY(-50%)', width:340, height:340, border:'2px solid rgba(255,255,255,0.15)', borderRadius:'50%' }}/>
           <div style={{ position:'absolute', right:180, top:'50%', transform:'translateY(-50%)', width:180, height:180, background:'oklch(0.62 0.17 265)', borderRadius:'50%', opacity:0.9 }}/>
@@ -400,15 +417,18 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:200, left:80, right:80 }}>
-            <div className="slide-eyebrow">{slide.eyebrow || 'Agenda · 4 parts'}</div>
-            <h1 style={{ fontSize:96, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 80px', lineHeight:1 }}>{slide.title || "What we'll cover"}</h1>
+            {E(['eyebrow'], slide.eyebrow || 'Agenda · 4 parts', { as: 'div', className: 'slide-eyebrow' })}
+            {E(['title'], slide.title || "What we'll cover", { as: 'h1', style: { fontSize:96, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 80px', lineHeight:1 } })}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'40px 80px', maxWidth:1700 }}>
-              {(Array.isArray(slide.items) ? slide.items : []).filter(Boolean).map(it => (
-                <div key={it.n} style={{ display:'grid', gridTemplateColumns:'80px 1fr', gap:20, paddingBottom:24, borderBottom:'1px solid #eee' }}>
-                  <div style={{ fontFamily:'var(--f-mono)', fontSize:36, color:'oklch(0.62 0.17 265)', fontWeight:500 }}>{it.n}</div>
+              {(Array.isArray(slide.items) ? slide.items : []).map((it, i) => it && (
+                // Map the ORIGINAL array (not filtered) so `i` is the true index
+                // an edit writes back to; falsy items render as nothing. Keyed by
+                // index (stable): editing it.n must not remount the row.
+                <div key={i} style={{ display:'grid', gridTemplateColumns:'80px 1fr', gap:20, paddingBottom:24, borderBottom:'1px solid #eee' }}>
+                  {E(['items', i, 'n'], it.n, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:36, color:'oklch(0.62 0.17 265)', fontWeight:500 } })}
                   <div>
-                    <div style={{ fontSize:38, fontWeight:600, letterSpacing:'-0.01em', marginBottom:8 }}>{it.t}</div>
-                    <div style={{ fontSize:22, color:'#666', lineHeight:1.3 }}>{it.d}</div>
+                    {E(['items', i, 't'], it.t, { as: 'div', style: { fontSize:38, fontWeight:600, letterSpacing:'-0.01em', marginBottom:8 } })}
+                    {E(['items', i, 'd'], it.d, { as: 'div', style: { fontSize:22, color:'#666', lineHeight:1.3 } })}
                   </div>
                 </div>
               ))}
@@ -425,7 +445,7 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
           </div>
           <div style={{ position:'absolute', left:80, top:'50%', transform:'translateY(-50%)' }}>
             <div style={{ fontFamily:'var(--f-mono)', fontSize:240, fontWeight:400, opacity:0.15, letterSpacing:'-0.04em', lineHeight:0.8 }}>{slide.chapter}</div>
-            <div style={{ fontSize:140, fontWeight:600, letterSpacing:'-0.04em', marginTop:-60 }}>{slide.title}</div>
+            {E(['title'], slide.title, { as: 'div', style: { fontSize:140, fontWeight:600, letterSpacing:'-0.04em', marginTop:-60 } })}
           </div>
           <div style={{ position:'absolute', right:80, bottom:80, fontFamily:'var(--f-mono)', fontSize:16, opacity:0.5, textAlign:'right' }}>
             <div>{String(num).padStart(2,'0')} / {String(total).padStart(2,'0')}</div>
@@ -437,24 +457,24 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:140, left:80, right:80 }}>
-            <div className="slide-eyebrow">{slide.eyebrow || 'Scorecard'}</div>
+            {E(['eyebrow'], slide.eyebrow || 'Scorecard', { as: 'div', className: 'slide-eyebrow' })}
             <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:60 }}>
-              <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:0 }}>{slide.title}</h1>
-              <div style={{ fontFamily:'var(--f-mono)', fontSize:20, color:'#888' }}>{slide.note}</div>
+              {E(['title'], slide.title, { as: 'h1', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:0 } })}
+              {E(['note'], slide.note, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:20, color:'#888' } })}
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'24px', maxWidth:1760 }}>
-              {(Array.isArray(slide.kpis) ? slide.kpis : []).filter(Boolean).map((k,i)=>(
+              {(Array.isArray(slide.kpis) ? slide.kpis : []).map((k,i)=> k && (
                 <div key={i} style={{ padding:'28px 32px', border:'1px solid #e8e5df', borderRadius:10, background:'white', position:'relative' }}>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-                    <div style={{ fontFamily:'var(--f-mono)', fontSize:16, letterSpacing:'0.08em', textTransform:'uppercase', color:'#888' }}>{k.label}</div>
-                    <div style={{
+                    {E(['kpis', i, 'label'], k.label, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:16, letterSpacing:'0.08em', textTransform:'uppercase', color:'#888' } })}
+                    {E(['kpis', i, 'delta'], k.delta, { as: 'div', style: {
                       fontFamily:'var(--f-mono)', fontSize:14, padding:'2px 8px', borderRadius:4,
                       background: k.good === true ? 'oklch(0.95 0.04 155)' : k.good === false ? 'oklch(0.95 0.04 25)' : '#f0ede8',
                       color: k.good === true ? 'oklch(0.45 0.14 155)' : k.good === false ? 'oklch(0.5 0.18 25)' : '#666'
-                    }}>{k.delta}</div>
+                    } })}
                   </div>
-                  <div style={{ fontSize:68, fontWeight:600, letterSpacing:'-0.03em', lineHeight:1, marginBottom:14 }}>{k.val}</div>
-                  <div style={{ fontFamily:'var(--f-mono)', fontSize:16, color:'#888' }}>{k.target}</div>
+                  {E(['kpis', i, 'val'], k.val, { as: 'div', style: { fontSize:68, fontWeight:600, letterSpacing:'-0.03em', lineHeight:1, marginBottom:14 } })}
+                  {E(['kpis', i, 'target'], k.target, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:16, color:'#888' } })}
                 </div>
               ))}
             </div>
@@ -469,9 +489,9 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:140, left:80, right:80 }}>
-            <div className="slide-eyebrow">{slide.eyebrow || 'Scorecard'}</div>
-            <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 8px' }}>{slide.title}</h1>
-            <div style={{ fontFamily:'var(--f-mono)', fontSize:22, color:'#888', marginBottom:40 }}>{slide.sub || `${typeLabel} chart`}</div>
+            {E(['eyebrow'], slide.eyebrow || 'Scorecard', { as: 'div', className: 'slide-eyebrow' })}
+            {E(['title'], slide.title, { as: 'h1', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 8px' } })}
+            {E(['sub'], slide.sub || `${typeLabel} chart`, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:22, color:'#888', marginBottom:40 } })}
             <div style={{ background:'white', border:'1px solid #eee', borderRadius:10, padding:30 }}>
               <ChartByType type={chartType} slide={slide}/>
             </div>
@@ -485,15 +505,15 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:160, left:80, right:80, display:'grid', gridTemplateColumns:'1fr 1fr', gap:80 }}>
             <div>
-              <div className="slide-eyebrow">{slide.eyebrow || 'Scorecard'}</div>
-              <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 40px', lineHeight:1 }}>{slide.title}</h1>
-              <p style={{ fontSize:28, lineHeight:1.5, color:'#333', maxWidth:760 }}>{slide.body}</p>
+              {E(['eyebrow'], slide.eyebrow || 'Scorecard', { as: 'div', className: 'slide-eyebrow' })}
+              {E(['title'], slide.title, { as: 'h1', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 40px', lineHeight:1 } })}
+              {E(['body'], slide.body, { as: 'p', style: { fontSize:28, lineHeight:1.5, color:'#333', maxWidth:760 } })}
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
-              {(Array.isArray(slide.stats) ? slide.stats : []).filter(Boolean).map((st,i)=>(
+              {(Array.isArray(slide.stats) ? slide.stats : []).map((st,i)=> st && (
                 <div key={i} style={{ padding:'36px 40px', background:'oklch(0.97 0.01 85)', borderRadius:10, display:'flex', alignItems:'baseline', justifyContent:'space-between' }}>
-                  <div style={{ fontFamily:'var(--f-mono)', fontSize:20, color:'#555', letterSpacing:'0.05em', textTransform:'uppercase' }}>{st.lbl}</div>
-                  <div style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', color: String(st.val ?? '').startsWith('-') ? 'oklch(0.55 0.18 25)' : 'oklch(0.45 0.14 155)' }}>{st.val}</div>
+                  {E(['stats', i, 'lbl'], st.lbl, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:20, color:'#555', letterSpacing:'0.05em', textTransform:'uppercase' } })}
+                  {E(['stats', i, 'val'], st.val, { as: 'div', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', color: String(st.val ?? '').startsWith('-') ? 'oklch(0.55 0.18 25)' : 'oklch(0.45 0.14 155)' } })}
                 </div>
               ))}
             </div>
@@ -509,11 +529,11 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:140, left:80, right:80 }}>
-            <div className="slide-eyebrow">{slide.eyebrow || 'Segments'}</div>
-            <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px' }}>{slide.title}</h1>
+            {E(['eyebrow'], slide.eyebrow || 'Segments', { as: 'div', className: 'slide-eyebrow' })}
+            {E(['title'], slide.title, { as: 'h1', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px' } })}
             <div style={{ border:'1px solid #eee', borderRadius:12, overflow:'hidden', background:'white' }}>
               <div style={{ display:'grid', gridTemplateColumns:gridCols, padding:'22px 30px', background:'oklch(0.97 0.01 85)', fontFamily:'var(--f-mono)', fontSize:18, color:'#666', letterSpacing:'0.05em', textTransform:'uppercase', borderBottom:'1px solid #eee' }}>
-                {cols.map((c,ci) => <div key={ci}>{c}</div>)}
+                {cols.map((c,ci) => <div key={ci}>{E(['columns', ci], c)}</div>)}
               </div>
               {rows.map((r,i)=>(
                 <div key={i} style={{ display:'grid', gridTemplateColumns:gridCols, padding:'28px 30px', fontSize:26, borderBottom: i < rows.length - 1 ? '1px solid #eee' : 'none', alignItems:'center' }}>
@@ -524,8 +544,8 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
                       color: (ci > 0 && String(cell).startsWith('-')) ? 'oklch(0.55 0.18 25)' : (ci > 0 && String(cell).startsWith('+')) ? 'oklch(0.45 0.14 155)' : 'inherit'
                     }}>
                       {ci === ncol - 1 && ncol === 6
-                        ? <span style={{ fontSize:18, padding:'4px 12px', borderRadius:4, background:'oklch(0.95 0.02 85)', fontFamily:'var(--f-mono)', color:'#555' }}>{cell}</span>
-                        : cell}
+                        ? <span style={{ fontSize:18, padding:'4px 12px', borderRadius:4, background:'oklch(0.95 0.02 85)', fontFamily:'var(--f-mono)', color:'#555' }}>{E(['rows', i, ci], cell)}</span>
+                        : E(['rows', i, ci], cell)}
                     </div>
                   ))}
                 </div>
@@ -541,8 +561,8 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:200, left:80, right:80, maxWidth:1500 }}>
             <div className="slide-eyebrow">{sectionName}</div>
-            <h1 style={{ fontSize:84, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px', lineHeight:1 }}>{slide.title}</h1>
-            <p style={{ fontSize:32, lineHeight:1.5, color:'#333' }}>{slide.body}</p>
+            {E(['title'], slide.title, { as: 'h1', style: { fontSize:84, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px', lineHeight:1 } })}
+            {E(['body'], slide.body, { as: 'p', style: { fontSize:32, lineHeight:1.5, color:'#333' } })}
           </div>
         </div>
       );
@@ -551,8 +571,8 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:140, left:80, right:80 }}>
-            <div className="slide-eyebrow">{slide.eyebrow || 'Product'}</div>
-            <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px' }}>{slide.title}</h1>
+            {E(['eyebrow'], slide.eyebrow || 'Product', { as: 'div', className: 'slide-eyebrow' })}
+            {E(['title'], slide.title, { as: 'h1', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px' } })}
             <RoadmapGraphic slide={slide}/>
             <div style={{ display:'flex', gap:28, marginTop:24, fontFamily:'var(--f-mono)', fontSize:18 }}>
               {ROADMAP_STATES.map(st => (
@@ -569,17 +589,18 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:160, left:80, right:80 }}>
-            <div className="slide-eyebrow">{slide.eyebrow || 'Outlook'}</div>
-            <h1 style={{ fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 60px' }}>{slide.title}</h1>
+            {E(['eyebrow'], slide.eyebrow || 'Outlook', { as: 'div', className: 'slide-eyebrow' })}
+            {E(['title'], slide.title, { as: 'h1', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 60px' } })}
             <div style={{ display:'flex', flexDirection:'column', gap:28 }}>
-              {(Array.isArray(slide.items) ? slide.items : []).filter(Boolean).map((it,i)=>{
+              {(Array.isArray(slide.items) ? slide.items : []).map((it,i)=>{
+                if (!it) return null; // keep `i` the true index for onEditField
                 const sevC = SEVERITY_OKLCH[it.sev] || SEVERITY_OKLCH.fallback;
                 return (
                   <div key={i} style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:40, padding:'32px 36px', border:'1px solid #eee', borderLeft:`6px solid ${sevC}`, borderRadius:6, background:'white' }}>
                     <div style={{ fontFamily:'var(--f-mono)', fontSize:18, letterSpacing:'0.08em', textTransform:'uppercase', color:sevC, fontWeight:600, paddingTop:6 }}>{it.sev} risk</div>
                     <div>
-                      <div style={{ fontSize:36, fontWeight:600, marginBottom:10 }}>{it.t}</div>
-                      <div style={{ fontSize:24, color:'#555' }}>{it.d}</div>
+                      {E(['items', i, 't'], it.t, { as: 'div', style: { fontSize:36, fontWeight:600, marginBottom:10 } })}
+                      {E(['items', i, 'd'], it.d, { as: 'div', style: { fontSize:24, color:'#555' } })}
                     </div>
                   </div>
                 );
@@ -593,13 +614,13 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:160, left:80, right:80 }}>
-            <div className="slide-eyebrow">{slide.eyebrow || 'Outlook'}</div>
-            <h1 style={{ fontSize:84, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 70px' }}>{slide.title}</h1>
+            {E(['eyebrow'], slide.eyebrow || 'Outlook', { as: 'div', className: 'slide-eyebrow' })}
+            {E(['title'], slide.title, { as: 'h1', style: { fontSize:84, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 70px' } })}
             <div style={{ display:'flex', flexDirection:'column', gap:28, maxWidth:1500 }}>
-              {(Array.isArray(slide.items) ? slide.items : []).filter(Boolean).map((it,i)=>(
+              {(Array.isArray(slide.items) ? slide.items : []).map((it,i)=> it != null && (
                 <div key={i} style={{ display:'grid', gridTemplateColumns:'100px 1fr', gap:28, alignItems:'baseline', borderBottom:'1px solid #eee', paddingBottom:28 }}>
                   <div style={{ fontFamily:'var(--f-mono)', fontSize:28, color:'oklch(0.62 0.17 265)', fontWeight:500 }}>{String(i+1).padStart(2,'0')}</div>
-                  <div style={{ fontSize:38, fontWeight:500, letterSpacing:'-0.01em' }}>{typeof it === 'object' && it !== null ? '' : it}</div>
+                  {E(['items', i], typeof it === 'object' && it !== null ? '' : it, { as: 'div', style: { fontSize:38, fontWeight:500, letterSpacing:'-0.01em' } })}
                 </div>
               ))}
             </div>
@@ -610,9 +631,11 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
       return (
         <div className="slide ink">
           <div style={{ position:'absolute', left:80, top:'50%', transform:'translateY(-50%)' }}>
-            <div style={{ fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.5, marginBottom:40 }}>{slide.eyebrow || 'END OF REVIEW'}</div>
-            <h1 style={{ fontSize:220, fontWeight:600, letterSpacing:'-0.05em', margin:0, lineHeight:0.9 }}>{slide.title || 'Thanks'}.</h1>
-            <div style={{ fontSize:32, opacity:0.7, marginTop:40 }}>{slide.subtitle}</div>
+            {E(['eyebrow'], slide.eyebrow || 'END OF REVIEW', { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.5, marginBottom:40 } })}
+            <h1 style={{ fontSize:220, fontWeight:600, letterSpacing:'-0.05em', margin:0, lineHeight:0.9 }}>
+              {E(['title'], slide.title || 'Thanks', { as: 'span' })}.
+            </h1>
+            {E(['subtitle'], slide.subtitle, { as: 'div', style: { fontSize:32, opacity:0.7, marginTop:40 } })}
           </div>
           <div style={{ position:'absolute', right:100, top:100, width:320, height:320, border:'2px solid rgba(255,255,255,0.1)', borderRadius:'50%' }}/>
           <div style={{ position:'absolute', right:200, top:200, width:120, height:120, background:'oklch(0.62 0.17 265)', borderRadius:'50%' }}/>
@@ -623,7 +646,7 @@ function SlideContent({ slide, deck, sectionName, num, total }) {
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:'50%', left:80, right:80, transform:'translateY(-50%)' }}>
-            <h1 style={{ fontSize:96, fontWeight:600 }}>{slide.title || 'Untitled'}</h1>
+            {E(['title'], slide.title || 'Untitled', { as: 'h1', style: { fontSize:96, fontWeight:600 } })}
           </div>
         </div>
       );

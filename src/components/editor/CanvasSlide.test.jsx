@@ -277,3 +277,56 @@ describe('CanvasSlide drag', () => {
     expect(onMarqueeSelect).not.toHaveBeenCalled();
   });
 });
+
+describe('CanvasSlide inline-text focus', () => {
+  const baseSlide = { id: 's', layout: 'text', elements: [] };
+  // jsdom has no elementFromPoint; define it so the hit-test path runs.
+  const withHit = (el, fn) => {
+    const orig = document.elementFromPoint;
+    document.elementFromPoint = () => el;
+    try { fn(); } finally { document.elementFromPoint = orig; }
+  };
+  it('double-click focuses an editable text field under the overlay', () => {
+    const field = document.createElement('div');
+    field.setAttribute('contenteditable', 'true');
+    const focusSpy = vi.spyOn(field, 'focus');
+    const { container } = render(<CanvasSlide slide={baseSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62} />);
+    withHit(field, () => fireEvent.doubleClick(container.querySelector('.elements-overlay'), { clientX: 20, clientY: 20 }));
+    expect(focusSpy).toHaveBeenCalled();
+  });
+  it('keeps the overlay click-through while editing, then restores it on blur', () => {
+    const field = document.createElement('div');
+    field.setAttribute('contenteditable', 'true');
+    document.body.appendChild(field);
+    const { container } = render(<CanvasSlide slide={baseSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62} />);
+    const overlay = container.querySelector('.elements-overlay');
+    try {
+      withHit(field, () => fireEvent.doubleClick(overlay, { clientX: 30, clientY: 30 }));
+      expect(overlay.style.pointerEvents).toBe('none'); // editing → pointer reaches the text
+      fireEvent.blur(field);
+      expect(overlay.style.pointerEvents).toBe('');      // restored when the edit ends
+    } finally {
+      field.remove();
+    }
+  });
+
+  it('double-click on a non-editable hit focuses nothing and does not throw', () => {
+    const { container } = render(<CanvasSlide slide={baseSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62} />);
+    expect(() => withHit(document.createElement('div'), () => fireEvent.doubleClick(container.querySelector('.elements-overlay'), { clientX: 5, clientY: 5 }))).not.toThrow();
+  });
+
+  it('drops the caret at the click point when caretRangeFromPoint is available', () => {
+    const field = document.createElement('div');
+    field.setAttribute('contenteditable', 'true');
+    document.body.appendChild(field);
+    const origCaret = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => { const r = document.createRange(); r.selectNodeContents(field); return r; };
+    const { container } = render(<CanvasSlide slide={baseSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62} />);
+    try {
+      expect(() => withHit(field, () => fireEvent.doubleClick(container.querySelector('.elements-overlay'), { clientX: 9, clientY: 9 }))).not.toThrow();
+    } finally {
+      document.caretRangeFromPoint = origCaret;
+      field.remove();
+    }
+  });
+});

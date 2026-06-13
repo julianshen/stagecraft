@@ -34,6 +34,7 @@ export default function SlideEditor(props) {
   const {
     deck,
     renderSlide,
+    renderCanvasSlide, // canvas-only variant with inline text editing; falls back to renderSlide
     comments = [],
     layoutVariant = 'default',
     showCollabCursors = false,
@@ -213,7 +214,7 @@ export default function SlideEditor(props) {
               <CanvasSlide
                 slide={cur}
                 deckCtx={{ ...deckCtx, num: curIdx + 1 }}
-                renderSlide={renderSlide}
+                renderSlide={renderCanvasSlide || renderSlide}
                 selectedIds={props.selectedElementIds}
                 onSelectElement={onSelectElement}
                 onUpdateElements={callbacks.onUpdateElements}
