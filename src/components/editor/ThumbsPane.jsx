@@ -3,6 +3,54 @@ import Icon from '../ui/Icon.jsx';
 import { IconButton, ScaledSlide } from '../ui/Primitives.jsx';
 import { useReorderDrag } from '../../hooks/useReorderDrag.js';
 
+// flattenDeck rebuilds every slide wrapper per render, so wrapper identity
+// can't drive the memo — compare the wrapper's own values instead (untouched
+// slides keep field identity through applySlidePatch). The deck object also
+// changes identity per edit; only the chrome fields the renderer reads matter.
+// Handler/deckCtx identity is deliberately ignored: stale closures stay safe
+// because anything they read (section order, numbering, deck chrome) is part
+// of this comparison — when it changes, the thumb re-renders with fresh ones.
+function shallowEqual(a, b) {
+  const ka = Object.keys(a), kb = Object.keys(b);
+  return ka.length === kb.length && ka.every((k) => a[k] === b[k]);
+}
+function thumbPropsEqual(prev, next) {
+  return (
+    prev.idx === next.idx &&
+    prev.total === next.total &&
+    prev.isActive === next.isActive &&
+    prev.nComments === next.nComments &&
+    shallowEqual(prev.slide, next.slide) &&
+    prev.secSlides === next.secSlides && // section order: new array → fresh drop handlers
+    prev.deckCtx.deck?.title === next.deckCtx.deck?.title &&
+    prev.deckCtx.deck?.author === next.deckCtx.deck?.author &&
+    prev.deckCtx.deck?.subtitle === next.deckCtx.deck?.subtitle &&
+    prev.deckCtx.deck?.theme === next.deckCtx.deck?.theme
+  );
+}
+
+// One thumbnail card. Memoized so a per-keystroke deck edit (Data tab,
+// Co-pilot) re-renders only the edited slide's thumb instead of all N —
+// each thumb is a full <Slide> render behind a ResizeObserver.
+const Thumb = React.memo(function Thumb({ slide, idx, total, isActive, nComments, deckCtx, renderSlide, onPick, dragHandlers }) {
+  return (
+    <div
+      data-sid={slide.id}
+      className={`thumb ${isActive ? 'active' : ''}`}
+      onClick={() => onPick(slide.id)}
+      {...dragHandlers}
+    >
+      <div className="thumb-num">{String(idx + 1).padStart(2, '0')}</div>
+      <div className="thumb-slide">
+        <ScaledSlide>
+          {renderSlide(slide, { ...deckCtx, sectionName: slide.sectionName, num: idx + 1, total })}
+        </ScaledSlide>
+        {nComments > 0 && <div className="thumb-comments">{nComments}</div>}
+      </div>
+    </div>
+  );
+}, thumbPropsEqual);
+
 export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx, comments = [], onNewSlide, onReorder }) {
   // Drag-to-reorder mechanics shared with the Sorter grid.
   const { dragProps } = useReorderDrag(onReorder);
@@ -32,21 +80,19 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
               if (!s) return null;
               const nComments = comments.filter(c => c.slide === sid).length;
               return (
-                <div
+                <Thumb
                   key={sid}
-                  data-sid={sid}
-                  className={`thumb ${sid === curId ? 'active' : ''}`}
-                  onClick={() => onPick(sid)}
-                  {...dragProps(sid, sec)}
-                >
-                  <div className="thumb-num">{String(idx + 1).padStart(2, '0')}</div>
-                  <div className="thumb-slide">
-                    <ScaledSlide>
-                      {renderSlide(s, { ...deckCtx, sectionName: s.sectionName, num: idx + 1, total: flat.length })}
-                    </ScaledSlide>
-                    {nComments > 0 && <div className="thumb-comments">{nComments}</div>}
-                  </div>
-                </div>
+                  slide={s}
+                  idx={idx}
+                  total={flat.length}
+                  isActive={sid === curId}
+                  nComments={nComments}
+                  deckCtx={deckCtx}
+                  renderSlide={renderSlide}
+                  onPick={onPick}
+                  secSlides={sec.slides}
+                  dragHandlers={dragProps(sid, sec)}
+                />
               );
             })}
           </React.Fragment>

@@ -118,7 +118,8 @@ describe('useDeckSync', () => {
     await act(async () => { controls.adopt(srv.state.deck, 5, 'B'); });
     // A subsequent edit must be tagged for 'B'.
     const edited = { id: 'B', theme: 'coral', slides: [], sections: [] };
-    await act(async () => { controls.setDeck(edited); await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { controls.setDeck(edited); });
+    await flush(300);
     expect(srv.putUrls.at(-1)).toBe('/api/deck?forId=B');
   });
 
@@ -128,7 +129,8 @@ describe('useDeckSync', () => {
     render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
     await flush(); // mount → seed PUT (untagged); its response carries the new activeId
     const edited = { id: 'local', theme: 'magenta', slides: [], sections: [] };
-    await act(async () => { controls.setDeck(edited); await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { controls.setDeck(edited); });
+    await flush(300);
     // No poll has run yet, but the seed response already taught us the active id.
     expect(srv.putUrls.at(-1)).toBe('/api/deck?forId=seeded');
   });
@@ -148,7 +150,8 @@ describe('useDeckSync', () => {
     const controls = {};
     render(<Harness initialDeck={state.deck} fetchFn={fetchFn} controls={controls} />);
     await flush(); // mount adopts A @ rev 5
-    await act(async () => { controls.setDeck({ id: 'A2', theme: 'coral', slides: [], sections: [] }); await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { controls.setDeck({ id: 'A2', theme: 'coral', slides: [], sections: [] }); });
+    await flush(300);
     await flush(1000); // poll
     expect(controls.deck.id).toBe('B'); // adopted the now-active deck, not stuck on the dropped edit
   });
@@ -159,7 +162,8 @@ describe('useDeckSync', () => {
     render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
     await flush(); // seed
     const edited = { id: 'local', theme: 'magenta', slides: [], sections: [] };
-    await act(async () => { controls.setDeck(edited); await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { controls.setDeck(edited); });
+    await flush(300);
     expect(srv.puts).toEqual([localDeck, edited]);
   });
 
@@ -216,5 +220,64 @@ describe('useDeckSync', () => {
     await flush();
     expect(g).toHaveBeenCalledWith('/api/deck/state');
     vi.unstubAllGlobals();
+  });
+});
+
+describe('push debounce', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('coalesces rapid edits into one trailing PUT carrying the final deck', async () => {
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush(); // seed (immediate)
+    expect(srv.puts).toHaveLength(1);
+    // three keystrokes inside the window → one PUT with the final deck
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'a' }); });
+    await flush(100);
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'ab' }); });
+    await flush(100);
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'abc' }); });
+    await flush(100);
+    expect(srv.puts).toHaveLength(1); // still within the window — nothing pushed yet
+    await flush(300);
+    expect(srv.puts).toHaveLength(2);
+    expect(srv.puts.at(-1).title).toBe('abc');
+  });
+
+  it('a single edit pushes after the debounce window, not immediately', async () => {
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush(); // seed
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'edit' }); });
+    await flush(0);
+    expect(srv.puts).toHaveLength(1); // not yet
+    await flush(300);
+    expect(srv.puts).toHaveLength(2);
+  });
+
+  it('the seed itself is immediate — a fresh deck is available to agents right away', async () => {
+    const srv = makeServer({ deck: null, rev: 0 });
+    render(<Harness fetchFn={srv.fetchFn} />);
+    await flush(0);
+    expect(srv.puts).toEqual([localDeck]);
+  });
+
+  it('honors a custom pushDebounceMs', async () => {
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    function Custom() {
+      const [deck, setDeck] = useState(localDeck);
+      useDeckSync(deck, setDeck, { intervalMs: 60000, pushDebounceMs: 50, fetchFn: srv.fetchFn });
+      controls.setDeck = setDeck;
+      return null;
+    }
+    render(<Custom />);
+    await flush();
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'q' }); });
+    await flush(50);
+    expect(srv.puts).toHaveLength(2);
   });
 });

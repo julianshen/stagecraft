@@ -29,6 +29,7 @@ export default defineConfig({
         'src/hooks/useReorderDrag.js',
         'src/data/deck.js',
         'src/components/editor/CanvasSlide.jsx',
+        'src/components/editor/ThumbsPane.jsx',
         'src/components/editor/inspector/DataPanel.jsx',
         'src/components/editor/inspector/InspectorBody.jsx',
         'src/components/editor/inspector/NumberCell.jsx',
