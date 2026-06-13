@@ -4,7 +4,6 @@ import { useId } from 'react';
 import { chartData, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
 import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
-import { fieldPatch } from '../../lib/slideEdit.js';
 import EditableText from '../ui/EditableText.jsx';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
@@ -377,10 +376,11 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
   const s = { ...slide, sectionName, num, total };
   // Inline-edit helper. Read-only (editable=false) renders the plain tag, so the
   // shared renderer (thumbnails, sorter, presenter) is byte-identical. On the
-  // canvas each field commits a fieldPatch through onEditField — the same patch
-  // path the Co-pilot uses.
+  // canvas a commit emits the field's semantic path + value; the Editor turns
+  // that into a validated patch (it owns deck mutation — the renderer stays a
+  // pure view that only knows its own field paths).
   const E = (path, value, props = {}) => (
-    <EditableText editable={editable} value={value} onCommit={(v) => onEditField?.(fieldPatch(slide, path, v))} {...props} />
+    <EditableText editable={editable} value={value} onCommit={(v) => onEditField?.(path, v)} {...props} />
   );
   switch (slide.layout) {
     case 'cover':
@@ -619,7 +619,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
           <div style={{ position:'absolute', left:80, top:'50%', transform:'translateY(-50%)' }}>
             {E(['eyebrow'], slide.eyebrow || 'END OF REVIEW', { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.5, marginBottom:40 } })}
             <h1 style={{ fontSize:220, fontWeight:600, letterSpacing:'-0.05em', margin:0, lineHeight:0.9 }}>
-              <EditableText editable={editable} value={slide.title || 'Thanks'} onCommit={(v) => onEditField?.(fieldPatch(slide, ['title'], v))} as="span"/>.
+              {E(['title'], slide.title || 'Thanks', { as: 'span' })}.
             </h1>
             {E(['subtitle'], slide.subtitle, { as: 'div', style: { fontSize:32, opacity:0.7, marginTop:40 } })}
           </div>

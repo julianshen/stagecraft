@@ -5,6 +5,7 @@ import { createTableSlide, createChartSlide, createTextSlide, createComponentSli
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
 import { createElement, updateSlideElements, alignElements, distributeElements } from '../../lib/elements.js';
 import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
+import { fieldPatch } from '../../lib/slideEdit.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
   // Open on the first slide — for a freshly created deck that's the cover the
@@ -185,13 +186,14 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     <Slide slide={slide} deck={ctx.deck} sectionName={ctx.sectionName} num={ctx.num} total={ctx.total} />
   ), []);
 
-  // Canvas-only variant: slide text is editable in place. A commit routes
-  // through applyAIPatch (the Co-pilot's validated patch path), tagged to the
-  // exact slide rendered. Thumbnails/sorter/presenter keep the read-only render.
+  // Canvas-only variant: slide text is editable in place. A commit emits the
+  // field's path + value; we build the patch here (fieldPatch) and route it
+  // through applyAIPatch (the Co-pilot's validated path), tagged to the exact
+  // slide rendered. Thumbnails/sorter/presenter keep the read-only render.
   const renderCanvasSlide = (slide, ctx) => (
     <Slide
       slide={slide} deck={ctx.deck} sectionName={ctx.sectionName} num={ctx.num} total={ctx.total}
-      editable onEditField={(patch) => applyAIPatch(patch, slide.id)}
+      editable onEditField={(path, value) => applyAIPatch(fieldPatch(slide, path, value), slide.id)}
     />
   );
 
