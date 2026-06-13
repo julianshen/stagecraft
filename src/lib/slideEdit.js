@@ -26,5 +26,9 @@ export function fieldPatch(slide, path, value) {
     node = node[rest[i]];
   }
   node[rest[rest.length - 1]] = value;
-  return { [key]: root };
+  // Drop null/undefined holes from the rebuilt array. The renderer maps the
+  // ORIGINAL (possibly sparse) array to keep the edited index correct, but the
+  // committed array must be hole-free or the schema gate rejects it — the edit
+  // lands on the right item, then the array is compacted in one step.
+  return { [key]: Array.isArray(root) ? root.filter((x) => x != null) : root };
 }
