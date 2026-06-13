@@ -82,9 +82,11 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
           </FieldRow>
           <FieldRow label="STYLE">
             <div className="seg">
-              <button className={selected.bold ? 'active' : ''} aria-label="Bold" onClick={() => setSelected({ ...selected, bold: !selected.bold })}><Icon name="bold" size={12} /></button>
-              <button className={selected.italic ? 'active' : ''} aria-label="Italic" onClick={() => setSelected({ ...selected, italic: !selected.italic })}><Icon name="italic" size={12} /></button>
-              <button className={selected.underline ? 'active' : ''} aria-label="Underline" onClick={() => setSelected({ ...selected, underline: !selected.underline })}><Icon name="underline" size={12} /></button>
+              {[['bold', 'Bold'], ['italic', 'Italic'], ['underline', 'Underline']].map(([k, label]) => (
+                <button key={k} className={selected[k] ? 'active' : ''} aria-label={label} onClick={() => setSelected({ ...selected, [k]: !selected[k] })}>
+                  <Icon name={k} size={12} />
+                </button>
+              ))}
             </div>
           </FieldRow>
         </div>
