@@ -74,6 +74,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   const selected = elements.filter((e) => selectedSet.has(e.id));
   // Resize handles only when exactly one element is selected.
   const resizeTarget = selected.length === 1 ? selected[0] : null;
+  // Selection-frame box in screen px (only meaningful when there's a target).
+  const fw = resizeTarget ? resizeTarget.w * scale : 0;
+  const fh = resizeTarget ? resizeTarget.h * scale : 0;
 
   // Drag `targets` (array): each pointermove maps the screen delta to slide
   // coords and applies `apply(el, dx, dy)`; commits once on pointer-up.
@@ -335,57 +338,55 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
         {/* Selection frame: positioned at the element box and rotated with it,
             so the resize handles and rotate knob sit on the rotated element's
             edges. Handles/knob are placed relative to the box (px within it). */}
-        {resizeTarget && (() => {
-          const fw = resizeTarget.w * scale, fh = resizeTarget.h * scale;
-          return (
+        {resizeTarget && (
+          <div
+            style={{
+              position: 'absolute',
+              left: resizeTarget.x * scale, top: resizeTarget.y * scale,
+              width: fw, height: fh,
+              ...rotStyle(resizeTarget.rot),
+              pointerEvents: 'none',
+            }}
+          >
+            {Object.entries(HANDLE_POS).map(([h, [fx, fy]]) => (
+              <div
+                key={h}
+                className="sel-handle"
+                data-handle={h}
+                style={{
+                  position: 'absolute',
+                  left: fw * fx - 4, top: fh * fy - 4,
+                  cursor: HANDLE_CURSOR[h],
+                  pointerEvents: 'auto',
+                }}
+                onPointerDown={(e) => startResize(e, resizeTarget, h)}
+              />
+            ))}
+            {/* stem from the top-center handle up to the rotate knob */}
             <div
               style={{
                 position: 'absolute',
-                left: resizeTarget.x * scale, top: resizeTarget.y * scale,
-                width: fw, height: fh,
-                ...rotStyle(resizeTarget.rot),
-                pointerEvents: 'none',
+                left: fw / 2 - 0.5, top: -22,
+                width: 1, height: 22,
+                background: 'oklch(0.62 0.2 265)',
               }}
-            >
-              {Object.entries(HANDLE_POS).map(([h, [fx, fy]]) => (
-                <div
-                  key={h}
-                  className="sel-handle"
-                  style={{
-                    position: 'absolute',
-                    left: fw * fx - 4, top: fh * fy - 4,
-                    cursor: HANDLE_CURSOR[h],
-                    pointerEvents: 'auto',
-                  }}
-                  onPointerDown={(e) => startResize(e, resizeTarget, h)}
-                />
-              ))}
-              {/* stem from the top-center handle up to the rotate knob */}
-              <div
-                style={{
-                  position: 'absolute',
-                  left: fw / 2 - 0.5, top: -22,
-                  width: 1, height: 22,
-                  background: 'oklch(0.62 0.2 265)',
-                }}
-              />
-              <div
-                className="rotate-handle"
-                style={{
-                  position: 'absolute',
-                  left: fw / 2 - 6, top: -28,
-                  width: 12, height: 12,
-                  borderRadius: '50%',
-                  border: '1.5px solid oklch(0.62 0.2 265)',
-                  background: 'white',
-                  cursor: 'grab',
-                  pointerEvents: 'auto',
-                }}
-                onPointerDown={(e) => startRotate(e, resizeTarget)}
-              />
-            </div>
-          );
-        })()}
+            />
+            <div
+              className="rotate-handle"
+              style={{
+                position: 'absolute',
+                left: fw / 2 - 6, top: -28,
+                width: 12, height: 12,
+                borderRadius: '50%',
+                border: '1.5px solid oklch(0.62 0.2 265)',
+                background: 'white',
+                cursor: 'grab',
+                pointerEvents: 'auto',
+              }}
+              onPointerDown={(e) => startRotate(e, resizeTarget)}
+            />
+          </div>
+        )}
 
         {guides.map((g) => (
           <div

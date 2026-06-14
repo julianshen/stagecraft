@@ -279,8 +279,7 @@ describe('CanvasSlide drag', () => {
       <CanvasSlide slide={oneSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
         selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
     );
-    // 'e' is the 5th handle in HANDLE_POS order (nw,n,ne,w,e,…).
-    const eHandle = container.querySelectorAll('.sel-handle')[4];
+    const eHandle = container.querySelector('.sel-handle[data-handle="e"]');
     fire(eHandle, 'pointerdown', { clientX: 0, clientY: 0 });
     fire(window, 'pointermove', { clientX: 0, clientY: 40 }); // drag DOWN → grows local width
     fire(window, 'pointerup', {});
