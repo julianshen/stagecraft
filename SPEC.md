@@ -144,7 +144,7 @@ type Element = {
   content?: string;     // text elements
 };
 ```
-Elements live on `slide.elements?: Element[]` and render in `ElementsLayer` over the layout template. The editor tracks a single **selected element id** (`Editor.selElId`); geometry helpers are in `lib/elements.js`. See §9. (Rotate/opacity/multi-select are ⚪ follow-ups.)
+Elements live on `slide.elements?: Element[]` and render in `ElementsLayer` over the layout template. The editor tracks a **selection set** of element ids (`Editor.selElIds`); geometry helpers are in `lib/elements.js`. See §9. (Multi-select, rotate, rotate-aware resize, and opacity are all wired; ⚪ shift-add-to-marquee remains.)
 
 ---
 

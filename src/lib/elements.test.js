@@ -134,6 +134,11 @@ describe('resizeElement', () => {
       const r = resizeElement({ ...rotEl, rot: 0 }, 'se', 80, 40);
       expect(r).toMatchObject({ x: 100, y: 100, w: 280, h: 144 }); // snap(140)=144
     });
+
+    it('is a strict no-op for an unknown handle (no edges to move)', () => {
+      const odd = { id: 'r', type: 'rect', x: 100.5, y: 100.5, w: 200, h: 100, rot: 90 };
+      expect(resizeElement(odd, 'zzz', 50, 50)).toEqual(odd); // not even x/y rounded
+    });
   });
 });
 

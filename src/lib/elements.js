@@ -156,6 +156,7 @@ function resizeRotated(el, edge, dx, dy, grid, min) {
   const t = (el.rot * Math.PI) / 180;
   const signX = edge.l ? 1 : edge.r ? -1 : 0; // which side stays anchored (opposite the drag)
   const signY = edge.t ? 1 : edge.b ? -1 : 0;
+  if (!signX && !signY) return el; // unknown handle moves no edges — strict no-op
   const [cx0, cy0] = centerOf(el);
   // Drag delta in the element's local frame (the inverse rotation).
   const [ldx, ldy] = rotateVec(dx, dy, -t);
