@@ -372,9 +372,16 @@ describe('sanitizeSlidePatch — data fields are gated to their layouts', () => 
 });
 
 describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
-  it('accepts a well-shaped fmt map (path-key → formatting record)', () => {
-    const fmt = { title: { bold: true, fontSize: 64, color: '#08f' }, 'items.0.t': { italic: true, underline: true } };
+  it('accepts an fmt map of fixed top-level field keys', () => {
+    const fmt = { title: { bold: true, fontSize: 64, color: '#08f' }, subtitle: { italic: true, underline: true } };
     expect(sanitizeSlidePatch({ fmt }, 'cover')).toEqual({ fmt });
+  });
+
+  it('rejects an fmt map with a dotted/indexed key the renderer ignores', () => {
+    // Per-item keys (items.0.t) aren't formattable yet; accepting them would
+    // report a no-op edit as applied and persist an orphanable positional key.
+    expect(sanitizeSlidePatch({ fmt: { 'items.0.t': { bold: true } } }, 'agenda')).toEqual({});
+    expect(sanitizeSlidePatch({ fmt: { title: { bold: true }, 'items.0.t': { bold: true } } }, 'cover')).toEqual({});
   });
 
   it('rejects an fmt entry carrying an unknown or wrong-typed prop (would persist junk)', () => {

@@ -8,6 +8,7 @@ function setup({ slide = { id: 's', fmt: {} }, onFormat = vi.fn() } = {}) {
   const utils = render(
     <>
       <span data-fmt-key="title" tabIndex={0} style={{ fontSize: '48px' }}>Quarterly Review</span>
+      <button type="button">Co-pilot</button>{/* an unrelated focusable control, outside the toolbar */}
       <FormatToolbar currentSlide={slide} onFormat={onFormat} />
     </>,
   );
@@ -54,10 +55,10 @@ describe('FormatToolbar', () => {
     expect(prevented).toBe(true);
   });
 
-  it('sets the text colour from the colour input', () => {
+  it('sets the text colour once on change (not continuously while dragging the picker)', () => {
     const { field, onFormat } = setup();
     fireEvent.focusIn(field);
-    fireEvent.input(screen.getByLabelText('Text color'), { target: { value: '#ff0000' } });
+    fireEvent.change(screen.getByLabelText('Text color'), { target: { value: '#ff0000' } });
     expect(onFormat).toHaveBeenCalledWith('title', 'color', '#ff0000');
   });
 
@@ -90,5 +91,27 @@ describe('FormatToolbar', () => {
     fireEvent.focusIn(color);    // picker closed — focus returned
     await new Promise((r) => setTimeout(r));
     expect(container.querySelector('.format-toolbar')).toBeTruthy();
+  });
+
+  it('hides when focus moves to an unrelated control (not a field, not the toolbar)', async () => {
+    const { field, container } = setup();
+    fireEvent.focusIn(field);
+    expect(container.querySelector('.format-toolbar')).toBeTruthy();
+    fireEvent.focusOut(field);
+    fireEvent.focusIn(screen.getByText('Co-pilot')); // unrelated button — must not keep the bar bound to the stale field
+    await new Promise((r) => setTimeout(r));
+    expect(container.querySelector('.format-toolbar')).toBeNull();
+  });
+
+  it('re-measures its position when the canvas scrolls', () => {
+    const { field, container } = setup();
+    let top = 200;
+    field.getBoundingClientRect = () => ({ top, left: 50, right: 0, bottom: 0, width: 0, height: 0 });
+    fireEvent.focusIn(field);
+    const before = container.querySelector('.format-toolbar').style.top;
+    top = 80; // the field scrolled up
+    fireEvent.scroll(window);
+    const after = container.querySelector('.format-toolbar').style.top;
+    expect(after).not.toBe(before); // toolbar followed the field
   });
 });

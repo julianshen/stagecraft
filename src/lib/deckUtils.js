@@ -92,7 +92,12 @@ const FMT_PROP_OK = {
 };
 const isFmtEntry = (e) => isPlainObject(e)
   && Object.entries(e).every(([k, v]) => FMT_PROP_OK[k]?.(v));
-const isFmtMap = (v) => isPlainObject(v) && Object.values(v).every(isFmtEntry);
+// Keys must be fixed top-level field names — the renderer only formats
+// single-segment fields, so a dotted/indexed key (items.0.t) would persist as
+// an "applied" edit that renders nothing. Reject the whole map if any key is
+// dotted, matching how the renderer scopes formatting.
+const isFmtMap = (v) => isPlainObject(v)
+  && Object.entries(v).every(([k, e]) => !k.includes('.') && isFmtEntry(e));
 
 // Accept a patch field only if its value matches the slide schema's shape for
 // the target layout — a value of the wrong shape (e.g. `title: { text }`, a
