@@ -9,6 +9,14 @@ export const MIN_SIZE = 16;  // minimum element width/height
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export const snap = (v, grid = GRID) => Math.round(v / grid) * grid;
 
+// Element centre (slide coords).
+const centerOf = (el) => [el.x + el.w / 2, el.y + el.h / 2];
+// Rotate vector (x, y) by `rad` radians (standard 2D rotation matrix).
+const rotateVec = (x, y, rad) => {
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  return [x * cos - y * sin, x * sin + y * cos];
+};
+
 const DEFAULTS = {
   text: { w: 480, h: 120, content: 'Text', fill: '#15171C' },
   rect: { w: 320, h: 200, fill: '#4f46e5' },
@@ -116,8 +124,7 @@ export function elementsInMarquee(els, x1, y1, x2, y2) {
 // points toward the pointer (px, py) in slide coords. The +90 puts 0° at
 // "pointer straight up" (the rotate handle sits above the element).
 export function rotateElement(el, px, py) {
-  const cx = el.x + el.w / 2;
-  const cy = el.y + el.h / 2;
+  const [cx, cy] = centerOf(el);
   const deg = Math.round(Math.atan2(py - cy, px - cx) * 180 / Math.PI + 90);
   return { ...el, rot: ((deg % 360) + 360) % 360 };
 }
@@ -147,23 +154,23 @@ const HANDLE_EDGES = {
 // axis-aligned clamp is meaningless for a rotated box; min-size still applies.
 function resizeRotated(el, edge, dx, dy, grid, min) {
   const t = (el.rot * Math.PI) / 180;
-  const cos = Math.cos(t), sin = Math.sin(t);
-  const rot = (lx, ly) => [lx * cos - ly * sin, lx * sin + ly * cos]; // local → screen
   const signX = edge.l ? 1 : edge.r ? -1 : 0; // which side stays anchored (opposite the drag)
   const signY = edge.t ? 1 : edge.b ? -1 : 0;
-  const cx0 = el.x + el.w / 2, cy0 = el.y + el.h / 2;
-  // Drag delta in the element's local frame: Rot(-t)·(dx, dy).
-  const ldx = dx * cos + dy * sin;
-  const ldy = -dx * sin + dy * cos;
+  const [cx0, cy0] = centerOf(el);
+  // Drag delta in the element's local frame (the inverse rotation).
+  const [ldx, ldy] = rotateVec(dx, dy, -t);
+  // Edge→dimension mapping — keep in sync with the axis-aligned path below.
   let w = el.w, h = el.h;
   if (edge.l) w = el.w - ldx; else if (edge.r) w = el.w + ldx;
   if (edge.t) h = el.h - ldy; else if (edge.b) h = el.h + ldy;
+  // Snap only the resized dimension; the other stays exact (it may be off-grid
+  // from a Properties-panel edit). Min-size always applies.
   if (signX) w = Math.max(min, snap(w, grid));
   if (signY) h = Math.max(min, snap(h, grid));
   // Hold the anchored local edge's screen point fixed across the size change.
-  const [ax0, ay0] = rot((signX * el.w) / 2, (signY * el.h) / 2);
+  const [ax0, ay0] = rotateVec((signX * el.w) / 2, (signY * el.h) / 2, t);
   const px = cx0 + ax0, py = cy0 + ay0;
-  const [ax1, ay1] = rot((signX * w) / 2, (signY * h) / 2);
+  const [ax1, ay1] = rotateVec((signX * w) / 2, (signY * h) / 2, t);
   return { ...el, x: Math.round(px - ax1 - w / 2), y: Math.round(py - ay1 - h / 2), w, h };
 }
 
@@ -177,6 +184,7 @@ export function resizeElement(el, handle, dx, dy, { grid = GRID, min = MIN_SIZE,
   const right = el.x + el.w, bottom = el.y + el.h;
   let { x, y, w, h } = el;
 
+  // Edge→dimension mapping — keep in sync with resizeRotated above.
   // For a moving start-edge, clamp the edge FIRST (into [0, opposite - min]) and
   // derive the size from the anchored opposite edge — so the opposite edge never
   // drifts, even when dragged past the slide boundary. For an end-edge, clamp the
