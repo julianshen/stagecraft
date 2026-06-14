@@ -29,6 +29,7 @@ export default defineConfig({
         'src/lib/slideEdit.js',
         'src/lib/align.js',
         'src/lib/slideFmt.js',
+        'src/lib/color.js',
         'src/hooks/useDeckSync.js',
         'src/hooks/useReorderDrag.js',
         'src/data/deck.js',

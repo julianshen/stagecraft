@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import Icon from '../ui/Icon.jsx';
+import { toHex } from '../../lib/color.js';
 
 const SIZE_STEP = 2;
 
@@ -38,15 +39,14 @@ export default function FormatToolbar({ currentSlide, onFormat }) {
 
   if (!active) return null;
   const fmt = currentSlide?.fmt?.[active.key] || {};
-  const size = fmt.fontSize ?? active.fontSize ?? null;
+  const size = fmt.fontSize ?? active.fontSize; // null when the field has no computed size
   // Keep the contentEditable field focused: a mousedown on a button steals focus
   // (committing the edit and hiding this bar) unless we prevent it. The colour
   // input is exempt — it needs the native focus to open the picker, and the
   // focusout guard above keeps the bar alive while it's focused.
   const keep = (e) => e.preventDefault();
   const toggle = (prop) => onFormat(active.key, prop, !fmt[prop]);
-  const step = (delta) => size != null && onFormat(active.key, 'fontSize', Math.max(1, size + delta));
-  const swatch = /^#[0-9a-f]{6}$/i.test(fmt.color || '') ? fmt.color : '#000000';
+  const step = (delta) => { if (size != null) onFormat(active.key, 'fontSize', Math.max(1, size + delta)); };
 
   return (
     <div
@@ -64,7 +64,7 @@ export default function FormatToolbar({ currentSlide, onFormat }) {
       <button aria-label="Decrease size" onMouseDown={keep} onClick={() => step(-SIZE_STEP)}><Icon name="minus" size={12} /></button>
       <span className="fmt-size">{size ?? '—'}</span>
       <button aria-label="Increase size" onMouseDown={keep} onClick={() => step(SIZE_STEP)}><Icon name="plus" size={12} /></button>
-      <input type="color" aria-label="Text color" value={swatch} onInput={(e) => onFormat(active.key, 'color', e.target.value)} />
+      <input type="color" aria-label="Text color" value={toHex(fmt.color)} onInput={(e) => onFormat(active.key, 'color', e.target.value)} />
     </div>
   );
 }
