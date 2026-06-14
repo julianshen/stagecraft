@@ -102,6 +102,22 @@ describe('Slide per-field formatting (fmt)', () => {
     expect(title).toHaveAttribute('data-fmt-key', 'title');
     expect(title.style.fontWeight).toBe('700');
   });
+
+  it('does not format per-item (index-keyed) fields — only fixed top-level fields', () => {
+    // Per-item fmt keys are positional (items.0.t); reordering/deleting an item
+    // would migrate or orphan the formatting, so formatting is scoped to
+    // fixed-arity fields until items carry stable ids.
+    const agenda = {
+      id: 'a', layout: 'agenda', title: 'Agenda',
+      items: [{ n: '01', t: 'First point', d: 'detail' }],
+      fmt: { title: { bold: true }, 'items.0.t': { bold: true } },
+    };
+    render(<Slide slide={agenda} deck={{ title: 'Demo' }} num={1} total={1} editable onEditField={vi.fn()} />);
+    const item = screen.getByText('First point');
+    expect(item).not.toHaveAttribute('data-fmt-key'); // not a formatting target
+    expect(item.style.fontWeight).not.toBe('700');    // the fmt entry is ignored
+    expect(screen.getByText('Agenda')).toHaveAttribute('data-fmt-key', 'title'); // top-level still formats
+  });
 });
 
 describe('ChartByType (data-driven charts)', () => {

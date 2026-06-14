@@ -68,11 +68,27 @@ describe('FormatToolbar', () => {
     expect(onFormat).toHaveBeenCalledWith('title', 'fontSize', 50);
   });
 
-  it('hides again when focus leaves the field', () => {
+  it('hides again when focus leaves the field to nowhere', async () => {
     const { field, container } = setup();
     fireEvent.focusIn(field);
     expect(container.querySelector('.format-toolbar')).toBeTruthy();
-    fireEvent.focusOut(field);
+    fireEvent.focusOut(field); // blur with no following focusin (clicked empty canvas)
+    await new Promise((r) => setTimeout(r));
     expect(container.querySelector('.format-toolbar')).toBeNull();
+  });
+
+  it('stays open when focus moves to the colour picker and back (does not dismiss mid-pick)', async () => {
+    const { field, container } = setup();
+    fireEvent.focusIn(field);
+    const color = screen.getByLabelText('Text color');
+    // Clicking the colour input blurs the field, then focuses the input; opening
+    // the native picker may then blur the input with relatedTarget null. A
+    // following focusin (return from the dialog) must cancel the pending hide.
+    fireEvent.focusOut(field);
+    fireEvent.focusIn(color);    // focus entered the toolbar's colour input
+    fireEvent.focusOut(color);   // native picker opened — blur to nowhere
+    fireEvent.focusIn(color);    // picker closed — focus returned
+    await new Promise((r) => setTimeout(r));
+    expect(container.querySelector('.format-toolbar')).toBeTruthy();
   });
 });

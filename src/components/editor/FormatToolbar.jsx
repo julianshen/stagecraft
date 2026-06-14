@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { toHex } from '../../lib/color.js';
 
@@ -14,24 +14,26 @@ const SIZE_STEP = 2;
 export default function FormatToolbar({ currentSlide, onFormat }) {
   // { key, rect, fontSize } for the focused field, or null when none is.
   const [active, setActive] = useState(null);
-  const ref = useRef(null);
 
   useEffect(() => {
+    let hideTimer = null;
+    const cancelHide = () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } };
     const onIn = (e) => {
+      cancelHide(); // any incoming focus cancels a pending hide
       const key = e.target?.dataset?.fmtKey;
-      if (!key) return; // focus landed on a non-field (incl. the toolbar itself)
+      if (!key) return; // focus moved into the toolbar or a non-field — keep the current target
       const fontSize = parseInt(window.getComputedStyle(e.target).fontSize, 10) || null;
       setActive({ key, rect: e.target.getBoundingClientRect(), fontSize });
     };
-    // Hide when focus genuinely leaves the field — but not when it moves into the
-    // toolbar (e.g. the colour input), which would otherwise unmount it mid-pick.
-    const onOut = (e) => {
-      if (ref.current && e.relatedTarget && ref.current.contains(e.relatedTarget)) return;
-      setActive(null);
-    };
+    // Defer the hide so a following focusin can cancel it: focus moving into the
+    // toolbar (the colour input), or returning from the native colour picker
+    // (which blurs with relatedTarget null), keeps the bar alive. A genuine blur
+    // to nowhere — clicking empty canvas — has no following focusin, so it hides.
+    const onOut = () => { cancelHide(); hideTimer = setTimeout(() => setActive(null), 0); };
     document.addEventListener('focusin', onIn);
     document.addEventListener('focusout', onOut);
     return () => {
+      cancelHide();
       document.removeEventListener('focusin', onIn);
       document.removeEventListener('focusout', onOut);
     };
@@ -50,7 +52,6 @@ export default function FormatToolbar({ currentSlide, onFormat }) {
 
   return (
     <div
-      ref={ref}
       className="format-toolbar"
       style={{ position: 'fixed', top: Math.max(4, (active.rect?.top || 0) - 44), left: active.rect?.left || 0, zIndex: 50 }}
     >

@@ -22,6 +22,8 @@ export function fmtStyle(fmt) {
   if (fmt.bold) style.fontWeight = 700;
   if (fmt.italic) style.fontStyle = 'italic';
   if (fmt.underline) style.textDecoration = 'underline';
+  // A bare number renders as px — matching the slide's fixed 1920×1080 px space
+  // (a future PPTX consumer will need px→pt at the export boundary).
   if (fmt.fontSize != null) style.fontSize = fmt.fontSize;
   if (fmt.color != null) style.color = fmt.color;
   return style;

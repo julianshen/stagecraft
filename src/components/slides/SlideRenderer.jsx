@@ -408,12 +408,17 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
   // style — applied on BOTH the read-only and editable renders so the canvas,
   // thumbnails, sorter, and presenter stay pixel-identical. (PPTX export does
   // not read fmt yet.) The editable render also tags the field with its fmtKey
-  // so the formatting toolbar can find the focused field. The key is computed
-  // only when it's needed (the slide has formatting, or we're editable), so the
-  // unformatted read-only path — the high-volume thumbnail/sorter render — skips
-  // the join entirely.
+  // so the formatting toolbar can find the focused field.
+  //
+  // Formatting is scoped to fixed top-level fields (single-segment paths like
+  // ['title']). Per-item fields (['items', i, 't']) are index-keyed, so
+  // reordering or deleting an item would migrate or orphan its formatting —
+  // those await stable item ids. The key is computed only when it could be
+  // needed (the slide has formatting, or we're editable), so the high-volume
+  // unformatted read-only render skips the join.
   const E = (path, value, props = {}) => {
-    const key = slide.fmt || editable ? fmtKey(path) : undefined;
+    const formattable = path.length === 1;
+    const key = formattable && (slide.fmt || editable) ? fmtKey(path) : undefined;
     const fmt = key ? slide.fmt?.[key] : undefined;
     const style = fmt ? { ...props.style, ...fmtStyle(fmt) } : props.style;
     return (
