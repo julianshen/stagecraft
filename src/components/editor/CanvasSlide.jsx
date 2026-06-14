@@ -12,6 +12,10 @@ const HANDLE_POS = {
   w: [0, 0.5], e: [1, 0.5],
   sw: [0, 1], s: [0.5, 1], se: [1, 1],
 };
+// Rotate a box about its centre — shared by the hit-box outline and the
+// selection frame so both track the rotated content identically (one source of
+// truth for the transform + origin).
+const rotStyle = (rot) => (rot ? { transform: `rotate(${rot}deg)`, transformOrigin: 'center' } : null);
 
 // A caret Range at a viewport point, across browsers: Chrome/Safari expose
 // caretRangeFromPoint; Firefox exposes caretPositionFromPoint instead.
@@ -70,6 +74,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   const selected = elements.filter((e) => selectedSet.has(e.id));
   // Resize handles only when exactly one element is selected.
   const resizeTarget = selected.length === 1 ? selected[0] : null;
+  // Selection-frame box in screen px (only meaningful when there's a target).
+  const fw = resizeTarget ? resizeTarget.w * scale : 0;
+  const fh = resizeTarget ? resizeTarget.h * scale : 0;
 
   // Drag `targets` (array): each pointermove maps the screen delta to slide
   // coords and applies `apply(el, dx, dy)`; commits once on pointer-up.
@@ -318,6 +325,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
             style={{
               position: 'absolute',
               left: el.x * scale, top: el.y * scale, width: el.w * scale, height: el.h * scale,
+              // Match the rotated content so the outline and hit area sit on the
+              // element (move is a screen translation, so the math is unchanged).
+              ...rotStyle(el.rot),
               cursor: 'move',
               outline: selectedSet.has(el.id) ? '1.5px solid oklch(0.62 0.2 265)' : '1px solid transparent',
             }}
@@ -325,48 +335,57 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
           />
         ))}
 
-        {resizeTarget && Object.entries(HANDLE_POS).map(([h, [fx, fy]]) => (
+        {/* Selection frame: positioned at the element box and rotated with it,
+            so the resize handles and rotate knob sit on the rotated element's
+            edges. Handles/knob are placed relative to the box (px within it). */}
+        {resizeTarget && (
           <div
-            key={h}
-            className="sel-handle"
             style={{
               position: 'absolute',
-              left: (resizeTarget.x + resizeTarget.w * fx) * scale - 4,
-              top: (resizeTarget.y + resizeTarget.h * fy) * scale - 4,
-              cursor: HANDLE_CURSOR[h],
+              left: resizeTarget.x * scale, top: resizeTarget.y * scale,
+              width: fw, height: fh,
+              ...rotStyle(resizeTarget.rot),
+              pointerEvents: 'none',
             }}
-            onPointerDown={(e) => startResize(e, resizeTarget, h)}
-          />
-        ))}
-
-        {resizeTarget && (
-          <>
+          >
+            {Object.entries(HANDLE_POS).map(([h, [fx, fy]]) => (
+              <div
+                key={h}
+                className="sel-handle"
+                data-handle={h}
+                style={{
+                  position: 'absolute',
+                  left: fw * fx - 4, top: fh * fy - 4,
+                  cursor: HANDLE_CURSOR[h],
+                  pointerEvents: 'auto',
+                }}
+                onPointerDown={(e) => startResize(e, resizeTarget, h)}
+              />
+            ))}
             {/* stem from the top-center handle up to the rotate knob */}
             <div
               style={{
                 position: 'absolute',
-                left: (resizeTarget.x + resizeTarget.w / 2) * scale - 0.5,
-                top: resizeTarget.y * scale - 22,
+                left: fw / 2 - 0.5, top: -22,
                 width: 1, height: 22,
                 background: 'oklch(0.62 0.2 265)',
-                pointerEvents: 'none',
               }}
             />
             <div
               className="rotate-handle"
               style={{
                 position: 'absolute',
-                left: (resizeTarget.x + resizeTarget.w / 2) * scale - 6,
-                top: resizeTarget.y * scale - 28,
+                left: fw / 2 - 6, top: -28,
                 width: 12, height: 12,
                 borderRadius: '50%',
                 border: '1.5px solid oklch(0.62 0.2 265)',
                 background: 'white',
                 cursor: 'grab',
+                pointerEvents: 'auto',
               }}
               onPointerDown={(e) => startRotate(e, resizeTarget)}
             />
-          </>
+          </div>
         )}
 
         {guides.map((g) => (

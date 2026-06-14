@@ -144,7 +144,7 @@ type Element = {
   content?: string;     // text elements
 };
 ```
-Elements live on `slide.elements?: Element[]` and render in `ElementsLayer` over the layout template. The editor tracks a single **selected element id** (`Editor.selElId`); geometry helpers are in `lib/elements.js`. See §9. (Rotate/opacity/multi-select are ⚪ follow-ups.)
+Elements live on `slide.elements?: Element[]` and render in `ElementsLayer` over the layout template. The editor tracks a **selection set** of element ids (`Editor.selElIds`); geometry helpers are in `lib/elements.js`. See §9. (Multi-select, rotate, rotate-aware resize, and opacity are all wired; ⚪ shift-add-to-marquee remains.)
 
 ---
 
@@ -316,7 +316,7 @@ Anthropic · OpenAI · Google · OpenRouter · Local (Ollama/LM Studio, no key) 
 
 **Still ⚪ (follow-ups):**
 - ~~Per-element typography (font family/size/weight/align for text).~~ ✅ Done — the Properties panel binds family/size/align/bold/italic/underline on a text element (§7.2.5).
-- Rotate the selection overlay (resize handles + rotate knob) to track a rotated element, which also needs rotate-aware resize math (the overlay is currently axis-aligned).
+- ~~Rotate the selection overlay (resize handles + rotate knob) to track a rotated element, which also needs rotate-aware resize math.~~ ✅ Done — 🟢 the selection frame + hit-box rotate with the element (`rotStyle`), and a rotated element resizes along its local axes keeping the opposite edge fixed in screen space (`resizeRotated` in `lib/elements.js`, via `rotateVec`). ⚪ Caveat: a `line` renders at a clamped 8px while its model `h` is its grab box, so a rotated line's handles sit on the grab box, not the 8px visual — reconciling a line's visual/grab/resize height is a separate line-element change.
 - Selection set: shift-click multi-select ✅, marquee drag-rectangle ✅, align (horizontal + vertical) ✅, distribute ✅, and a rotate handle ✅ all shipped; ⚪ shift-add-to-marquee remains.
 - 🟢 **Alignment guides** — dragging a single element snaps its edges/centre to other elements' edges/centres and the slide edges/centre (`alignSnap` in `lib/align.js`, within a ~6px tolerance), drawing a guide line per snapped axis; grid-snap still applies otherwise. (Multi-element drags stay grid-only.) ⚪ Pen/Image tools remain.
 - Persisting/AI-authoring elements (the `elements` field isn't in the AI-patch whitelist yet).

@@ -260,6 +260,33 @@ describe('CanvasSlide drag', () => {
     expect(container.querySelector('.rotate-handle')).toBeNull();
   });
 
+  it('rotates the selection frame and hit box with a rotated element', () => {
+    const oneSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 100, rot: 45 }] };
+    const { container } = render(
+      <CanvasSlide slide={oneSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} />,
+    );
+    // the handle frame (a handle's parent) carries the element's rotation
+    expect(container.querySelector('.sel-handle').parentElement.style.transform).toContain('rotate(45deg)');
+    // and the hit box matches the rotated content
+    expect(container.querySelector('.el-hit').style.transform).toContain('rotate(45deg)');
+  });
+
+  it('resizes a rotated element along its local axes (e handle, screen-down drag)', () => {
+    const onUpdateElements = vi.fn();
+    const oneSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 100, y: 100, w: 200, h: 100, rot: 90 }] };
+    const { container } = render(
+      <CanvasSlide slide={oneSlide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    const eHandle = container.querySelector('.sel-handle[data-handle="e"]');
+    fire(eHandle, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 0, clientY: 40 }); // drag DOWN → grows local width
+    fire(window, 'pointerup', {});
+    expect(onUpdateElements).toHaveBeenCalledTimes(1);
+    expect(onUpdateElements.mock.calls[0][0].get('a')).toMatchObject({ x: 80, y: 120, w: 240, h: 100, rot: 90 });
+  });
+
   it('does not commit a drag that snaps back to the starting position', () => {
     // Grid-aligned element: a sub-grid jiggle snaps to the same coords → no-op.
     const gridSlide = { id: 's1', elements: [{ id: 'a', type: 'rect', x: 104, y: 104, w: 200, h: 96 }] };

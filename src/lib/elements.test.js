@@ -88,6 +88,58 @@ describe('resizeElement', () => {
     expect(r.w % GRID).toBe(0);
     expect(r.h % GRID).toBe(0);
   });
+
+  describe('rotate-aware resize', () => {
+    // A 90°-rotated box: its local +x axis points screen-DOWN, local +y points
+    // screen-LEFT. center = (200,150).
+    const rotEl = { id: 'r', type: 'rect', x: 100, y: 100, w: 200, h: 100, rot: 90 };
+
+    it('resizes along the element local axes (e handle grows width on a screen-down drag)', () => {
+      // Dragging the e (local-right) handle DOWN by 40 grows local width by 40,
+      // and the local-left edge stays fixed in screen space.
+      const r = resizeElement(rotEl, 'e', 0, 40);
+      expect(r).toMatchObject({ x: 80, y: 120, w: 240, h: 100, rot: 90 });
+    });
+
+    it('keeps the anchored (opposite) edge fixed in screen space', () => {
+      // Local-left edge midpoint in screen coords = center + Rot(90)·(-w/2,0).
+      const before = rotEl, after = resizeElement(rotEl, 'e', 0, 40);
+      const leftMidScreen = (b) => {
+        const cx = b.x + b.w / 2, cy = b.y + b.h / 2, t = (b.rot * Math.PI) / 180;
+        // Rot(t)·(-w/2, 0)
+        return [cx + (-b.w / 2) * Math.cos(t), cy + (-b.w / 2) * Math.sin(t)];
+      };
+      const [bx, by] = leftMidScreen(before), [ax, ay] = leftMidScreen(after);
+      expect(ax).toBeCloseTo(bx, 6);
+      expect(ay).toBeCloseTo(by, 6);
+    });
+
+    it('resizes from a corner handle, anchoring the opposite corner in screen space', () => {
+      // grid-aligned size so snapping doesn't shift the unchanged dimension
+      const el2 = { id: 'r', type: 'rect', x: 100, y: 100, w: 200, h: 96, rot: 90 };
+      const r = resizeElement(el2, 'nw', 0, -40); // local width grows by 40
+      expect(r).toMatchObject({ x: 80, y: 80, w: 240, h: 96, rot: 90 });
+      // the bottom-right (anchored) corner stays put in screen coords
+      const brScreen = (b) => {
+        const cx = b.x + b.w / 2, cy = b.y + b.h / 2, t = (b.rot * Math.PI) / 180;
+        return [cx + (b.w / 2) * Math.cos(t) - (b.h / 2) * Math.sin(t),
+          cy + (b.w / 2) * Math.sin(t) + (b.h / 2) * Math.cos(t)];
+      };
+      const [bx, by] = brScreen(el2), [ax, ay] = brScreen(r);
+      expect(ax).toBeCloseTo(bx, 6);
+      expect(ay).toBeCloseTo(by, 6);
+    });
+
+    it('leaves an unrotated element on the existing axis-aligned path', () => {
+      const r = resizeElement({ ...rotEl, rot: 0 }, 'se', 80, 40);
+      expect(r).toMatchObject({ x: 100, y: 100, w: 280, h: 144 }); // snap(140)=144
+    });
+
+    it('is a strict no-op for an unknown handle (no edges to move)', () => {
+      const odd = { id: 'r', type: 'rect', x: 100.5, y: 100.5, w: 200, h: 100, rot: 90 };
+      expect(resizeElement(odd, 'zzz', 50, 50)).toEqual(odd); // not even x/y rounded
+    });
+  });
 });
 
 describe('updateSlideElements', () => {
