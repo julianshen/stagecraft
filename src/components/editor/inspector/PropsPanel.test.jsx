@@ -61,6 +61,14 @@ describe('PropsPanel', () => {
     expect(screen.queryByText('Content')).not.toBeInTheDocument();
   });
 
+  it('hides the Fill control for an image element (an image has no colour fill)', () => {
+    render(<PropsPanel selected={{ id: 'i', type: 'image', x: 0, y: 0, w: 300, h: 200, src: 'data:image/png;base64,AAA' }} setSelected={vi.fn()} />);
+    expect(screen.queryByLabelText('Fill color')).not.toBeInTheDocument();
+    expect(screen.queryByText('Fill')).not.toBeInTheDocument();
+    // geometry controls still apply to an image
+    expect(screen.getByText('POS')).toBeInTheDocument();
+  });
+
   it('binds font size and family for a text element', () => {
     const setSelected = vi.fn();
     render(<PropsPanel selected={el} setSelected={setSelected} />);

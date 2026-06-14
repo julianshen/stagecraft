@@ -35,6 +35,20 @@ describe('createElement', () => {
     expect(createElement('triangle', { id: 'g' }).fill).toBe('#4f46e5');
     expect(createElement('rect', { id: 'r', fill: '#abcdef' }).fill).toBe('#abcdef');
   });
+
+  it('creates an image element carrying its src and no fill', () => {
+    const el = createElement('image', { id: 'i1', src: 'data:image/png;base64,AAA' });
+    expect(el).toMatchObject({ id: 'i1', type: 'image', src: 'data:image/png;base64,AAA' });
+    expect(el).not.toHaveProperty('fill'); // an image isn't filled with a colour
+    expect(el).not.toHaveProperty('content');
+    expect(el.w).toBeGreaterThan(0);
+    expect(el.h).toBeGreaterThan(0);
+    expect(el.x).toBe(snap((SLIDE_W - el.w) / 2)); // centered + snapped
+  });
+
+  it('defaults an image with no src to an empty string', () => {
+    expect(createElement('image', { id: 'i2' }).src).toBe('');
+  });
 });
 
 describe('moveElement', () => {

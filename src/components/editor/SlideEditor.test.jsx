@@ -60,3 +60,27 @@ describe('SlideEditor align toolbar', () => {
     expect(getByTitle('Distribute')).toBeDisabled();      // distribute needs 3
   });
 });
+
+describe('SlideEditor image insert', () => {
+  it('embeds a picked image file as a data URL and adds an image element', async () => {
+    const onAddElement = vi.fn();
+    const { container } = renderEditor({ onAddElement });
+    const input = container.querySelector('input[type="file"]');
+    expect(input).toBeTruthy();
+    const file = new File(['png-bytes'], 'photo.png', { type: 'image/png' });
+    fireEvent.change(input, { target: { files: [file] } });
+    // readImageFile resolves async; wait for the callback.
+    await vi.waitFor(() => expect(onAddElement).toHaveBeenCalledTimes(1));
+    const [type, opts] = onAddElement.mock.calls[0];
+    expect(type).toBe('image');
+    expect(opts.src).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it('does nothing when the picker is dismissed with no file', () => {
+    const onAddElement = vi.fn();
+    const { container } = renderEditor({ onAddElement });
+    const input = container.querySelector('input[type="file"]');
+    fireEvent.change(input, { target: { files: [] } });
+    expect(onAddElement).not.toHaveBeenCalled();
+  });
+});

@@ -9,6 +9,7 @@ import ThumbsPane from './ThumbsPane.jsx';
 import CanvasSlide from './CanvasSlide.jsx';
 import FormatToolbar from './FormatToolbar.jsx';
 import { clampElement } from '../../lib/elements.js';
+import { readImageFile } from '../../lib/imageFile.js';
 import ShapeMenu from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
 import TableSizePicker from './menus/TableSizePicker.jsx';
@@ -25,9 +26,8 @@ const DEFAULT_TOOLS = [
   { id:'select', icon:'cursor',  title:'Select · V' },
 ];
 
-const PEN_IMAGE_TOOLS = [
+const PEN_TOOLS = [
   { id:'pen',    icon:'pen',     title:'Pen · P' },
-  { id:'image',  icon:'image',   title:'Image · I' },
 ];
 
 
@@ -62,6 +62,19 @@ export default function SlideEditor(props) {
   // Properties-panel edits hand back the full element; clamp to bounds (typed
   // values bypass the drag clamps) before forwarding as a patch.
   const updateSelEl = (el) => { if (el?.id) callbacks.onUpdateElement?.(el.id, clampElement(el)); };
+
+  // Image insert: the toolbar's Image button opens this hidden picker; the
+  // chosen file is embedded as a data URL and added as an `image` element.
+  const imageInputRef = useRef(null);
+  const onImageFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset so re-picking the same file fires onChange again
+    if (file) {
+      readImageFile(file)
+        .then((src) => callbacks.onAddElement?.('image', { src }))
+        .catch((err) => console.error('Could not read the image file', err)); // surface, don't swallow or crash
+    }
+  };
 
   // Inspector Data-tab edits commit to the CURRENT slide through the Co-pilot's
   // validated patch path. Undefined when the host wired no patch callback, so
@@ -133,7 +146,10 @@ export default function SlideEditor(props) {
           ))}
           <ShapeMenu tool={tool} setTool={setTool} onPick={(id) => callbacks.onAddElement && callbacks.onAddElement(id)}/>
           <IconButton name="text" title="Text box" onClick={() => callbacks.onAddElement && callbacks.onAddElement('text')}/>
-          {PEN_IMAGE_TOOLS.map(t => (
+          {/* Image is an insert action (like Text), not a tool toggle — it opens
+              the file picker and adds the picked file as an element. */}
+          <IconButton name="image" title="Image · I" onClick={() => imageInputRef.current?.click()}/>
+          {PEN_TOOLS.map(t => (
             <IconButton
               key={t.id}
               name={t.icon}
@@ -143,6 +159,13 @@ export default function SlideEditor(props) {
             />
           ))}
           <ComponentMenu onPick={(id) => callbacks.onAddComponent && callbacks.onAddComponent(id)}/>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={onImageFile}
+          />
         </div>
 
         <div className="group">

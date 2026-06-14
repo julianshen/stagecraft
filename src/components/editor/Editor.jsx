@@ -142,10 +142,10 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     setSelElIds(ids || []);
   }
 
-  function addElement(type) {
+  function addElement(type, opts = {}) {
     if (!curId) return;
     const id = `el-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
-    onDeckChange(prev => updateSlideElements(prev, curId, els => [...els, createElement(type, { id })]));
+    onDeckChange(prev => updateSlideElements(prev, curId, els => [...els, createElement(type, { ...opts, id })]));
     setSelElIds([id]);
   }
   function updateElement(id, patch) {

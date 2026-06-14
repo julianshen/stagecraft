@@ -43,6 +43,7 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
         </div>
       )}
 
+      {selected.type !== 'image' && (
       <div className="pane-section">
         <h4>Fill</h4>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
@@ -56,6 +57,7 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12 }}>{toHex(selected.fill)}</div>
         </div>
       </div>
+      )}
       {selected.type === 'text' && (
         <div className="pane-section">
           <h4>Type</h4>
