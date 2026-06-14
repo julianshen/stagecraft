@@ -1,3 +1,5 @@
+import { FORMATTABLE_FIELDS } from './slideFmt.js';
+
 export function getFlatSlideIds(deck) {
   if (!deck) return [];
   const flat = [];
@@ -92,12 +94,13 @@ const FMT_PROP_OK = {
 };
 const isFmtEntry = (e) => isPlainObject(e)
   && Object.entries(e).every(([k, v]) => FMT_PROP_OK[k]?.(v));
-// Keys must be fixed top-level field names — the renderer only formats
-// single-segment fields, so a dotted/indexed key (items.0.t) would persist as
-// an "applied" edit that renders nothing. Reject the whole map if any key is
-// dotted, matching how the renderer scopes formatting.
+// Keys must be fields the renderer actually formats (FORMATTABLE_FIELDS) — a key
+// the renderer ignores (a dotted/indexed per-item path, a collection field like
+// `items`, or an invented name) would persist as an "applied" edit that renders
+// nothing. Reject the whole map if any key isn't formattable, matching how the
+// renderer scopes formatting.
 const isFmtMap = (v) => isPlainObject(v)
-  && Object.entries(v).every(([k, e]) => !k.includes('.') && isFmtEntry(e));
+  && Object.entries(v).every(([k, e]) => FORMATTABLE_FIELDS.has(k) && isFmtEntry(e));
 
 // Accept a patch field only if its value matches the slide schema's shape for
 // the target layout — a value of the wrong shape (e.g. `title: { text }`, a

@@ -384,6 +384,14 @@ describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
     expect(sanitizeSlidePatch({ fmt: { title: { bold: true }, 'items.0.t': { bold: true } } }, 'cover')).toEqual({});
   });
 
+  it('rejects fmt keys that are not formattable text fields (no rendered field)', () => {
+    // A single-segment key with no dot but no E() field — e.g. a collection
+    // field or an invented name — still renders nothing, so reject it.
+    expect(sanitizeSlidePatch({ fmt: { items: { bold: true } } }, 'agenda')).toEqual({});
+    expect(sanitizeSlidePatch({ fmt: { headline: { bold: true } } }, 'cover')).toEqual({});
+    expect(sanitizeSlidePatch({ fmt: { title: { bold: true }, headline: { bold: true } } }, 'cover')).toEqual({});
+  });
+
   it('rejects an fmt entry carrying an unknown or wrong-typed prop (would persist junk)', () => {
     expect(sanitizeSlidePatch({ fmt: { title: { bold: 'yes' } } }, 'cover')).toEqual({}); // bold must be boolean
     expect(sanitizeSlidePatch({ fmt: { title: { fontSize: '64' } } }, 'cover')).toEqual({}); // fontSize must be a number

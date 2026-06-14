@@ -4,6 +4,16 @@
 // Single source of truth for the key encoding and the prop→CSS mapping, shared
 // by the renderer, the floating toolbar, and the validation gate.
 
+// The fixed top-level text fields that can carry formatting — exactly the
+// single-segment fields the renderer edits via E(). The single source of truth
+// for "what is formattable", shared by the renderer (which tags/styles these)
+// and the patch gate (which rejects fmt for anything else, so an AI patch can't
+// report an unrenderable fmt key as applied). Per-item fields are excluded —
+// they're index-keyed and await stable item ids.
+export const FORMATTABLE_FIELDS = new Set([
+  'title', 'subtitle', 'sub', 'body', 'eyebrow', 'kicker', 'note',
+]);
+
 // The stable map key for a field, derived from its render path. Joining with
 // dots keeps it a primitive (so it survives the slide-patch validation as an
 // object key) and matches the path the toolbar/renderer already know.
