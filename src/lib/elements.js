@@ -138,11 +138,42 @@ const HANDLE_EDGES = {
   sw: { l: true, b: true }, s: { b: true }, se: { r: true, b: true },
 };
 
+// Resize a ROTATED element along its local (un-rotated) axes, keeping the edge
+// opposite the dragged handle fixed in SCREEN space. The screen delta is rotated
+// into the element's local frame; the new size is applied there; then the centre
+// is recomputed so the anchored local edge's screen position doesn't move (the
+// box rotates about its centre, so a size change would otherwise shift it). Only
+// the resized dimension is grid-snapped. Slide-bounds clamping is skipped — an
+// axis-aligned clamp is meaningless for a rotated box; min-size still applies.
+function resizeRotated(el, edge, dx, dy, grid, min) {
+  const t = (el.rot * Math.PI) / 180;
+  const cos = Math.cos(t), sin = Math.sin(t);
+  const rot = (lx, ly) => [lx * cos - ly * sin, lx * sin + ly * cos]; // local → screen
+  const signX = edge.l ? 1 : edge.r ? -1 : 0; // which side stays anchored (opposite the drag)
+  const signY = edge.t ? 1 : edge.b ? -1 : 0;
+  const cx0 = el.x + el.w / 2, cy0 = el.y + el.h / 2;
+  // Drag delta in the element's local frame: Rot(-t)·(dx, dy).
+  const ldx = dx * cos + dy * sin;
+  const ldy = -dx * sin + dy * cos;
+  let w = el.w, h = el.h;
+  if (edge.l) w = el.w - ldx; else if (edge.r) w = el.w + ldx;
+  if (edge.t) h = el.h - ldy; else if (edge.b) h = el.h + ldy;
+  if (signX) w = Math.max(min, snap(w, grid));
+  if (signY) h = Math.max(min, snap(h, grid));
+  // Hold the anchored local edge's screen point fixed across the size change.
+  const [ax0, ay0] = rot((signX * el.w) / 2, (signY * el.h) / 2);
+  const px = cx0 + ax0, py = cy0 + ay0;
+  const [ax1, ay1] = rot((signX * w) / 2, (signY * h) / 2);
+  return { ...el, x: Math.round(px - ax1 - w / 2), y: Math.round(py - ay1 - h / 2), w, h };
+}
+
 // Resize an element by dragging `handle` by (dx, dy). The dragged edge snaps to
 // the grid while the OPPOSITE edge stays anchored (so a left/top resize doesn't
 // drift the right/bottom edge), then min-size and slide bounds are enforced.
+// A rotated element resizes along its own axes (see resizeRotated).
 export function resizeElement(el, handle, dx, dy, { grid = GRID, min = MIN_SIZE, bounds = { w: SLIDE_W, h: SLIDE_H } } = {}) {
   const edge = HANDLE_EDGES[handle] || {};
+  if (el.rot) return resizeRotated(el, edge, dx, dy, grid, min);
   const right = el.x + el.w, bottom = el.y + el.h;
   let { x, y, w, h } = el;
 

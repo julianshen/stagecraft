@@ -318,6 +318,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
             style={{
               position: 'absolute',
               left: el.x * scale, top: el.y * scale, width: el.w * scale, height: el.h * scale,
+              // Match the rotated content so the outline and hit area sit on the
+              // element (move is a screen translation, so the math is unchanged).
+              transform: el.rot ? `rotate(${el.rot}deg)` : undefined,
               cursor: 'move',
               outline: selectedSet.has(el.id) ? '1.5px solid oklch(0.62 0.2 265)' : '1px solid transparent',
             }}
@@ -325,48 +328,58 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
           />
         ))}
 
-        {resizeTarget && Object.entries(HANDLE_POS).map(([h, [fx, fy]]) => (
+        {/* Selection frame: positioned at the element box and rotated with it,
+            so the resize handles and rotate knob sit on the rotated element's
+            edges. Handles/knob are placed relative to the box (px within it). */}
+        {resizeTarget && (
           <div
-            key={h}
-            className="sel-handle"
             style={{
               position: 'absolute',
-              left: (resizeTarget.x + resizeTarget.w * fx) * scale - 4,
-              top: (resizeTarget.y + resizeTarget.h * fy) * scale - 4,
-              cursor: HANDLE_CURSOR[h],
+              left: resizeTarget.x * scale, top: resizeTarget.y * scale,
+              width: resizeTarget.w * scale, height: resizeTarget.h * scale,
+              transform: resizeTarget.rot ? `rotate(${resizeTarget.rot}deg)` : undefined,
+              transformOrigin: 'center',
+              pointerEvents: 'none',
             }}
-            onPointerDown={(e) => startResize(e, resizeTarget, h)}
-          />
-        ))}
-
-        {resizeTarget && (
-          <>
+          >
+            {Object.entries(HANDLE_POS).map(([h, [fx, fy]]) => (
+              <div
+                key={h}
+                className="sel-handle"
+                style={{
+                  position: 'absolute',
+                  left: resizeTarget.w * scale * fx - 4,
+                  top: resizeTarget.h * scale * fy - 4,
+                  cursor: HANDLE_CURSOR[h],
+                  pointerEvents: 'auto',
+                }}
+                onPointerDown={(e) => startResize(e, resizeTarget, h)}
+              />
+            ))}
             {/* stem from the top-center handle up to the rotate knob */}
             <div
               style={{
                 position: 'absolute',
-                left: (resizeTarget.x + resizeTarget.w / 2) * scale - 0.5,
-                top: resizeTarget.y * scale - 22,
+                left: resizeTarget.w * scale / 2 - 0.5, top: -22,
                 width: 1, height: 22,
                 background: 'oklch(0.62 0.2 265)',
-                pointerEvents: 'none',
               }}
             />
             <div
               className="rotate-handle"
               style={{
                 position: 'absolute',
-                left: (resizeTarget.x + resizeTarget.w / 2) * scale - 6,
-                top: resizeTarget.y * scale - 28,
+                left: resizeTarget.w * scale / 2 - 6, top: -28,
                 width: 12, height: 12,
                 borderRadius: '50%',
                 border: '1.5px solid oklch(0.62 0.2 265)',
                 background: 'white',
                 cursor: 'grab',
+                pointerEvents: 'auto',
               }}
               onPointerDown={(e) => startRotate(e, resizeTarget)}
             />
-          </>
+          </div>
         )}
 
         {guides.map((g) => (
