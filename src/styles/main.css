@@ -951,6 +951,43 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   box-shadow: var(--shadow-1);
 }
 
+/* Floating formatting bar shown while inline-editing a template text field. */
+.format-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-3);
+  user-select: none;
+}
+.format-toolbar .seg { height: 24px; }
+.format-toolbar button {
+  display: grid; place-items: center;
+  width: 24px; height: 24px;
+  color: var(--ink-3);
+  border-radius: 4px;
+}
+.format-toolbar .seg button { width: 26px; }
+.format-toolbar button:hover { color: var(--ink); background: var(--bg); }
+.format-toolbar .fmt-size {
+  min-width: 24px;
+  text-align: center;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.format-toolbar input[type="color"] {
+  width: 24px; height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
 .swatch-grid {
   display: grid;
   grid-template-columns: repeat(8, 1fr);

@@ -1,15 +1,7 @@
 import React from 'react';
 import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup, Seg } from '../../ui/Primitives.jsx';
-
-// Normalize a fill to a lowercase #rrggbb hex for <input type=color> (it requires
-// exactly that form). Expands #rgb shorthand; falls back to indigo for non-hex.
-function toHex(fill) {
-  if (typeof fill !== 'string') return '#4f46e5';
-  let h = fill.trim().toLowerCase();
-  if (/^#[0-9a-f]{3}$/.test(h)) h = '#' + h.slice(1).split('').map(c => c + c).join('');
-  return /^#[0-9a-f]{6}$/.test(h) ? h : '#4f46e5';
-}
+import { toHex } from '../../../lib/color.js';
 
 export default function PropsPanel({ selected, setSelected, count = 0 }) {
   if (count > 1) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{count} elements selected — drag to move them together, or align via the toolbar.</div>;

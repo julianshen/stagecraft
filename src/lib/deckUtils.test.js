@@ -370,3 +370,43 @@ describe('sanitizeSlidePatch — data fields are gated to their layouts', () => 
     expect(sanitizeSlidePatch({ todayIndex: 2 }, 'kpi')).toEqual({});
   });
 });
+
+describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
+  it('accepts an fmt map of fixed top-level field keys', () => {
+    const fmt = { title: { bold: true, fontSize: 64, color: '#08f' }, subtitle: { italic: true, underline: true } };
+    expect(sanitizeSlidePatch({ fmt }, 'cover')).toEqual({ fmt });
+  });
+
+  it('rejects an fmt map with a dotted/indexed key the renderer ignores', () => {
+    // Per-item keys (items.0.t) aren't formattable yet; accepting them would
+    // report a no-op edit as applied and persist an orphanable positional key.
+    expect(sanitizeSlidePatch({ fmt: { 'items.0.t': { bold: true } } }, 'agenda')).toEqual({});
+    expect(sanitizeSlidePatch({ fmt: { title: { bold: true }, 'items.0.t': { bold: true } } }, 'cover')).toEqual({});
+  });
+
+  it('rejects fmt keys that are not formattable text fields (no rendered field)', () => {
+    // A single-segment key with no dot but no E() field — e.g. a collection
+    // field or an invented name — still renders nothing, so reject it.
+    expect(sanitizeSlidePatch({ fmt: { items: { bold: true } } }, 'agenda')).toEqual({});
+    expect(sanitizeSlidePatch({ fmt: { headline: { bold: true } } }, 'cover')).toEqual({});
+    expect(sanitizeSlidePatch({ fmt: { title: { bold: true }, headline: { bold: true } } }, 'cover')).toEqual({});
+  });
+
+  it('rejects an fmt entry carrying an unknown or wrong-typed prop (would persist junk)', () => {
+    expect(sanitizeSlidePatch({ fmt: { title: { bold: 'yes' } } }, 'cover')).toEqual({}); // bold must be boolean
+    expect(sanitizeSlidePatch({ fmt: { title: { fontSize: '64' } } }, 'cover')).toEqual({}); // fontSize must be a number
+    expect(sanitizeSlidePatch({ fmt: { title: { wiggle: true } } }, 'cover')).toEqual({}); // unknown prop
+    expect(sanitizeSlidePatch({ fmt: { title: { fontSize: NaN } } }, 'cover')).toEqual({}); // non-finite
+  });
+
+  it('rejects an fmt that is not a map of records', () => {
+    expect(sanitizeSlidePatch({ fmt: { title: 'bold' } }, 'cover')).toEqual({}); // entry must be an object
+    expect(sanitizeSlidePatch({ fmt: ['title'] }, 'cover')).toEqual({}); // array, not a map
+    expect(sanitizeSlidePatch({ fmt: 'bold' }, 'cover')).toEqual({});
+  });
+
+  it('accepts an empty fmt map and an empty entry', () => {
+    expect(sanitizeSlidePatch({ fmt: {} }, 'cover')).toEqual({ fmt: {} });
+    expect(sanitizeSlidePatch({ fmt: { title: {} } }, 'cover')).toEqual({ fmt: { title: {} } });
+  });
+});

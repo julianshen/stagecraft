@@ -115,6 +115,15 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   // PropsPanel binds to a single element; expose the one selected (else null).
   const selectedElement = selectedElements.length === 1 ? selectedElements[0] : null;
 
+  // Format a template text field on the current slide: set one fmt prop for the
+  // field's path-key. Routes through the validated patch path (fieldPatch builds
+  // the rebuilt `fmt` map; applyAIPatch sanitizes + merges it) so formatting
+  // shares the same gate as inline edits and Co-pilot patches.
+  function formatField(fmtKey, prop, value) {
+    if (!currentSlide) return;
+    applyAIPatch(fieldPatch(currentSlide, ['fmt', fmtKey, prop], value), currentSlide.id);
+  }
+
   // Drop ids whose elements vanished (e.g. removed by a live edit).
   useEffect(() => {
     const live = selElIds.filter(id => slideElements.some(e => e.id === id));
@@ -231,6 +240,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onDuplicateSlide: duplicateCurrentSlide,
         onReorderSlide: (slideId, toSectionId, toIndex) => onDeckChange(prev => moveSlide(prev, slideId, toSectionId, toIndex)),
         onApplyAIPatch: applyAIPatch,
+        onFormatField: formatField,
       }}
     />
   );

@@ -7,6 +7,7 @@ import StatusBar from './StatusBar.jsx';
 import CollabLayer from './CollabLayer.jsx';
 import ThumbsPane from './ThumbsPane.jsx';
 import CanvasSlide from './CanvasSlide.jsx';
+import FormatToolbar from './FormatToolbar.jsx';
 import { clampElement } from '../../lib/elements.js';
 import ShapeMenu from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
@@ -224,6 +225,7 @@ export default function SlideEditor(props) {
             )}
             {showCollabCursors && <CollabLayer collaborators={collaborators}/>}
           </div>
+          {callbacks.onFormatField && <FormatToolbar currentSlide={cur} onFormat={callbacks.onFormatField} />}
           <StatusBar zoom={zoom} setZoom={setZoom} selected={selectedElement}/>
 
           {showTimeline && <TimelineDrawer onClose={()=>setShowTimeline(false)} />}
