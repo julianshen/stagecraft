@@ -79,6 +79,31 @@ describe('Slide with elements', () => {
   });
 });
 
+describe('Slide per-field formatting (fmt)', () => {
+  const slide = {
+    id: 'c', layout: 'cover', title: 'Quarterly Review',
+    fmt: { title: { bold: true, italic: true, color: '#0088ff' } },
+  };
+
+  it('merges fmt into the field style on the read-only render (thumbnail/export parity)', () => {
+    render(<Slide slide={slide} deck={{ title: 'Demo' }} num={1} total={1} />);
+    const title = screen.getByText('Quarterly Review');
+    expect(title.style.fontWeight).toBe('700');
+    expect(title.style.fontStyle).toBe('italic');
+    expect(title.style.color).toBe('rgb(0, 136, 255)');
+    // read-only fields are not editable and carry no formatting hook
+    expect(title).not.toHaveAttribute('data-fmt-key');
+    expect(title).not.toHaveAttribute('contenteditable');
+  });
+
+  it('tags an editable field with its data-fmt-key and still applies the fmt style', () => {
+    render(<Slide slide={slide} deck={{ title: 'Demo' }} num={1} total={1} editable onEditField={vi.fn()} />);
+    const title = screen.getByText('Quarterly Review');
+    expect(title).toHaveAttribute('data-fmt-key', 'title');
+    expect(title.style.fontWeight).toBe('700');
+  });
+});
+
 describe('ChartByType (data-driven charts)', () => {
   it('renders bar values and category labels from the slide chart data', () => {
     const slide = { chart: { categories: ['Alpha', 'Beta'], series: [{ values: [42, 7] }] } };

@@ -370,3 +370,28 @@ describe('sanitizeSlidePatch — data fields are gated to their layouts', () => 
     expect(sanitizeSlidePatch({ todayIndex: 2 }, 'kpi')).toEqual({});
   });
 });
+
+describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
+  it('accepts a well-shaped fmt map (path-key → formatting record)', () => {
+    const fmt = { title: { bold: true, fontSize: 64, color: '#08f' }, 'items.0.t': { italic: true, underline: true } };
+    expect(sanitizeSlidePatch({ fmt }, 'cover')).toEqual({ fmt });
+  });
+
+  it('rejects an fmt entry carrying an unknown or wrong-typed prop (would persist junk)', () => {
+    expect(sanitizeSlidePatch({ fmt: { title: { bold: 'yes' } } }, 'cover')).toEqual({}); // bold must be boolean
+    expect(sanitizeSlidePatch({ fmt: { title: { fontSize: '64' } } }, 'cover')).toEqual({}); // fontSize must be a number
+    expect(sanitizeSlidePatch({ fmt: { title: { wiggle: true } } }, 'cover')).toEqual({}); // unknown prop
+    expect(sanitizeSlidePatch({ fmt: { title: { fontSize: NaN } } }, 'cover')).toEqual({}); // non-finite
+  });
+
+  it('rejects an fmt that is not a map of records', () => {
+    expect(sanitizeSlidePatch({ fmt: { title: 'bold' } }, 'cover')).toEqual({}); // entry must be an object
+    expect(sanitizeSlidePatch({ fmt: ['title'] }, 'cover')).toEqual({}); // array, not a map
+    expect(sanitizeSlidePatch({ fmt: 'bold' }, 'cover')).toEqual({});
+  });
+
+  it('accepts an empty fmt map and an empty entry', () => {
+    expect(sanitizeSlidePatch({ fmt: {} }, 'cover')).toEqual({ fmt: {} });
+    expect(sanitizeSlidePatch({ fmt: { title: {} } }, 'cover')).toEqual({ fmt: { title: {} } });
+  });
+});

@@ -7,7 +7,7 @@ import { useRef, useEffect } from 'react';
 // Co-pilot edit) — never mid-typing, since the prop is unchanged until commit.
 // Commit fires on blur or Enter, skipping a no-op edit. (Single-line by design;
 // Shift+Enter is left to the browser.)
-function EditableField({ value, onCommit, as: Tag, className, style }) {
+function EditableField({ value, onCommit, as: Tag, className, style, fmtKey }) {
   const ref = useRef(null);
   const text = value ?? '';
   useEffect(() => {
@@ -28,6 +28,7 @@ function EditableField({ value, onCommit, as: Tag, className, style }) {
       className={className}
       style={style}
       role="textbox"
+      data-fmt-key={fmtKey}
       contentEditable
       suppressContentEditableWarning
       onBlur={commit}
@@ -49,7 +50,7 @@ function EditableField({ value, onCommit, as: Tag, className, style }) {
 // Read-only renders the plain tag with NO hooks — important because the shared
 // renderer mounts one of these per text field per slide in the thumbnail rail
 // and sorter, where only the editable branch (canvas) needs the ref/effect.
-export default function EditableText({ editable = false, value, onCommit, as: Tag = 'span', className, style }) {
+export default function EditableText({ editable = false, value, onCommit, as: Tag = 'span', className, style, fmtKey }) {
   if (!editable) return <Tag className={className} style={style}>{value}</Tag>;
-  return <EditableField value={value} onCommit={onCommit} as={Tag} className={className} style={style} />;
+  return <EditableField value={value} onCommit={onCommit} as={Tag} className={className} style={style} fmtKey={fmtKey} />;
 }

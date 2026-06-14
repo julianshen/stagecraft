@@ -47,7 +47,7 @@ const SLIDE_FIELDS = new Set([
   'layout', 'title', 'subtitle', 'sub', 'body', 'eyebrow', 'kicker',
   'chapter', 'note', 'notes', 'bg', 'chartType',
   'items', 'kpis', 'stats', 'rows', 'columns',
-  'chart', 'lanes', 'months', 'todayIndex',
+  'chart', 'lanes', 'months', 'todayIndex', 'fmt',
 ]);
 const isPrimitive = (x) => x === null || typeof x !== 'object';
 // A flat record: a non-array object whose own values are all primitives. Used
@@ -79,6 +79,21 @@ const isLane = (l) => isPlainObject(l)
   && (l.name === undefined || isPrimitive(l.name))
   && Array.isArray(l.items) && l.items.every(isLaneItem);
 
+// fmt: a map from a field path-key to a formatting record. Each record may only
+// carry the known props with the right type — an unknown or wrong-typed prop
+// (e.g. bold:'yes', fontSize:'64') is rejected so junk can't persist and the
+// renderer (which spreads these into a style) never gets a bad value.
+const FMT_PROP_OK = {
+  bold: (v) => typeof v === 'boolean',
+  italic: (v) => typeof v === 'boolean',
+  underline: (v) => typeof v === 'boolean',
+  fontSize: (v) => Number.isFinite(v),
+  color: (v) => typeof v === 'string',
+};
+const isFmtEntry = (e) => isPlainObject(e)
+  && Object.entries(e).every(([k, v]) => FMT_PROP_OK[k]?.(v));
+const isFmtMap = (v) => isPlainObject(v) && Object.values(v).every(isFmtEntry);
+
 // Accept a patch field only if its value matches the slide schema's shape for
 // the target layout — a value of the wrong shape (e.g. `title: { text }`, a
 // table cell of `{ text }`, primitive `kpis`, or object items in a `list`)
@@ -102,6 +117,8 @@ function fieldOk(key, value, layout) {
   // roadmapModel only honors finite numbers (explicit null = "no marker");
   // a string "3" would pass as a primitive but silently render nothing.
   if (key === 'todayIndex') return layout === 'roadmap' && (value === null || Number.isFinite(value));
+  // fmt is layout-agnostic — any template field on any layout can be formatted.
+  if (key === 'fmt') return isFmtMap(value);
   return isPrimitive(value);
 }
 

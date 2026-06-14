@@ -5,6 +5,7 @@ import { chartData, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
 import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
+import { fmtKey, fmtStyle } from '../../lib/slideFmt.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
 // fallbacks). This is the memo contract for thumbnail re-rendering
@@ -403,9 +404,22 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
     const applied = onEditField?.(path, v);
     return !Array.isArray(applied) || applied.length > 0;
   };
-  const E = (path, value, props = {}) => (
-    <EditableText {...props} editable={editable} value={value} onCommit={(v) => commit(path, v)} />
-  );
+  // Each field carries any per-field formatting (fmt) merged over its template
+  // style — applied on BOTH the read-only and editable renders so the canvas,
+  // thumbnails, sorter, presenter, and export stay pixel-identical. The editable
+  // render also tags the field with its fmtKey so the formatting toolbar can
+  // find the focused field.
+  const E = (path, value, props = {}) => {
+    const key = fmtKey(path);
+    const fmt = slide.fmt?.[key];
+    const style = fmt ? { ...props.style, ...fmtStyle(fmt) } : props.style;
+    return (
+      <EditableText
+        {...props} style={style} editable={editable} value={value}
+        fmtKey={editable ? key : undefined} onCommit={(v) => commit(path, v)}
+      />
+    );
+  };
   switch (slide.layout) {
     case 'cover':
       return (
