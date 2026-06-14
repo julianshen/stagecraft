@@ -50,6 +50,26 @@ describe('ElementsLayer', () => {
     expect(text.style.color).toContain('rgb(0, 255, 0)');
   });
 
+  it('renders an image element as a positioned <img> with its src', () => {
+    const { container } = render(
+      <ElementsLayer elements={[{ id: 'im', type: 'image', x: 40, y: 20, w: 300, h: 200, src: 'data:image/png;base64,AAA' }]} />,
+    );
+    const img = container.querySelector('img');
+    expect(img).toBeTruthy();
+    expect(img.getAttribute('src')).toBe('data:image/png;base64,AAA');
+    expect(img.style.left).toBe('40px');
+    expect(img.style.width).toBe('300px');
+    expect(img.style.objectFit).toBe('cover');
+  });
+
+  it('renders a placeholder (no <img>) for an image element with no src', () => {
+    const { container } = render(
+      <ElementsLayer elements={[{ id: 'im', type: 'image', x: 0, y: 0, w: 300, h: 200, src: '' }]} />,
+    );
+    expect(container.querySelector('img')).toBeNull();
+    expect(screen.getByText(/image/i)).toBeInTheDocument(); // a "No image" placeholder
+  });
+
   it('renders distinct shape types (preserves the picked shape)', () => {
     const { container } = render(
       <ElementsLayer

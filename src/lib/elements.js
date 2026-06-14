@@ -22,6 +22,7 @@ const DEFAULTS = {
   rect: { w: 320, h: 200, fill: '#4f46e5' },
   ellipse: { w: 240, h: 240, fill: '#4f46e5' },
   circle: { w: 240, h: 240, fill: '#4f46e5' },
+  image: { w: 480, h: 360 }, // a 4:3 box; carries `src` (a data URL), not a fill
 };
 
 // Build a new element of `type`, centered by default, with snapped position.
@@ -37,6 +38,11 @@ export function createElement(type, opts = {}) {
     w,
     h,
   };
+  // An image carries a `src` (data URL) instead of a colour fill.
+  if (type === 'image') {
+    el.src = opts.src ?? '';
+    return el;
+  }
   if (d.content !== undefined) el.content = opts.content ?? d.content;
   el.fill = opts.fill ?? d.fill ?? '#4f46e5'; // canonical hex so the inspector swatch matches the render
   return el;

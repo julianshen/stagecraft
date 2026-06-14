@@ -9,6 +9,7 @@ import ThumbsPane from './ThumbsPane.jsx';
 import CanvasSlide from './CanvasSlide.jsx';
 import FormatToolbar from './FormatToolbar.jsx';
 import { clampElement } from '../../lib/elements.js';
+import { readImageFile } from '../../lib/imageFile.js';
 import ShapeMenu from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
 import TableSizePicker from './menus/TableSizePicker.jsx';
@@ -62,6 +63,15 @@ export default function SlideEditor(props) {
   // Properties-panel edits hand back the full element; clamp to bounds (typed
   // values bypass the drag clamps) before forwarding as a patch.
   const updateSelEl = (el) => { if (el?.id) callbacks.onUpdateElement?.(el.id, clampElement(el)); };
+
+  // Image insert: the toolbar's Image button opens this hidden picker; the
+  // chosen file is embedded as a data URL and added as an `image` element.
+  const imageInputRef = useRef(null);
+  const onImageFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset so re-picking the same file fires onChange again
+    if (file) readImageFile(file).then((src) => callbacks.onAddElement?.('image', { src }));
+  };
 
   // Inspector Data-tab edits commit to the CURRENT slide through the Co-pilot's
   // validated patch path. Undefined when the host wired no patch callback, so
@@ -138,11 +148,20 @@ export default function SlideEditor(props) {
               key={t.id}
               name={t.icon}
               active={tool === t.id}
-              onClick={() => setTool(t.id)}
+              // Image opens a file picker and inserts the picked file as an
+              // element; Pen is still a plain tool toggle (⚪ unimplemented).
+              onClick={() => (t.id === 'image' ? imageInputRef.current?.click() : setTool(t.id))}
               title={t.title}
             />
           ))}
           <ComponentMenu onPick={(id) => callbacks.onAddComponent && callbacks.onAddComponent(id)}/>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={onImageFile}
+          />
         </div>
 
         <div className="group">

@@ -361,6 +361,14 @@ function ElementView({ el }) {
       </div>
     );
   }
+  if (el.type === 'image') {
+    // An <img> when a src is set, else a neutral placeholder box so an
+    // empty image is still visible/selectable on the canvas. draggable=false
+    // keeps the native image drag from hijacking the canvas drag.
+    return el.src
+      ? <img src={el.src} alt="" draggable={false} style={{ ...base, objectFit: 'cover' }} />
+      : <div style={{ ...base, display: 'grid', placeItems: 'center', background: '#eceae4', color: '#9a978f', fontFamily: 'var(--f-mono)', fontSize: 18 }}>No image</div>;
+  }
   const fill = { background: el.fill || 'oklch(0.62 0.17 265)' };
   if (el.type === 'circle' || el.type === 'ellipse') return <div style={{ ...base, ...fill, borderRadius: '50%' }} />;
   if (el.type === 'rounded') return <div style={{ ...base, ...fill, borderRadius: 28 }} />;
