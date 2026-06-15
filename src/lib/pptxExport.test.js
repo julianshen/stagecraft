@@ -231,4 +231,26 @@ describe('exportToPPTX — free-form elements overlay', () => {
     await exportToPPTX(elemDeck(undefined));
     expect(last().images).toHaveLength(0);
   });
+
+  it('forwards opacity to a text element (canvas applies it to every element)', async () => {
+    await exportToPPTX(elemDeck([{ id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'X', opacity: 40 }]));
+    expect(last().texts.find((x) => x.t === 'X').o.transparency).toBe(60);
+  });
+
+  it('hardens against malformed elements (null entries, non-finite fields)', async () => {
+    // A null entry must not crash the export; non-finite coords coerce, not NaN.
+    await exportToPPTX(elemDeck([
+      null,
+      { id: 'r', type: 'shape', x: NaN, y: undefined, w: '100', h: 50, fill: '#fff' },
+    ]));
+    const r = last().shapes.find((s) => s.type === 'rect');
+    expect(r.o.x).toBe(0);                       // NaN x → 0, not NaN
+    expect(r.o.y).toBe(0);                       // undefined y → 0
+    expect(Number.isFinite(r.o.w)).toBe(true);   // '100' (typed) → finite
+  });
+
+  it('treats a non-array slide.elements as empty (no garbage shapes from iterating a string)', async () => {
+    await exportToPPTX(elemDeck('oops'));
+    expect(last().shapes).toHaveLength(0); // not 4 rects from 'o','o','p','s'
+  });
 });

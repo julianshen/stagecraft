@@ -37,6 +37,10 @@ const PX_PER_IN = SLIDE_W / SLIDE_IN_W;
 const IN = (px) => +(px / PX_PER_IN).toFixed(4);
 const PT = (px) => +((px * 72) / PX_PER_IN).toFixed(2);
 const clampPct = (v) => Math.max(0, Math.min(100, v));
+// Coerce to a finite number (default `d`) — the export is a serialization
+// boundary: the deck is disk-persisted and may be agent/MCP-authored, so a
+// non-finite coord/size would otherwise write NaN into the .pptx and corrupt it.
+const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
 // An element's fill as a bare RRGGBB (pptx wants no '#'); toHex supplies the
 // canonical hex + indigo fallback so a bad value can't break the export.
 const pxHex = (fill) => toHex(fill).slice(1).toUpperCase();
@@ -49,8 +53,9 @@ const SHAPE_TYPE = {
 };
 
 function elementGeo(el) {
-  const g = { x: IN(el.x), y: IN(el.y), w: IN(el.w), h: IN(el.h) };
-  if (el.rot) g.rotate = el.rot; // pptx rotates about the shape centre, like the canvas
+  const g = { x: IN(num(el.x)), y: IN(num(el.y)), w: IN(num(el.w)), h: IN(num(el.h)) };
+  const rot = num(el.rot);
+  if (rot) g.rotate = rot; // pptx rotates about the shape centre, like the canvas
   return g;
 }
 
@@ -59,28 +64,30 @@ function elementGeo(el) {
 // map 1:1; image objectFit and text auto-fit aren't reproduced exactly.
 function addElements(pptx, sld, slide) {
   const ST = pptx.ShapeType;
-  for (const el of slide.elements || []) {
+  // The deck is persisted/agent-authorable, so tolerate a non-array or null entries.
+  const elements = (Array.isArray(slide.elements) ? slide.elements : []).filter(Boolean);
+  for (const el of elements) {
     const geo = elementGeo(el);
-    const transparency = el.opacity != null ? clampPct(100 - el.opacity) : undefined;
+    const transparency = Number.isFinite(el.opacity) ? clampPct(100 - el.opacity) : undefined;
+    const withOpacity = transparency != null ? { transparency } : {};
     if (el.type === 'text') {
       sld.addText(el.content || '', {
-        ...geo, fontSize: PT(el.fontSize ?? 48), bold: !!el.bold, italic: !!el.italic,
+        ...geo, fontSize: PT(num(el.fontSize, 48)), bold: !!el.bold, italic: !!el.italic,
         underline: !!el.underline, align: el.align || 'left', valign: 'middle',
         // Match ElementView's `var(--ink, #15171C)` text default (not the deck
         // theme's white ink) so a fill-less text element isn't invisible.
-        color: pxHex(el.fill || '#15171C'), fontFace: el.fontFamily || 'Inter',
+        color: pxHex(el.fill || '#15171C'), fontFace: el.fontFamily || 'Inter', ...withOpacity,
       });
       continue;
     }
     if (el.type === 'image') {
-      if (el.src) sld.addImage({ ...geo, data: el.src, ...(transparency != null ? { transparency } : {}) });
+      if (el.src) sld.addImage({ ...geo, data: el.src, ...withOpacity });
       continue;
     }
     // Shapes (incl. line) carry a colour fill; line matches the canvas's 8px clamp.
-    const fill = { color: pxHex(el.fill || '#15171C') };
-    if (transparency != null) fill.transparency = transparency;
+    const fill = { color: pxHex(el.fill || '#15171C'), ...withOpacity };
     if (el.type === 'line') {
-      sld.addShape(ST.rect, { ...geo, h: IN(Math.min(el.h, 8)), fill });
+      sld.addShape(ST.rect, { ...geo, h: IN(Math.min(num(el.h, 8), 8)), fill });
     } else {
       sld.addShape(ST[SHAPE_TYPE[el.type]] || ST.rect, { ...geo, fill });
     }
