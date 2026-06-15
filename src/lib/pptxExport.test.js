@@ -6,14 +6,20 @@ const rec = vi.hoisted(() => ({ slides: [] }));
 vi.mock('pptxgenjs', () => {
   class FakePptx {
     constructor() {
-      this.ShapeType = { rect: 'rect', roundRect: 'roundRect', line: 'line' };
+      // Mirror the pptxgenjs ShapeType keys the exporter uses.
+      this.ShapeType = {
+        rect: 'rect', roundRect: 'roundRect', line: 'line', ellipse: 'ellipse',
+        triangle: 'triangle', diamond: 'diamond', pentagon: 'pentagon',
+        hexagon: 'hexagon', star5: 'star5', rightArrow: 'rightArrow',
+      };
     }
     addSlide() {
       const s = {
-        texts: [], shapes: [], charts: [], background: null, notes: null,
+        texts: [], shapes: [], charts: [], images: [], background: null, notes: null,
         addText(t, o) { this.texts.push({ t, o }); },
         addShape(type, o) { this.shapes.push({ type, o }); },
         addChart(type, data, o) { this.charts.push({ type, data, o }); },
+        addImage(o) { this.images.push({ o }); },
         addTable() {},
         addNotes(t) { this.notes = t; },
       };
@@ -157,5 +163,94 @@ describe('exportToPPTX speaker notes', () => {
   it('omits all notes when includeNotes is false', async () => {
     await exportToPPTX(notesDeck, { includeNotes: false });
     expect(rec.slides.map((s) => s.notes)).toEqual([null, null, null]);
+  });
+});
+
+describe('exportToPPTX — free-form elements overlay', () => {
+  const elemDeck = (elements) => ({
+    title: 'E', theme: 'indigo',
+    sections: [{ id: 's', name: 'X', slides: ['e'] }],
+    slides: [{ id: 'e', layout: 'text', title: 'T', elements }],
+  });
+
+  it('exports a text element as addText with px→pt size, style, and px→inch geometry', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 't', type: 'text', x: 192, y: 96, w: 384, h: 192, content: 'Hi', fontSize: 48, bold: true, italic: true, underline: true, align: 'center', fill: '#112233' },
+    ]));
+    const t = last().texts.find((x) => x.t === 'Hi');
+    expect(t).toBeTruthy();
+    expect(t.o).toMatchObject({ x: 1, y: 0.5, w: 2, h: 1, fontSize: 18, bold: true, italic: true, underline: true, align: 'center', color: '112233' });
+  });
+
+  it('defaults a fill-less text element to the canvas ink colour, not the theme white', async () => {
+    await exportToPPTX(elemDeck([{ id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'X' }]));
+    const t = last().texts.find((x) => x.t === 'X');
+    expect(t.o.color).toBe('15171C'); // matches ElementView's var(--ink, #15171C) default, not FFFFFF
+  });
+
+  it('exports an image element as addImage with its data URL, skipping an empty image', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'i', type: 'image', x: 0, y: 0, w: 480, h: 360, src: 'data:image/png;base64,AAA' },
+      { id: 'i2', type: 'image', x: 0, y: 0, w: 100, h: 100, src: '' },
+    ]));
+    expect(last().images).toHaveLength(1);
+    expect(last().images[0].o).toMatchObject({ data: 'data:image/png;base64,AAA', x: 0, y: 0, w: 2.5, h: 1.875 });
+  });
+
+  it('maps shape types to pptx ShapeType and emits the fill colour', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'r', type: 'shape', x: 0, y: 0, w: 192, h: 192, fill: '#ff0000' }, // 'shape' = the menu's Rectangle
+      { id: 'c', type: 'circle', x: 0, y: 0, w: 192, h: 192, fill: '#00ff00' },
+      { id: 'g', type: 'triangle', x: 0, y: 0, w: 192, h: 192, fill: '#0000ff' },
+      { id: 's', type: 'star', x: 0, y: 0, w: 192, h: 192, fill: '#abcdef' },
+    ]));
+    const byType = Object.fromEntries(last().shapes.map((s) => [s.type, s.o]));
+    expect(byType.rect.fill).toEqual({ color: 'FF0000' }); // 'shape' → rect
+    expect(byType.ellipse).toBeTruthy();      // circle → ellipse
+    expect(byType.triangle).toBeTruthy();
+    expect(byType.star5).toBeTruthy();        // star → star5
+  });
+
+  it('applies rotation and opacity (→ transparency) to a shape', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#123456', rot: 30, opacity: 40 },
+    ]));
+    const r = last().shapes.find((s) => s.type === 'rect');
+    expect(r.o.rotate).toBe(30);
+    expect(r.o.fill).toEqual({ color: '123456', transparency: 60 }); // 100 - 40
+  });
+
+  it('exports a line as a thin rect (height clamped to the rendered 8px)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'l', type: 'line', x: 0, y: 0, w: 384, h: 200, fill: '#15171c' }]));
+    const l = last().shapes.find((s) => s.type === 'rect');
+    expect(l.o.w).toBe(2);
+    expect(l.o.h).toBeCloseTo(8 / 192, 4); // clamped, not 200/192
+  });
+
+  it('draws nothing extra for a slide with no elements', async () => {
+    await exportToPPTX(elemDeck(undefined));
+    expect(last().images).toHaveLength(0);
+  });
+
+  it('forwards opacity to a text element (canvas applies it to every element)', async () => {
+    await exportToPPTX(elemDeck([{ id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'X', opacity: 40 }]));
+    expect(last().texts.find((x) => x.t === 'X').o.transparency).toBe(60);
+  });
+
+  it('hardens against malformed elements (null entries, non-finite fields)', async () => {
+    // A null entry must not crash the export; non-finite coords coerce, not NaN.
+    await exportToPPTX(elemDeck([
+      null,
+      { id: 'r', type: 'shape', x: NaN, y: undefined, w: '100', h: 50, fill: '#fff' },
+    ]));
+    const r = last().shapes.find((s) => s.type === 'rect');
+    expect(r.o.x).toBe(0);                       // NaN x → 0, not NaN
+    expect(r.o.y).toBe(0);                       // undefined y → 0
+    expect(Number.isFinite(r.o.w)).toBe(true);   // '100' (typed) → finite
+  });
+
+  it('treats a non-array slide.elements as empty (no garbage shapes from iterating a string)', async () => {
+    await exportToPPTX(elemDeck('oops'));
+    expect(last().shapes).toHaveLength(0); // not 4 rects from 'o','o','p','s'
   });
 });
