@@ -57,7 +57,7 @@ function elementGeo(el) {
 // Draw a slide's free-form elements over whatever the layout builder produced,
 // so anything placed on the canvas survives export. Geometry/rotation/opacity
 // map 1:1; image objectFit and text auto-fit aren't reproduced exactly.
-function addElements(pptx, sld, slide, tc) {
+function addElements(pptx, sld, slide) {
   const ST = pptx.ShapeType;
   for (const el of slide.elements || []) {
     const geo = elementGeo(el);
@@ -66,7 +66,9 @@ function addElements(pptx, sld, slide, tc) {
       sld.addText(el.content || '', {
         ...geo, fontSize: PT(el.fontSize ?? 48), bold: !!el.bold, italic: !!el.italic,
         underline: !!el.underline, align: el.align || 'left', valign: 'middle',
-        color: pxHex(el.fill || `#${tc.ink}`), fontFace: el.fontFamily || 'Inter',
+        // Match ElementView's `var(--ink, #15171C)` text default (not the deck
+        // theme's white ink) so a fill-less text element isn't invisible.
+        color: pxHex(el.fill || '#15171C'), fontFace: el.fontFamily || 'Inter',
       });
       continue;
     }
@@ -418,7 +420,7 @@ export async function exportToPPTX(deck, { includeNotes = true } = {}) {
       default:         sld = addGenericSlide(pptx, slide, tc); break;
     }
     // Overlay the free-form elements layer (any layout may carry it).
-    if (sld) addElements(pptx, sld, slide, tc);
+    if (sld) addElements(pptx, sld, slide);
     // Each builder returns the slide it created, so notes attach at the call
     // boundary the dispatch already owns — no reaching into the pptx instance.
     // `&& sld` guards the return-contract: a future builder that forgot to

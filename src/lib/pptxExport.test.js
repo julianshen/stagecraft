@@ -182,6 +182,12 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(t.o).toMatchObject({ x: 1, y: 0.5, w: 2, h: 1, fontSize: 18, bold: true, italic: true, underline: true, align: 'center', color: '112233' });
   });
 
+  it('defaults a fill-less text element to the canvas ink colour, not the theme white', async () => {
+    await exportToPPTX(elemDeck([{ id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'X' }]));
+    const t = last().texts.find((x) => x.t === 'X');
+    expect(t.o.color).toBe('15171C'); // matches ElementView's var(--ink, #15171C) default, not FFFFFF
+  });
+
   it('exports an image element as addImage with its data URL, skipping an empty image', async () => {
     await exportToPPTX(elemDeck([
       { id: 'i', type: 'image', x: 0, y: 0, w: 480, h: 360, src: 'data:image/png;base64,AAA' },
