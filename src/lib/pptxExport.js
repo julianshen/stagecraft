@@ -3,6 +3,7 @@ import { chartSpec, CHART_SERIES_HEX } from './chartSpec.js';
 import { SEVERITY_HEX } from './riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
 import { resolveNotes } from '../data/deck.js';
+import { toHex } from './color.js';
 
 // ---- theme colours (fallback to indigo) ----
 const THEME_COLORS = {
@@ -23,6 +24,60 @@ function hexToRgb(hex) {
   const g = parseInt(hex.slice(2, 4), 16);
   const b = parseInt(hex.slice(4, 6), 16);
   return { r, g, b };
+}
+
+// ---- free-form elements overlay (slide.elements) ----
+// The slide is authored in a 1920×1080 px space; LAYOUT_16x9 is 10×5.625 in, so
+// both axes scale by 192 px/in. Fonts: 1920 px = 720 pt → px × 0.375.
+const PX_PER_IN = 192;
+const IN = (px) => +(px / PX_PER_IN).toFixed(4);
+const PT = (px) => +(px * 0.375).toFixed(2);
+const clampPct = (v) => Math.max(0, Math.min(100, v));
+// An element's fill as a bare RRGGBB (pptx wants no '#'); toHex supplies the
+// canonical hex + indigo fallback so a bad value can't break the export.
+const pxHex = (fill) => toHex(fill).slice(1).toUpperCase();
+// Canvas element type → pptxgenjs ShapeType key (unknown → rect).
+const SHAPE_TYPE = {
+  rect: 'rect', rounded: 'roundRect', circle: 'ellipse', ellipse: 'ellipse',
+  triangle: 'triangle', diamond: 'diamond', pentagon: 'pentagon',
+  hexagon: 'hexagon', star: 'star5', arrow: 'rightArrow',
+};
+
+function elementGeo(el) {
+  const g = { x: IN(el.x), y: IN(el.y), w: IN(el.w), h: IN(el.h) };
+  if (el.rot) g.rotate = el.rot; // pptx rotates about the shape centre, like the canvas
+  return g;
+}
+
+// Draw a slide's free-form elements over whatever the layout builder produced,
+// so anything placed on the canvas survives export. Geometry/rotation/opacity
+// map 1:1; image objectFit and text auto-fit aren't reproduced exactly.
+function addElements(pptx, sld, slide, tc) {
+  const ST = pptx.ShapeType;
+  for (const el of slide.elements || []) {
+    const geo = elementGeo(el);
+    const transparency = el.opacity != null ? clampPct(100 - el.opacity) : undefined;
+    if (el.type === 'text') {
+      sld.addText(el.content || '', {
+        ...geo, fontSize: PT(el.fontSize ?? 48), bold: !!el.bold, italic: !!el.italic,
+        underline: !!el.underline, align: el.align || 'left', valign: 'middle',
+        color: pxHex(el.fill || `#${tc.ink}`), fontFace: el.fontFamily || 'Inter',
+      });
+      continue;
+    }
+    if (el.type === 'image') {
+      if (el.src) sld.addImage({ ...geo, data: el.src, ...(transparency != null ? { transparency } : {}) });
+      continue;
+    }
+    // Shapes (incl. line) carry a colour fill; line matches the canvas's 8px clamp.
+    const fill = { color: pxHex(el.fill || '#15171C') };
+    if (transparency != null) fill.transparency = transparency;
+    if (el.type === 'line') {
+      sld.addShape(ST.rect, { ...geo, h: IN(Math.min(el.h, 8)), fill });
+    } else {
+      sld.addShape(ST[SHAPE_TYPE[el.type]] || ST.rect, { ...geo, fill });
+    }
+  }
 }
 
 // ---- per-layout slide builders ----
@@ -357,6 +412,8 @@ export async function exportToPPTX(deck, { includeNotes = true } = {}) {
       case 'chart':    sld = addChartSlide(pptx, slide, tc);   break;
       default:         sld = addGenericSlide(pptx, slide, tc); break;
     }
+    // Overlay the free-form elements layer (any layout may carry it).
+    if (sld) addElements(pptx, sld, slide, tc);
     // Each builder returns the slide it created, so notes attach at the call
     // boundary the dispatch already owns — no reaching into the pptx instance.
     // `&& sld` guards the return-contract: a future builder that forgot to
