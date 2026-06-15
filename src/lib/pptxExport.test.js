@@ -193,13 +193,13 @@ describe('exportToPPTX — free-form elements overlay', () => {
 
   it('maps shape types to pptx ShapeType and emits the fill colour', async () => {
     await exportToPPTX(elemDeck([
-      { id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#ff0000' },
+      { id: 'r', type: 'shape', x: 0, y: 0, w: 192, h: 192, fill: '#ff0000' }, // 'shape' = the menu's Rectangle
       { id: 'c', type: 'circle', x: 0, y: 0, w: 192, h: 192, fill: '#00ff00' },
       { id: 'g', type: 'triangle', x: 0, y: 0, w: 192, h: 192, fill: '#0000ff' },
       { id: 's', type: 'star', x: 0, y: 0, w: 192, h: 192, fill: '#abcdef' },
     ]));
     const byType = Object.fromEntries(last().shapes.map((s) => [s.type, s.o]));
-    expect(byType.rect.fill).toEqual({ color: 'FF0000' });
+    expect(byType.rect.fill).toEqual({ color: 'FF0000' }); // 'shape' → rect
     expect(byType.ellipse).toBeTruthy();      // circle → ellipse
     expect(byType.triangle).toBeTruthy();
     expect(byType.star5).toBeTruthy();        // star → star5

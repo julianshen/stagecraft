@@ -4,6 +4,7 @@ import { SEVERITY_HEX } from './riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
 import { resolveNotes } from '../data/deck.js';
 import { toHex } from './color.js';
+import { SLIDE_W } from './elements.js';
 
 // ---- theme colours (fallback to indigo) ----
 const THEME_COLORS = {
@@ -27,18 +28,22 @@ function hexToRgb(hex) {
 }
 
 // ---- free-form elements overlay (slide.elements) ----
-// The slide is authored in a 1920×1080 px space; LAYOUT_16x9 is 10×5.625 in, so
-// both axes scale by 192 px/in. Fonts: 1920 px = 720 pt → px × 0.375.
-const PX_PER_IN = 192;
+// The slide is authored in an `SLIDE_W`-wide px space; LAYOUT_16x9 is 10 in
+// wide, so both axes scale by the same px/in (derive it from SLIDE_W rather than
+// hardcode, so a change to the authoring width rescales the export too). Fonts:
+// 72 pt/in.
+const SLIDE_IN_W = 10; // LAYOUT_16x9 width in inches
+const PX_PER_IN = SLIDE_W / SLIDE_IN_W;
 const IN = (px) => +(px / PX_PER_IN).toFixed(4);
-const PT = (px) => +(px * 0.375).toFixed(2);
+const PT = (px) => +((px * 72) / PX_PER_IN).toFixed(2);
 const clampPct = (v) => Math.max(0, Math.min(100, v));
 // An element's fill as a bare RRGGBB (pptx wants no '#'); toHex supplies the
 // canonical hex + indigo fallback so a bad value can't break the export.
 const pxHex = (fill) => toHex(fill).slice(1).toUpperCase();
-// Canvas element type → pptxgenjs ShapeType key (unknown → rect).
+// Canvas element type → pptxgenjs ShapeType key (unknown → rect). `shape` is the
+// shape menu's "Rectangle"; `rect` is the model's canonical alias — both → rect.
 const SHAPE_TYPE = {
-  rect: 'rect', rounded: 'roundRect', circle: 'ellipse', ellipse: 'ellipse',
+  shape: 'rect', rect: 'rect', rounded: 'roundRect', circle: 'ellipse', ellipse: 'ellipse',
   triangle: 'triangle', diamond: 'diamond', pentagon: 'pentagon',
   hexagon: 'hexagon', star: 'star5', arrow: 'rightArrow',
 };
