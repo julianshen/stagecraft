@@ -7,7 +7,9 @@
 // case (rendered as a clamped bar / a thin rect); text & image aren't shapes.
 export const LINE_MAX_THICKNESS = 8; // a line caps at this px on both surfaces
 
-export const SHAPES = {
+// Frozen (incl. each nested def) — a shared global registry, matching the
+// codebase's exported-constant convention (riskSpec/chartSpec/DECK_CHROME_FIELDS).
+export const SHAPES = Object.freeze({
   shape: { pptx: 'rect', radius: 8 },
   rounded: { pptx: 'roundRect', radius: 28 },
   circle: { pptx: 'ellipse', round: true },
@@ -18,11 +20,12 @@ export const SHAPES = {
   star: { pptx: 'star5', clip: 'polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)' },
   arrow: { pptx: 'rightArrow', clip: 'polygon(0 30%,60% 30%,60% 0,100% 50%,60% 100%,60% 70%,0 70%)' },
   line: { pptx: 'rect', line: true },
-};
+});
+Object.values(SHAPES).forEach(Object.freeze);
 
 // Model-level aliases (same visual, alternate type token): the shape menu emits
 // `shape` for a rectangle, but the canonical rect/ellipse tokens also resolve.
-const ALIASES = { rect: 'shape', ellipse: 'circle' };
+const ALIASES = Object.freeze({ rect: 'shape', ellipse: 'circle' });
 
 // Resolve an element type to its shape definition (null for non-shapes/unknown).
 // `Object.hasOwn` so a prototype-chain key (e.g. a deck-supplied type:'constructor'

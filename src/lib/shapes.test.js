@@ -34,4 +34,9 @@ describe('shapeDef', () => {
     expect(shapeDef('toString')).toBeNull();
     expect(shapeDef('hasOwnProperty')).toBeNull();
   });
+
+  it('freezes the registry and each shape definition', () => {
+    expect(Object.isFrozen(SHAPES)).toBe(true);
+    Object.values(SHAPES).forEach((def) => expect(Object.isFrozen(def)).toBe(true));
+  });
 });
