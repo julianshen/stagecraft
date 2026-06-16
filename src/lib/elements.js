@@ -137,13 +137,45 @@ export function rotateElement(el, px, py) {
   return { ...el, rot: ((deg % 360) + 360) % 360 };
 }
 
-// Immutably transform the `elements` array of slide `slideId` via `fn`.
+// Z-order: move element `id` within `elements` (paint order = array order, so
+// the last element is on top). `op` is 'front' (to top) or 'back' (to bottom).
+// Returns the SAME array reference when nothing moves (unknown id/op, or already
+// at the target end), so a no-op doesn't trigger a deck write. Pure (no mutation).
+export function reorderElement(elements, id, op) {
+  const list = elements || [];
+  const i = list.findIndex((e) => e.id === id);
+  if (i < 0) return elements;
+  if (op === 'front') {
+    if (i === list.length - 1) return elements; // already on top
+    const arr = list.slice();
+    arr.push(arr.splice(i, 1)[0]);
+    return arr;
+  }
+  if (op === 'back') {
+    if (i === 0) return elements; // already on the bottom
+    const arr = list.slice();
+    arr.unshift(arr.splice(i, 1)[0]);
+    return arr;
+  }
+  return elements; // unknown op
+}
+
+// Immutably transform the `elements` array of slide `slideId` via `fn`. When
+// `fn` returns the SAME array reference (a no-op, e.g. reorderElement on an
+// element already at the target end), the deck is returned UNCHANGED — so a
+// no-op edit doesn't churn the deck rev or trigger a sync write.
 export function updateSlideElements(deck, slideId, fn) {
   if (!deck) return deck;
-  return {
-    ...deck,
-    slides: (deck.slides || []).map((s) => (s.id === slideId ? { ...s, elements: fn(s.elements || []) } : s)),
-  };
+  let changed = false;
+  const slides = (deck.slides || []).map((s) => {
+    if (s.id !== slideId) return s;
+    const current = s.elements || [];
+    const next = fn(current);
+    if (next === current) return s; // fn no-op'd
+    changed = true;
+    return { ...s, elements: next };
+  });
+  return changed ? { ...deck, slides } : deck;
 }
 
 // Which edges a given resize handle moves.
