@@ -1,6 +1,6 @@
 // Pure geometry for free-form canvas elements (the overlay layer on a slide).
 // All coordinates are in the slide's 1920×1080 authoring space.
-import { LINE_MAX_THICKNESS } from './shapes.js';
+import { LINE_MAX_THICKNESS, shapeDef } from './shapes.js';
 
 export const SLIDE_W = 1920;
 export const SLIDE_H = 1080;
@@ -209,8 +209,11 @@ export function resizeElement(el, handle, dx, dy, { grid = GRID, min = MIN_SIZE,
 // Clamp an element's geometry to the slide bounds + min size (no snapping) —
 // used to sanitize direct numeric edits from the Properties panel.
 export function clampElement(el, { bounds = { w: SLIDE_W, h: SLIDE_H }, min = MIN_SIZE } = {}) {
+  // A line is a thin rule — its height floor is its thickness, not MIN_SIZE, so
+  // an inspector edit doesn't bump it back up and re-create the model/render gap.
+  const minH = shapeDef(el.type)?.line ? LINE_MAX_THICKNESS : min;
   const w = clamp(el.w, min, bounds.w);
-  const h = clamp(el.h, min, bounds.h);
+  const h = clamp(el.h, minH, bounds.h);
   const out = {
     ...el,
     w,
