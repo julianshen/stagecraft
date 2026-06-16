@@ -6,6 +6,7 @@ import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
 import { fmtKey, fmtStyle, FORMATTABLE_FIELDS } from '../../lib/slideFmt.js';
+import { shapeDef, LINE_MAX_THICKNESS } from '../../lib/shapes.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
 // fallbacks). This is the memo contract for thumbnail re-rendering
@@ -324,15 +325,6 @@ export function RoadmapGraphic({ slide } = {}) {
 
 // Free-form element overlay (the canvas-editing layer), rendered on top of the
 // layout template in the same 1920×1080 coordinate space.
-const SHAPE_CLIP = {
-  triangle: 'polygon(50% 0, 100% 100%, 0 100%)',
-  diamond: 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
-  pentagon: 'polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%)',
-  hexagon: 'polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)',
-  star: 'polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)',
-  'arrow-shape': 'polygon(0 30%,60% 30%,60% 0,100% 50%,60% 100%,60% 70%,0 70%)',
-  arrow: 'polygon(0 30%,60% 30%,60% 0,100% 50%,60% 100%,60% 70%,0 70%)',
-};
 
 function ElementView({ el }) {
   const base = {
@@ -370,11 +362,12 @@ function ElementView({ el }) {
       : <div style={{ ...base, display: 'grid', placeItems: 'center', background: '#eceae4', color: '#9a978f', fontFamily: 'var(--f-mono)', fontSize: 18 }}>No image</div>;
   }
   const fill = { background: el.fill || 'oklch(0.62 0.17 265)' };
-  if (el.type === 'circle' || el.type === 'ellipse') return <div style={{ ...base, ...fill, borderRadius: '50%' }} />;
-  if (el.type === 'rounded') return <div style={{ ...base, ...fill, borderRadius: 28 }} />;
-  if (el.type === 'line') return <div style={{ ...base, height: Math.min(el.h, 8), background: el.fill || 'var(--ink, #15171C)' }} />;
-  if (SHAPE_CLIP[el.type]) return <div style={{ ...base, ...fill, clipPath: SHAPE_CLIP[el.type] }} />;
-  return <div style={{ ...base, ...fill, borderRadius: 8 }} />; // rect / unknown
+  // A line is the thin-rule special case; every other shape reads its CSS from
+  // the shared registry so the canvas and the export can't drift (lib/shapes.js).
+  if (el.type === 'line') return <div style={{ ...base, height: Math.min(el.h, LINE_MAX_THICKNESS), background: el.fill || 'var(--ink, #15171C)' }} />;
+  const def = shapeDef(el.type);
+  if (def?.clip) return <div style={{ ...base, ...fill, clipPath: def.clip }} />;
+  return <div style={{ ...base, ...fill, borderRadius: def?.round ? '50%' : (def?.radius ?? 8) }} />; // rect / unknown → 8
 }
 
 export function ElementsLayer({ elements }) {
