@@ -258,10 +258,11 @@ describe('clampElement', () => {
     expect(clampElement(el)).toMatchObject({ x: 101, y: 99, w: 300, h: 150 });
   });
 
-  it('floors a line at its thickness, not MIN_SIZE (so an inspector edit keeps it 8px)', () => {
-    const c = clampElement({ id: 'l', type: 'line', x: 0, y: 0, w: 320, h: LINE_MAX_THICKNESS });
-    expect(c.h).toBe(LINE_MAX_THICKNESS); // not bumped up to MIN_SIZE (16)
-    expect(c.w).toBe(320);               // width still honors the normal min
+  it('pins a line strictly to its thickness, even for a larger typed height', () => {
+    expect(clampElement({ id: 'l', type: 'line', x: 0, y: 0, w: 320, h: LINE_MAX_THICKNESS }).h).toBe(LINE_MAX_THICKNESS);
+    const c = clampElement({ id: 'l', type: 'line', x: 0, y: 0, w: 320, h: 50 }); // typed 50px
+    expect(c.h).toBe(LINE_MAX_THICKNESS); // pinned to 8, not 50 (renderer/export cap there)
+    expect(c.w).toBe(320);                // width still honors the normal min/bounds
   });
 
   it('clamps opacity to 0-100 and normalizes rotation to 0-360', () => {

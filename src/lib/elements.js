@@ -209,11 +209,12 @@ export function resizeElement(el, handle, dx, dy, { grid = GRID, min = MIN_SIZE,
 // Clamp an element's geometry to the slide bounds + min size (no snapping) —
 // used to sanitize direct numeric edits from the Properties panel.
 export function clampElement(el, { bounds = { w: SLIDE_W, h: SLIDE_H }, min = MIN_SIZE } = {}) {
-  // A line is a thin rule — its height floor is its thickness, not MIN_SIZE, so
-  // an inspector edit doesn't bump it back up and re-create the model/render gap.
-  const minH = shapeDef(el.type)?.line ? LINE_MAX_THICKNESS : min;
+  // A line is a thin rule rendered at exactly LINE_MAX_THICKNESS, so pin its
+  // model height there — an inspector edit (even a larger typed value) can't
+  // create a model/render gap. Width still honors the normal min/bounds.
+  const isLine = !!shapeDef(el.type)?.line;
   const w = clamp(el.w, min, bounds.w);
-  const h = clamp(el.h, minH, bounds.h);
+  const h = isLine ? LINE_MAX_THICKNESS : clamp(el.h, min, bounds.h);
   const out = {
     ...el,
     w,
