@@ -8,7 +8,7 @@ import CollabLayer from './CollabLayer.jsx';
 import ThumbsPane from './ThumbsPane.jsx';
 import CanvasSlide from './CanvasSlide.jsx';
 import FormatToolbar from './FormatToolbar.jsx';
-import { clampElement } from '../../lib/elements.js';
+import { clampElement, GRID } from '../../lib/elements.js';
 import { readImageFile } from '../../lib/imageFile.js';
 import ShapeMenu from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
@@ -29,6 +29,9 @@ const DEFAULT_TOOLS = [
 const PEN_TOOLS = [
   { id:'pen',    icon:'pen',     title:'Pen · P' },
 ];
+
+// Arrow key → unit nudge direction for the selection.
+const NUDGE_DIR = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
 
 export default function SlideEditor(props) {
@@ -97,12 +100,22 @@ export default function SlideEditor(props) {
   callbacksRef.current = callbacks;
   useEffect(() => {
     function onKey(e) {
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      if (!props.selectedElementCount || !callbacksRef.current.onDeleteElements) return;
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-      e.preventDefault();
-      callbacksRef.current.onDeleteElements();
+      if (!props.selectedElementCount) return; // all of these act on the selection
+      const cb = callbacksRef.current;
+      if ((e.key === 'Delete' || e.key === 'Backspace') && cb.onDeleteElements) {
+        e.preventDefault(); cb.onDeleteElements(); return;
+      }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'd' || e.key === 'D') && cb.onDuplicateElements) {
+        e.preventDefault(); cb.onDuplicateElements(); return; // exact ⌘/Ctrl-D (don't swallow Ctrl+Shift+D etc.)
+      }
+      if (NUDGE_DIR[e.key] && !e.metaKey && !e.ctrlKey && cb.onNudgeElements) {
+        e.preventDefault();
+        const [sx, sy] = NUDGE_DIR[e.key];
+        const step = e.shiftKey ? GRID * 5 : GRID; // shift = larger nudge; both grid-aligned
+        cb.onNudgeElements(sx * step, sy * step);
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

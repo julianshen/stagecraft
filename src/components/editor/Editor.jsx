@@ -3,7 +3,7 @@ import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
-import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement } from '../../lib/elements.js';
+import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, moveElement } from '../../lib/elements.js';
 import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
 import { fieldPatch } from '../../lib/slideEdit.js';
 
@@ -142,11 +142,38 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     setSelElIds(ids || []);
   }
 
+  const genElId = () => `el-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
   function addElement(type, opts = {}) {
     if (!curId) return;
-    const id = `el-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
+    const id = genElId();
     onDeckChange(prev => updateSlideElements(prev, curId, els => [...els, createElement(type, { ...opts, id })]));
     setSelElIds([id]);
+  }
+  // Duplicate the selection: offset clones with fresh ids, then select them.
+  // Gate on the LIVE selected elements (still present), so the generated id
+  // count matches the clones actually made and no phantom id gets selected; the
+  // ids are minted up front so the reducer is deterministic under a StrictMode
+  // double-run.
+  function duplicateSelectedElements() {
+    const live = slideElements.filter(e => selElIds.includes(e.id));
+    if (!live.length) return;
+    const newIds = live.map(genElId);
+    onDeckChange(prev => updateSlideElements(prev, curId, els => duplicateElements(els, selElIds, newIds)));
+    setSelElIds(newIds);
+  }
+  // Keyboard nudge: move the whole selection by (dx, dy) (grid-snapped + clamped
+  // by moveElement), committed as one batch update. Elements already pinned at
+  // the boundary (no coordinate change) are dropped, so a fully-clamped nudge
+  // commits nothing.
+  function nudgeSelectedElements(dx, dy) {
+    const ids = new Set(selElIds);
+    const updates = new Map();
+    slideElements.forEach(el => {
+      if (!ids.has(el.id)) return;
+      const moved = moveElement(el, dx, dy);
+      if (moved.x !== el.x || moved.y !== el.y) updates.set(el.id, moved);
+    });
+    updateElements(updates);
   }
   function updateElement(id, patch) {
     onDeckChange(prev => updateSlideElements(prev, curId, els => els.map(e => (e.id === id ? { ...e, ...patch } : e))));
@@ -233,6 +260,8 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onAlignElements: alignSelected,
         onDistributeElements: distributeSelected,
         onArrangeElement: arrangeElement,
+        onDuplicateElements: duplicateSelectedElements,
+        onNudgeElements: nudgeSelectedElements,
         onMarqueeSelect: marqueeSelect,
         onPresent,
         onExport: onOpenExport,

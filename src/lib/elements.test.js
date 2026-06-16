@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
 import { LINE_MAX_THICKNESS } from './shapes.js';
 
 describe('snap', () => {
@@ -187,6 +187,36 @@ describe('updateSlideElements', () => {
     expect(updateSlideElements(d, 'a', (els) => [...els])).not.toBe(d); // new array → new deck (immutable)
     expect(updateSlideElements(d, 'a', (els) => els)).toBe(d);          // same array → same deck (no sync write)
     expect(updateSlideElements(null, 'a', (e) => e)).toBe(null);
+  });
+});
+
+describe('duplicateElements', () => {
+  const els = () => [{ id: 'a', x: 10, y: 20, w: 100, h: 50 }, { id: 'b', x: 30, y: 40, w: 60, h: 60 }, { id: 'c', x: 0, y: 0, w: 80, h: 80 }];
+
+  it('appends offset clones with the supplied ids, leaving originals untouched', () => {
+    const out = duplicateElements(els(), ['a', 'c'], ['a2', 'c2']);
+    expect(out.map((e) => e.id)).toEqual(['a', 'b', 'c', 'a2', 'c2']); // clones appended (on top)
+    expect(out[3]).toMatchObject({ id: 'a2', x: 26, y: 36, w: 100, h: 50 }); // +16 offset
+    expect(out[4]).toMatchObject({ id: 'c2', x: 16, y: 16, w: 80, h: 80 });
+    expect(out[0]).toEqual({ id: 'a', x: 10, y: 20, w: 100, h: 50 }); // original unchanged
+  });
+
+  it('honors a custom offset', () => {
+    const out = duplicateElements(els(), ['b'], ['b2'], { dx: 5, dy: 0 });
+    expect(out[3]).toMatchObject({ id: 'b2', x: 35, y: 40 });
+  });
+
+  it('clones in array order (id mapping independent of the ids-array order)', () => {
+    const out = duplicateElements(els(), ['c', 'a'], ['first', 'second']);
+    expect(out[3].id).toBe('first');  // 'a' comes first in the array → gets newIds[0]
+    expect(out[3].x).toBe(26);        // a.x + 16
+    expect(out[4].id).toBe('second'); // 'c' → newIds[1]
+  });
+
+  it('returns the same array reference when nothing matches (no-op)', () => {
+    const arr = els();
+    expect(duplicateElements(arr, ['zzz'], ['z2'])).toBe(arr);
+    expect(duplicateElements(arr, [], [])).toBe(arr);
   });
 });
 
