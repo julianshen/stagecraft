@@ -28,4 +28,10 @@ describe('shapeDef', () => {
     expect(shapeDef('image')).toBeNull();
     expect(shapeDef('nope')).toBeNull();
   });
+
+  it('returns null for prototype-chain keys (not the inherited Object method)', () => {
+    expect(shapeDef('constructor')).toBeNull();
+    expect(shapeDef('toString')).toBeNull();
+    expect(shapeDef('hasOwnProperty')).toBeNull();
+  });
 });
