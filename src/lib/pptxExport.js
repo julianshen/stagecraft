@@ -5,6 +5,7 @@ import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roa
 import { resolveNotes } from '../data/deck.js';
 import { toHex } from './color.js';
 import { SLIDE_W } from './elements.js';
+import { shapeDef, LINE_MAX_THICKNESS } from './shapes.js';
 
 // ---- theme colours (fallback to indigo) ----
 const THEME_COLORS = {
@@ -44,14 +45,6 @@ const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
 // An element's fill as a bare RRGGBB (pptx wants no '#'); toHex supplies the
 // canonical hex + indigo fallback so a bad value can't break the export.
 const pxHex = (fill) => toHex(fill).slice(1).toUpperCase();
-// Canvas element type → pptxgenjs ShapeType key (unknown → rect). `shape` is the
-// shape menu's "Rectangle"; `rect` is the model's canonical alias — both → rect.
-const SHAPE_TYPE = {
-  shape: 'rect', rect: 'rect', rounded: 'roundRect', circle: 'ellipse', ellipse: 'ellipse',
-  triangle: 'triangle', diamond: 'diamond', pentagon: 'pentagon',
-  hexagon: 'hexagon', star: 'star5', arrow: 'rightArrow',
-};
-
 function elementGeo(el) {
   const g = { x: IN(num(el.x)), y: IN(num(el.y)), w: IN(num(el.w)), h: IN(num(el.h)) };
   const rot = num(el.rot);
@@ -84,12 +77,14 @@ function addElements(pptx, sld, slide) {
       if (el.src) sld.addImage({ ...geo, data: el.src, ...withOpacity });
       continue;
     }
-    // Shapes (incl. line) carry a colour fill; line matches the canvas's 8px clamp.
+    // Shapes (incl. line) carry a colour fill; the registry drives the mapping.
+    const def = shapeDef(el.type);
     const fill = { color: pxHex(el.fill || '#15171C'), ...withOpacity };
-    if (el.type === 'line') {
-      sld.addShape(ST.rect, { ...geo, h: IN(Math.min(num(el.h, 8), 8)), fill });
+    if (def?.line) {
+      // A line matches the canvas's clamped thickness.
+      sld.addShape(ST.rect, { ...geo, h: IN(Math.min(num(el.h, LINE_MAX_THICKNESS), LINE_MAX_THICKNESS)), fill });
     } else {
-      sld.addShape(ST[SHAPE_TYPE[el.type]] || ST.rect, { ...geo, fill });
+      sld.addShape(ST[def?.pptx] || ST.rect, { ...geo, fill });
     }
   }
 }
