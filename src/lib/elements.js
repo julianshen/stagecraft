@@ -1,5 +1,6 @@
 // Pure geometry for free-form canvas elements (the overlay layer on a slide).
 // All coordinates are in the slide's 1920×1080 authoring space.
+import { LINE_MAX_THICKNESS } from './shapes.js';
 
 export const SLIDE_W = 1920;
 export const SLIDE_H = 1080;
@@ -23,6 +24,7 @@ const DEFAULTS = {
   ellipse: { w: 240, h: 240, fill: '#4f46e5' },
   circle: { w: 240, h: 240, fill: '#4f46e5' },
   image: { w: 480, h: 360 }, // a 4:3 box; carries `src` (a data URL), not a fill
+  line: { w: 320, h: LINE_MAX_THICKNESS }, // a thin rule — created at the height it renders at
 };
 
 // Build a new element of `type`, centered by default, with snapped position.

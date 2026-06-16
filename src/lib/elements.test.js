@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
+import { LINE_MAX_THICKNESS } from './shapes.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -34,6 +35,12 @@ describe('createElement', () => {
     expect(createElement('text', { id: 't' }).fill).toBe('#15171C');
     expect(createElement('triangle', { id: 'g' }).fill).toBe('#4f46e5');
     expect(createElement('rect', { id: 'r', fill: '#abcdef' }).fill).toBe('#abcdef');
+  });
+
+  it('creates a line at its rendered thickness, not a tall rect', () => {
+    const el = createElement('line', { id: 'l' });
+    expect(el.type).toBe('line');
+    expect(el.h).toBe(LINE_MAX_THICKNESS); // model height == the 8px the renderer/export clamp to
   });
 
   it('creates an image element carrying its src and no fill', () => {
