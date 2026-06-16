@@ -361,11 +361,11 @@ function ElementView({ el }) {
       ? <img src={el.src} alt="" draggable={false} style={{ ...base, objectFit: 'cover' }} />
       : <div style={{ ...base, display: 'grid', placeItems: 'center', background: '#eceae4', color: '#9a978f', fontFamily: 'var(--f-mono)', fontSize: 18 }}>No image</div>;
   }
-  const fill = { background: el.fill || 'oklch(0.62 0.17 265)' };
-  // A line is the thin-rule special case; every other shape reads its CSS from
-  // the shared registry so the canvas and the export can't drift (lib/shapes.js).
-  if (el.type === 'line') return <div style={{ ...base, height: Math.min(el.h, LINE_MAX_THICKNESS), background: el.fill || 'var(--ink, #15171C)' }} />;
+  // Every shape (incl. the line special case) dispatches off the shared registry
+  // so the canvas and the export can't drift (lib/shapes.js).
   const def = shapeDef(el.type);
+  if (def?.line) return <div style={{ ...base, height: Math.min(el.h, LINE_MAX_THICKNESS), background: el.fill || 'var(--ink, #15171C)' }} />;
+  const fill = { background: el.fill || 'oklch(0.62 0.17 265)' };
   if (def?.clip) return <div style={{ ...base, ...fill, clipPath: def.clip }} />;
   return <div style={{ ...base, ...fill, borderRadius: def?.round ? '50%' : (def?.radius ?? 8) }} />; // rect / unknown → 8
 }

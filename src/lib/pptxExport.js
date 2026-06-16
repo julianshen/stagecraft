@@ -77,13 +77,14 @@ function addElements(pptx, sld, slide) {
       if (el.src) sld.addImage({ ...geo, data: el.src, ...withOpacity });
       continue;
     }
-    // Shapes (incl. line) carry a colour fill; line matches the canvas's 8px clamp.
+    // Shapes (incl. line) carry a colour fill; the registry drives the mapping.
+    const def = shapeDef(el.type);
     const fill = { color: pxHex(el.fill || '#15171C'), ...withOpacity };
-    if (el.type === 'line') {
-      const t = LINE_MAX_THICKNESS;
-      sld.addShape(ST.rect, { ...geo, h: IN(Math.min(num(el.h, t), t)), fill });
+    if (def?.line) {
+      // A line matches the canvas's clamped thickness.
+      sld.addShape(ST.rect, { ...geo, h: IN(Math.min(num(el.h, LINE_MAX_THICKNESS), LINE_MAX_THICKNESS)), fill });
     } else {
-      sld.addShape(ST[shapeDef(el.type)?.pptx] || ST.rect, { ...geo, fill });
+      sld.addShape(ST[def?.pptx] || ST.rect, { ...geo, fill });
     }
   }
 }
