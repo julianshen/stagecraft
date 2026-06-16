@@ -30,6 +30,9 @@ const PEN_TOOLS = [
   { id:'pen',    icon:'pen',     title:'Pen · P' },
 ];
 
+// Arrow key → unit nudge direction for the selection.
+const NUDGE_DIR = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+
 
 export default function SlideEditor(props) {
   const {
@@ -96,7 +99,6 @@ export default function SlideEditor(props) {
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
   useEffect(() => {
-    const NUDGE_DIR = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     function onKey(e) {
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;

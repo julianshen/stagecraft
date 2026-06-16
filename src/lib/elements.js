@@ -142,7 +142,7 @@ export function rotateElement(el, px, py) {
 // top. Returns the SAME array ref when nothing matches (no-op). Pure. The caller
 // supplies `newIds` (generated outside any reducer, so a StrictMode double-run
 // is deterministic).
-export function duplicateElements(elements, ids, newIds, { dx = 16, dy = 16 } = {}) {
+export function duplicateElements(elements, ids, newIds, { dx = GRID * 2, dy = GRID * 2 } = {}) {
   const sel = new Set(ids);
   const clones = [];
   let k = 0;
