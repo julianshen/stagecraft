@@ -107,8 +107,8 @@ export default function SlideEditor(props) {
       if ((e.key === 'Delete' || e.key === 'Backspace') && cb.onDeleteElements) {
         e.preventDefault(); cb.onDeleteElements(); return;
       }
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D') && cb.onDuplicateElements) {
-        e.preventDefault(); cb.onDuplicateElements(); return; // ⌘/Ctrl-D
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'd' || e.key === 'D') && cb.onDuplicateElements) {
+        e.preventDefault(); cb.onDuplicateElements(); return; // exact ⌘/Ctrl-D (don't swallow Ctrl+Shift+D etc.)
       }
       if (NUDGE_DIR[e.key] && !e.metaKey && !e.ctrlKey && cb.onNudgeElements) {
         e.preventDefault();

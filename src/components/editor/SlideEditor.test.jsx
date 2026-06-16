@@ -111,6 +111,13 @@ describe('SlideEditor keyboard shortcuts', () => {
     expect(onDuplicateElements).toHaveBeenCalledTimes(1);
   });
 
+  it('does not duplicate on a modified ⌘D (Ctrl+Shift+D etc. pass through to the browser)', () => {
+    const onDuplicateElements = vi.fn();
+    renderEditor({ onDuplicateElements }, 1);
+    fireEvent.keyDown(document.body, { key: 'D', metaKey: true, shiftKey: true });
+    expect(onDuplicateElements).not.toHaveBeenCalled();
+  });
+
   it('arrow keys nudge the selection by one grid step (shift = larger)', () => {
     const onNudgeElements = vi.fn();
     renderEditor({ onNudgeElements }, 1);
