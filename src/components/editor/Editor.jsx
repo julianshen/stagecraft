@@ -149,20 +149,30 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     onDeckChange(prev => updateSlideElements(prev, curId, els => [...els, createElement(type, { ...opts, id })]));
     setSelElIds([id]);
   }
-  // Duplicate the selection: offset clones with fresh ids (generated up front so
-  // the reducer is deterministic under a StrictMode double-run), then select them.
+  // Duplicate the selection: offset clones with fresh ids, then select them.
+  // Gate on the LIVE selected elements (still present), so the generated id
+  // count matches the clones actually made and no phantom id gets selected; the
+  // ids are minted up front so the reducer is deterministic under a StrictMode
+  // double-run.
   function duplicateSelectedElements() {
-    if (!selElIds.length) return;
-    const newIds = selElIds.map(genElId);
+    const live = slideElements.filter(e => selElIds.includes(e.id));
+    if (!live.length) return;
+    const newIds = live.map(genElId);
     onDeckChange(prev => updateSlideElements(prev, curId, els => duplicateElements(els, selElIds, newIds)));
     setSelElIds(newIds);
   }
   // Keyboard nudge: move the whole selection by (dx, dy) (grid-snapped + clamped
-  // by moveElement), committed as one batch update.
+  // by moveElement), committed as one batch update. Elements already pinned at
+  // the boundary (no coordinate change) are dropped, so a fully-clamped nudge
+  // commits nothing.
   function nudgeSelectedElements(dx, dy) {
     const ids = new Set(selElIds);
     const updates = new Map();
-    slideElements.forEach(el => { if (ids.has(el.id)) updates.set(el.id, moveElement(el, dx, dy)); });
+    slideElements.forEach(el => {
+      if (!ids.has(el.id)) return;
+      const moved = moveElement(el, dx, dy);
+      if (moved.x !== el.x || moved.y !== el.y) updates.set(el.id, moved);
+    });
     updateElements(updates);
   }
   function updateElement(id, patch) {
