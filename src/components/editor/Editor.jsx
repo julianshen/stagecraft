@@ -3,7 +3,7 @@ import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
-import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, moveElement } from '../../lib/elements.js';
+import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, cloneElements, moveElement, GRID } from '../../lib/elements.js';
 import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
 import { fieldPatch } from '../../lib/slideEdit.js';
 
@@ -191,6 +191,29 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     onDeckChange(prev => updateSlideElements(prev, curId, els => els.filter(e => !ids.has(e.id))));
     setSelElIds([]);
   }
+  // Clipboard for cross-slide copy/paste — an in-app clipboard (survives slide
+  // switches, not a reload), holding id-less element data.
+  const clipboardRef = useRef([]);
+  function copySelectedElements() {
+    const sel = slideElements.filter(e => selElIds.includes(e.id));
+    if (!sel.length) return false;
+    clipboardRef.current = sel.map(({ id, ...rest }) => rest); // strip ids; keep geometry
+    return true;
+  }
+  function cutSelectedElements() {
+    if (copySelectedElements()) deleteSelectedElements();
+  }
+  // Paste the clipboard onto the current slide: offset clones with fresh ids,
+  // selected; the clipboard then advances so repeated pastes cascade.
+  function pasteElements() {
+    const clip = clipboardRef.current;
+    if (!clip.length || !curId) return;
+    const newIds = clip.map(genElId);
+    const clones = cloneElements(clip, newIds);
+    onDeckChange(prev => updateSlideElements(prev, curId, els => [...els, ...clones]));
+    setSelElIds(newIds);
+    clipboardRef.current = clip.map(c => ({ ...c, x: c.x + GRID * 2, y: c.y + GRID * 2 }));
+  }
   // Align the current multi-selection along an edge (no-op for <2 selected).
   function alignSelected(edge) {
     if (selElIds.length < 2) return;
@@ -262,6 +285,9 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onArrangeElement: arrangeElement,
         onDuplicateElements: duplicateSelectedElements,
         onNudgeElements: nudgeSelectedElements,
+        onCopyElements: copySelectedElements,
+        onCutElements: cutSelectedElements,
+        onPasteElements: pasteElements,
         onMarqueeSelect: marqueeSelect,
         onPresent,
         onExport: onOpenExport,

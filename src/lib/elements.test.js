@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
 import { LINE_MAX_THICKNESS } from './shapes.js';
 
 describe('snap', () => {
@@ -187,6 +187,28 @@ describe('updateSlideElements', () => {
     expect(updateSlideElements(d, 'a', (els) => [...els])).not.toBe(d); // new array → new deck (immutable)
     expect(updateSlideElements(d, 'a', (els) => els)).toBe(d);          // same array → same deck (no sync write)
     expect(updateSlideElements(null, 'a', (e) => e)).toBe(null);
+  });
+});
+
+describe('cloneElements', () => {
+  const src = () => [{ id: 'a', type: 'rect', x: 10, y: 20, w: 100, h: 50, fill: '#abc' }, { id: 'b', type: 'text', x: 30, y: 40, w: 60, h: 60, content: 'Hi' }];
+
+  it('clones each source with its supplied id and a uniform offset (relative layout preserved)', () => {
+    const out = cloneElements(src(), ['a2', 'b2'], { dx: 16, dy: 16 });
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({ id: 'a2', type: 'rect', x: 26, y: 36, w: 100, h: 50, fill: '#abc' });
+    expect(out[1]).toMatchObject({ id: 'b2', type: 'text', x: 46, y: 56, content: 'Hi' });
+  });
+
+  it('defaults the offset and does not mutate the sources', () => {
+    const s = src();
+    const out = cloneElements(s, ['a2', 'b2']);
+    expect(out[0].x).toBe(10 + GRID * 2); // default offset
+    expect(s[0]).toEqual({ id: 'a', type: 'rect', x: 10, y: 20, w: 100, h: 50, fill: '#abc' });
+  });
+
+  it('returns an empty array for no sources', () => {
+    expect(cloneElements([], [])).toEqual([]);
   });
 });
 
