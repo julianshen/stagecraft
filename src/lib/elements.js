@@ -160,13 +160,22 @@ export function reorderElement(elements, id, op) {
   return elements; // unknown op
 }
 
-// Immutably transform the `elements` array of slide `slideId` via `fn`.
+// Immutably transform the `elements` array of slide `slideId` via `fn`. When
+// `fn` returns the SAME array reference (a no-op, e.g. reorderElement on an
+// element already at the target end), the deck is returned UNCHANGED — so a
+// no-op edit doesn't churn the deck rev or trigger a sync write.
 export function updateSlideElements(deck, slideId, fn) {
   if (!deck) return deck;
-  return {
-    ...deck,
-    slides: (deck.slides || []).map((s) => (s.id === slideId ? { ...s, elements: fn(s.elements || []) } : s)),
-  };
+  let changed = false;
+  const slides = (deck.slides || []).map((s) => {
+    if (s.id !== slideId) return s;
+    const current = s.elements || [];
+    const next = fn(current);
+    if (next === current) return s; // fn no-op'd
+    changed = true;
+    return { ...s, elements: next };
+  });
+  return changed ? { ...deck, slides } : deck;
 }
 
 // Which edges a given resize handle moves.

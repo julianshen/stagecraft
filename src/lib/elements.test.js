@@ -182,9 +182,10 @@ describe('updateSlideElements', () => {
     expect(next.slides[1]).toEqual({ id: 'b', layout: 'kpi' });
   });
 
-  it('returns a new deck object (immutable) and tolerates a null deck', () => {
+  it('returns a new deck for a real change, the same deck for a no-op, and tolerates a null deck', () => {
     const d = deck();
-    expect(updateSlideElements(d, 'a', (e) => e)).not.toBe(d);
+    expect(updateSlideElements(d, 'a', (els) => [...els])).not.toBe(d); // new array → new deck (immutable)
+    expect(updateSlideElements(d, 'a', (els) => els)).toBe(d);          // same array → same deck (no sync write)
     expect(updateSlideElements(null, 'a', (e) => e)).toBe(null);
   });
 });
