@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
 import { LINE_MAX_THICKNESS } from './shapes.js';
 
 describe('snap', () => {
@@ -186,6 +186,32 @@ describe('updateSlideElements', () => {
     const d = deck();
     expect(updateSlideElements(d, 'a', (e) => e)).not.toBe(d);
     expect(updateSlideElements(null, 'a', (e) => e)).toBe(null);
+  });
+});
+
+describe('reorderElement (z-order)', () => {
+  const els = () => [{ id: 'a' }, { id: 'b' }, { id: 'c' }]; // paint order: a bottom … c top
+
+  it('brings an element to the front (end of the array = painted last)', () => {
+    expect(reorderElement(els(), 'a', 'front').map((e) => e.id)).toEqual(['b', 'c', 'a']);
+  });
+  it('sends an element to the back (start of the array = painted first)', () => {
+    expect(reorderElement(els(), 'c', 'back').map((e) => e.id)).toEqual(['c', 'a', 'b']);
+  });
+  it('is a no-op (same reference) when already at the target end', () => {
+    const arr = els();
+    expect(reorderElement(arr, 'c', 'front')).toBe(arr); // already top
+    expect(reorderElement(arr, 'a', 'back')).toBe(arr);  // already bottom
+  });
+  it('returns the input unchanged for an unknown id or op', () => {
+    const arr = els();
+    expect(reorderElement(arr, 'zzz', 'front')).toBe(arr);
+    expect(reorderElement(arr, 'b', 'sideways')).toBe(arr);
+  });
+  it('does not mutate the input array', () => {
+    const arr = els();
+    reorderElement(arr, 'a', 'front');
+    expect(arr.map((e) => e.id)).toEqual(['a', 'b', 'c']);
   });
 });
 

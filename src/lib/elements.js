@@ -137,6 +137,29 @@ export function rotateElement(el, px, py) {
   return { ...el, rot: ((deg % 360) + 360) % 360 };
 }
 
+// Z-order: move element `id` within `elements` (paint order = array order, so
+// the last element is on top). `op` is 'front' (to top) or 'back' (to bottom).
+// Returns the SAME array reference when nothing moves (unknown id/op, or already
+// at the target end), so a no-op doesn't trigger a deck write. Pure (no mutation).
+export function reorderElement(elements, id, op) {
+  const list = elements || [];
+  const i = list.findIndex((e) => e.id === id);
+  if (i < 0) return elements;
+  if (op === 'front') {
+    if (i === list.length - 1) return elements; // already on top
+    const arr = list.slice();
+    arr.push(arr.splice(i, 1)[0]);
+    return arr;
+  }
+  if (op === 'back') {
+    if (i === 0) return elements; // already on the bottom
+    const arr = list.slice();
+    arr.unshift(arr.splice(i, 1)[0]);
+    return arr;
+  }
+  return elements; // unknown op
+}
+
 // Immutably transform the `elements` array of slide `slideId` via `fn`.
 export function updateSlideElements(deck, slideId, fn) {
   if (!deck) return deck;

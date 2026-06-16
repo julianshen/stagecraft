@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, cleanup } from '@testing-library/react';
 import SlideEditor from './SlideEditor.jsx';
 
 // jsdom has no ResizeObserver; CanvasSlide (rendered inside SlideEditor) needs
@@ -58,6 +58,23 @@ describe('SlideEditor align toolbar', () => {
     const { getByTitle } = renderEditor({}, 2);
     expect(getByTitle('Align left')).not.toBeDisabled(); // align works at 2
     expect(getByTitle('Distribute')).toBeDisabled();      // distribute needs 3
+  });
+
+  it('the z-order buttons arrange the single selected element', () => {
+    const onArrangeElement = vi.fn();
+    const { getByTitle } = renderEditor({ onArrangeElement }, 1);
+    fireEvent.click(getByTitle('Bring to front'));
+    expect(onArrangeElement).toHaveBeenCalledWith('front');
+    fireEvent.click(getByTitle('Send to back'));
+    expect(onArrangeElement).toHaveBeenCalledWith('back');
+  });
+
+  it('disables the z-order buttons unless exactly one element is selected', () => {
+    expect(renderEditor({}, 1).getByTitle('Bring to front')).not.toBeDisabled();
+    cleanup();
+    expect(renderEditor({}, 0).getByTitle('Bring to front')).toBeDisabled();
+    cleanup();
+    expect(renderEditor({}, 2).getByTitle('Send to back')).toBeDisabled();
   });
 });
 

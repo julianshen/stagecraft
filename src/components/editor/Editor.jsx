@@ -3,7 +3,7 @@ import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
-import { createElement, updateSlideElements, alignElements, distributeElements } from '../../lib/elements.js';
+import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement } from '../../lib/elements.js';
 import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
 import { fieldPatch } from '../../lib/slideEdit.js';
 
@@ -190,6 +190,12 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
       return els.map(e => byId.get(e.id) || e);
     }));
   }
+  // Z-order the single selected element ('front'|'back'); paint order = array order.
+  function arrangeElement(op) {
+    if (selElIds.length !== 1) return;
+    const id = selElIds[0];
+    onDeckChange(prev => updateSlideElements(prev, curId, els => reorderElement(els, id, op)));
+  }
 
   const renderSlide = useCallback((slide, ctx) => (
     <Slide slide={slide} deck={ctx.deck} sectionName={ctx.sectionName} num={ctx.num} total={ctx.total} />
@@ -226,6 +232,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onDeleteElements: deleteSelectedElements,
         onAlignElements: alignSelected,
         onDistributeElements: distributeSelected,
+        onArrangeElement: arrangeElement,
         onMarqueeSelect: marqueeSelect,
         onPresent,
         onExport: onOpenExport,

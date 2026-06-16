@@ -122,6 +122,7 @@ export default function SlideEditor(props) {
   const selCount = props.selectedElementCount || 0;
   const canAlign = selCount >= 2;
   const canDistribute = selCount >= 3;
+  const canArrange = selCount === 1; // z-order moves one element through the stack
 
   const deckCtx = useMemo(() => ({
     deck,
@@ -187,6 +188,8 @@ export default function SlideEditor(props) {
           <IconButton name="align-middle" title="Align middle" disabled={!canAlign} onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('vmiddle')}/>
           <IconButton name="align-bottom" title="Align bottom" disabled={!canAlign} onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('bottom')}/>
           <IconButton name="logic" title="Distribute" disabled={!canDistribute} onClick={() => callbacks.onDistributeElements && callbacks.onDistributeElements()}/>
+          <IconButton name="chevron-up" title="Bring to front" disabled={!canArrange} onClick={() => callbacks.onArrangeElement && callbacks.onArrangeElement('front')}/>
+          <IconButton name="chevron-down" title="Send to back" disabled={!canArrange} onClick={() => callbacks.onArrangeElement && callbacks.onArrangeElement('back')}/>
         </div>
 
         <div className="group">
