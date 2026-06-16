@@ -150,14 +150,12 @@ export function cloneElements(sources, newIds, { dx = GRID * 2, dy = GRID * 2 } 
 // top. Returns the SAME array ref when nothing matches (no-op). Pure. The caller
 // supplies `newIds` (generated outside any reducer, so a StrictMode double-run
 // is deterministic).
-export function duplicateElements(elements, ids, newIds, { dx = GRID * 2, dy = GRID * 2 } = {}) {
+export function duplicateElements(elements, ids, newIds, opts = {}) {
   const sel = new Set(ids);
-  const clones = [];
-  let k = 0;
-  for (const el of elements || []) {
-    if (sel.has(el.id) && k < newIds.length) clones.push({ ...el, id: newIds[k++], x: el.x + dx, y: el.y + dy });
-  }
-  return clones.length ? [...elements, ...clones] : elements;
+  // Selected elements in array order, capped at the supplied id count.
+  const matched = (elements || []).filter((el) => sel.has(el.id)).slice(0, newIds.length);
+  if (!matched.length) return elements;
+  return [...elements, ...cloneElements(matched, newIds, opts)];
 }
 
 // Z-order: move element `id` within `elements` (paint order = array order, so
