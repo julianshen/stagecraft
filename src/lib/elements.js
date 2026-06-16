@@ -1,5 +1,6 @@
 // Pure geometry for free-form canvas elements (the overlay layer on a slide).
 // All coordinates are in the slide's 1920×1080 authoring space.
+import { LINE_MAX_THICKNESS, shapeDef } from './shapes.js';
 
 export const SLIDE_W = 1920;
 export const SLIDE_H = 1080;
@@ -23,6 +24,7 @@ const DEFAULTS = {
   ellipse: { w: 240, h: 240, fill: '#4f46e5' },
   circle: { w: 240, h: 240, fill: '#4f46e5' },
   image: { w: 480, h: 360 }, // a 4:3 box; carries `src` (a data URL), not a fill
+  line: { w: 320, h: LINE_MAX_THICKNESS }, // a thin rule — created at the height it renders at
 };
 
 // Build a new element of `type`, centered by default, with snapped position.
@@ -207,8 +209,12 @@ export function resizeElement(el, handle, dx, dy, { grid = GRID, min = MIN_SIZE,
 // Clamp an element's geometry to the slide bounds + min size (no snapping) —
 // used to sanitize direct numeric edits from the Properties panel.
 export function clampElement(el, { bounds = { w: SLIDE_W, h: SLIDE_H }, min = MIN_SIZE } = {}) {
+  // A line is a thin rule rendered at exactly LINE_MAX_THICKNESS, so pin its
+  // model height there — an inspector edit (even a larger typed value) can't
+  // create a model/render gap. Width still honors the normal min/bounds.
+  const isLine = !!shapeDef(el.type)?.line;
   const w = clamp(el.w, min, bounds.w);
-  const h = clamp(el.h, min, bounds.h);
+  const h = isLine ? LINE_MAX_THICKNESS : clamp(el.h, min, bounds.h);
   const out = {
     ...el,
     w,

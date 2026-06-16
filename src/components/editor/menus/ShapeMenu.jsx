@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Icon from '../../ui/Icon.jsx';
 
-const SHAPE_TOOLS = [
+// Exported for the drift guard: every tool id must resolve to a real shape in
+// the shared registry (lib/shapes.js), else it would create an element that
+// silently renders/exports as a fallback rect.
+export const SHAPE_TOOLS = [
   { id: 'shape', icon: 'shape', label: 'Rectangle' },
   { id: 'rounded', icon: 'rounded-rect', label: 'Rounded' },
   { id: 'circle', icon: 'circle', label: 'Ellipse' },
