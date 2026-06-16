@@ -27,11 +27,14 @@ Object.values(SHAPES).forEach(Object.freeze);
 // `shape` for a rectangle, but the canonical rect/ellipse tokens also resolve.
 const ALIASES = Object.freeze({ rect: 'shape', ellipse: 'circle' });
 
+// Own-property check (not `Object.hasOwn`, which is absent on Vite's default
+// targets like Safari 14 / Chrome 87) so a prototype-chain key (e.g. a
+// deck-supplied type:'constructor' from PUT/MCP) resolves to null.
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
 // Resolve an element type to its shape definition (null for non-shapes/unknown).
-// `Object.hasOwn` so a prototype-chain key (e.g. a deck-supplied type:'constructor'
-// from PUT/MCP) resolves to null, not the inherited Object method.
 export function shapeDef(type) {
-  if (Object.hasOwn(SHAPES, type)) return SHAPES[type];
-  if (Object.hasOwn(ALIASES, type)) return SHAPES[ALIASES[type]];
+  if (own(SHAPES, type)) return SHAPES[type];
+  if (own(ALIASES, type)) return SHAPES[ALIASES[type]];
   return null;
 }
