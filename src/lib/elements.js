@@ -137,6 +137,21 @@ export function rotateElement(el, px, py) {
   return { ...el, rot: ((deg % 360) + 360) % 360 };
 }
 
+// Duplicate the elements whose ids are in `ids`: append an offset clone of each
+// (in array order) carrying the matching `newIds` entry, so the copies land on
+// top. Returns the SAME array ref when nothing matches (no-op). Pure. The caller
+// supplies `newIds` (generated outside any reducer, so a StrictMode double-run
+// is deterministic).
+export function duplicateElements(elements, ids, newIds, { dx = 16, dy = 16 } = {}) {
+  const sel = new Set(ids);
+  const clones = [];
+  let k = 0;
+  for (const el of elements || []) {
+    if (sel.has(el.id) && k < newIds.length) clones.push({ ...el, id: newIds[k++], x: el.x + dx, y: el.y + dy });
+  }
+  return clones.length ? [...elements, ...clones] : elements;
+}
+
 // Z-order: move element `id` within `elements` (paint order = array order, so
 // the last element is on top). `op` is 'front' (to top) or 'back' (to bottom).
 // Returns the SAME array reference when nothing moves (unknown id/op, or already

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { render, fireEvent, cleanup } from '@testing-library/react';
 import SlideEditor from './SlideEditor.jsx';
+import { GRID } from '../../lib/elements.js';
 
 // jsdom has no ResizeObserver; CanvasSlide (rendered inside SlideEditor) needs
 // one. Restore the original afterwards so the stub can't leak across files.
@@ -99,5 +100,49 @@ describe('SlideEditor image insert', () => {
     const input = container.querySelector('input[type="file"]');
     fireEvent.change(input, { target: { files: [] } });
     expect(onAddElement).not.toHaveBeenCalled();
+  });
+});
+
+describe('SlideEditor keyboard shortcuts', () => {
+  it('⌘/Ctrl-D duplicates the selection', () => {
+    const onDuplicateElements = vi.fn();
+    renderEditor({ onDuplicateElements }, 1);
+    fireEvent.keyDown(document.body, { key: 'd', metaKey: true });
+    expect(onDuplicateElements).toHaveBeenCalledTimes(1);
+  });
+
+  it('arrow keys nudge the selection by one grid step (shift = larger)', () => {
+    const onNudgeElements = vi.fn();
+    renderEditor({ onNudgeElements }, 1);
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(onNudgeElements).toHaveBeenCalledWith(GRID, 0);
+    fireEvent.keyDown(document.body, { key: 'ArrowUp', shiftKey: true });
+    expect(onNudgeElements).toHaveBeenCalledWith(0, -GRID * 5);
+  });
+
+  it('Delete removes the selection', () => {
+    const onDeleteElements = vi.fn();
+    renderEditor({ onDeleteElements }, 1);
+    fireEvent.keyDown(document.body, { key: 'Delete' });
+    expect(onDeleteElements).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores the shortcuts when no element is selected', () => {
+    const cb = { onDuplicateElements: vi.fn(), onNudgeElements: vi.fn(), onDeleteElements: vi.fn() };
+    renderEditor(cb, 0);
+    fireEvent.keyDown(document.body, { key: 'd', metaKey: true });
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    fireEvent.keyDown(document.body, { key: 'Delete' });
+    expect(cb.onDuplicateElements).not.toHaveBeenCalled();
+    expect(cb.onNudgeElements).not.toHaveBeenCalled();
+    expect(cb.onDeleteElements).not.toHaveBeenCalled();
+  });
+
+  it('ignores the shortcuts while typing in a field', () => {
+    const onDuplicateElements = vi.fn();
+    const { container } = renderEditor({ onDuplicateElements }, 1);
+    const input = container.querySelector('input'); // the hidden image file input
+    fireEvent.keyDown(input, { key: 'd', metaKey: true });
+    expect(onDuplicateElements).not.toHaveBeenCalled();
   });
 });
