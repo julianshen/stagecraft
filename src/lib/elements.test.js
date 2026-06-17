@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE } from './elements.js';
-import { LINE_MAX_THICKNESS } from './shapes.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -37,10 +36,11 @@ describe('createElement', () => {
     expect(createElement('rect', { id: 'r', fill: '#abcdef' }).fill).toBe('#abcdef');
   });
 
-  it('creates a line at its rendered thickness, not a tall rect', () => {
+  it('creates a line as a thin rule (a comfortable default thickness, wide)', () => {
     const el = createElement('line', { id: 'l' });
     expect(el.type).toBe('line');
-    expect(el.h).toBe(LINE_MAX_THICKNESS); // model height == the 8px the renderer/export clamp to
+    expect(el.w).toBe(320);
+    expect(el.h).toBe(8);  // a thin default rule — now an adjustable thickness, not a hard cap
   });
 
   it('creates an image element carrying its src and no fill', () => {
@@ -337,11 +337,32 @@ describe('clampElement', () => {
     expect(clampElement(el)).toMatchObject({ x: 101, y: 99, w: 300, h: 150 });
   });
 
-  it('pins a line strictly to its thickness, even for a larger typed height', () => {
-    expect(clampElement({ id: 'l', type: 'line', x: 0, y: 0, w: 320, h: LINE_MAX_THICKNESS }).h).toBe(LINE_MAX_THICKNESS);
-    const c = clampElement({ id: 'l', type: 'line', x: 0, y: 0, w: 320, h: 50 }); // typed 50px
-    expect(c.h).toBe(LINE_MAX_THICKNESS); // pinned to 8, not 50 (renderer/export cap there)
-    expect(c.w).toBe(320);                // width still honors the normal min/bounds
+  it('treats a line height as a real adjustable thickness, floored at MIN_LINE_THICKNESS', () => {
+    // A larger thickness is kept as-is (the model == the visual == the export now).
+    expect(clampElement({ id: 'l', type: 'line', x: 0, y: 0, w: 320, h: 50 }).h).toBe(50);
+    // Below the floor clamps up to MIN_LINE_THICKNESS (lines may go thinner than MIN_SIZE).
+    expect(clampElement({ id: 'l', type: 'line', x: 0, y: 0, w: 320, h: 1 }).h).toBe(MIN_LINE_THICKNESS);
+    expect(MIN_LINE_THICKNESS).toBeLessThan(MIN_SIZE);
+    // A huge thickness still clamps to the slide bounds; width keeps the normal min.
+    expect(clampElement({ id: 'l', type: 'line', x: 0, y: 0, w: 8, h: 99999 }).h).toBe(SLIDE_H);
+    expect(clampElement({ id: 'l', type: 'line', x: 0, y: 0, w: 8, h: 8 }).w).toBe(MIN_SIZE);
+  });
+
+  it('resizes a line thinner than MIN_SIZE (down to MIN_LINE_THICKNESS) while width keeps MIN_SIZE', () => {
+    const line = { id: 'l', type: 'line', x: 0, y: 0, w: 320, h: 24 };
+    // Drag the bottom edge up past MIN_SIZE — a line may become a hairline.
+    expect(resizeElement(line, 's', 0, -100).h).toBe(MIN_LINE_THICKNESS);
+    // Drag the right edge in — width still floors at MIN_SIZE, not the line floor.
+    expect(resizeElement(line, 'e', -1000, 0).w).toBe(MIN_SIZE);
+    // A non-line shape's height keeps the normal MIN_SIZE floor.
+    expect(resizeElement({ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100 }, 's', 0, -1000).h).toBe(MIN_SIZE);
+  });
+
+  it('thins a ROTATED line down to MIN_LINE_THICKNESS (the rotated-resize path, the original caveat)', () => {
+    const line = { id: 'l', type: 'line', x: 100, y: 100, w: 320, h: 24, rot: 30 };
+    // Drag a height edge hard inward — the rotated resize floors thickness at the line min,
+    // so a rotated rule's handles track its real (now-thin) visual instead of a phantom box.
+    expect(resizeElement(line, 's', 0, -1000).h).toBe(MIN_LINE_THICKNESS);
   });
 
   it('clamps opacity to 0-100 and normalizes rotation to 0-360', () => {

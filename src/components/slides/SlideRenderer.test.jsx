@@ -85,6 +85,9 @@ describe('ElementsLayer', () => {
     const triangle = [...boxes].find(b => b.style.clipPath.includes('polygon'));
     expect(circle).toBeTruthy();   // circle → 50% radius, not a plain rect
     expect(triangle).toBeTruthy(); // triangle → clip-path polygon, not a rect
+    // A line renders at its real model height (its adjustable thickness), not a hard 8px cap.
+    const line = [...boxes].find(b => b.style.height === '100px' && b.style.width === '200px');
+    expect(line).toBeTruthy();
   });
 });
 

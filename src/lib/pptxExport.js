@@ -5,7 +5,7 @@ import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roa
 import { resolveNotes } from '../data/deck.js';
 import { toHex } from './color.js';
 import { SLIDE_W } from './elements.js';
-import { shapeDef, LINE_MAX_THICKNESS } from './shapes.js';
+import { shapeDef } from './shapes.js';
 
 // ---- theme colours (fallback to indigo) ----
 const THEME_COLORS = {
@@ -78,14 +78,11 @@ function addElements(pptx, sld, slide) {
       continue;
     }
     // Shapes (incl. line) carry a colour fill; the registry drives the mapping.
+    // A line maps to a rect at its real geometry — its height IS its thickness,
+    // so the generic shape path covers it (def.pptx === 'rect').
     const def = shapeDef(el.type);
     const fill = { color: pxHex(el.fill || '#15171C'), ...withOpacity };
-    if (def?.line) {
-      // A line matches the canvas's clamped thickness.
-      sld.addShape(ST.rect, { ...geo, h: IN(Math.min(num(el.h, LINE_MAX_THICKNESS), LINE_MAX_THICKNESS)), fill });
-    } else {
-      sld.addShape(ST[def?.pptx] || ST.rect, { ...geo, fill });
-    }
+    sld.addShape(ST[def?.pptx] || ST.rect, { ...geo, fill });
   }
 }
 

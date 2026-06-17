@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SHAPES, shapeDef, LINE_MAX_THICKNESS } from './shapes.js';
+import { SHAPES, shapeDef } from './shapes.js';
 
 describe('shapeDef', () => {
   it('resolves the menu rectangle type to a rect with a border radius', () => {
@@ -21,7 +21,6 @@ describe('shapeDef', () => {
   });
   it('marks the line special case', () => {
     expect(shapeDef('line')).toMatchObject({ pptx: 'rect', line: true });
-    expect(LINE_MAX_THICKNESS).toBe(8);
   });
   it('returns null for a non-shape / unknown type', () => {
     expect(shapeDef('text')).toBeNull();

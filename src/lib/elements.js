@@ -1,14 +1,23 @@
 // Pure geometry for free-form canvas elements (the overlay layer on a slide).
 // All coordinates are in the slide's 1920×1080 authoring space.
-import { LINE_MAX_THICKNESS, shapeDef } from './shapes.js';
+import { shapeDef } from './shapes.js';
 
 export const SLIDE_W = 1920;
 export const SLIDE_H = 1080;
 export const GRID = 8;       // snapping grid
 export const MIN_SIZE = 16;  // minimum element width/height
+// A line's thickness is a real, adjustable dimension (its model height == the
+// visual == the export). It may go thinner than MIN_SIZE — down to a hairline —
+// so its height floors here instead.
+export const MIN_LINE_THICKNESS = 2;
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export const snap = (v, grid = GRID) => Math.round(v / grid) * grid;
+
+// A line's thickness (its height) floors at MIN_LINE_THICKNESS — deliberately
+// lower than the caller's `min` (a rule may be a hairline). Non-lines use `min`.
+const isLine = (el) => !!shapeDef(el.type)?.line;
+const heightMin = (el, min) => (isLine(el) ? MIN_LINE_THICKNESS : min);
 
 // Element centre (slide coords).
 const centerOf = (el) => [el.x + el.w / 2, el.y + el.h / 2];
@@ -24,7 +33,7 @@ const DEFAULTS = {
   ellipse: { w: 240, h: 240, fill: '#4f46e5' },
   circle: { w: 240, h: 240, fill: '#4f46e5' },
   image: { w: 480, h: 360 }, // a 4:3 box; carries `src` (a data URL), not a fill
-  line: { w: 320, h: LINE_MAX_THICKNESS }, // a thin rule — created at the height it renders at
+  line: { w: 320, h: 8 }, // a thin rule by default; its height is an adjustable stroke thickness
 };
 
 // Build a new element of `type`, centered by default, with snapped position.
@@ -226,9 +235,10 @@ function resizeRotated(el, edge, dx, dy, grid, min) {
   if (edge.l) w = el.w - ldx; else if (edge.r) w = el.w + ldx;
   if (edge.t) h = el.h - ldy; else if (edge.b) h = el.h + ldy;
   // Snap only the resized dimension; the other stays exact (it may be off-grid
-  // from a Properties-panel edit). Min-size always applies.
+  // from a Properties-panel edit). Min-size always applies (height uses the
+  // line floor so a rotated rule can still be thinned).
   if (signX) w = Math.max(min, snap(w, grid));
-  if (signY) h = Math.max(min, snap(h, grid));
+  if (signY) h = Math.max(heightMin(el, min), snap(h, grid));
   // Hold the anchored local edge's screen point fixed across the size change.
   const [ax0, ay0] = rotateVec((signX * el.w) / 2, (signY * el.h) / 2, t);
   const px = cx0 + ax0, py = cy0 + ay0;
@@ -243,6 +253,9 @@ function resizeRotated(el, edge, dx, dy, grid, min) {
 export function resizeElement(el, handle, dx, dy, { grid = GRID, min = MIN_SIZE, bounds = { w: SLIDE_W, h: SLIDE_H } } = {}) {
   const edge = HANDLE_EDGES[handle] || {};
   if (el.rot) return resizeRotated(el, edge, dx, dy, grid, min);
+  // A line's height is its stroke thickness — it floors lower than other elements
+  // so a rule can be thinned to a hairline. Width still uses the normal min.
+  const hMin = heightMin(el, min);
   const right = el.x + el.w, bottom = el.y + el.h;
   let { x, y, w, h } = el;
 
@@ -250,11 +263,11 @@ export function resizeElement(el, handle, dx, dy, { grid = GRID, min = MIN_SIZE,
   // For a moving start-edge, clamp the edge FIRST (into [0, opposite - min]) and
   // derive the size from the anchored opposite edge — so the opposite edge never
   // drifts, even when dragged past the slide boundary. For an end-edge, clamp the
-  // size into [min, bounds - start].
+  // size into [min, bounds - start]. Height uses hMin (the line floor).
   if (edge.l) { x = clamp(snap(el.x + dx, grid), 0, right - min); w = right - x; }
   else if (edge.r) { w = clamp(snap(el.w + dx, grid), min, bounds.w - el.x); }
-  if (edge.t) { y = clamp(snap(el.y + dy, grid), 0, bottom - min); h = bottom - y; }
-  else if (edge.b) { h = clamp(snap(el.h + dy, grid), min, bounds.h - el.y); }
+  if (edge.t) { y = clamp(snap(el.y + dy, grid), 0, bottom - hMin); h = bottom - y; }
+  else if (edge.b) { h = clamp(snap(el.h + dy, grid), hMin, bounds.h - el.y); }
 
   return { ...el, x, y, w, h };
 }
@@ -262,12 +275,11 @@ export function resizeElement(el, handle, dx, dy, { grid = GRID, min = MIN_SIZE,
 // Clamp an element's geometry to the slide bounds + min size (no snapping) —
 // used to sanitize direct numeric edits from the Properties panel.
 export function clampElement(el, { bounds = { w: SLIDE_W, h: SLIDE_H }, min = MIN_SIZE } = {}) {
-  // A line is a thin rule rendered at exactly LINE_MAX_THICKNESS, so pin its
-  // model height there — an inspector edit (even a larger typed value) can't
-  // create a model/render gap. Width still honors the normal min/bounds.
-  const isLine = !!shapeDef(el.type)?.line;
+  // A line's height is its stroke thickness — a real dimension (model == visual
+  // == export), just floored lower than other elements so a rule can be a
+  // hairline. Width always honors the normal min/bounds.
   const w = clamp(el.w, min, bounds.w);
-  const h = isLine ? LINE_MAX_THICKNESS : clamp(el.h, min, bounds.h);
+  const h = clamp(el.h, heightMin(el, min), bounds.h);
   const out = {
     ...el,
     w,

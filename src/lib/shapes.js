@@ -4,8 +4,8 @@
 //     (full ellipse), or `radius` (CSS border-radius px);
 //   - the PPTX export (`addElements`) uses `pptx` (a pptxgenjs ShapeType key).
 // Add a shape here once and both pick it up. `line` is the thin-rule special
-// case (rendered as a clamped bar / a thin rect); text & image aren't shapes.
-export const LINE_MAX_THICKNESS = 8; // a line caps at this px on both surfaces
+// case (a sharp-cornered rect whose height is an adjustable stroke thickness —
+// floored at MIN_LINE_THICKNESS in lib/elements.js); text & image aren't shapes.
 
 // Frozen (incl. each nested def) — a shared global registry, matching the
 // codebase's exported-constant convention (riskSpec/chartSpec/DECK_CHROME_FIELDS).
