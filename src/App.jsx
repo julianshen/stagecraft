@@ -14,7 +14,7 @@ import TemplatePicker from './components/modals/TemplatePicker.jsx';
 import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
 import { useDeckSync } from './hooks/useDeckSync.js';
 import { useDeckHistory } from './hooks/useDeckHistory.js';
-import { isTextEntryTarget } from './lib/domEvents.js';
+import { isTextEditingTarget } from './lib/domEvents.js';
 import { listDecks, createDeck, openDeck, renameDeck, deleteDeck } from './lib/decksApi.js';
 import { templateDeck } from './lib/templateDeck.js';
 
@@ -160,12 +160,17 @@ export default function App() {
     function onKey(e) {
       if (e.metaKey && e.key === 'Enter') { setPresenting(true); }
       if (e.key === 'Escape') { setModal(null); setPresenting(false); }
-      // Undo/redo (⌘Z / ⌘⇧Z, Ctrl on non-mac). While typing in a field, defer
-      // to the browser's native text undo rather than reverting the deck.
+      // Undo/redo. While editing text, defer to the browser's native text undo
+      // rather than reverting the deck (but let it through on non-text controls
+      // like dropdowns/checkboxes, which have no native undo of their own).
       if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
-        if (isTextEntryTarget(e.target)) return;
+        if (isTextEditingTarget(e.target)) return;
         e.preventDefault();
-        if (e.shiftKey) redo(); else undo();
+        if (e.shiftKey) redo(); else undo();          // ⌘Z / ⌘⇧Z
+      } else if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) {
+        if (isTextEditingTarget(e.target)) return;
+        e.preventDefault();
+        redo();                                        // ⌘Y / Ctrl+Y (Windows/Linux redo)
       }
     }
     window.addEventListener('keydown', onKey);
