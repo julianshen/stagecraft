@@ -51,12 +51,14 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   const lastRev = useRef(null);  // the rev we last wrote or saw
   const seeded = useRef(false);  // first push dispatched (flips synchronously, even if it fails)
   const adopted = useRef(null);  // the exact deck object we last adopted (skip its echo PUT)
+  const adoptedRev = useRef(null); // the rev at which we adopted it (the echo guard is valid only until we push something newer)
   const activeId = useRef(null); // the deck our writes are for (tags PUTs so a stale write can't clobber a switched deck)
   const [initialized, setInitialized] = useState(false);
 
   const adopt = useCallback((serverDeck, rev, forId) => {
     lastRev.current = rev;
     adopted.current = serverDeck;
+    adoptedRev.current = rev;
     if (forId !== undefined) activeId.current = forId;
     onExternalRef.current(serverDeck);
   }, []);
@@ -95,7 +97,16 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   // *buffer* of edits during sustained typing, since an isolated edit's timer
   // fires well before any UI-driven deck switch.
   useEffect(() => {
-    if (!initialized || deck === adopted.current) return;
+    // Skip the echo PUT for the deck we just adopted — but ONLY while it's the
+    // freshly-adopted deck and nothing local has diverged from it yet. The first
+    // time `deck` differs from the adopted reference (any local edit), drop that
+    // suppression for good (`adoptedRev = null`) — otherwise an undo/redo that
+    // lands back on the adopted object's reference would be wrongly swallowed,
+    // even in the window before the prior edit's PUT acks. (No timing dependence,
+    // so it's StrictMode-idempotent.)
+    if (!initialized) return;
+    if (deck !== adopted.current) adoptedRev.current = null;
+    if (deck === adopted.current && lastRev.current === adoptedRev.current) return;
     let cancelled = false; // a newer edit/adopt has superseded this push
     const push = () => {
       // Tag the write with the deck it's for so the server drops it if the active

@@ -365,4 +365,64 @@ describe('push debounce', () => {
     await flush(300);
     expect(fetchFn.mock.calls.length).toBe(callsAfterSeed + 1); // one coalesced attempt
   });
+
+  it('pushes an undo/redo revert back to a previously adopted deck (no stale echo-guard skip)', async () => {
+    // Regression: undo can restore the EXACT object reference we last adopted.
+    // The identity-only echo guard used to swallow that revert, leaving the
+    // server ahead of the UI. The guard is now rev-scoped: once a later edit has
+    // pushed, the adopted reference is no longer "fresh" and a revert to it syncs.
+    const serverDeck = { id: 'agent', theme: 'emerald', slides: [], sections: [] };
+    const srv = makeServer({ deck: serverDeck, rev: 3 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} pushDebounceMs={50} controls={controls} />);
+    await flush();
+    const adoptedRef = controls.deck;       // the exact object adopted on mount
+    expect(srv.puts).toEqual([]);           // adoption echo suppressed
+
+    const edited = { ...serverDeck, theme: 'amber' };
+    act(() => { controls.setDeck(edited); });
+    await flush(60);
+    expect(srv.puts).toEqual([edited]);     // local edit pushed; server rev advances
+
+    act(() => { controls.setDeck(adoptedRef); }); // undo back to the adopted ref
+    await flush(60);
+    expect(srv.puts).toEqual([edited, adoptedRef]); // the revert is now pushed, not skipped
+  });
+
+  it('pushes an undo revert that lands before the prior edit PUT acks', async () => {
+    // The race: edit E's PUT has fired and is in-flight (lastRev not yet
+    // advanced); undo back to the adopted reference lands before the ack. The
+    // revert must still push — divergence drops the fresh-adoption suppression
+    // immediately, not only once a newer rev acks.
+    const serverDeck = { id: 'agent', theme: 'emerald', slides: [], sections: [] };
+    const state = { deck: serverDeck, rev: 3, activeId: 'agent' };
+    const puts = [];
+    const resolvers = []; // hold every PUT ack so we can act mid-flight
+    const fetchFn = vi.fn((url, init) => {
+      const path = url.split('?')[0];
+      if (path === '/api/deck/state') return Promise.resolve({ json: async () => ({ ...state }) });
+      if (path === '/api/deck' && init?.method === 'PUT') {
+        puts.push(JSON.parse(init.body));
+        state.rev += 1;
+        const rev = state.rev;
+        return new Promise((res) => resolvers.push(() => res({ json: async () => ({ rev, activeId: state.activeId }) })));
+      }
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    const controls = {};
+    render(<Harness fetchFn={fetchFn} pushDebounceMs={50} controls={controls} />);
+    await flush();
+    const adoptedRef = controls.deck;
+
+    act(() => { controls.setDeck({ ...serverDeck, theme: 'amber' }); });
+    await flush(60);                       // edit PUT fires; ack held (lastRev still 3)
+    expect(puts).toHaveLength(1);
+
+    act(() => { controls.setDeck(adoptedRef); }); // undo BEFORE the edit acks
+    await flush(60);
+    expect(puts).toHaveLength(2);          // revert pushed despite the in-flight, un-acked edit
+    expect(puts[1]).toEqual(adoptedRef);   // PUT body is serialized, so compare by value
+
+    act(() => { resolvers.forEach((r) => r()); }); // drain held acks
+  });
 });
