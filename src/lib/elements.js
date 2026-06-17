@@ -137,19 +137,25 @@ export function rotateElement(el, px, py) {
   return { ...el, rot: ((deg % 360) + 360) % 360 };
 }
 
+// Clone standalone element data (e.g. clipboard contents) into fresh elements:
+// each `sources[i]` gets `newIds[i]` and the SAME (dx, dy) offset, so a copied
+// group keeps its relative layout. Pure; sources are shallow-copied (canvas
+// elements are flat — no nested mutable fields).
+export function cloneElements(sources, newIds, { dx = GRID * 2, dy = GRID * 2 } = {}) {
+  return (sources || []).filter(Boolean).map((s, i) => ({ ...s, id: newIds[i], x: s.x + dx, y: s.y + dy }));
+}
+
 // Duplicate the elements whose ids are in `ids`: append an offset clone of each
 // (in array order) carrying the matching `newIds` entry, so the copies land on
 // top. Returns the SAME array ref when nothing matches (no-op). Pure. The caller
 // supplies `newIds` (generated outside any reducer, so a StrictMode double-run
 // is deterministic).
-export function duplicateElements(elements, ids, newIds, { dx = GRID * 2, dy = GRID * 2 } = {}) {
+export function duplicateElements(elements, ids, newIds, opts = {}) {
   const sel = new Set(ids);
-  const clones = [];
-  let k = 0;
-  for (const el of elements || []) {
-    if (sel.has(el.id) && k < newIds.length) clones.push({ ...el, id: newIds[k++], x: el.x + dx, y: el.y + dy });
-  }
-  return clones.length ? [...elements, ...clones] : elements;
+  // Selected elements in array order, capped at the supplied id count.
+  const matched = (elements || []).filter((el) => el && sel.has(el.id)).slice(0, newIds.length);
+  if (!matched.length) return elements;
+  return [...elements, ...cloneElements(matched, newIds, opts)];
 }
 
 // Z-order: move element `id` within `elements` (paint order = array order, so

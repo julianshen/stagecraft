@@ -111,6 +111,22 @@ describe('SlideEditor keyboard shortcuts', () => {
     expect(onDuplicateElements).toHaveBeenCalledTimes(1);
   });
 
+  it('⌘/Ctrl-C copies and ⌘/Ctrl-X cuts the selection', () => {
+    const onCopyElements = vi.fn(); const onCutElements = vi.fn();
+    renderEditor({ onCopyElements, onCutElements }, 1);
+    fireEvent.keyDown(document.body, { key: 'c', ctrlKey: true });
+    expect(onCopyElements).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(document.body, { key: 'x', ctrlKey: true });
+    expect(onCutElements).toHaveBeenCalledTimes(1);
+  });
+
+  it('⌘/Ctrl-V pastes even with nothing selected (it acts on the clipboard)', () => {
+    const onPasteElements = vi.fn();
+    renderEditor({ onPasteElements }, 0); // no selection
+    fireEvent.keyDown(document.body, { key: 'v', metaKey: true });
+    expect(onPasteElements).toHaveBeenCalledTimes(1);
+  });
+
   it('does not duplicate on a modified ⌘D (Ctrl+Shift+D etc. pass through to the browser)', () => {
     const onDuplicateElements = vi.fn();
     renderEditor({ onDuplicateElements }, 1);

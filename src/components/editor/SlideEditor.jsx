@@ -102,15 +102,27 @@ export default function SlideEditor(props) {
     function onKey(e) {
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-      if (!props.selectedElementCount) return; // all of these act on the selection
       const cb = callbacksRef.current;
+      const cmd = e.metaKey || e.ctrlKey;
+      const plain = cmd && !e.shiftKey && !e.altKey; // exact ⌘/Ctrl-<key>
+      // Paste acts on the clipboard, so it needs no current selection.
+      if (plain && (e.key === 'v' || e.key === 'V') && cb.onPasteElements) {
+        e.preventDefault(); cb.onPasteElements(); return;
+      }
+      if (!props.selectedElementCount) return; // the rest act on the selection
       if ((e.key === 'Delete' || e.key === 'Backspace') && cb.onDeleteElements) {
         e.preventDefault(); cb.onDeleteElements(); return;
       }
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'd' || e.key === 'D') && cb.onDuplicateElements) {
-        e.preventDefault(); cb.onDuplicateElements(); return; // exact ⌘/Ctrl-D (don't swallow Ctrl+Shift+D etc.)
+      if (plain && (e.key === 'd' || e.key === 'D') && cb.onDuplicateElements) {
+        e.preventDefault(); cb.onDuplicateElements(); return; // don't swallow Ctrl+Shift+D etc.
       }
-      if (NUDGE_DIR[e.key] && !e.metaKey && !e.ctrlKey && cb.onNudgeElements) {
+      if (plain && (e.key === 'c' || e.key === 'C') && cb.onCopyElements) {
+        e.preventDefault(); cb.onCopyElements(); return;
+      }
+      if (plain && (e.key === 'x' || e.key === 'X') && cb.onCutElements) {
+        e.preventDefault(); cb.onCutElements(); return;
+      }
+      if (NUDGE_DIR[e.key] && !cmd && cb.onNudgeElements) {
         e.preventDefault();
         const [sx, sy] = NUDGE_DIR[e.key];
         const step = e.shiftKey ? GRID * 5 : GRID; // shift = larger nudge; both grid-aligned
