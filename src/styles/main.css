@@ -2163,3 +2163,55 @@ input.range::-moz-range-thumb {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-wash);
 }
+
+/* ---- Toaster (transient notifications) ---- */
+.toaster {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 40px));
+  pointer-events: none; /* let clicks through the gaps; rows re-enable below */
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent); /* tone accent; overridden per-tone below */
+  background: var(--bg-2);
+  color: var(--ink);
+  box-shadow: var(--shadow-2);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.toast-error   { border-left-color: var(--danger); }
+.toast-success { border-left-color: var(--success); }
+.toast-warn    { border-left-color: var(--warn); }
+.toast-info    { border-left-color: var(--accent); }
+
+.toast-msg { flex: 1; min-width: 0; }
+
+.toast-x {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: -2px -4px 0 0;
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.toast-x:hover { background: var(--bg-3); color: var(--ink); }
