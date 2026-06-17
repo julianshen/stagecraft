@@ -8,6 +8,8 @@ import CollabLayer from './CollabLayer.jsx';
 import ThumbsPane from './ThumbsPane.jsx';
 import CanvasSlide from './CanvasSlide.jsx';
 import FormatToolbar from './FormatToolbar.jsx';
+import Toaster from '../ui/Toaster.jsx';
+import { useToasts } from '../../hooks/useToasts.js';
 import { clampElement, GRID } from '../../lib/elements.js';
 import { readImageFile } from '../../lib/imageFile.js';
 import ShapeMenu from './menus/ShapeMenu.jsx';
@@ -66,6 +68,9 @@ export default function SlideEditor(props) {
   // values bypass the drag clamps) before forwarding as a patch.
   const updateSelEl = (el) => { if (el?.id) callbacks.onUpdateElement?.(el.id, clampElement(el)); };
 
+  // Transient notifications (image-insert errors today; reusable surface).
+  const { toasts, notify, dismiss } = useToasts();
+
   // Image insert: the toolbar's Image button opens this hidden picker; the
   // chosen file is embedded as a data URL and added as an `image` element.
   const imageInputRef = useRef(null);
@@ -75,7 +80,13 @@ export default function SlideEditor(props) {
     if (file) {
       readImageFile(file)
         .then((src) => callbacks.onAddElement?.('image', { src }))
-        .catch((err) => console.error('Could not read the image file', err)); // surface, don't swallow or crash
+        .catch((err) => {
+          // Toast the friendly message for the user; keep the raw error in the
+          // console for debugging (stack/name a plain message would drop).
+          console.error('Could not read the image file', err);
+          const msg = err?.message || (typeof err === 'string' ? err : 'Could not read the image file');
+          notify(msg, { tone: 'error' });
+        });
     }
   };
 
@@ -332,6 +343,7 @@ export default function SlideEditor(props) {
           />
         )}
       </div>
+      <Toaster toasts={toasts} onDismiss={dismiss} />
     </>
   );
 }

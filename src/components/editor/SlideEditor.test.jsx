@@ -101,6 +101,17 @@ describe('SlideEditor image insert', () => {
     fireEvent.change(input, { target: { files: [] } });
     expect(onAddElement).not.toHaveBeenCalled();
   });
+
+  it('surfaces an error toast when the picked file is not a readable image', async () => {
+    const onAddElement = vi.fn();
+    const { container, findByText } = renderEditor({ onAddElement });
+    const input = container.querySelector('input[type="file"]');
+    // A non-image file makes readImageFile reject with a friendly message.
+    const file = new File(['plain text'], 'notes.txt', { type: 'text/plain' });
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(await findByText('That file is not an image')).toBeInTheDocument();
+    expect(onAddElement).not.toHaveBeenCalled();
+  });
 });
 
 describe('SlideEditor keyboard shortcuts', () => {
