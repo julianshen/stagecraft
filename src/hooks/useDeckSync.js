@@ -97,12 +97,15 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   // *buffer* of edits during sustained typing, since an isolated edit's timer
   // fires well before any UI-driven deck switch.
   useEffect(() => {
-    // Skip the echo PUT for the deck we just adopted — but ONLY while it's still
-    // the freshest thing we've synced (lastRev still at the adopted rev). Once a
-    // later edit has pushed (lastRev advanced), the identity guard would wrongly
-    // swallow an undo/redo that lands back on the adopted object's reference, so
-    // that revert must still be pushed. (rev-based, so it's StrictMode-idempotent.)
+    // Skip the echo PUT for the deck we just adopted — but ONLY while it's the
+    // freshly-adopted deck and nothing local has diverged from it yet. The first
+    // time `deck` differs from the adopted reference (any local edit), drop that
+    // suppression for good (`adoptedRev = null`) — otherwise an undo/redo that
+    // lands back on the adopted object's reference would be wrongly swallowed,
+    // even in the window before the prior edit's PUT acks. (No timing dependence,
+    // so it's StrictMode-idempotent.)
     if (!initialized) return;
+    if (deck !== adopted.current) adoptedRev.current = null;
     if (deck === adopted.current && lastRev.current === adoptedRev.current) return;
     let cancelled = false; // a newer edit/adopt has superseded this push
     const push = () => {
