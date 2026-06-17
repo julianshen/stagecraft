@@ -13,6 +13,8 @@ import TemplatePicker from './components/modals/TemplatePicker.jsx';
 
 import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
 import { useDeckSync } from './hooks/useDeckSync.js';
+import { useDeckHistory } from './hooks/useDeckHistory.js';
+import { isTextEntryTarget } from './lib/domEvents.js';
 import { listDecks, createDeck, openDeck, renameDeck, deleteDeck } from './lib/decksApi.js';
 import { templateDeck } from './lib/templateDeck.js';
 
@@ -49,13 +51,18 @@ export default function App() {
   const [presenting, setPresenting] = useState(false);
 
   // ---- deck state (lifted from Editor so it persists across view switches) ----
-  const [deck, setDeck] = useState(() => JSON.parse(JSON.stringify(SAMPLE_DECK)));
+  // Wrapped in undo/redo history: `commit` records an undoable edit; `reset`
+  // replaces the deck without history (deck open / external adoption — you can't
+  // undo across a different document).
+  const { deck, commit, reset, undo, redo } =
+    useDeckHistory(() => JSON.parse(JSON.stringify(SAMPLE_DECK)));
 
   // Two-way sync with the in-memory MCP server: push local edits and adopt
   // external (MCP/agent) edits live. Runs app-wide so it works in every view.
+  // External/opened decks are adopted via `reset` (a new baseline, not undoable).
   // Returns `adoptDeck(deck, rev)` for adopting an authoritative server deck
   // (e.g. on open) without echoing it back as a fresh edit.
-  const adoptDeck = useDeckSync(deck, setDeck);
+  const adoptDeck = useDeckSync(deck, reset);
 
   // ---- deck library (multi-deck) ----
   const [decks, setDecks] = useState([]);
@@ -153,10 +160,17 @@ export default function App() {
     function onKey(e) {
       if (e.metaKey && e.key === 'Enter') { setPresenting(true); }
       if (e.key === 'Escape') { setModal(null); setPresenting(false); }
+      // Undo/redo (⌘Z / ⌘⇧Z, Ctrl on non-mac). While typing in a field, defer
+      // to the browser's native text undo rather than reverting the deck.
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
+        if (isTextEntryTarget(e.target)) return;
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [undo, redo]);
 
   if (presenting) {
     return <PresenterView deck={deck} onExit={() => setPresenting(false)}/>;
@@ -181,7 +195,7 @@ export default function App() {
       {view === 'editor' && (
         <Editor
           deck={deck}
-          onDeckChange={setDeck}
+          onDeckChange={commit}
           accent={tw.accent}
           layoutVariant={tw.layout}
           density={tw.density}
@@ -191,7 +205,7 @@ export default function App() {
       )}
 
       {view === 'sorter' && (
-        <SorterView deck={deck} onDeckChange={setDeck} onBack={() => setView('editor')} onOpenSlide={() => setView('editor')}/>
+        <SorterView deck={deck} onDeckChange={commit} onBack={() => setView('editor')} onOpenSlide={() => setView('editor')}/>
       )}
 
       {view === 'settings' && (

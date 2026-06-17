@@ -365,4 +365,27 @@ describe('push debounce', () => {
     await flush(300);
     expect(fetchFn.mock.calls.length).toBe(callsAfterSeed + 1); // one coalesced attempt
   });
+
+  it('pushes an undo/redo revert back to a previously adopted deck (no stale echo-guard skip)', async () => {
+    // Regression: undo can restore the EXACT object reference we last adopted.
+    // The identity-only echo guard used to swallow that revert, leaving the
+    // server ahead of the UI. The guard is now rev-scoped: once a later edit has
+    // pushed, the adopted reference is no longer "fresh" and a revert to it syncs.
+    const serverDeck = { id: 'agent', theme: 'emerald', slides: [], sections: [] };
+    const srv = makeServer({ deck: serverDeck, rev: 3 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} pushDebounceMs={50} controls={controls} />);
+    await flush();
+    const adoptedRef = controls.deck;       // the exact object adopted on mount
+    expect(srv.puts).toEqual([]);           // adoption echo suppressed
+
+    const edited = { ...serverDeck, theme: 'amber' };
+    act(() => { controls.setDeck(edited); });
+    await flush(60);
+    expect(srv.puts).toEqual([edited]);     // local edit pushed; server rev advances
+
+    act(() => { controls.setDeck(adoptedRef); }); // undo back to the adopted ref
+    await flush(60);
+    expect(srv.puts).toEqual([edited, adoptedRef]); // the revert is now pushed, not skipped
+  });
 });

@@ -12,6 +12,7 @@ import Toaster from '../ui/Toaster.jsx';
 import { useToasts } from '../../hooks/useToasts.js';
 import { clampElement, GRID } from '../../lib/elements.js';
 import { readImageFile } from '../../lib/imageFile.js';
+import { isTextEntryTarget } from '../../lib/domEvents.js';
 import ShapeMenu from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
 import TableSizePicker from './menus/TableSizePicker.jsx';
@@ -111,8 +112,7 @@ export default function SlideEditor(props) {
   callbacksRef.current = callbacks;
   useEffect(() => {
     function onKey(e) {
-      const t = e.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (isTextEntryTarget(e.target)) return;
       const cb = callbacksRef.current;
       const cmd = e.metaKey || e.ctrlKey;
       const plain = cmd && !e.shiftKey && !e.altKey; // exact ⌘/Ctrl-<key>
