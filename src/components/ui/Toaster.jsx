@@ -6,7 +6,7 @@ import Icon from './Icon.jsx';
 export default function Toaster({ toasts = [], onDismiss }) {
   if (!toasts.length) return null;
   return (
-    <div className="toaster" role="status" aria-live="polite">
+    <div className="toaster" role="status" aria-live="polite" aria-atomic="false">
       {toasts.map((t) => (
         <div key={t.id} className={`toast toast-${t.tone || 'info'}`}>
           <span className="toast-msg">{t.message}</span>

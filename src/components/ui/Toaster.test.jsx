@@ -30,6 +30,9 @@ describe('Toaster', () => {
     const region = container.querySelector('.toaster');
     expect(region).toHaveAttribute('aria-live', 'polite');
     expect(region).toHaveAttribute('role', 'status');
+    // role="status" defaults aria-atomic to true, which re-announces the whole
+    // stack on every change; false announces only the newly added toast.
+    expect(region).toHaveAttribute('aria-atomic', 'false');
   });
 
   it('the dismiss button fires onDismiss with the toast id', () => {

@@ -84,7 +84,8 @@ export default function SlideEditor(props) {
           // Toast the friendly message for the user; keep the raw error in the
           // console for debugging (stack/name a plain message would drop).
           console.error('Could not read the image file', err);
-          notify(err?.message || 'Could not read the image file', { tone: 'error' });
+          const msg = err?.message || (typeof err === 'string' ? err : 'Could not read the image file');
+          notify(msg, { tone: 'error' });
         });
     }
   };
