@@ -54,7 +54,7 @@ export default function App() {
   // Wrapped in undo/redo history: `commit` records an undoable edit; `reset`
   // replaces the deck without history (deck open / external adoption — you can't
   // undo across a different document).
-  const { deck, commit, reset, undo, redo } =
+  const { deck, commit, reset, undo, redo, canUndo, canRedo } =
     useDeckHistory(() => JSON.parse(JSON.stringify(SAMPLE_DECK)));
 
   // Two-way sync with the in-memory MCP server: push local edits and adopt
@@ -206,6 +206,10 @@ export default function App() {
           density={tw.density}
           onPresent={() => setPresenting(true)}
           onOpenExport={() => setModal('export')}
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
         />
       )}
 

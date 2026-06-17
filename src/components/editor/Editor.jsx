@@ -7,7 +7,7 @@ import { createElement, updateSlideElements, alignElements, distributeElements, 
 import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
 import { fieldPatch } from '../../lib/slideEdit.js';
 
-export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport }) {
+export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport, onUndo, onRedo, canUndo, canRedo }) {
   // Open on the first slide — for a freshly created deck that's the cover the
   // user just named. (Previously flat[3], a heuristic tuned to the sample deck.)
   const [curId, setCurId] = useState(() => getFlatSlideIds(deck)[0] || null);
@@ -275,7 +275,11 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
       selectedElementIds={selElIds}
       selectedElementCount={selectedElements.length}
       onSelectElement={selectElement}
+      canUndo={canUndo}
+      canRedo={canRedo}
       callbacks={{
+        onUndo,
+        onRedo,
         onAddElement: addElement,
         onUpdateElement: updateElement,
         onUpdateElements: updateElements,
