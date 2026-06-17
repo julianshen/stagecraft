@@ -195,7 +195,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   // switches, not a reload), holding id-less element data.
   const clipboardRef = useRef([]);
   function copySelectedElements() {
-    const sel = slideElements.filter(e => selElIds.includes(e.id));
+    const sel = slideElements.filter(e => e && selElIds.includes(e.id));
     if (!sel.length) return false;
     clipboardRef.current = sel.map(({ id, ...rest }) => rest); // strip ids; keep geometry
     return true;

@@ -142,7 +142,7 @@ export function rotateElement(el, px, py) {
 // group keeps its relative layout. Pure; sources are shallow-copied (canvas
 // elements are flat — no nested mutable fields).
 export function cloneElements(sources, newIds, { dx = GRID * 2, dy = GRID * 2 } = {}) {
-  return (sources || []).map((s, i) => ({ ...s, id: newIds[i], x: s.x + dx, y: s.y + dy }));
+  return (sources || []).filter(Boolean).map((s, i) => ({ ...s, id: newIds[i], x: s.x + dx, y: s.y + dy }));
 }
 
 // Duplicate the elements whose ids are in `ids`: append an offset clone of each
@@ -153,7 +153,7 @@ export function cloneElements(sources, newIds, { dx = GRID * 2, dy = GRID * 2 } 
 export function duplicateElements(elements, ids, newIds, opts = {}) {
   const sel = new Set(ids);
   // Selected elements in array order, capped at the supplied id count.
-  const matched = (elements || []).filter((el) => sel.has(el.id)).slice(0, newIds.length);
+  const matched = (elements || []).filter((el) => el && sel.has(el.id)).slice(0, newIds.length);
   if (!matched.length) return elements;
   return [...elements, ...cloneElements(matched, newIds, opts)];
 }
