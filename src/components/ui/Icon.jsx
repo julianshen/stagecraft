@@ -102,6 +102,8 @@ const ICONS = {
   'component':     'M8 2l3 3-3 3-3-3zM14 8l-3 3-3-3 3-3zM8 14l-3-3 3-3 3 3zM2 8l3-3 3 3-3 3z',
   'timeline':      'M2 8h12M4 8V5M8 8V4M12 8V6',
   'frame':         'M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z',
+  'undo':          'M4 7l2.5-2.5M4 7l2.5 2.5M4 7h6a3 3 0 110 6H7',
+  'redo':          'M12 7l-2.5-2.5M12 7l-2.5 2.5M12 7H6a3 3 0 100 6h3',
 };
 
 export default function Icon({ name, size = 14, style, className, strokeWidth = 1.5 }) {

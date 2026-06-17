@@ -23,8 +23,8 @@ const deck = {
 const renderSlide = () => <div data-testid="slide" />;
 
 // Default count of 3 enables every Arrange button (align needs 2+, distribute 3+).
-function renderEditor(callbacks = {}, selectedElementCount = 3) {
-  return render(<SlideEditor deck={deck} renderSlide={renderSlide} callbacks={callbacks} selectedElementCount={selectedElementCount} />);
+function renderEditor(callbacks = {}, selectedElementCount = 3, extra = {}) {
+  return render(<SlideEditor deck={deck} renderSlide={renderSlide} callbacks={callbacks} selectedElementCount={selectedElementCount} {...extra} />);
 }
 
 describe('SlideEditor align toolbar', () => {
@@ -76,6 +76,29 @@ describe('SlideEditor align toolbar', () => {
     expect(renderEditor({}, 0).getByTitle('Bring to front')).toBeDisabled();
     cleanup();
     expect(renderEditor({}, 2).getByTitle('Send to back')).toBeDisabled();
+  });
+});
+
+describe('SlideEditor undo/redo toolbar', () => {
+  it('the Undo button calls onUndo and Redo calls onRedo', () => {
+    const onUndo = vi.fn(); const onRedo = vi.fn();
+    const { getByTitle } = renderEditor({ onUndo, onRedo }, 0, { canUndo: true, canRedo: true });
+    fireEvent.click(getByTitle('Undo'));
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    fireEvent.click(getByTitle('Redo'));
+    expect(onRedo).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables Undo when there is nothing to undo, Redo when nothing to redo', () => {
+    const { getByTitle } = renderEditor({}, 0, { canUndo: false, canRedo: true });
+    expect(getByTitle('Undo')).toBeDisabled();
+    expect(getByTitle('Redo')).not.toBeDisabled();
+  });
+
+  it('disables both when canUndo/canRedo are omitted (no history wired)', () => {
+    const { getByTitle } = renderEditor({}, 0);
+    expect(getByTitle('Undo')).toBeDisabled();
+    expect(getByTitle('Redo')).toBeDisabled();
   });
 });
 

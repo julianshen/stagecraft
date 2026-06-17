@@ -49,6 +49,8 @@ export default function SlideEditor(props) {
     tools = DEFAULT_TOOLS,
     slots = {},
     callbacks = {},
+    canUndo = false,
+    canRedo = false,
     theme = {},
   } = props;
 
@@ -171,6 +173,10 @@ export default function SlideEditor(props) {
     <>
       {/* ---------------- Toolbar ---------------- */}
       <div className="toolbar">
+        <div className="group">
+          <IconButton name="undo" title="Undo" disabled={!canUndo} onClick={() => callbacks.onUndo && callbacks.onUndo()}/>
+          <IconButton name="redo" title="Redo" disabled={!canRedo} onClick={() => callbacks.onRedo && callbacks.onRedo()}/>
+        </div>
         <div className="group">
           {tools.map(t => (
             <IconButton
