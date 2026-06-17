@@ -6,7 +6,7 @@ import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
 import { fmtKey, fmtStyle, FORMATTABLE_FIELDS } from '../../lib/slideFmt.js';
-import { shapeDef, LINE_MAX_THICKNESS } from '../../lib/shapes.js';
+import { shapeDef } from '../../lib/shapes.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
 // fallbacks). This is the memo contract for thumbnail re-rendering
@@ -364,7 +364,10 @@ function ElementView({ el }) {
   // Every shape (incl. the line special case) dispatches off the shared registry
   // so the canvas and the export can't drift (lib/shapes.js).
   const def = shapeDef(el.type);
-  if (def?.line) return <div style={{ ...base, height: Math.min(el.h, LINE_MAX_THICKNESS), background: el.fill || 'var(--ink, #15171C)' }} />;
+  // A line is a sharp-cornered bar (no border-radius, ink-default fill) at its
+  // real height (its stroke thickness) — distinct from the rect fallback below,
+  // which rounds to an 8px radius and uses the indigo fill. base already sets the height.
+  if (def?.line) return <div style={{ ...base, background: el.fill || 'var(--ink, #15171C)' }} />;
   const fill = { background: el.fill || 'oklch(0.62 0.17 265)' };
   if (def?.clip) return <div style={{ ...base, ...fill, clipPath: def.clip }} />;
   return <div style={{ ...base, ...fill, borderRadius: def?.round ? '50%' : (def?.radius ?? 8) }} />; // rect / unknown → 8

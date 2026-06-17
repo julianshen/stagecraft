@@ -220,11 +220,11 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(r.o.fill).toEqual({ color: '123456', transparency: 60 }); // 100 - 40
   });
 
-  it('exports a line as a thin rect (height clamped to the rendered 8px)', async () => {
-    await exportToPPTX(elemDeck([{ id: 'l', type: 'line', x: 0, y: 0, w: 384, h: 200, fill: '#15171c' }]));
+  it('exports a line as a rect at its real thickness (no 8px cap)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'l', type: 'line', x: 0, y: 0, w: 384, h: 24, fill: '#15171c' }]));
     const l = last().shapes.find((s) => s.type === 'rect');
     expect(l.o.w).toBe(2);
-    expect(l.o.h).toBeCloseTo(8 / 192, 4); // clamped, not 200/192
+    expect(l.o.h).toBeCloseTo(24 / 192, 4); // its real thickness, not clamped to 8/192
   });
 
   it('draws nothing extra for a slide with no elements', async () => {
