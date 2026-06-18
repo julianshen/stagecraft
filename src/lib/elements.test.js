@@ -62,9 +62,21 @@ describe('mergeOverlay', () => {
   const img = (id) => ({ id, type: 'image', x: 0, y: 0, w: 64, h: 64, src: 'data:image/png;base64,AAA' });
   const txt = (id) => ({ id, type: 'text', x: 0, y: 0, w: 100, h: 40, content: id });
 
-  it('keeps existing image elements and replaces the rest with the incoming ones', () => {
-    const out = mergeOverlay([img('i1'), txt('old')], [txt('new')]);
-    expect(out).toEqual([img('i1'), txt('new')]); // i1 preserved, `old` dropped, `new` added
+  it('keeps existing images at their original stack position (paint order)', () => {
+    // A background image (first) stays behind the new overlay…
+    expect(mergeOverlay([img('i1'), txt('old')], [txt('new')])).toEqual([img('i1'), txt('new')]);
+    // …and a foreground image (last) stays in front — not forced to the back.
+    expect(mergeOverlay([txt('old'), img('i1')], [txt('new')])).toEqual([txt('new'), img('i1')]);
+  });
+
+  it('preserves multiple images interleaved with the replaced overlay', () => {
+    const out = mergeOverlay([txt('a'), img('i1'), txt('b'), img('i2')], [txt('c'), txt('d')]);
+    expect(out).toEqual([txt('c'), img('i1'), txt('d'), img('i2')]); // images hold slots 1 & 3
+  });
+
+  it('appends extra incoming elements (more than the old non-image slots) at the front', () => {
+    const out = mergeOverlay([txt('a'), img('i1')], [txt('b'), txt('c')]);
+    expect(out).toEqual([txt('b'), img('i1'), txt('c')]); // i1 keeps slot 1; the extra goes on top
   });
 
   it('drops any image in the incoming array (originals are the source of truth)', () => {

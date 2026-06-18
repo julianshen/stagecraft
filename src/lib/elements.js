@@ -311,11 +311,20 @@ export function assignElementIds(elements, genId) {
 }
 
 // Merge an AI-authored overlay (`incoming`) over the slide's existing elements,
-// PRESERVING existing image elements and dropping any image in `incoming`. The
-// Co-pilot manages the text/shape/line overlay but can't round-trip an image's
-// (large) data URL, so images stay user-managed and are never lost or duplicated.
+// PRESERVING existing image elements (the Co-pilot can't round-trip an image's
+// large data URL) and dropping any image in `incoming`. Existing images keep
+// their stack position — `slide.elements` order is paint order, so an image the
+// user brought to the front must stay in front. Images hold their slots while
+// the incoming text/shape/line elements fill the non-image slots in order; any
+// extras land on top (end). Images are never lost or duplicated.
 export function mergeOverlay(existing, incoming) {
-  const keptImages = (existing || []).filter((el) => el?.type === 'image');
   const nonImages = (incoming || []).filter((el) => el?.type !== 'image');
-  return [...keptImages, ...nonImages];
+  const out = [];
+  let ni = 0;
+  for (const el of existing || []) {
+    if (el?.type === 'image') out.push(el);                 // keep image at its slot
+    else if (ni < nonImages.length) out.push(nonImages[ni++]); // fill a former non-image slot
+  }
+  while (ni < nonImages.length) out.push(nonImages[ni++]);  // extra incoming elements → on top
+  return out;
 }
