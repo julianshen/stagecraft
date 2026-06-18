@@ -442,6 +442,11 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: 24 }] }, 'text')).toEqual({ elements: [{ ...text, fontSize: 24 }] });
   });
 
+  it('constrains align to left/center/right (the renderer maps only those)', () => {
+    expect(sanitizeSlidePatch({ elements: [{ ...text, align: 'center' }] }, 'text')).toEqual({ elements: [{ ...text, align: 'center' }] });
+    expect(sanitizeSlidePatch({ elements: [{ ...text, align: 'justify' }] }, 'text')).toEqual({}); // not a value the renderer maps
+  });
+
   it('accepts the full optional field set with correct types', () => {
     const rich = { id: 'e1', type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'A', fontSize: 48, bold: true, italic: false, underline: true, align: 'center', fontFamily: 'Inter', fill: '#111', rot: 30, opacity: 50 };
     expect(sanitizeSlidePatch({ elements: [rich] }, 'text')).toEqual({ elements: [rich] });

@@ -134,7 +134,10 @@ const ELEMENT_FIELD_OK = {
   fill: isHexColor, content: isStr, src: isDataImage,
   fontSize: isPosFinite, rot: isFinite_, opacity: isFinite_,
   bold: isBool, italic: isBool, underline: isBool,
-  align: isStr, fontFamily: isStr,
+  // align is an enum the renderer maps to flex/textAlign (anything else falls
+  // back to left); constrain it so canvas and export agree. fontFamily is
+  // open-ended (both surfaces fall back per-font, like the browser).
+  align: (v) => v === 'left' || v === 'center' || v === 'right', fontFamily: isStr,
 };
 // Own-property check (not `ELEMENT_FIELD_OK[k]`, which would resolve a
 // prototype-chain key like `__proto__` to Object.prototype and throw when
