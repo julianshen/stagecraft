@@ -377,17 +377,18 @@ describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
     expect(sanitizeSlidePatch({ fmt }, 'cover')).toEqual({ fmt });
   });
 
-  it('rejects an fmt map with a dotted/indexed key the renderer ignores', () => {
-    // Per-item keys (items.0.t) aren't formattable yet; accepting them would
-    // report a no-op edit as applied and persist an orphanable positional key.
-    expect(sanitizeSlidePatch({ fmt: { 'items.0.t': { bold: true } } }, 'agenda')).toEqual({});
-    expect(sanitizeSlidePatch({ fmt: { title: { bold: true }, 'items.0.t': { bold: true } } }, 'cover')).toEqual({});
+  it('accepts per-item fmt keys the renderer emits (items / kpis / stats / table)', () => {
+    // Per-item index paths are now formattable (the renderer styles them via E()).
+    expect(sanitizeSlidePatch({ fmt: { 'items.0.t': { bold: true } } }, 'agenda')).toEqual({ fmt: { 'items.0.t': { bold: true } } });
+    const fmt = { 'items.2': { italic: true }, 'kpis.1.val': { fontSize: 80 }, 'rows.0.1': { color: '#08f' }, 'columns.2': { bold: true }, title: { bold: true } };
+    expect(sanitizeSlidePatch({ fmt }, 'kpi')).toEqual({ fmt });
   });
 
   it('rejects fmt keys that are not formattable text fields (no rendered field)', () => {
-    // A single-segment key with no dot but no E() field — e.g. a collection
-    // field or an invented name — still renders nothing, so reject it.
-    expect(sanitizeSlidePatch({ fmt: { items: { bold: true } } }, 'agenda')).toEqual({});
+    // A collection root (no index), an unknown leaf, or an invented name still
+    // renders nothing, so reject it.
+    expect(sanitizeSlidePatch({ fmt: { items: { bold: true } } }, 'agenda')).toEqual({}); // collection root, not an item
+    expect(sanitizeSlidePatch({ fmt: { 'items.0.x': { bold: true } } }, 'agenda')).toEqual({}); // unknown item leaf
     expect(sanitizeSlidePatch({ fmt: { headline: { bold: true } } }, 'cover')).toEqual({});
     expect(sanitizeSlidePatch({ fmt: { title: { bold: true }, headline: { bold: true } } }, 'cover')).toEqual({});
   });

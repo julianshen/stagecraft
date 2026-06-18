@@ -5,7 +5,7 @@ import { chartData, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
 import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
-import { fmtKey, fmtStyle, FORMATTABLE_FIELDS } from '../../lib/slideFmt.js';
+import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
 import { shapeDef } from '../../lib/shapes.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
@@ -418,14 +418,15 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
   // not read fmt yet.) The editable render also tags the field with its fmtKey
   // so the formatting toolbar can find the focused field.
   //
-  // Formatting is scoped to fixed top-level fields (single-segment paths like
-  // ['title']). Per-item fields (['items', i, 't']) are index-keyed, so
-  // reordering or deleting an item would migrate or orphan its formatting —
-  // those await stable item ids. The key is computed only when it could be
-  // needed (the slide has formatting, or we're editable), so the high-volume
-  // unformatted read-only render skips the join.
+  // Formatting covers the fixed top-level fields AND per-item index paths
+  // (['items', i, 't'], ['rows', i, j], …) — `isFormattablePath` is the shared
+  // vocabulary (lib/slideFmt.js) the patch gate also validates against. Per-item
+  // fmt is index-keyed (stable through inline edits; an AI item rewrite re-applies
+  // it by position). The dotted key is built only when it could be needed (the
+  // slide has formatting, or we're editable), so the high-volume unformatted
+  // read-only render skips the join.
   const E = (path, value, props = {}) => {
-    const formattable = path.length === 1 && FORMATTABLE_FIELDS.has(path[0]);
+    const formattable = isFormattablePath(path);
     const key = formattable && (slide.fmt || editable) ? fmtKey(path) : undefined;
     const fmt = key ? slide.fmt?.[key] : undefined;
     const style = fmt ? { ...props.style, ...fmtStyle(fmt) } : props.style;

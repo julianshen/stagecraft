@@ -47,6 +47,20 @@ describe('FormatToolbar', () => {
     expect(onFormat).toHaveBeenCalledWith('title', 'bold', false);
   });
 
+  it('targets a per-item field by its index key, reading + writing that key', () => {
+    const onFormat = vi.fn();
+    render(
+      <>
+        <span data-fmt-key="items.0.t" tabIndex={0} style={{ fontSize: '38px' }}>First point</span>
+        <FormatToolbar currentSlide={{ id: 's', fmt: { 'items.0.t': { italic: true } } }} onFormat={onFormat} />
+      </>,
+    );
+    fireEvent.focusIn(screen.getByText('First point'));
+    expect(screen.getByLabelText('Italic').className).toContain('active'); // reads the per-item key's fmt
+    fireEvent.click(screen.getByLabelText('Bold'));
+    expect(onFormat).toHaveBeenCalledWith('items.0.t', 'bold', true); // writes to the per-item key
+  });
+
   it('keeps field focus by preventing default on the toolbar mousedown', () => {
     const { field } = setup();
     fireEvent.focusIn(field);
