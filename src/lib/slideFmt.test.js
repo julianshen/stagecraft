@@ -34,10 +34,23 @@ describe('isFormattablePath / isFormattableKey', () => {
     both(['bogus', 0, 't'], 'bogus.0.t', false);         // unknown collection
     both(['stats', 0], 'stats.0', false);                // stats items aren't primitives — need a leaf
     expect(isFormattableKey('items.x.t')).toBe(false);   // non-numeric index
-    expect(isFormattableKey('rows.1.x')).toBe(false);    // non-numeric column
+    expect(isFormattableKey('rows.1.x')).toBe(false);    // non-numeric column (key side)
+    expect(isFormattablePath(['rows', 1, 'x'])).toBe(false); // and the path side: a cell's column must be a real number
     expect(isFormattablePath(['items', '2'])).toBe(false); // a path index must be a number, not a string
     expect(isFormattablePath(['items', 0, 't', 'x'])).toBe(false); // too deep — no field that deep
     expect(isFormattableKey('items.0.t.x')).toBe(false);
+  });
+
+  it('rejects prototype-chain collection names without throwing', () => {
+    // A stored fmt key is untrusted (JSON.parse makes "__proto__.0.t" an own
+    // enumerable key the gate iterates). Collection names that resolve up
+    // ITEM_FIELDS' prototype chain (`__proto__`→Object.prototype,
+    // `constructor`→Object, `toString`/`hasOwnProperty`→functions) are not
+    // arrays, so an unguarded `ITEM_FIELDS[coll].includes` THROWS instead of
+    // rejecting — silently passing the gate's try/catch boundary as "applied".
+    for (const proto of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+      both([proto, 0, 't'], `${proto}.0.t`, false);
+    }
   });
 });
 

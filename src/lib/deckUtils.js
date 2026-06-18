@@ -83,6 +83,16 @@ const isLane = (l) => isPlainObject(l)
   && (l.name === undefined || isPrimitive(l.name))
   && Array.isArray(l.items) && l.items.every(isLaneItem);
 
+// Validate `v` against the validator at `table[k]`, but only when `k` is an OWN
+// key of `table`. A JSON-parsed AI patch can carry own `__proto__`/`constructor`/
+// `toString` keys; indexing a lookup table with one would resolve up the
+// prototype chain to Object.prototype (not callable → throw) or a function (a
+// truthy return → an unrenderable key wrongly accepted). The own-property guard
+// makes every such key reject cleanly. Shared by the fmt-prop and element-field
+// gates — the single place this whole file indexes a validator table by key.
+const ownValidate = (table, k, v) =>
+  Object.prototype.hasOwnProperty.call(table, k) && table[k](v) === true;
+
 // fmt: a map from a field path-key to a formatting record. Each record may only
 // carry the known props with the right type — an unknown or wrong-typed prop
 // (e.g. bold:'yes', fontSize:'64') is rejected so junk can't persist and the
@@ -95,7 +105,7 @@ const FMT_PROP_OK = {
   color: (v) => typeof v === 'string',
 };
 const isFmtEntry = (e) => isPlainObject(e)
-  && Object.entries(e).every(([k, v]) => FMT_PROP_OK[k]?.(v));
+  && Object.entries(e).every(([k, v]) => ownValidate(FMT_PROP_OK, k, v));
 // Keys must be fields the renderer actually formats (`isFormattableKey`: the
 // fixed top-level fields plus the per-item index paths E() emits, e.g.
 // `items.0.t`, `rows.1.4`). A key the renderer ignores (a collection root like
@@ -140,11 +150,10 @@ const ELEMENT_FIELD_OK = {
   // open-ended (both surfaces fall back per-font, like the browser).
   align: (v) => v === 'left' || v === 'center' || v === 'right', fontFamily: isStr,
 };
-// Own-property check (not `ELEMENT_FIELD_OK[k]`, which would resolve a
-// prototype-chain key like `__proto__` to Object.prototype and throw when
-// called) — a JSON-parsed patch can carry an own `__proto__`/`constructor` key.
-const ownFieldOk = (k, v) =>
-  Object.prototype.hasOwnProperty.call(ELEMENT_FIELD_OK, k) && ELEMENT_FIELD_OK[k](v) === true;
+// Own-guarded lookup into the element-field table (see ownValidate) — a
+// JSON-parsed patch can carry an own `__proto__`/`constructor` key that must
+// reject, not resolve up the prototype chain.
+const ownFieldOk = (k, v) => ownValidate(ELEMENT_FIELD_OK, k, v);
 // Every fill-bearing element (text colour, line/shape fill) needs a hex fill:
 // a fill-less element's canvas default diverges from the export (a shape renders
 // indigo vs #15171C; text/line render the editor theme's `--ink` — light under

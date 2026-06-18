@@ -29,6 +29,14 @@ const ITEM_FIELDS = {
 const isIndexNum = (v) => Number.isInteger(v) && v >= 0;
 const isIndexStr = (v) => /^(0|[1-9]\d*)$/.test(v);
 
+// Is `leaf` a formattable sub-field of the object collection `coll`? Own-property
+// guard before the lookup: `coll` can be an untrusted key (a stored fmt key is
+// JSON-parsed, so `__proto__`/`constructor`/`toString`/`hasOwnProperty` arrive as
+// own keys), and indexing ITEM_FIELDS with one would resolve up its prototype
+// chain to a non-array and throw on `.includes`. Shared by both validators below.
+const isItemLeaf = (coll, leaf) =>
+  Object.prototype.hasOwnProperty.call(ITEM_FIELDS, coll) && ITEM_FIELDS[coll].includes(leaf);
+
 // Is `path` (a render path — indices are NUMBERS) a formattable field? Used by
 // the renderer's `E()`; works on the array so the hot read-only render needn't
 // build the dotted key.
@@ -37,7 +45,7 @@ export function isFormattablePath(path) {
   const [coll, i, leaf] = path;
   if (!isIndexNum(i)) return false;
   if (path.length === 2) return coll === 'items' || coll === 'columns'; // primitive item / header
-  if (path.length === 3) return coll === 'rows' ? isIndexNum(leaf) : !!ITEM_FIELDS[coll]?.includes(leaf);
+  if (path.length === 3) return coll === 'rows' ? isIndexNum(leaf) : isItemLeaf(coll, leaf);
   return false;
 }
 
@@ -49,7 +57,7 @@ export function isFormattableKey(key) {
   const [coll, i, leaf, ...rest] = key.split('.');
   if (rest.length || !isIndexStr(i)) return false;
   if (leaf === undefined) return coll === 'items' || coll === 'columns';
-  return coll === 'rows' ? isIndexStr(leaf) : !!ITEM_FIELDS[coll]?.includes(leaf);
+  return coll === 'rows' ? isIndexStr(leaf) : isItemLeaf(coll, leaf);
 }
 
 // The stable map key for a field, derived from its render path. Joining with

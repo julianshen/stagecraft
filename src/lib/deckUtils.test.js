@@ -400,6 +400,19 @@ describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
     expect(sanitizeSlidePatch({ fmt: { title: { fontSize: NaN } } }, 'cover')).toEqual({}); // non-finite
   });
 
+  it('rejects — does not throw on — an fmt entry with a prototype-chain prop key', () => {
+    // JSON.parse makes __proto__/constructor/toString OWN enumerable keys. The
+    // entry-prop check must reject them like any unknown prop, not index
+    // FMT_PROP_OK with them: FMT_PROP_OK['__proto__'] resolves to Object.prototype
+    // (a throw when called), while 'constructor'/'toString' resolve to callables
+    // that return truthy — silently passing an unrenderable prop as "applied".
+    for (const prop of ['__proto__', 'constructor', 'toString']) {
+      const patch = JSON.parse(`{"fmt":{"title":{"${prop}":1}}}`);
+      expect(() => sanitizeSlidePatch(patch, 'cover')).not.toThrow();
+      expect(sanitizeSlidePatch(patch, 'cover')).toEqual({}); // entry has no valid prop → whole map dropped
+    }
+  });
+
   it('rejects an fmt that is not a map of records', () => {
     expect(sanitizeSlidePatch({ fmt: { title: 'bold' } }, 'cover')).toEqual({}); // entry must be an object
     expect(sanitizeSlidePatch({ fmt: ['title'] }, 'cover')).toEqual({}); // array, not a map
