@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -287,6 +287,21 @@ describe('cloneElements', () => {
 
   it('returns an empty array for no sources', () => {
     expect(cloneElements([], [])).toEqual([]);
+  });
+});
+
+describe('hitBox (padded click/selection target for thin elements)', () => {
+  it('pads a thin element to HIT_MIN in the small dimension, centered', () => {
+    const hb = hitBox({ x: 100, y: 200, w: 320, h: 2 }); // a hairline rule
+    expect(hb.w).toBe(320);                 // length already ≥ HIT_MIN — unchanged
+    expect(hb.h).toBe(HIT_MIN);             // thickness padded up
+    expect(hb.y).toBe(200 - (HIT_MIN - 2) / 2); // centered on the real line
+    expect(hb.y + hb.h / 2).toBe(201);      // same centre as the 2px line (200..202)
+  });
+
+  it('leaves a normal element (≥ HIT_MIN in both dims) unchanged', () => {
+    expect(hitBox({ x: 10, y: 20, w: 100, h: 50 })).toEqual({ x: 10, y: 20, w: 100, h: 50 });
+    expect(hitBox({ x: 0, y: 0, w: 16, h: 16 })).toEqual({ x: 0, y: 0, w: 16, h: 16 }); // exactly MIN_SIZE → no pad
   });
 });
 

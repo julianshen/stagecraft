@@ -10,6 +10,11 @@ export const MIN_SIZE = 16;  // minimum element width/height
 // visual == the export). It may go thinner than MIN_SIZE — down to a hairline —
 // so its height floors here instead.
 export const MIN_LINE_THICKNESS = 2;
+// Minimum click/selection target. A thin rule (down to MIN_LINE_THICKNESS) would
+// otherwise be a near-unclickable sliver; its hit box pads up to this. Equal to
+// MIN_SIZE — the floor every non-line element already resizes to — so in practice
+// only a line (whose thickness floors lower) is ever below it and gets padded.
+export const HIT_MIN = MIN_SIZE;
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export const snap = (v, grid = GRID) => Math.round(v / grid) * grid;
@@ -296,6 +301,16 @@ export function clampElement(el, { bounds = { w: SLIDE_W, h: SLIDE_H }, min = MI
     out.rot = Number.isFinite(r) ? ((r % 360) + 360) % 360 : 0;
   }
   return out;
+}
+
+// The interactive hit/selection box for an element: at least `min` in each
+// dimension, centred on the element, so a thin rule stays grabbable and shows a
+// visible selection outline while its VISUAL still renders at el.w/el.h. Pure
+// (un-rotated) geometry — the caller applies the element's rotation to it.
+export function hitBox(el, min = HIT_MIN) {
+  const w = Math.max(el.w, min);
+  const h = Math.max(el.h, min);
+  return { x: el.x - (w - el.w) / 2, y: el.y - (h - el.h) / 2, w, h };
 }
 
 // Mint a fresh unique id on each AI-authored element (`genId` injected, so it's
