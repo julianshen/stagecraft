@@ -95,13 +95,15 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     if (!targetId || !patch) return [];
     const target = (deckRef.current?.slides || []).find(s => s.id === targetId);
     if (!target) return [];
-    // AI-authored canvas elements get fresh unique ids + bounds clamping (like a
-    // manual create) — minted here, outside the reducer, so they're deterministic
-    // and never collide. Invalid entries are still rejected by the gate below.
-    const p = Array.isArray(patch.elements)
-      ? { ...patch, elements: normalizeAIElements(patch.elements, genElId) }
-      : patch;
-    const applied = Object.keys(sanitizeSlidePatch(p, target.layout));
+    // Validate the RAW patch first (strict typing — a numeric-string geometry
+    // must be rejected, not silently coerced), THEN normalize the elements that
+    // passed: fresh unique ids + bounds clamping (like a manual create), minted
+    // here outside the reducer so they're deterministic and never collide.
+    const safe = sanitizeSlidePatch(patch, target.layout);
+    const p = Array.isArray(safe.elements)
+      ? { ...safe, elements: normalizeAIElements(safe.elements, genElId) }
+      : safe;
+    const applied = Object.keys(p);
     if (applied.length) {
       onDeckChange(prev =>
         (prev.slides || []).some(s => s.id === targetId) ? applySlidePatch(prev, targetId, p) : prev
