@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import FormatToolbar from './FormatToolbar.jsx';
 
 // A focusable host field plus the toolbar, matching the editor layout: the
@@ -47,7 +48,7 @@ describe('FormatToolbar', () => {
     expect(onFormat).toHaveBeenCalledWith('title', 'bold', false);
   });
 
-  it('targets a per-item field by its index key, reading + writing that key', () => {
+  it('targets a per-item field by its index key, reading + writing that key', async () => {
     const onFormat = vi.fn();
     render(
       <>
@@ -55,9 +56,9 @@ describe('FormatToolbar', () => {
         <FormatToolbar currentSlide={{ id: 's', fmt: { 'items.0.t': { italic: true } } }} onFormat={onFormat} />
       </>,
     );
-    fireEvent.focusIn(screen.getByText('First point'));
+    await userEvent.click(screen.getByText('First point')); // focusing the per-item field shows the bar
     expect(screen.getByLabelText('Italic').className).toContain('active'); // reads the per-item key's fmt
-    fireEvent.click(screen.getByLabelText('Bold'));
+    await userEvent.click(screen.getByLabelText('Bold'));
     expect(onFormat).toHaveBeenCalledWith('items.0.t', 'bold', true); // writes to the per-item key
   });
 
