@@ -23,6 +23,19 @@ describe('prepareAIPatch (the AI element-patch pipeline: seed ids → validate �
   it('passes non-element fields through the normal gate', () => {
     expect(prepareAIPatch({ title: 'New' }, 'cover', seqGen())).toEqual({ patch: { title: 'New' }, applied: ['title'] });
   });
+
+  it('drops an all-image elements reply (no overlay edit) so it cannot wipe the existing overlay', () => {
+    // The model can't author images; a reply of only image elements carries no
+    // text/shape/line edit, so the elements field is dropped (not applied).
+    const img = { type: 'image', x: 0, y: 0, w: 64, h: 64 };
+    const { patch, applied } = prepareAIPatch({ elements: [img] }, 'text', seqGen());
+    expect(applied).toEqual([]);            // nothing to apply
+    expect(patch.elements).toBeUndefined(); // …so the merge can't clear the overlay
+  });
+
+  it('still treats an empty elements array as a genuine clear', () => {
+    expect(prepareAIPatch({ elements: [] }, 'text', seqGen()).applied).toEqual(['elements']);
+  });
 });
 
 describe('applyPreparedPatch (merge into the deck, preserving images)', () => {

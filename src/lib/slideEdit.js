@@ -18,6 +18,14 @@ export function prepareAIPatch(rawPatch, layout, genId) {
   const patch = Array.isArray(safe.elements)
     ? { ...safe, elements: safe.elements.map((el) => clampElement(el)) }
     : safe;
+  // A non-empty all-image elements array is no overlay edit — the model can't
+  // author images and the merge drops them, so applying it would only wipe the
+  // existing text/shape/line overlay. Drop the field (an empty array stays a
+  // genuine clear). Avoids both the data loss and a phantom "applied" report.
+  if (Array.isArray(patch.elements) && patch.elements.length > 0
+      && patch.elements.every((el) => el.type === 'image')) {
+    delete patch.elements;
+  }
   return { patch, applied: Object.keys(patch) };
 }
 
