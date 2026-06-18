@@ -81,6 +81,11 @@ describe('mergeOverlay', () => {
     expect(out).toEqual([txt('b'), txt('c'), img('i1')]);
   });
 
+  it('paints a new overlay ON TOP of an all-image slide (a lone image is not a deliberate foreground)', () => {
+    expect(mergeOverlay([img('i1')], [txt('t')])).toEqual([img('i1'), txt('t')]);          // sole image (from the image button) → text visible on top
+    expect(mergeOverlay([img('i1'), img('i2')], [txt('t')])).toEqual([img('i1'), img('i2'), txt('t')]);
+  });
+
   it('drops any image in the incoming array (originals are the source of truth)', () => {
     const out = mergeOverlay([img('i1'), txt('keep')], [img('i2'), txt('t')]);
     expect(out).toEqual([img('i1'), txt('t')]); // i2 dropped; i1 kept at its slot; `keep` replaced by `t`

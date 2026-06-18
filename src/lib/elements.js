@@ -320,8 +320,12 @@ export function assignElementIds(elements, genId) {
 export function mergeOverlay(existing, incoming) {
   const ex = existing || [];
   const nonImages = (incoming || []).filter((el) => el?.type !== 'image');
-  // Foreground images — the trailing run of images — stay frontmost: a growing
-  // overlay must fill in behind them, never on top. Split them off the tail.
+  // An all-image slide (e.g. a lone image from the image button) has no overlay
+  // the image was deliberately fronted over, so a new overlay is visible content
+  // — paint it on top of the images, not behind them.
+  if (!ex.some((el) => el?.type !== 'image')) return [...ex, ...nonImages];
+  // Otherwise foreground images — the trailing run of images — stay frontmost: a
+  // growing overlay must fill in behind them, never on top. Split them off the tail.
   let cut = ex.length;
   while (cut > 0 && ex[cut - 1]?.type === 'image') cut--;
   const out = [];
