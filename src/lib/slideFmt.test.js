@@ -1,5 +1,58 @@
 import { describe, it, expect } from 'vitest';
-import { fmtKey, fmtStyle } from './slideFmt.js';
+import { fmtKey, fmtStyle, isFormattablePath, isFormattableKey } from './slideFmt.js';
+
+// The formattable vocabulary, validated as both a render path (array, indices
+// are numbers — used by the renderer's E()) and a stored key (string, indices
+// are digits — used by the patch gate). Both must agree on exactly the fields
+// the renderer formats: top-level fields + per-item index paths.
+describe('isFormattablePath / isFormattableKey', () => {
+  const both = (path, key, expected) => {
+    expect(isFormattablePath(path)).toBe(expected);
+    expect(isFormattableKey(key)).toBe(expected);
+  };
+
+  it('accepts the fixed top-level fields', () => {
+    both(['title'], 'title', true);
+    both(['note'], 'note', true);
+  });
+
+  it('accepts per-item paths the renderer emits', () => {
+    both(['items', 2], 'items.2', true);                 // list item (primitive)
+    both(['items', 0, 't'], 'items.0.t', true);          // agenda item sub-field
+    both(['items', 5, 'n'], 'items.5.n', true);
+    both(['kpis', 1, 'label'], 'kpis.1.label', true);
+    both(['kpis', 3, 'val'], 'kpis.3.val', true);
+    both(['stats', 0, 'lbl'], 'stats.0.lbl', true);
+    both(['columns', 2], 'columns.2', true);             // table header
+    both(['rows', 1, 4], 'rows.1.4', true);              // table cell (row.col)
+  });
+
+  it('rejects unknown roots, unknown leaves, and non-index segments', () => {
+    both(['headline'], 'headline', false);               // not a formattable field
+    both(['items', 0, 'x'], 'items.0.x', false);         // unknown agenda sub-field
+    both(['kpis', 0, 'lbl'], 'kpis.0.lbl', false);       // lbl is a stat leaf, not kpi
+    both(['bogus', 0, 't'], 'bogus.0.t', false);         // unknown collection
+    both(['stats', 0], 'stats.0', false);                // stats items aren't primitives — need a leaf
+    expect(isFormattableKey('items.x.t')).toBe(false);   // non-numeric index
+    expect(isFormattableKey('rows.1.x')).toBe(false);    // non-numeric column (key side)
+    expect(isFormattablePath(['rows', 1, 'x'])).toBe(false); // and the path side: a cell's column must be a real number
+    expect(isFormattablePath(['items', '2'])).toBe(false); // a path index must be a number, not a string
+    expect(isFormattablePath(['items', 0, 't', 'x'])).toBe(false); // too deep — no field that deep
+    expect(isFormattableKey('items.0.t.x')).toBe(false);
+  });
+
+  it('rejects prototype-chain collection names without throwing', () => {
+    // A stored fmt key is untrusted (JSON.parse makes "__proto__.0.t" an own
+    // enumerable key the gate iterates). Collection names that resolve up
+    // ITEM_FIELDS' prototype chain (`__proto__`→Object.prototype,
+    // `constructor`→Object, `toString`/`hasOwnProperty`→functions) are not
+    // arrays, so an unguarded `ITEM_FIELDS[coll].includes` THROWS instead of
+    // rejecting — silently passing the gate's try/catch boundary as "applied".
+    for (const proto of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+      both([proto, 0, 't'], `${proto}.0.t`, false);
+    }
+  });
+});
 
 describe('fmtKey', () => {
   it('joins a single-segment path', () => {

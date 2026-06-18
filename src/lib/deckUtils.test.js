@@ -377,17 +377,18 @@ describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
     expect(sanitizeSlidePatch({ fmt }, 'cover')).toEqual({ fmt });
   });
 
-  it('rejects an fmt map with a dotted/indexed key the renderer ignores', () => {
-    // Per-item keys (items.0.t) aren't formattable yet; accepting them would
-    // report a no-op edit as applied and persist an orphanable positional key.
-    expect(sanitizeSlidePatch({ fmt: { 'items.0.t': { bold: true } } }, 'agenda')).toEqual({});
-    expect(sanitizeSlidePatch({ fmt: { title: { bold: true }, 'items.0.t': { bold: true } } }, 'cover')).toEqual({});
+  it('accepts per-item fmt keys the renderer emits (items / kpis / stats / table)', () => {
+    // Per-item index paths are now formattable (the renderer styles them via E()).
+    expect(sanitizeSlidePatch({ fmt: { 'items.0.t': { bold: true } } }, 'agenda')).toEqual({ fmt: { 'items.0.t': { bold: true } } });
+    const fmt = { 'items.2': { italic: true }, 'kpis.1.val': { fontSize: 80 }, 'rows.0.1': { color: '#08f' }, 'columns.2': { bold: true }, title: { bold: true } };
+    expect(sanitizeSlidePatch({ fmt }, 'kpi')).toEqual({ fmt });
   });
 
   it('rejects fmt keys that are not formattable text fields (no rendered field)', () => {
-    // A single-segment key with no dot but no E() field — e.g. a collection
-    // field or an invented name — still renders nothing, so reject it.
-    expect(sanitizeSlidePatch({ fmt: { items: { bold: true } } }, 'agenda')).toEqual({});
+    // A collection root (no index), an unknown leaf, or an invented name still
+    // renders nothing, so reject it.
+    expect(sanitizeSlidePatch({ fmt: { items: { bold: true } } }, 'agenda')).toEqual({}); // collection root, not an item
+    expect(sanitizeSlidePatch({ fmt: { 'items.0.x': { bold: true } } }, 'agenda')).toEqual({}); // unknown item leaf
     expect(sanitizeSlidePatch({ fmt: { headline: { bold: true } } }, 'cover')).toEqual({});
     expect(sanitizeSlidePatch({ fmt: { title: { bold: true }, headline: { bold: true } } }, 'cover')).toEqual({});
   });
@@ -397,6 +398,19 @@ describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
     expect(sanitizeSlidePatch({ fmt: { title: { fontSize: '64' } } }, 'cover')).toEqual({}); // fontSize must be a number
     expect(sanitizeSlidePatch({ fmt: { title: { wiggle: true } } }, 'cover')).toEqual({}); // unknown prop
     expect(sanitizeSlidePatch({ fmt: { title: { fontSize: NaN } } }, 'cover')).toEqual({}); // non-finite
+  });
+
+  it('rejects — does not throw on — an fmt entry with a prototype-chain prop key', () => {
+    // JSON.parse makes __proto__/constructor/toString OWN enumerable keys. The
+    // entry-prop check must reject them like any unknown prop, not index
+    // FMT_PROP_OK with them: FMT_PROP_OK['__proto__'] resolves to Object.prototype
+    // (a throw when called), while 'constructor'/'toString' resolve to callables
+    // that return truthy — silently passing an unrenderable prop as "applied".
+    for (const prop of ['__proto__', 'constructor', 'toString']) {
+      const patch = JSON.parse(`{"fmt":{"title":{"${prop}":1}}}`);
+      expect(() => sanitizeSlidePatch(patch, 'cover')).not.toThrow();
+      expect(sanitizeSlidePatch(patch, 'cover')).toEqual({}); // entry has no valid prop → whole map dropped
+    }
   });
 
   it('rejects an fmt that is not a map of records', () => {
