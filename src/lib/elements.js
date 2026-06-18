@@ -318,13 +318,18 @@ export function assignElementIds(elements, genId) {
 // the incoming text/shape/line elements fill the non-image slots in order; any
 // extras land on top (end). Images are never lost or duplicated.
 export function mergeOverlay(existing, incoming) {
+  const ex = existing || [];
   const nonImages = (incoming || []).filter((el) => el?.type !== 'image');
+  // Foreground images — the trailing run of images — stay frontmost: a growing
+  // overlay must fill in behind them, never on top. Split them off the tail.
+  let cut = ex.length;
+  while (cut > 0 && ex[cut - 1]?.type === 'image') cut--;
   const out = [];
   let ni = 0;
-  for (const el of existing || []) {
-    if (el?.type === 'image') out.push(el);                 // keep image at its slot
+  for (const el of ex.slice(0, cut)) {
+    if (el?.type === 'image') out.push(el);                 // keep a mid-stack image at its slot
     else if (ni < nonImages.length) out.push(nonImages[ni++]); // fill a former non-image slot
   }
-  while (ni < nonImages.length) out.push(nonImages[ni++]);  // extra incoming elements → on top
-  return out;
+  while (ni < nonImages.length) out.push(nonImages[ni++]);  // extras → top of the overlay, still behind foreground images
+  return [...out, ...ex.slice(cut)];                        // trailing (foreground) images stay frontmost
 }

@@ -74,14 +74,16 @@ describe('mergeOverlay', () => {
     expect(out).toEqual([txt('c'), img('i1'), txt('d'), img('i2')]); // images hold slots 1 & 3
   });
 
-  it('appends extra incoming elements (more than the old non-image slots) at the front', () => {
+  it('keeps a foreground image frontmost even when the overlay grows', () => {
+    // i1 is the last (frontmost) element; a larger incoming overlay must fill in
+    // BEHIND it, not push a new element on top of the user's foreground image.
     const out = mergeOverlay([txt('a'), img('i1')], [txt('b'), txt('c')]);
-    expect(out).toEqual([txt('b'), img('i1'), txt('c')]); // i1 keeps slot 1; the extra goes on top
+    expect(out).toEqual([txt('b'), txt('c'), img('i1')]);
   });
 
   it('drops any image in the incoming array (originals are the source of truth)', () => {
-    const out = mergeOverlay([img('i1')], [img('i2'), txt('t')]);
-    expect(out).toEqual([img('i1'), txt('t')]); // no duplicate/replacement image — i2 dropped
+    const out = mergeOverlay([img('i1'), txt('keep')], [img('i2'), txt('t')]);
+    expect(out).toEqual([img('i1'), txt('t')]); // i2 dropped; i1 kept at its slot; `keep` replaced by `t`
   });
 
   it('tolerates missing/empty arrays', () => {
