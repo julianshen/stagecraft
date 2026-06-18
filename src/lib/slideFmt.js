@@ -68,6 +68,25 @@ export function fmtKey(path) {
   return path.join('.');
 }
 
+// Remap a slide's index-keyed `fmt` when a per-item `collection` is reordered or
+// an item is deleted, so formatting follows its item. `newOrder[newIndex] =
+// oldIndex`; an old index absent from `newOrder` was deleted, so its keys are
+// dropped. Only keys under `collection` (`items.0`, `items.0.t`, …) are rewritten
+// — other collections and top-level fields pass through untouched. Splits the key
+// like the gate's `isFormattableKey` ({collection}.{index}[.{leaf}]) and rejoins
+// with the new index. Returns a new map (or the falsy input as-is).
+export function remapCollectionFmt(fmt, collection, newOrder) {
+  if (!fmt) return fmt;
+  const out = {};
+  for (const [key, val] of Object.entries(fmt)) {
+    const [coll, idx, ...leaf] = key.split('.');
+    if (coll !== collection) { out[key] = val; continue; } // other collection / top-level field
+    const newIdx = newOrder.indexOf(Number(idx)); // item's new position; -1 once deleted
+    if (newIdx !== -1) out[[collection, newIdx, ...leaf].join('.')] = val;
+  }
+  return out;
+}
+
 // Translate a formatting record into a CSS style object, emitting ONLY the props
 // that are set. A toggle stored as `false` (or absent) contributes nothing, so
 // un-bolding a field returns it to the template's baseline weight rather than

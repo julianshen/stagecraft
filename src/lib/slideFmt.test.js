@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fmtKey, fmtStyle, isFormattablePath, isFormattableKey } from './slideFmt.js';
+import { fmtKey, fmtStyle, isFormattablePath, isFormattableKey, remapCollectionFmt } from './slideFmt.js';
 
 // The formattable vocabulary, validated as both a render path (array, indices
 // are numbers — used by the renderer's E()) and a stored key (string, indices
@@ -83,5 +83,46 @@ describe('fmtStyle', () => {
   it('merges every set property', () => {
     expect(fmtStyle({ bold: true, italic: true, underline: true, fontSize: 32, color: '#08f' }))
       .toEqual({ fontWeight: 700, fontStyle: 'italic', textDecoration: 'underline', fontSize: 32, color: '#08f' });
+  });
+});
+
+// When a per-item collection is reordered or an item is deleted, the index-keyed
+// fmt must follow its item. `newOrder[newIndex] = oldIndex`; an old index missing
+// from newOrder was deleted (its fmt is dropped). Keeps formatting aligned without
+// stable item ids — the slide-patch merge replaces `fmt` wholesale, so the editor
+// sends the remapped map alongside the reordered collection.
+describe('remapCollectionFmt', () => {
+  it('returns a falsy fmt unchanged (nothing to remap)', () => {
+    expect(remapCollectionFmt(undefined, 'items', [0])).toBeUndefined();
+    expect(remapCollectionFmt(null, 'items', [])).toBeNull();
+  });
+
+  it('drops a deleted item’s keys and shifts later items down', () => {
+    // 3 agenda items, delete index 1 → old 0 and 2 survive (new positions 0 and 1)
+    const fmt = {
+      'items.0.t': { bold: true },
+      'items.1.t': { italic: true },   // deleted
+      'items.2.n': { underline: true },
+      title: { bold: true },           // top-level — untouched
+    };
+    expect(remapCollectionFmt(fmt, 'items', [0, 2])).toEqual({
+      'items.0.t': { bold: true },
+      'items.1.n': { underline: true }, // old 2 → new 1
+      title: { bold: true },
+    });
+  });
+
+  it('remaps an arbitrary reorder for both object-leaf and primitive item keys', () => {
+    const fmt = { 'items.0.t': { bold: true }, 'items.1': { italic: true } };
+    expect(remapCollectionFmt(fmt, 'items', [1, 0])).toEqual({
+      'items.1.t': { bold: true },  // old 0 → new 1
+      'items.0': { italic: true },  // old 1 → new 0 (list primitive, no leaf)
+    });
+  });
+
+  it('only rewrites the named collection — other collections and fields are preserved', () => {
+    const fmt = { 'items.0.t': { bold: true }, 'kpis.0.val': { color: '#08f' }, subtitle: { italic: true } };
+    // remap kpis with a swap; items.* and subtitle must be left exactly as-is
+    expect(remapCollectionFmt(fmt, 'kpis', [0])).toEqual(fmt);
   });
 });
