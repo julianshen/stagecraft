@@ -410,3 +410,98 @@ describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
     expect(sanitizeSlidePatch({ fmt: { title: {} } }, 'cover')).toEqual({ fmt: { title: {} } });
   });
 });
+
+describe('sanitizeSlidePatch — free-form canvas elements', () => {
+  // Valid elements carry an id (the gate requires one; applyAIPatch mints it
+  // before the gate runs). Fills are hex; image src is a data URL.
+  const text = { id: 'a', type: 'text', x: 10, y: 20, w: 100, h: 40, content: 'Hi', fill: '#111' };
+  const shape = { id: 'b', type: 'shape', x: 0, y: 0, w: 50, h: 50, fill: '#abc' };
+  const line = { id: 'c', type: 'line', x: 0, y: 0, w: 200, h: 8, fill: '#111' };
+
+  it('accepts an array of valid elements (text / shape / line) — layout-agnostic', () => {
+    const patch = { elements: [text, shape, line] };
+    expect(sanitizeSlidePatch(patch, 'text')).toEqual(patch);
+    expect(sanitizeSlidePatch(patch, 'chart')).toEqual(patch); // overlays any layout
+  });
+
+  it('accepts every known shape type (via the shared shape registry) and an empty array', () => {
+    const types = ['rounded', 'circle', 'triangle', 'diamond', 'pentagon', 'hexagon', 'star', 'arrow', 'rect', 'ellipse'];
+    const els = types.map((type, i) => ({ id: `s${i}`, type, x: i, y: 0, w: 16, h: 16, fill: '#abc' }));
+    expect(sanitizeSlidePatch({ elements: els }, 'text')).toEqual({ elements: els });
+    expect(sanitizeSlidePatch({ elements: [] }, 'text')).toEqual({ elements: [] }); // clears the overlay
+  });
+
+  it('requires a hex fill on every fill-bearing element (text/line/shape); only image needs none', () => {
+    expect(sanitizeSlidePatch({ elements: [{ id: 's', type: 'circle', x: 0, y: 0, w: 16, h: 16 }] }, 'text')).toEqual({}); // fill-less shape
+    expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, content: 'x' }] }, 'text')).toEqual({}); // fill-less text (canvas --ink vs export #15171C)
+    expect(sanitizeSlidePatch({ elements: [{ id: 'l', type: 'line', x: 0, y: 0, w: 50, h: 8 }] }, 'text')).toEqual({}); // fill-less line
+    const img = { id: 'i', type: 'image', x: 0, y: 0, w: 64, h: 64, src: 'data:image/png;base64,AAA' };
+    expect(sanitizeSlidePatch({ elements: [img] }, 'text')).toEqual({ elements: [img] }); // image needs no fill
+  });
+
+  it('requires non-empty content on a text element (an empty one renders nothing)', () => {
+    expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, fill: '#111' }] }, 'text')).toEqual({}); // no content
+    expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, fill: '#111', content: '' }] }, 'text')).toEqual({}); // empty content
+    expect(sanitizeSlidePatch({ elements: [text] }, 'text')).toEqual({ elements: [text] }); // text fixture has content
+  });
+
+  it('rejects a non-positive fontSize (export would emit a negative point size)', () => {
+    expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: -20 }] }, 'text')).toEqual({});
+    expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: 0 }] }, 'text')).toEqual({});
+    expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: 24 }] }, 'text')).toEqual({ elements: [{ ...text, fontSize: 24 }] });
+  });
+
+  it('constrains align to left/center/right (the renderer maps only those)', () => {
+    expect(sanitizeSlidePatch({ elements: [{ ...text, align: 'center' }] }, 'text')).toEqual({ elements: [{ ...text, align: 'center' }] });
+    expect(sanitizeSlidePatch({ elements: [{ ...text, align: 'justify' }] }, 'text')).toEqual({}); // not a value the renderer maps
+  });
+
+  it('accepts the full optional field set with correct types', () => {
+    const rich = { id: 'e1', type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'A', fontSize: 48, bold: true, italic: false, underline: true, align: 'center', fontFamily: 'Inter', fill: '#111', rot: 30, opacity: 50 };
+    expect(sanitizeSlidePatch({ elements: [rich] }, 'text')).toEqual({ elements: [rich] });
+  });
+
+  it('accepts an image only with a data-URL src; rejects a remote src', () => {
+    const img = { id: 'i', type: 'image', x: 0, y: 0, w: 64, h: 64, src: 'data:image/png;base64,AAA' };
+    expect(sanitizeSlidePatch({ elements: [img] }, 'text')).toEqual({ elements: [img] });
+    expect(sanitizeSlidePatch({ elements: [{ ...img, src: 'https://evil.example/x.png' }] }, 'text')).toEqual({}); // no remote fetch
+  });
+
+  it('gates fill to a hex colour (canvas == export); rejects a CSS name', () => {
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, fill: '#aabbcc' }] }, 'text')).toEqual({ elements: [{ ...shape, fill: '#aabbcc' }] });
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, fill: 'red' }] }, 'text')).toEqual({}); // would render indigo on export
+  });
+
+  it('rejects the whole field if any element is malformed (replace-not-merge strictness)', () => {
+    expect(sanitizeSlidePatch({ elements: 'nope' }, 'text')).toEqual({});                          // not an array
+    expect(sanitizeSlidePatch({ elements: [text, 'str'] }, 'text')).toEqual({});                    // non-object element
+    expect(sanitizeSlidePatch({ elements: [{ ...text, type: 'bogus' }] }, 'text')).toEqual({});     // unknown type
+    expect(sanitizeSlidePatch({ elements: [{ id: 'x', type: 'text', x: 0, y: 0, w: 100, fill: '#111' }] }, 'text')).toEqual({}); // missing h
+    expect(sanitizeSlidePatch({ elements: [{ type: 'text', x: 0, y: 0, w: 10, h: 10, fill: '#111' }] }, 'text')).toEqual({}); // missing id
+    expect(sanitizeSlidePatch({ elements: [{ ...text, x: NaN }] }, 'text')).toEqual({});            // non-finite geometry
+    expect(sanitizeSlidePatch({ elements: [{ ...text, w: 'wide' }] }, 'text')).toEqual({});         // non-numeric geometry
+    expect(sanitizeSlidePatch({ elements: [{ ...text, w: '100' }] }, 'text')).toEqual({});          // a NUMERIC string is still rejected (no coercion at the gate)
+  });
+
+  it('rejects an element with a wrong-typed known field or an unknown key', () => {
+    expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: 'big' }] }, 'text')).toEqual({});   // fontSize must be a number
+    expect(sanitizeSlidePatch({ elements: [{ ...text, bold: 'yes' }] }, 'text')).toEqual({});        // bold must be a boolean
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, fill: 42 }] }, 'text')).toEqual({});          // fill must be a string
+    expect(sanitizeSlidePatch({ elements: [{ ...text, id: 7 }] }, 'text')).toEqual({});              // id must be a string
+    expect(sanitizeSlidePatch({ elements: [{ ...text, bogus: 1 }] }, 'text')).toEqual({});           // unknown key
+    expect(sanitizeSlidePatch({ elements: [{ ...text, type: null }] }, 'text')).toEqual({});         // non-string type rejected (not thrown)
+    expect(sanitizeSlidePatch({ elements: [{ ...text, type: 42 }] }, 'text')).toEqual({});
+  });
+
+  it('rejects — does not throw on — an element with a prototype-chain own key', () => {
+    // JSON.parse creates an OWN enumerable __proto__ property (an object literal
+    // wouldn't). The validator must reject it like any unknown key, not try to
+    // call Object.prototype (which `ELEMENT_FIELD_OK['__proto__']` resolves to).
+    // The id makes it reach the key-loop (so the __proto__ guard is exercised,
+    // not short-circuited by the missing-id check).
+    const patch = JSON.parse('{"elements":[{"id":"p","type":"text","x":0,"y":0,"w":10,"h":10,"__proto__":{"polluted":true}}]}');
+    expect(() => sanitizeSlidePatch(patch, 'text')).not.toThrow();
+    expect(sanitizeSlidePatch(patch, 'text')).toEqual({});
+    expect({}.polluted).toBeUndefined(); // and nothing was polluted
+  });
+});

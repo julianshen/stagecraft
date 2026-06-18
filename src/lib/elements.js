@@ -297,3 +297,47 @@ export function clampElement(el, { bounds = { w: SLIDE_W, h: SLIDE_H }, min = MI
   }
   return out;
 }
+
+// Mint a fresh unique id on each AI-authored element (`genId` injected, so it's
+// deterministic in tests and minted outside any reducer → StrictMode-safe). Runs
+// on the RAW elements BEFORE the validation gate — adding an id can't launder a
+// bad geometry value, so the gate still validates raw x/y/w/h strictly; the
+// validated elements are clamped separately (clampElement) afterwards. A
+// non-object entry (LLM junk) passes through untouched for the gate to reject.
+export function assignElementIds(elements, genId) {
+  return elements.map((el) =>
+    el && typeof el === 'object' && !Array.isArray(el) ? { ...el, id: genId() } : el,
+  );
+}
+
+// Merge an AI-authored overlay (`incoming`) over the slide's existing elements,
+// PRESERVING existing image elements (the Co-pilot can't round-trip an image's
+// large data URL) and dropping any image in `incoming`. Existing images keep
+// their stack position — `slide.elements` order is paint order, so an image the
+// user brought to the front must stay in front. Images hold their slots while
+// the incoming text/shape/line elements fill the non-image slots in order; any
+// extras land on top (end). Images are never lost or duplicated.
+export function mergeOverlay(existing, incoming) {
+  // Coerce non-array inputs to [] (a malformed deck/MCP write could leave a
+  // slide's `elements` as {} or a string) — matches how the renderer/exporter
+  // tolerate it, so a merge can't throw on bad stored data.
+  const ex = Array.isArray(existing) ? existing : [];
+  const inc = Array.isArray(incoming) ? incoming : [];
+  const nonImages = inc.filter((el) => el?.type !== 'image');
+  // An all-image slide (e.g. a lone image from the image button) has no overlay
+  // the image was deliberately fronted over, so a new overlay is visible content
+  // — paint it on top of the images, not behind them.
+  if (!ex.some((el) => el?.type !== 'image')) return [...ex, ...nonImages];
+  // Otherwise foreground images — the trailing run of images — stay frontmost: a
+  // growing overlay must fill in behind them, never on top. Split them off the tail.
+  let cut = ex.length;
+  while (cut > 0 && ex[cut - 1]?.type === 'image') cut--;
+  const out = [];
+  let ni = 0;
+  for (const el of ex.slice(0, cut)) {
+    if (el?.type === 'image') out.push(el);                 // keep a mid-stack image at its slot
+    else if (ni < nonImages.length) out.push(nonImages[ni++]); // fill a former non-image slot
+  }
+  while (ni < nonImages.length) out.push(nonImages[ni++]);  // extras → top of the overlay, still behind foreground images
+  return [...out, ...ex.slice(cut)];                        // trailing (foreground) images stay frontmost
+}

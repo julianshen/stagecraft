@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -55,6 +55,84 @@ describe('createElement', () => {
 
   it('defaults an image with no src to an empty string', () => {
     expect(createElement('image', { id: 'i2' }).src).toBe('');
+  });
+});
+
+describe('mergeOverlay', () => {
+  const img = (id) => ({ id, type: 'image', x: 0, y: 0, w: 64, h: 64, src: 'data:image/png;base64,AAA' });
+  const txt = (id) => ({ id, type: 'text', x: 0, y: 0, w: 100, h: 40, content: id });
+
+  it('keeps existing images at their original stack position (paint order)', () => {
+    // A background image (first) stays behind the new overlay…
+    expect(mergeOverlay([img('i1'), txt('old')], [txt('new')])).toEqual([img('i1'), txt('new')]);
+    // …and a foreground image (last) stays in front — not forced to the back.
+    expect(mergeOverlay([txt('old'), img('i1')], [txt('new')])).toEqual([txt('new'), img('i1')]);
+  });
+
+  it('preserves multiple images interleaved with the replaced overlay', () => {
+    const out = mergeOverlay([txt('a'), img('i1'), txt('b'), img('i2')], [txt('c'), txt('d')]);
+    expect(out).toEqual([txt('c'), img('i1'), txt('d'), img('i2')]); // images hold slots 1 & 3
+  });
+
+  it('keeps a foreground image frontmost even when the overlay grows', () => {
+    // i1 is the last (frontmost) element; a larger incoming overlay must fill in
+    // BEHIND it, not push a new element on top of the user's foreground image.
+    const out = mergeOverlay([txt('a'), img('i1')], [txt('b'), txt('c')]);
+    expect(out).toEqual([txt('b'), txt('c'), img('i1')]);
+  });
+
+  it('paints a new overlay ON TOP of an all-image slide (a lone image is not a deliberate foreground)', () => {
+    expect(mergeOverlay([img('i1')], [txt('t')])).toEqual([img('i1'), txt('t')]);          // sole image (from the image button) → text visible on top
+    expect(mergeOverlay([img('i1'), img('i2')], [txt('t')])).toEqual([img('i1'), img('i2'), txt('t')]);
+  });
+
+  it('drops any image in the incoming array (originals are the source of truth)', () => {
+    const out = mergeOverlay([img('i1'), txt('keep')], [img('i2'), txt('t')]);
+    expect(out).toEqual([img('i1'), txt('t')]); // i2 dropped; i1 kept at its slot; `keep` replaced by `t`
+  });
+
+  it('tolerates missing/empty arrays', () => {
+    expect(mergeOverlay(undefined, [txt('a')])).toEqual([txt('a')]);
+    expect(mergeOverlay([img('i1')], [])).toEqual([img('i1')]); // clearing keeps images
+    expect(mergeOverlay(undefined, undefined)).toEqual([]);
+  });
+
+  it('treats a malformed non-array `existing`/`incoming` as empty (no throw)', () => {
+    // A malformed deck/MCP write could leave `elements` as {} or a string; the
+    // renderer/exporter already coerce that to [], so the merge must too.
+    expect(mergeOverlay({}, [txt('a')])).toEqual([txt('a')]);
+    expect(mergeOverlay('oops', [txt('a')])).toEqual([txt('a')]);
+    expect(mergeOverlay([img('i1')], 'oops')).toEqual([img('i1')]);
+  });
+});
+
+describe('assignElementIds', () => {
+  // A deterministic id generator so the test can assert exact ids.
+  const seqGen = () => { let n = 0; return () => `gen-${++n}`; };
+
+  it('assigns a fresh id to every element, overriding any provided id', () => {
+    const out = assignElementIds([
+      { type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'A' },
+      { id: 'llm-supplied', type: 'shape', x: 0, y: 0, w: 50, h: 50 },
+    ], seqGen());
+    expect(out.map((e) => e.id)).toEqual(['gen-1', 'gen-2']); // unique, ours — not the LLM's
+  });
+
+  it('preserves all other fields and does NOT clamp (clamping happens after validation)', () => {
+    const [el] = assignElementIds([{ type: 'text', x: 5000, y: 100, w: 200, h: 80, content: 'Hi', bold: true }], seqGen());
+    expect(el).toMatchObject({ type: 'text', x: 5000, content: 'Hi', bold: true, id: 'gen-1' }); // x kept raw (not clamped here)
+  });
+
+  it('returns an empty array unchanged', () => {
+    expect(assignElementIds([], seqGen())).toEqual([]);
+  });
+
+  it('passes non-object entries through untouched (no char-indexed spread)', () => {
+    const gen = seqGen();
+    const out = assignElementIds(['junk', null, { type: 'text', x: 0, y: 0, w: 10, h: 10 }], gen);
+    expect(out[0]).toBe('junk');                 // string left as-is, not spread into {0:'j',...}
+    expect(out[1]).toBe(null);
+    expect(out[2]).toMatchObject({ type: 'text', id: 'gen-1' }); // only the real object got an id
   });
 });
 

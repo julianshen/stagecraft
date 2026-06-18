@@ -320,6 +320,15 @@ describe('editSlide', () => {
     expect(body.messages[0].content).toContain('"title":"Hi"');
     expect(body.system).toMatch(/patch/i);
   });
+
+  it('tells the model it can author free-form canvas elements', async () => {
+    fetchMock.mockResolvedValue(res({ text: '{}' }));
+    await editSlide({ id: 'a', layout: 'text' }, 'add a heading box');
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.system).toMatch(/elements/i);   // the overlay schema is described
+    expect(body.system).toMatch(/1920|1080/);    // in the canvas coordinate space
+    expect(body.system).toMatch(/existing/i);    // and tells it to preserve existing elements (incl. images)
+  });
 });
 
 describe('editSlide non-object replies', () => {

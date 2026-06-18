@@ -173,7 +173,20 @@ Given the current slide JSON and an instruction, respond with ONLY a JSON object
 containing the fields to change (a partial "patch") — no markdown, no prose, no
 code fences. Keep the same "layout" unless the instruction clearly calls for a
 different one. Valid layouts: cover, agenda, divider, kpi, chart, split, table,
-text, roadmap, risks, list, thanks. Do not include an "id".`;
+text, roadmap, risks, list, thanks. Do not include an "id".
+
+To add or change free-form overlay graphics, set "elements": an array of objects
+placed in a 1920x1080 canvas (origin top-left). Every element needs "type",
+numeric "x","y","w","h", and a hex "fill" (e.g. "#1a1a2e" — the text colour for
+text). Types: "text" (with "content", optional "fontSize","bold","italic",
+"underline","align" left|center|right,"fontFamily"), "line", and shapes
+"shape","rounded","circle","triangle","diamond","pentagon","hexagon","star",
+"arrow". Setting "elements" REPLACES the text/shape/line overlay, so include
+every text/shape/line element you want to keep; omit "elements" to leave the
+overlay unchanged. Do NOT list "image" elements — any existing images on the
+slide are preserved automatically.`;
+  // The shape-type list above mirrors the SHAPES registry (lib/shapes.js); a new
+  // shape there should be added here too so the Co-pilot can author it.
 
   const messages = [
     { role: 'user', content: `Current slide:\n${JSON.stringify(slide)}\n\nInstruction: ${instruction}\n\nPatch (JSON only):` },

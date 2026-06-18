@@ -1,5 +1,63 @@
 import { describe, it, expect } from 'vitest';
-import { fieldPatch } from './slideEdit.js';
+import { fieldPatch, prepareAIPatch, applyPreparedPatch } from './slideEdit.js';
+
+// A deterministic id source so tests can assert exact element ids.
+const seqGen = () => { let n = 0; return () => `gen-${++n}`; };
+
+describe('prepareAIPatch (the AI element-patch pipeline: seed ids → validate → clamp)', () => {
+  it('mints ids on raw id-less elements, then validates + clamps the survivors', () => {
+    const raw = { elements: [{ type: 'text', x: 5000, y: 0, w: 8, h: 40, content: 'Hi', fill: '#111' }] };
+    const { patch, applied } = prepareAIPatch(raw, 'text', seqGen());
+    expect(applied).toEqual(['elements']);
+    expect(patch.elements[0]).toMatchObject({ id: 'gen-1', type: 'text', content: 'Hi' });
+    expect(patch.elements[0].w).toBe(16);                       // clamped up to MIN_SIZE
+    expect(patch.elements[0].x).toBeLessThanOrEqual(1920 - 16); // pulled on-screen
+  });
+
+  it('rejects the whole elements field when an element is malformed — id-minting does not launder it', () => {
+    // A numeric-string geometry must be rejected (no coercion), even though
+    // ids are minted before the gate runs.
+    expect(prepareAIPatch({ elements: [{ type: 'text', x: 0, y: 0, w: '100', h: 40, fill: '#111' }] }, 'text', seqGen()).applied).toEqual([]);
+  });
+
+  it('passes non-element fields through the normal gate', () => {
+    expect(prepareAIPatch({ title: 'New' }, 'cover', seqGen())).toEqual({ patch: { title: 'New' }, applied: ['title'] });
+  });
+
+  it('drops an all-image elements reply (no overlay edit) so it cannot wipe the existing overlay', () => {
+    // The model can't author images; a reply of only image elements carries no
+    // text/shape/line edit, so the elements field is dropped (not applied).
+    const img = { type: 'image', x: 0, y: 0, w: 64, h: 64 };
+    const { patch, applied } = prepareAIPatch({ elements: [img] }, 'text', seqGen());
+    expect(applied).toEqual([]);            // nothing to apply
+    expect(patch.elements).toBeUndefined(); // …so the merge can't clear the overlay
+  });
+
+  it('still treats an empty elements array as a genuine clear', () => {
+    expect(prepareAIPatch({ elements: [] }, 'text', seqGen()).applied).toEqual(['elements']);
+  });
+});
+
+describe('applyPreparedPatch (merge into the deck, preserving images)', () => {
+  const deck = (els) => ({ slides: [{ id: 's1', layout: 'text', elements: els }] });
+  const img = { id: 'i1', type: 'image', x: 0, y: 0, w: 64, h: 64, src: 'data:image/png;base64,AAA' };
+  const newText = { id: 'gen-1', type: 'text', x: 10, y: 10, w: 100, h: 40, content: 'AI', fill: '#111' };
+
+  it('preserves an existing background image and applies the AI overlay', () => {
+    const out = applyPreparedPatch(deck([img, { id: 'old', type: 'text', x: 0, y: 0, w: 50, h: 20 }]), 's1', { elements: [newText] });
+    expect(out.slides[0].elements).toEqual([img, newText]); // image kept (background), `old` replaced
+  });
+
+  it('is a no-op when the target slide is gone', () => {
+    const d = deck([]);
+    expect(applyPreparedPatch(d, 'missing', { elements: [newText] })).toBe(d);
+  });
+
+  it('applies a non-element patch unchanged', () => {
+    const out = applyPreparedPatch(deck([]), 's1', { title: 'X' });
+    expect(out.slides[0].title).toBe('X');
+  });
+});
 
 describe('fieldPatch', () => {
   it('builds a scalar patch for a top-level field', () => {

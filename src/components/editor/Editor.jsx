@@ -2,10 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
-import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
+import { getFlatSlideIds, reconcileCurId } from '../../lib/deckUtils.js';
 import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, cloneElements, moveElement, GRID } from '../../lib/elements.js';
 import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
-import { fieldPatch } from '../../lib/slideEdit.js';
+import { fieldPatch, prepareAIPatch, applyPreparedPatch } from '../../lib/slideEdit.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport, onUndo, onRedo, canUndo, canRedo }) {
   // Open on the first slide — for a freshly created deck that's the cover the
@@ -95,11 +95,12 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     if (!targetId || !patch) return [];
     const target = (deckRef.current?.slides || []).find(s => s.id === targetId);
     if (!target) return [];
-    const applied = Object.keys(sanitizeSlidePatch(patch, target.layout));
+    // Prepare the patch (mint element ids → validate → clamp; see prepareAIPatch)
+    // outside the reducer so id-minting is StrictMode-safe, then apply it against
+    // the freshest deck — preserving the slide's existing images (applyPreparedPatch).
+    const { patch: p, applied } = prepareAIPatch(patch, target.layout, genElId);
     if (applied.length) {
-      onDeckChange(prev =>
-        (prev.slides || []).some(s => s.id === targetId) ? applySlidePatch(prev, targetId, patch) : prev
-      );
+      onDeckChange(prev => applyPreparedPatch(prev, targetId, p));
     }
     return applied;
   }
