@@ -36,6 +36,16 @@ describe('ListItemsEditor', () => {
     });
   });
 
+  it('coerces a string agenda item to an object when edited (no char-spread)', () => {
+    // A list→agenda layout switch leaves string items; editing a field must not
+    // spread the string into {0:'F',1:'i',…} (which a single-item slide would
+    // then persist past the gate as a char-keyed flat record).
+    const onApply = vi.fn();
+    render(<ListItemsEditor slide={{ id: 's', layout: 'agenda', items: ['First', 'Second'] }} onApply={onApply} />);
+    fireEvent.change(screen.getAllByTitle('Item title')[0], { target: { value: 'New Title' } });
+    expect(onApply).toHaveBeenCalledWith({ items: [{ t: 'New Title' }, 'Second'] });
+  });
+
   it('edits a list item’s text and commits the updated items', () => {
     const onApply = vi.fn();
     render(<ListItemsEditor slide={list()} onApply={onApply} />);

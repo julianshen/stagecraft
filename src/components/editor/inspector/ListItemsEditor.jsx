@@ -29,7 +29,9 @@ export default function ListItemsEditor({ slide, onApply }) {
   const order = items.map((_, i) => i); // current old-index order, permuted alongside items
   const editItem = (i, value) => commitItems(items.map((it, j) => (j === i ? value : it)));
   const editField = (i, key, value) =>
-    commitItems(items.map((it, j) => (j === i ? { ...it, [key]: value } : it)));
+    // Spread only a plain object — a layout switch can leave a string item here,
+    // and `{ ...'Foo' }` would scatter it into {0:'F',1:'o',…}; start fresh instead.
+    commitItems(items.map((it, j) => (j === i ? { ...(it && typeof it === 'object' ? it : {}), [key]: value } : it)));
   const addItem = () => commitItems([...items, isAgenda ? { n: '', t: '', d: '' } : '']);
   const removeItem = (i) =>
     commitOrder(items.filter((_, j) => j !== i), order.filter((j) => j !== i));
