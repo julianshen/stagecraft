@@ -58,7 +58,10 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   const dragCleanup = useRef(null);
   useEffect(() => () => dragCleanup.current?.(), []);
 
-  const baseElements = slide.elements || [];
+  // Coerce + drop falsy entries at the source so every downstream use (drag map,
+  // selection, hit boxes) gets real elements — matches the export's filtering and
+  // guards against a malformed deck/MCP write ({} or a null entry).
+  const baseElements = (Array.isArray(slide.elements) ? slide.elements : []).filter(Boolean);
   // Latest elements for the marquee's pointer-up (the deck can change mid-drag).
   const baseElementsRef = useRef(baseElements);
   baseElementsRef.current = baseElements;

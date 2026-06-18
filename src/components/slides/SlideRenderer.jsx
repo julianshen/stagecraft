@@ -374,14 +374,18 @@ function ElementView({ el }) {
 }
 
 export function ElementsLayer({ elements }) {
-  if (!elements?.length) return null;
+  // Coerce + drop falsy entries (a malformed deck/MCP write could leave a
+  // non-array or a null entry) — matches how the PPTX export filters, so a bad
+  // value can't crash the render. `ElementView` then always gets a real element.
+  const els = (Array.isArray(elements) ? elements : []).filter(Boolean);
+  if (!els.length) return null;
   // pointer-events:none — this is the VISUAL element layer; interaction (select,
   // drag, resize) is handled by CanvasSlide's separate overlay. Without this, the
   // full-bleed layer would sit over the slide text and swallow the double-click
   // that starts an inline text edit on any slide that has elements.
   return (
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-      {elements.map((el) => <ElementView key={el.id} el={el} />)}
+      {els.map((el) => <ElementView key={el.id} el={el} />)}
     </div>
   );
 }

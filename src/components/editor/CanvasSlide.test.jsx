@@ -420,3 +420,17 @@ describe('CanvasSlide inline-text focus', () => {
     }
   });
 });
+
+describe('CanvasSlide malformed elements', () => {
+  it('drops falsy entries (a malformed deck) and renders only real hit boxes — no crash', () => {
+    const malformed = { id: 's1', elements: [null, slide.elements[0], undefined, slide.elements[1]] };
+    let container;
+    expect(() => {
+      ({ container } = render(
+        <CanvasSlide slide={malformed} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+          selectedIds={[]} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} />,
+      ));
+    }).not.toThrow();
+    expect(hits(container)).toHaveLength(2); // the two real rects, nulls skipped
+  });
+});
