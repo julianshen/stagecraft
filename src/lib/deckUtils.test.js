@@ -426,9 +426,20 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
 
   it('accepts every known shape type (via the shared shape registry) and an empty array', () => {
     const types = ['rounded', 'circle', 'triangle', 'diamond', 'pentagon', 'hexagon', 'star', 'arrow', 'rect', 'ellipse'];
-    const els = types.map((type, i) => ({ id: `s${i}`, type, x: i, y: 0, w: 16, h: 16 }));
+    const els = types.map((type, i) => ({ id: `s${i}`, type, x: i, y: 0, w: 16, h: 16, fill: '#abc' }));
     expect(sanitizeSlidePatch({ elements: els }, 'text')).toEqual({ elements: els });
     expect(sanitizeSlidePatch({ elements: [] }, 'text')).toEqual({ elements: [] }); // clears the overlay
+  });
+
+  it('requires a hex fill on a shape (canvas == export); text/line/image need none', () => {
+    expect(sanitizeSlidePatch({ elements: [{ id: 's', type: 'circle', x: 0, y: 0, w: 16, h: 16 }] }, 'text')).toEqual({}); // fill-less shape → canvas/export colour mismatch
+    expect(sanitizeSlidePatch({ elements: [text, line] }, 'text')).toEqual({ elements: [text, line] }); // text + line are fine without a fill
+  });
+
+  it('rejects a non-positive fontSize (export would emit a negative point size)', () => {
+    expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: -20 }] }, 'text')).toEqual({});
+    expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: 0 }] }, 'text')).toEqual({});
+    expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: 24 }] }, 'text')).toEqual({ elements: [{ ...text, fontSize: 24 }] });
   });
 
   it('accepts the full optional field set with correct types', () => {

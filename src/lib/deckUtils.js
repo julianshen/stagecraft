@@ -112,6 +112,7 @@ const isFmtMap = (v) => isPlainObject(v)
 // correctly typed (an unknown/wrong-typed field would persist as dead data or
 // feed the renderer a bad value); a non-finite x/y/w/h would break layout/export.
 const isFinite_ = Number.isFinite;
+const isPosFinite = (v) => isFinite_(v) && v > 0; // a size that must render (font px); ≤0 breaks export (negative pt)
 const isStr = (v) => typeof v === 'string';
 const isBool = (v) => typeof v === 'boolean';
 const isKnownElementType = (t) => typeof t === 'string' && (t === 'text' || t === 'image' || !!shapeDef(t));
@@ -131,7 +132,7 @@ const ELEMENT_FIELD_OK = {
   id: isStr, type: isKnownElementType,
   x: isFinite_, y: isFinite_, w: isFinite_, h: isFinite_,
   fill: isHexColor, content: isStr, src: isDataImage,
-  fontSize: isFinite_, rot: isFinite_, opacity: isFinite_,
+  fontSize: isPosFinite, rot: isFinite_, opacity: isFinite_,
   bold: isBool, italic: isBool, underline: isBool,
   align: isStr, fontFamily: isStr,
 };
@@ -140,10 +141,15 @@ const ELEMENT_FIELD_OK = {
 // called) — a JSON-parsed patch can carry an own `__proto__`/`constructor` key.
 const ownFieldOk = (k, v) =>
   Object.prototype.hasOwnProperty.call(ELEMENT_FIELD_OK, k) && ELEMENT_FIELD_OK[k](v) === true;
+// A non-line shape needs a hex fill — without one the canvas renders indigo
+// while the export falls back to #15171C, so a fill-less shape changes colour
+// between the two. (text/line/image default consistently, so they don't.)
+const requiresFill = (type) => { const d = shapeDef(type); return !!d && !d.line; };
 const isValidElement = (el) => isPlainObject(el)
   && isStr(el.id)                                                 // id required — every consumer keys/selects by it
   && isKnownElementType(el.type)                                  // type present + known
   && isFinite_(el.x) && isFinite_(el.y) && isFinite_(el.w) && isFinite_(el.h) // geometry present + finite
+  && (!requiresFill(el.type) || isHexColor(el.fill))              // shapes carry a hex fill (canvas == export)
   && Object.entries(el).every(([k, v]) => ownFieldOk(k, v));      // every key known (own) + correctly typed
 
 // Accept a patch field only if its value matches the slide schema's shape for
