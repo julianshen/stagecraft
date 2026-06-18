@@ -439,6 +439,12 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [img] }, 'text')).toEqual({ elements: [img] }); // image needs no fill
   });
 
+  it('requires non-empty content on a text element (an empty one renders nothing)', () => {
+    expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, fill: '#111' }] }, 'text')).toEqual({}); // no content
+    expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, fill: '#111', content: '' }] }, 'text')).toEqual({}); // empty content
+    expect(sanitizeSlidePatch({ elements: [text] }, 'text')).toEqual({ elements: [text] }); // text fixture has content
+  });
+
   it('rejects a non-positive fontSize (export would emit a negative point size)', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: -20 }] }, 'text')).toEqual({});
     expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: 0 }] }, 'text')).toEqual({});

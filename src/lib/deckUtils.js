@@ -153,7 +153,8 @@ const isValidElement = (el) => isPlainObject(el)
   && isStr(el.id)                                                 // id required — every consumer keys/selects by it
   && isKnownElementType(el.type)                                  // type present + known
   && isFinite_(el.x) && isFinite_(el.y) && isFinite_(el.w) && isFinite_(el.h) // geometry present + finite
-  && (!requiresFill(el.type) || isHexColor(el.fill))              // shapes carry a hex fill (canvas == export)
+  && (!requiresFill(el.type) || isHexColor(el.fill))              // fill-bearing elements carry a hex fill (canvas == export)
+  && (el.type !== 'text' || (isStr(el.content) && el.content.length > 0)) // a text element needs visible content
   && Object.entries(el).every(([k, v]) => ownFieldOk(k, v));      // every key known (own) + correctly typed
 
 // Accept a patch field only if its value matches the slide schema's shape for
