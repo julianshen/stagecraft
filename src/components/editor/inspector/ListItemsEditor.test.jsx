@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import ListItemsEditor from './ListItemsEditor.jsx';
+
+// Button interactions use user-event (per the repo's component-testing contract);
+// field edits keep fireEvent.change — the inputs are controlled by slide state
+// that a mocked onApply never updates, so userEvent.type would fire per-keystroke
+// against a frozen value instead of committing the whole new string in one go.
 
 // agenda items are objects {n,t,d}; list items are bare strings. The editor edits
 // both through the shared `items` collection and commits a validated patch via
@@ -53,44 +59,44 @@ describe('ListItemsEditor', () => {
     expect(onApply).toHaveBeenCalledWith({ items: ['First', 'Second!', 'Third'] });
   });
 
-  it('adds a blank agenda item (object) at the end', () => {
+  it('adds a blank agenda item (object) at the end', async () => {
     const onApply = vi.fn();
     render(<ListItemsEditor slide={agenda({ items: [{ n: '01', t: 'A', d: '' }] })} onApply={onApply} />);
-    fireEvent.click(screen.getByText('Add item'));
+    await userEvent.click(screen.getByText('Add item'));
     expect(onApply).toHaveBeenCalledWith({ items: [{ n: '01', t: 'A', d: '' }, { n: '', t: '', d: '' }] });
   });
 
-  it('adds a blank list item (string) at the end', () => {
+  it('adds a blank list item (string) at the end', async () => {
     const onApply = vi.fn();
     render(<ListItemsEditor slide={list({ items: ['A'] })} onApply={onApply} />);
-    fireEvent.click(screen.getByText('Add item'));
+    await userEvent.click(screen.getByText('Add item'));
     expect(onApply).toHaveBeenCalledWith({ items: ['A', ''] });
   });
 
-  it('deletes an item and shifts later items’ formatting down', () => {
+  it('deletes an item and shifts later items’ formatting down', async () => {
     const onApply = vi.fn();
     const slide = list({ items: ['A', 'B', 'C'], fmt: { 'items.0': { bold: true }, 'items.2': { italic: true } } });
     render(<ListItemsEditor slide={slide} onApply={onApply} />);
-    fireEvent.click(screen.getAllByTitle('Remove item')[1]); // delete B (index 1)
+    await userEvent.click(screen.getAllByTitle('Remove item')[1]); // delete B (index 1)
     expect(onApply).toHaveBeenCalledWith({
       items: ['A', 'C'],
       fmt: { 'items.0': { bold: true }, 'items.1': { italic: true } }, // old items.2 → items.1
     });
   });
 
-  it('moves an item up and remaps its formatting to the new index', () => {
+  it('moves an item up and remaps its formatting to the new index', async () => {
     const onApply = vi.fn();
     const slide = list({ items: ['A', 'B'], fmt: { 'items.1': { bold: true } } });
     render(<ListItemsEditor slide={slide} onApply={onApply} />);
-    fireEvent.click(screen.getAllByTitle('Move up')[1]); // move B up → swap
+    await userEvent.click(screen.getAllByTitle('Move up')[1]); // move B up → swap
     expect(onApply).toHaveBeenCalledWith({ items: ['B', 'A'], fmt: { 'items.0': { bold: true } } });
   });
 
-  it('moves an item down and remaps its formatting', () => {
+  it('moves an item down and remaps its formatting', async () => {
     const onApply = vi.fn();
     const slide = list({ items: ['A', 'B'], fmt: { 'items.0': { bold: true } } });
     render(<ListItemsEditor slide={slide} onApply={onApply} />);
-    fireEvent.click(screen.getAllByTitle('Move down')[0]); // move A down → swap
+    await userEvent.click(screen.getAllByTitle('Move down')[0]); // move A down → swap
     expect(onApply).toHaveBeenCalledWith({ items: ['B', 'A'], fmt: { 'items.1': { bold: true } } });
   });
 
@@ -100,10 +106,10 @@ describe('ListItemsEditor', () => {
     expect(screen.getAllByTitle('Move down')[1].disabled).toBe(true);
   });
 
-  it('deletes with no formatting present → sends items only', () => {
+  it('deletes with no formatting present → sends items only', async () => {
     const onApply = vi.fn();
     render(<ListItemsEditor slide={list({ items: ['A', 'B'] })} onApply={onApply} />);
-    fireEvent.click(screen.getAllByTitle('Remove item')[0]);
+    await userEvent.click(screen.getAllByTitle('Remove item')[0]);
     expect(onApply).toHaveBeenCalledWith({ items: ['B'] });
   });
 
@@ -134,12 +140,12 @@ describe('ListItemsEditor', () => {
     expect(inputs[1].value).toBe('B');
   });
 
-  it('handles a slide with no items yet — shows only the Add control', () => {
+  it('handles a slide with no items yet — shows only the Add control', async () => {
     const onApply = vi.fn();
     render(<ListItemsEditor slide={{ id: 's', layout: 'list' }} onApply={onApply} />);
     expect(screen.getByText('Add item')).toBeTruthy();
     expect(screen.queryAllByTitle('Remove item')).toHaveLength(0); // no rows
-    fireEvent.click(screen.getByText('Add item'));
+    await userEvent.click(screen.getByText('Add item'));
     expect(onApply).toHaveBeenCalledWith({ items: [''] });
   });
 });
