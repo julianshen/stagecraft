@@ -449,6 +449,8 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...shape, fill: 42 }] }, 'text')).toEqual({});          // fill must be a string
     expect(sanitizeSlidePatch({ elements: [{ ...text, id: 7 }] }, 'text')).toEqual({});              // id must be a string
     expect(sanitizeSlidePatch({ elements: [{ ...text, bogus: 1 }] }, 'text')).toEqual({});           // unknown key
+    expect(sanitizeSlidePatch({ elements: [{ ...text, type: null }] }, 'text')).toEqual({});         // non-string type rejected (not thrown)
+    expect(sanitizeSlidePatch({ elements: [{ ...text, type: 42 }] }, 'text')).toEqual({});
   });
 
   it('rejects — does not throw on — an element with a prototype-chain own key', () => {

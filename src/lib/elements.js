@@ -304,5 +304,10 @@ export function clampElement(el, { bounds = { w: SLIDE_W, h: SLIDE_H }, min = MI
 // collides) and geometry clamped to the slide. `genId` is injected so callers
 // supply their own id source (and tests can make it deterministic).
 export function normalizeAIElements(elements, genId) {
-  return elements.map((el) => clampElement({ ...el, id: genId() }));
+  // Only normalize plain objects — a non-object entry (LLM junk) is passed
+  // through untouched (spreading it would make a char-indexed object) for the
+  // validation gate to reject as-is.
+  return elements.map((el) =>
+    el && typeof el === 'object' && !Array.isArray(el) ? clampElement({ ...el, id: genId() }) : el,
+  );
 }

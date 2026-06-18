@@ -85,6 +85,14 @@ describe('normalizeAIElements', () => {
   it('returns an empty array unchanged', () => {
     expect(normalizeAIElements([], seqGen())).toEqual([]);
   });
+
+  it('passes non-object entries through untouched (no char-indexed spread)', () => {
+    const gen = seqGen();
+    const out = normalizeAIElements(['junk', null, { type: 'text', x: 0, y: 0, w: 10, h: 10 }], gen);
+    expect(out[0]).toBe('junk');                 // string left as-is, not spread into {0:'j',...}
+    expect(out[1]).toBe(null);
+    expect(out[2]).toMatchObject({ type: 'text', id: 'gen-1' }); // only the real object got an id
+  });
 });
 
 describe('moveElement', () => {

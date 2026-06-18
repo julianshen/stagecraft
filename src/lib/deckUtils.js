@@ -113,7 +113,7 @@ const isFmtMap = (v) => isPlainObject(v)
 const isFinite_ = Number.isFinite;
 const isStr = (v) => typeof v === 'string';
 const isBool = (v) => typeof v === 'boolean';
-const isKnownElementType = (t) => t === 'text' || t === 'image' || !!shapeDef(t);
+const isKnownElementType = (t) => typeof t === 'string' && (t === 'text' || t === 'image' || !!shapeDef(t));
 // The element FIELD vocabulary. Unlike `type` (single-sourced via shapeDef),
 // these keys are scattered across the renderer's style object and the exporter's
 // options, so there's no registry to derive from — keep this in sync with the
