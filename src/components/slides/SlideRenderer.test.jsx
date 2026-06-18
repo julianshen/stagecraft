@@ -89,6 +89,15 @@ describe('ElementsLayer', () => {
     const line = [...boxes].find(b => b.style.height === '100px' && b.style.width === '200px');
     expect(line).toBeTruthy();
   });
+
+  it('skips falsy entries and tolerates a non-array (malformed deck) without crashing', () => {
+    const { container } = render(
+      <ElementsLayer elements={[null, { id: 'c', type: 'circle', x: 0, y: 0, w: 100, h: 100 }, undefined]} />
+    );
+    expect(container.firstChild.childElementCount).toBe(1); // layer holds only the real circle, nulls skipped
+    const { container: c2 } = render(<ElementsLayer elements={{}} />); // non-array (malformed)
+    expect(c2.firstChild).toBeNull(); // renders nothing, no throw
+  });
 });
 
 describe('Slide with elements', () => {

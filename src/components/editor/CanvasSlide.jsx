@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
-import { moveElement, resizeElement, elementsInMarquee, rotateElement } from '../../lib/elements.js';
+import { moveElement, resizeElement, elementsInMarquee, rotateElement, hitBox } from '../../lib/elements.js';
 import { alignSnap } from '../../lib/align.js';
 
 const HANDLE_CURSOR = {
@@ -58,7 +58,10 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   const dragCleanup = useRef(null);
   useEffect(() => () => dragCleanup.current?.(), []);
 
-  const baseElements = slide.elements || [];
+  // Coerce + drop falsy entries at the source so every downstream use (drag map,
+  // selection, hit boxes) gets real elements — matches the export's filtering and
+  // guards against a malformed deck/MCP write ({} or a null entry).
+  const baseElements = (Array.isArray(slide.elements) ? slide.elements : []).filter(Boolean);
   // Latest elements for the marquee's pointer-up (the deck can change mid-drag).
   const baseElementsRef = useRef(baseElements);
   baseElementsRef.current = baseElements;
@@ -318,22 +321,31 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
 
       {/* Interaction overlay — drag empty space to marquee-select, click to deselect. */}
       <div className="elements-overlay" style={{ position: 'absolute', inset: 0 }} onPointerDown={startMarquee} onDoubleClick={focusTextUnder}>
-        {elements.map((el) => (
-          <div
-            key={el.id}
-            className={`el-hit${selectedSet.has(el.id) ? ' selected' : ''}`}
-            style={{
-              position: 'absolute',
-              left: el.x * scale, top: el.y * scale, width: el.w * scale, height: el.h * scale,
-              // Match the rotated content so the outline and hit area sit on the
-              // element (move is a screen translation, so the math is unchanged).
-              ...rotStyle(el.rot),
-              cursor: 'move',
-              outline: selectedSet.has(el.id) ? '1.5px solid oklch(0.62 0.2 265)' : '1px solid transparent',
-            }}
-            onPointerDown={(e) => startMove(e, el)}
-          />
-        ))}
+        {elements.map((el) => {
+          // Click/selection target is padded to a minimum (hitBox) so a thin rule
+          // is grabbable and shows a visible outline. Only the click+outline pads:
+          // the VISUAL (ElementsLayer), the resize handles below, and marquee
+          // selection (`elementsInMarquee`) all use the element's true geometry —
+          // marquee tests what visually intersects the sweep, padding is just for
+          // acquiring a precise thin target by click.
+          const hb = hitBox(el);
+          return (
+            <div
+              key={el.id}
+              className={`el-hit${selectedSet.has(el.id) ? ' selected' : ''}`}
+              style={{
+                position: 'absolute',
+                left: hb.x * scale, top: hb.y * scale, width: hb.w * scale, height: hb.h * scale,
+                // Match the rotated content so the outline and hit area sit on the
+                // element (move is a screen translation, so the math is unchanged).
+                ...rotStyle(el.rot),
+                cursor: 'move',
+                outline: selectedSet.has(el.id) ? '1.5px solid oklch(0.62 0.2 265)' : '1px solid transparent',
+              }}
+              onPointerDown={(e) => startMove(e, el)}
+            />
+          );
+        })}
 
         {/* Selection frame: positioned at the element box and rotated with it,
             so the resize handles and rotate knob sit on the rotated element's
