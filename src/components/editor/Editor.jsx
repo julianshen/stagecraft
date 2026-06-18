@@ -3,7 +3,7 @@ import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
-import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, cloneElements, moveElement, GRID } from '../../lib/elements.js';
+import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, cloneElements, moveElement, normalizeAIElements, GRID } from '../../lib/elements.js';
 import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
 import { fieldPatch } from '../../lib/slideEdit.js';
 
@@ -95,10 +95,16 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     if (!targetId || !patch) return [];
     const target = (deckRef.current?.slides || []).find(s => s.id === targetId);
     if (!target) return [];
-    const applied = Object.keys(sanitizeSlidePatch(patch, target.layout));
+    // AI-authored canvas elements get fresh unique ids + bounds clamping (like a
+    // manual create) — minted here, outside the reducer, so they're deterministic
+    // and never collide. Invalid entries are still rejected by the gate below.
+    const p = Array.isArray(patch.elements)
+      ? { ...patch, elements: normalizeAIElements(patch.elements, genElId) }
+      : patch;
+    const applied = Object.keys(sanitizeSlidePatch(p, target.layout));
     if (applied.length) {
       onDeckChange(prev =>
-        (prev.slides || []).some(s => s.id === targetId) ? applySlidePatch(prev, targetId, patch) : prev
+        (prev.slides || []).some(s => s.id === targetId) ? applySlidePatch(prev, targetId, p) : prev
       );
     }
     return applied;

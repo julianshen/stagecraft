@@ -297,3 +297,12 @@ export function clampElement(el, { bounds = { w: SLIDE_W, h: SLIDE_H }, min = MI
   }
   return out;
 }
+
+// Normalize AI-authored elements (from a validated `elements` patch) into the
+// same shape a manual create produces: a fresh unique id per element (minted
+// here, outside any reducer, so it's deterministic under StrictMode and never
+// collides) and geometry clamped to the slide. `genId` is injected so callers
+// supply their own id source (and tests can make it deterministic).
+export function normalizeAIElements(elements, genId) {
+  return elements.map((el) => clampElement({ ...el, id: genId() }));
+}

@@ -1,4 +1,5 @@
 import { FORMATTABLE_FIELDS } from './slideFmt.js';
+import { shapeDef } from './shapes.js';
 
 export function getFlatSlideIds(deck) {
   if (!deck) return [];
@@ -49,7 +50,7 @@ const SLIDE_FIELDS = new Set([
   'layout', 'title', 'subtitle', 'sub', 'body', 'eyebrow', 'kicker',
   'chapter', 'note', 'notes', 'bg', 'chartType',
   'items', 'kpis', 'stats', 'rows', 'columns',
-  'chart', 'lanes', 'months', 'todayIndex', 'fmt',
+  'chart', 'lanes', 'months', 'todayIndex', 'fmt', 'elements',
 ]);
 const isPrimitive = (x) => x === null || typeof x !== 'object';
 // A flat record: a non-array object whose own values are all primitives. Used
@@ -102,6 +103,41 @@ const isFmtEntry = (e) => isPlainObject(e)
 const isFmtMap = (v) => isPlainObject(v)
   && Object.entries(v).every(([k, e]) => FORMATTABLE_FIELDS.has(k) && isFmtEntry(e));
 
+// A free-form canvas element (`slide.elements[]`, the overlay layer). An AI
+// patch may set the whole array; each entry must be renderable, so validate it
+// against exactly what ElementView draws. Type single-sources through the shared
+// shape registry (`shapeDef`) — a line/shape the renderer knows, plus text/image
+// — so the gate can't drift from the renderer. Every key must be known and
+// correctly typed (an unknown/wrong-typed field would persist as dead data or
+// feed the renderer a bad value); a non-finite x/y/w/h would break layout/export.
+const isFinite_ = Number.isFinite;
+const isStr = (v) => typeof v === 'string';
+const isBool = (v) => typeof v === 'boolean';
+const isKnownElementType = (t) => t === 'text' || t === 'image' || !!shapeDef(t);
+// The element FIELD vocabulary. Unlike `type` (single-sourced via shapeDef),
+// these keys are scattered across the renderer's style object and the exporter's
+// options, so there's no registry to derive from — keep this in sync with the
+// fields `ElementView` (SlideRenderer.jsx) reads, `addElements` (pptxExport.js)
+// exports, and `clampElement` (elements.js) normalizes. A field missing here is
+// silently stripped from AI patches (manual edits bypass this gate).
+const ELEMENT_FIELD_OK = {
+  id: isStr, type: isKnownElementType,
+  x: isFinite_, y: isFinite_, w: isFinite_, h: isFinite_,
+  fill: isStr, content: isStr, src: isStr,
+  fontSize: isFinite_, rot: isFinite_, opacity: isFinite_,
+  bold: isBool, italic: isBool, underline: isBool,
+  align: isStr, fontFamily: isStr,
+};
+// Own-property check (not `ELEMENT_FIELD_OK[k]`, which would resolve a
+// prototype-chain key like `__proto__` to Object.prototype and throw when
+// called) — a JSON-parsed patch can carry an own `__proto__`/`constructor` key.
+const ownFieldOk = (k, v) =>
+  Object.prototype.hasOwnProperty.call(ELEMENT_FIELD_OK, k) && ELEMENT_FIELD_OK[k](v) === true;
+const isValidElement = (el) => isPlainObject(el)
+  && isKnownElementType(el.type)                                  // type present + known
+  && isFinite_(el.x) && isFinite_(el.y) && isFinite_(el.w) && isFinite_(el.h) // geometry present + finite
+  && Object.entries(el).every(([k, v]) => ownFieldOk(k, v));      // every key known (own) + correctly typed
+
 // Accept a patch field only if its value matches the slide schema's shape for
 // the target layout — a value of the wrong shape (e.g. `title: { text }`, a
 // table cell of `{ text }`, primitive `kpis`, or object items in a `list`)
@@ -127,6 +163,9 @@ function fieldOk(key, value, layout) {
   if (key === 'todayIndex') return layout === 'roadmap' && (value === null || Number.isFinite(value));
   // fmt is layout-agnostic — any template field on any layout can be formatted.
   if (key === 'fmt') return isFmtMap(value);
+  // elements overlay any layout; the whole array is replaced, so reject it
+  // entirely if any entry isn't renderable (an empty array clears the overlay).
+  if (key === 'elements') return Array.isArray(value) && value.every(isValidElement);
   return isPrimitive(value);
 }
 

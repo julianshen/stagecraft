@@ -410,3 +410,54 @@ describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
     expect(sanitizeSlidePatch({ fmt: { title: {} } }, 'cover')).toEqual({ fmt: { title: {} } });
   });
 });
+
+describe('sanitizeSlidePatch — free-form canvas elements', () => {
+  const text = { type: 'text', x: 10, y: 20, w: 100, h: 40, content: 'Hi' };
+  const shape = { type: 'shape', x: 0, y: 0, w: 50, h: 50, fill: '#abc' };
+  const line = { type: 'line', x: 0, y: 0, w: 200, h: 8 };
+
+  it('accepts an array of valid elements (text / shape / line) — layout-agnostic', () => {
+    const patch = { elements: [text, shape, line] };
+    expect(sanitizeSlidePatch(patch, 'text')).toEqual(patch);
+    expect(sanitizeSlidePatch(patch, 'chart')).toEqual(patch); // overlays any layout
+  });
+
+  it('accepts every known shape type (via the shared shape registry) and an empty array', () => {
+    const types = ['rounded', 'circle', 'triangle', 'diamond', 'pentagon', 'hexagon', 'star', 'arrow', 'rect', 'ellipse', 'image'];
+    const els = types.map((type, i) => ({ type, x: i, y: 0, w: 16, h: 16 }));
+    expect(sanitizeSlidePatch({ elements: els }, 'text')).toEqual({ elements: els });
+    expect(sanitizeSlidePatch({ elements: [] }, 'text')).toEqual({ elements: [] }); // clears the overlay
+  });
+
+  it('accepts the full optional field set with correct types', () => {
+    const rich = { id: 'e1', type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'A', fontSize: 48, bold: true, italic: false, underline: true, align: 'center', fontFamily: 'Inter', fill: '#111', rot: 30, opacity: 50 };
+    expect(sanitizeSlidePatch({ elements: [rich] }, 'text')).toEqual({ elements: [rich] });
+  });
+
+  it('rejects the whole field if any element is malformed (replace-not-merge strictness)', () => {
+    expect(sanitizeSlidePatch({ elements: 'nope' }, 'text')).toEqual({});                          // not an array
+    expect(sanitizeSlidePatch({ elements: [text, 'str'] }, 'text')).toEqual({});                    // non-object element
+    expect(sanitizeSlidePatch({ elements: [{ ...text, type: 'bogus' }] }, 'text')).toEqual({});     // unknown type
+    expect(sanitizeSlidePatch({ elements: [{ type: 'text', x: 0, y: 0, w: 100 }] }, 'text')).toEqual({}); // missing h
+    expect(sanitizeSlidePatch({ elements: [{ ...text, x: NaN }] }, 'text')).toEqual({});            // non-finite geometry
+    expect(sanitizeSlidePatch({ elements: [{ ...text, w: 'wide' }] }, 'text')).toEqual({});         // non-numeric geometry
+  });
+
+  it('rejects an element with a wrong-typed known field or an unknown key', () => {
+    expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: 'big' }] }, 'text')).toEqual({});   // fontSize must be a number
+    expect(sanitizeSlidePatch({ elements: [{ ...text, bold: 'yes' }] }, 'text')).toEqual({});        // bold must be a boolean
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, fill: 42 }] }, 'text')).toEqual({});          // fill must be a string
+    expect(sanitizeSlidePatch({ elements: [{ ...text, id: 7 }] }, 'text')).toEqual({});              // id must be a string
+    expect(sanitizeSlidePatch({ elements: [{ ...text, bogus: 1 }] }, 'text')).toEqual({});           // unknown key
+  });
+
+  it('rejects — does not throw on — an element with a prototype-chain own key', () => {
+    // JSON.parse creates an OWN enumerable __proto__ property (an object literal
+    // wouldn't). The validator must reject it like any unknown key, not try to
+    // call Object.prototype (which `ELEMENT_FIELD_OK['__proto__']` resolves to).
+    const patch = JSON.parse('{"elements":[{"type":"text","x":0,"y":0,"w":10,"h":10,"__proto__":{"polluted":true}}]}');
+    expect(() => sanitizeSlidePatch(patch, 'text')).not.toThrow();
+    expect(sanitizeSlidePatch(patch, 'text')).toEqual({});
+    expect({}.polluted).toBeUndefined(); // and nothing was polluted
+  });
+});

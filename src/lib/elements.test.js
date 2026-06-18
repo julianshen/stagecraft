@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, normalizeAIElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -55,6 +55,35 @@ describe('createElement', () => {
 
   it('defaults an image with no src to an empty string', () => {
     expect(createElement('image', { id: 'i2' }).src).toBe('');
+  });
+});
+
+describe('normalizeAIElements', () => {
+  // A deterministic id generator so the test can assert exact ids.
+  const seqGen = () => { let n = 0; return () => `gen-${++n}`; };
+
+  it('assigns a fresh id to every element, overriding any provided id', () => {
+    const out = normalizeAIElements([
+      { type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'A' },
+      { id: 'llm-supplied', type: 'shape', x: 0, y: 0, w: 50, h: 50 },
+    ], seqGen());
+    expect(out.map((e) => e.id)).toEqual(['gen-1', 'gen-2']); // unique, ours — not the LLM's
+  });
+
+  it('clamps each element to the slide bounds + min size (like a manual create)', () => {
+    const [el] = normalizeAIElements([{ type: 'rect', x: 5000, y: -50, w: 8, h: 8 }], seqGen());
+    expect(el.w).toBe(MIN_SIZE);                 // sub-min width raised
+    expect(el.x).toBeLessThanOrEqual(SLIDE_W - el.w); // pulled on-screen
+    expect(el.y).toBe(0);                         // negative y clamped
+  });
+
+  it('preserves type and renderable fields', () => {
+    const [el] = normalizeAIElements([{ type: 'text', x: 100, y: 100, w: 200, h: 80, content: 'Hi', bold: true, fontSize: 32 }], seqGen());
+    expect(el).toMatchObject({ type: 'text', content: 'Hi', bold: true, fontSize: 32 });
+  });
+
+  it('returns an empty array unchanged', () => {
+    expect(normalizeAIElements([], seqGen())).toEqual([]);
   });
 });
 
