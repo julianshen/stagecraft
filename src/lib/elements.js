@@ -318,8 +318,12 @@ export function assignElementIds(elements, genId) {
 // the incoming text/shape/line elements fill the non-image slots in order; any
 // extras land on top (end). Images are never lost or duplicated.
 export function mergeOverlay(existing, incoming) {
-  const ex = existing || [];
-  const nonImages = (incoming || []).filter((el) => el?.type !== 'image');
+  // Coerce non-array inputs to [] (a malformed deck/MCP write could leave a
+  // slide's `elements` as {} or a string) — matches how the renderer/exporter
+  // tolerate it, so a merge can't throw on bad stored data.
+  const ex = Array.isArray(existing) ? existing : [];
+  const inc = Array.isArray(incoming) ? incoming : [];
+  const nonImages = inc.filter((el) => el?.type !== 'image');
   // An all-image slide (e.g. a lone image from the image button) has no overlay
   // the image was deliberately fronted over, so a new overlay is visible content
   // — paint it on top of the images, not behind them.

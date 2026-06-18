@@ -96,6 +96,14 @@ describe('mergeOverlay', () => {
     expect(mergeOverlay([img('i1')], [])).toEqual([img('i1')]); // clearing keeps images
     expect(mergeOverlay(undefined, undefined)).toEqual([]);
   });
+
+  it('treats a malformed non-array `existing`/`incoming` as empty (no throw)', () => {
+    // A malformed deck/MCP write could leave `elements` as {} or a string; the
+    // renderer/exporter already coerce that to [], so the merge must too.
+    expect(mergeOverlay({}, [txt('a')])).toEqual([txt('a')]);
+    expect(mergeOverlay('oops', [txt('a')])).toEqual([txt('a')]);
+    expect(mergeOverlay([img('i1')], 'oops')).toEqual([img('i1')]);
+  });
 });
 
 describe('assignElementIds', () => {
