@@ -309,3 +309,13 @@ export function assignElementIds(elements, genId) {
     el && typeof el === 'object' && !Array.isArray(el) ? { ...el, id: genId() } : el,
   );
 }
+
+// Merge an AI-authored overlay (`incoming`) over the slide's existing elements,
+// PRESERVING existing image elements and dropping any image in `incoming`. The
+// Co-pilot manages the text/shape/line overlay but can't round-trip an image's
+// (large) data URL, so images stay user-managed and are never lost or duplicated.
+export function mergeOverlay(existing, incoming) {
+  const keptImages = (existing || []).filter((el) => el?.type === 'image');
+  const nonImages = (incoming || []).filter((el) => el?.type !== 'image');
+  return [...keptImages, ...nonImages];
+}

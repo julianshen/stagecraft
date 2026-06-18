@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -55,6 +55,27 @@ describe('createElement', () => {
 
   it('defaults an image with no src to an empty string', () => {
     expect(createElement('image', { id: 'i2' }).src).toBe('');
+  });
+});
+
+describe('mergeOverlay', () => {
+  const img = (id) => ({ id, type: 'image', x: 0, y: 0, w: 64, h: 64, src: 'data:image/png;base64,AAA' });
+  const txt = (id) => ({ id, type: 'text', x: 0, y: 0, w: 100, h: 40, content: id });
+
+  it('keeps existing image elements and replaces the rest with the incoming ones', () => {
+    const out = mergeOverlay([img('i1'), txt('old')], [txt('new')]);
+    expect(out).toEqual([img('i1'), txt('new')]); // i1 preserved, `old` dropped, `new` added
+  });
+
+  it('drops any image in the incoming array (originals are the source of truth)', () => {
+    const out = mergeOverlay([img('i1')], [img('i2'), txt('t')]);
+    expect(out).toEqual([img('i1'), txt('t')]); // no duplicate/replacement image — i2 dropped
+  });
+
+  it('tolerates missing/empty arrays', () => {
+    expect(mergeOverlay(undefined, [txt('a')])).toEqual([txt('a')]);
+    expect(mergeOverlay([img('i1')], [])).toEqual([img('i1')]); // clearing keeps images
+    expect(mergeOverlay(undefined, undefined)).toEqual([]);
   });
 });
 

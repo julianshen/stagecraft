@@ -180,11 +180,11 @@ placed in a 1920x1080 canvas (origin top-left). Each element needs "type" plus
 numeric "x","y","w","h". Types: "text" (with "content", optional "fontSize",
 "bold","italic","underline","align","fontFamily","fill" hex), "line", and shapes
 "shape","rounded","circle","triangle","diamond","pentagon","hexagon","star",
-"arrow" (with a "fill" hex). Setting "elements" REPLACES the whole overlay, so
-include EVERY existing element you want to keep — including any existing "image"
-elements, copied verbatim. Omit "elements" to leave the overlay unchanged. Don't
-create NEW "image" elements (you can't produce their data), but never drop an
-existing one. Fills must be hex (e.g. "#1a1a2e").`;
+"arrow" (with a "fill" hex). Setting "elements" REPLACES the text/shape/line
+overlay, so include every text/shape/line element you want to keep; omit
+"elements" to leave the overlay unchanged. Do NOT list "image" elements — any
+existing images on the slide are preserved automatically. Fills must be hex
+(e.g. "#1a1a2e").`;
   // The shape-type list above mirrors the SHAPES registry (lib/shapes.js); a new
   // shape there should be added here too so the Co-pilot can author it.
 

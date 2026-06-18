@@ -3,7 +3,7 @@ import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
-import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, cloneElements, moveElement, assignElementIds, clampElement, GRID } from '../../lib/elements.js';
+import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, cloneElements, moveElement, assignElementIds, clampElement, mergeOverlay, GRID } from '../../lib/elements.js';
 import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
 import { fieldPatch } from '../../lib/slideEdit.js';
 
@@ -109,9 +109,16 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
       : safe;
     const applied = Object.keys(p);
     if (applied.length) {
-      onDeckChange(prev =>
-        (prev.slides || []).some(s => s.id === targetId) ? applySlidePatch(prev, targetId, p) : prev
-      );
+      onDeckChange(prev => {
+        if (!(prev.slides || []).some(s => s.id === targetId)) return prev;
+        // Preserve the slide's existing image elements against the freshest deck
+        // (the model can't round-trip their data URLs, so they live outside its
+        // reply); the AI overlay replaces only text/shapes/lines.
+        const merged = Array.isArray(p.elements)
+          ? { ...p, elements: mergeOverlay(prev.slides.find(s => s.id === targetId)?.elements, p.elements) }
+          : p;
+        return applySlidePatch(prev, targetId, merged);
+      });
     }
     return applied;
   }
