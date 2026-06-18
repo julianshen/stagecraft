@@ -2,10 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
-import { getFlatSlideIds, reconcileCurId, applySlidePatch, sanitizeSlidePatch } from '../../lib/deckUtils.js';
-import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, cloneElements, moveElement, assignElementIds, clampElement, mergeOverlay, GRID } from '../../lib/elements.js';
+import { getFlatSlideIds, reconcileCurId } from '../../lib/deckUtils.js';
+import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, cloneElements, moveElement, GRID } from '../../lib/elements.js';
 import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
-import { fieldPatch } from '../../lib/slideEdit.js';
+import { fieldPatch, prepareAIPatch, applyPreparedPatch } from '../../lib/slideEdit.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport, onUndo, onRedo, canUndo, canRedo }) {
   // Open on the first slide — for a freshly created deck that's the cover the
@@ -95,30 +95,12 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     if (!targetId || !patch) return [];
     const target = (deckRef.current?.slides || []).find(s => s.id === targetId);
     if (!target) return [];
-    // AI-authored canvas elements: mint fresh unique ids on the RAW elements
-    // first (the gate requires an id; adding one can't launder a bad geometry
-    // value), THEN validate strictly, THEN clamp the validated elements to the
-    // slide (like a manual create). Ids are minted outside the reducer so
-    // they're deterministic under StrictMode and never collide.
-    const seeded = Array.isArray(patch.elements)
-      ? { ...patch, elements: assignElementIds(patch.elements, genElId) }
-      : patch;
-    const safe = sanitizeSlidePatch(seeded, target.layout);
-    const p = Array.isArray(safe.elements)
-      ? { ...safe, elements: safe.elements.map((el) => clampElement(el)) }
-      : safe;
-    const applied = Object.keys(p);
+    // Prepare the patch (mint element ids → validate → clamp; see prepareAIPatch)
+    // outside the reducer so id-minting is StrictMode-safe, then apply it against
+    // the freshest deck — preserving the slide's existing images (applyPreparedPatch).
+    const { patch: p, applied } = prepareAIPatch(patch, target.layout, genElId);
     if (applied.length) {
-      onDeckChange(prev => {
-        if (!(prev.slides || []).some(s => s.id === targetId)) return prev;
-        // Preserve the slide's existing image elements against the freshest deck
-        // (the model can't round-trip their data URLs, so they live outside its
-        // reply); the AI overlay replaces only text/shapes/lines.
-        const merged = Array.isArray(p.elements)
-          ? { ...p, elements: mergeOverlay(prev.slides.find(s => s.id === targetId)?.elements, p.elements) }
-          : p;
-        return applySlidePatch(prev, targetId, merged);
-      });
+      onDeckChange(prev => applyPreparedPatch(prev, targetId, p));
     }
     return applied;
   }

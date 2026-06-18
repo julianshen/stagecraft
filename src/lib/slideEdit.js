@@ -1,3 +1,38 @@
+import { sanitizeSlidePatch, applySlidePatch } from './deckUtils.js';
+import { assignElementIds, clampElement, mergeOverlay } from './elements.js';
+
+// Prepare an AI slide patch for application. For a patch that sets `elements`
+// (the free-form overlay), the order is **mint ids → validate → clamp**: ids are
+// minted on the RAW elements first (the gate requires an id, and adding one can't
+// launder a bad geometry value, so strict validation still runs on raw x/y/w/h),
+// then the validated survivors are clamped to the slide like a manual create.
+// `genId` is injected so ids are minted outside any reducer (StrictMode-safe) and
+// tests stay deterministic. Returns `{ patch, applied }` — `patch` ready to merge,
+// `applied` the field keys that survived the gate (so a caller can report what
+// actually changed). Non-element patches pass through the normal gate unchanged.
+export function prepareAIPatch(rawPatch, layout, genId) {
+  const seeded = Array.isArray(rawPatch?.elements)
+    ? { ...rawPatch, elements: assignElementIds(rawPatch.elements, genId) }
+    : rawPatch;
+  const safe = sanitizeSlidePatch(seeded, layout);
+  const patch = Array.isArray(safe.elements)
+    ? { ...safe, elements: safe.elements.map((el) => clampElement(el)) }
+    : safe;
+  return { patch, applied: Object.keys(patch) };
+}
+
+// Apply a prepared patch to slide `targetId` in `deck` (no-op if it's gone).
+// When the patch sets `elements`, existing image elements are preserved
+// (`mergeOverlay`) — the Co-pilot can't round-trip their data URLs — so the AI
+// overlay replaces only the text/shape/line layer. Returns a new deck.
+export function applyPreparedPatch(deck, targetId, patch) {
+  if (!(deck?.slides || []).some((s) => s.id === targetId)) return deck;
+  const merged = Array.isArray(patch.elements)
+    ? { ...patch, elements: mergeOverlay(deck.slides.find((s) => s.id === targetId)?.elements, patch.elements) }
+    : patch;
+  return applySlidePatch(deck, targetId, merged);
+}
+
 // Build a slide patch for an inline text edit. `applySlidePatch` shallow-merges
 // the patch over the slide, so a nested edit (an item, a table cell) must carry
 // the WHOLE rebuilt top-level field. `fieldPatch` walks `path` from the slide,
