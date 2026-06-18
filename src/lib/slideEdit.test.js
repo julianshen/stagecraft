@@ -6,7 +6,7 @@ const seqGen = () => { let n = 0; return () => `gen-${++n}`; };
 
 describe('prepareAIPatch (the AI element-patch pipeline: seed ids → validate → clamp)', () => {
   it('mints ids on raw id-less elements, then validates + clamps the survivors', () => {
-    const raw = { elements: [{ type: 'text', x: 5000, y: 0, w: 8, h: 40, content: 'Hi' }] };
+    const raw = { elements: [{ type: 'text', x: 5000, y: 0, w: 8, h: 40, content: 'Hi', fill: '#111' }] };
     const { patch, applied } = prepareAIPatch(raw, 'text', seqGen());
     expect(applied).toEqual(['elements']);
     expect(patch.elements[0]).toMatchObject({ id: 'gen-1', type: 'text', content: 'Hi' });
@@ -17,7 +17,7 @@ describe('prepareAIPatch (the AI element-patch pipeline: seed ids → validate �
   it('rejects the whole elements field when an element is malformed — id-minting does not launder it', () => {
     // A numeric-string geometry must be rejected (no coercion), even though
     // ids are minted before the gate runs.
-    expect(prepareAIPatch({ elements: [{ type: 'text', x: 0, y: 0, w: '100', h: 40 }] }, 'text', seqGen()).applied).toEqual([]);
+    expect(prepareAIPatch({ elements: [{ type: 'text', x: 0, y: 0, w: '100', h: 40, fill: '#111' }] }, 'text', seqGen()).applied).toEqual([]);
   });
 
   it('passes non-element fields through the normal gate', () => {
@@ -41,7 +41,7 @@ describe('prepareAIPatch (the AI element-patch pipeline: seed ids → validate �
 describe('applyPreparedPatch (merge into the deck, preserving images)', () => {
   const deck = (els) => ({ slides: [{ id: 's1', layout: 'text', elements: els }] });
   const img = { id: 'i1', type: 'image', x: 0, y: 0, w: 64, h: 64, src: 'data:image/png;base64,AAA' };
-  const newText = { id: 'gen-1', type: 'text', x: 10, y: 10, w: 100, h: 40, content: 'AI' };
+  const newText = { id: 'gen-1', type: 'text', x: 10, y: 10, w: 100, h: 40, content: 'AI', fill: '#111' };
 
   it('preserves an existing background image and applies the AI overlay', () => {
     const out = applyPreparedPatch(deck([img, { id: 'old', type: 'text', x: 0, y: 0, w: 50, h: 20 }]), 's1', { elements: [newText] });

@@ -414,9 +414,9 @@ describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
 describe('sanitizeSlidePatch — free-form canvas elements', () => {
   // Valid elements carry an id (the gate requires one; applyAIPatch mints it
   // before the gate runs). Fills are hex; image src is a data URL.
-  const text = { id: 'a', type: 'text', x: 10, y: 20, w: 100, h: 40, content: 'Hi' };
+  const text = { id: 'a', type: 'text', x: 10, y: 20, w: 100, h: 40, content: 'Hi', fill: '#111' };
   const shape = { id: 'b', type: 'shape', x: 0, y: 0, w: 50, h: 50, fill: '#abc' };
-  const line = { id: 'c', type: 'line', x: 0, y: 0, w: 200, h: 8 };
+  const line = { id: 'c', type: 'line', x: 0, y: 0, w: 200, h: 8, fill: '#111' };
 
   it('accepts an array of valid elements (text / shape / line) — layout-agnostic', () => {
     const patch = { elements: [text, shape, line] };
@@ -431,9 +431,12 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [] }, 'text')).toEqual({ elements: [] }); // clears the overlay
   });
 
-  it('requires a hex fill on a shape (canvas == export); text/line/image need none', () => {
-    expect(sanitizeSlidePatch({ elements: [{ id: 's', type: 'circle', x: 0, y: 0, w: 16, h: 16 }] }, 'text')).toEqual({}); // fill-less shape → canvas/export colour mismatch
-    expect(sanitizeSlidePatch({ elements: [text, line] }, 'text')).toEqual({ elements: [text, line] }); // text + line are fine without a fill
+  it('requires a hex fill on every fill-bearing element (text/line/shape); only image needs none', () => {
+    expect(sanitizeSlidePatch({ elements: [{ id: 's', type: 'circle', x: 0, y: 0, w: 16, h: 16 }] }, 'text')).toEqual({}); // fill-less shape
+    expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, content: 'x' }] }, 'text')).toEqual({}); // fill-less text (canvas --ink vs export #15171C)
+    expect(sanitizeSlidePatch({ elements: [{ id: 'l', type: 'line', x: 0, y: 0, w: 50, h: 8 }] }, 'text')).toEqual({}); // fill-less line
+    const img = { id: 'i', type: 'image', x: 0, y: 0, w: 64, h: 64, src: 'data:image/png;base64,AAA' };
+    expect(sanitizeSlidePatch({ elements: [img] }, 'text')).toEqual({ elements: [img] }); // image needs no fill
   });
 
   it('rejects a non-positive fontSize (export would emit a negative point size)', () => {
@@ -467,8 +470,8 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: 'nope' }, 'text')).toEqual({});                          // not an array
     expect(sanitizeSlidePatch({ elements: [text, 'str'] }, 'text')).toEqual({});                    // non-object element
     expect(sanitizeSlidePatch({ elements: [{ ...text, type: 'bogus' }] }, 'text')).toEqual({});     // unknown type
-    expect(sanitizeSlidePatch({ elements: [{ id: 'x', type: 'text', x: 0, y: 0, w: 100 }] }, 'text')).toEqual({}); // missing h
-    expect(sanitizeSlidePatch({ elements: [{ type: 'text', x: 0, y: 0, w: 10, h: 10 }] }, 'text')).toEqual({}); // missing id
+    expect(sanitizeSlidePatch({ elements: [{ id: 'x', type: 'text', x: 0, y: 0, w: 100, fill: '#111' }] }, 'text')).toEqual({}); // missing h
+    expect(sanitizeSlidePatch({ elements: [{ type: 'text', x: 0, y: 0, w: 10, h: 10, fill: '#111' }] }, 'text')).toEqual({}); // missing id
     expect(sanitizeSlidePatch({ elements: [{ ...text, x: NaN }] }, 'text')).toEqual({});            // non-finite geometry
     expect(sanitizeSlidePatch({ elements: [{ ...text, w: 'wide' }] }, 'text')).toEqual({});         // non-numeric geometry
     expect(sanitizeSlidePatch({ elements: [{ ...text, w: '100' }] }, 'text')).toEqual({});          // a NUMERIC string is still rejected (no coercion at the gate)

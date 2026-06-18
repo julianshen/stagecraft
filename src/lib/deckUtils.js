@@ -144,10 +144,11 @@ const ELEMENT_FIELD_OK = {
 // called) — a JSON-parsed patch can carry an own `__proto__`/`constructor` key.
 const ownFieldOk = (k, v) =>
   Object.prototype.hasOwnProperty.call(ELEMENT_FIELD_OK, k) && ELEMENT_FIELD_OK[k](v) === true;
-// A non-line shape needs a hex fill — without one the canvas renders indigo
-// while the export falls back to #15171C, so a fill-less shape changes colour
-// between the two. (text/line/image default consistently, so they don't.)
-const requiresFill = (type) => { const d = shapeDef(type); return !!d && !d.line; };
+// Every fill-bearing element (text colour, line/shape fill) needs a hex fill:
+// a fill-less element's canvas default diverges from the export (a shape renders
+// indigo vs #15171C; text/line render the editor theme's `--ink` — light under
+// the dark theme — vs #15171C). Only `image` has no fill.
+const requiresFill = (type) => isKnownElementType(type) && type !== 'image';
 const isValidElement = (el) => isPlainObject(el)
   && isStr(el.id)                                                 // id required — every consumer keys/selects by it
   && isKnownElementType(el.type)                                  // type present + known
