@@ -412,9 +412,11 @@ describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
 });
 
 describe('sanitizeSlidePatch — free-form canvas elements', () => {
-  const text = { type: 'text', x: 10, y: 20, w: 100, h: 40, content: 'Hi' };
-  const shape = { type: 'shape', x: 0, y: 0, w: 50, h: 50, fill: '#abc' };
-  const line = { type: 'line', x: 0, y: 0, w: 200, h: 8 };
+  // Valid elements carry an id (the gate requires one; applyAIPatch mints it
+  // before the gate runs). Fills are hex; image src is a data URL.
+  const text = { id: 'a', type: 'text', x: 10, y: 20, w: 100, h: 40, content: 'Hi' };
+  const shape = { id: 'b', type: 'shape', x: 0, y: 0, w: 50, h: 50, fill: '#abc' };
+  const line = { id: 'c', type: 'line', x: 0, y: 0, w: 200, h: 8 };
 
   it('accepts an array of valid elements (text / shape / line) — layout-agnostic', () => {
     const patch = { elements: [text, shape, line] };
@@ -423,8 +425,8 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
   });
 
   it('accepts every known shape type (via the shared shape registry) and an empty array', () => {
-    const types = ['rounded', 'circle', 'triangle', 'diamond', 'pentagon', 'hexagon', 'star', 'arrow', 'rect', 'ellipse', 'image'];
-    const els = types.map((type, i) => ({ type, x: i, y: 0, w: 16, h: 16 }));
+    const types = ['rounded', 'circle', 'triangle', 'diamond', 'pentagon', 'hexagon', 'star', 'arrow', 'rect', 'ellipse'];
+    const els = types.map((type, i) => ({ id: `s${i}`, type, x: i, y: 0, w: 16, h: 16 }));
     expect(sanitizeSlidePatch({ elements: els }, 'text')).toEqual({ elements: els });
     expect(sanitizeSlidePatch({ elements: [] }, 'text')).toEqual({ elements: [] }); // clears the overlay
   });
@@ -434,11 +436,23 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [rich] }, 'text')).toEqual({ elements: [rich] });
   });
 
+  it('accepts an image only with a data-URL src; rejects a remote src', () => {
+    const img = { id: 'i', type: 'image', x: 0, y: 0, w: 64, h: 64, src: 'data:image/png;base64,AAA' };
+    expect(sanitizeSlidePatch({ elements: [img] }, 'text')).toEqual({ elements: [img] });
+    expect(sanitizeSlidePatch({ elements: [{ ...img, src: 'https://evil.example/x.png' }] }, 'text')).toEqual({}); // no remote fetch
+  });
+
+  it('gates fill to a hex colour (canvas == export); rejects a CSS name', () => {
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, fill: '#aabbcc' }] }, 'text')).toEqual({ elements: [{ ...shape, fill: '#aabbcc' }] });
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, fill: 'red' }] }, 'text')).toEqual({}); // would render indigo on export
+  });
+
   it('rejects the whole field if any element is malformed (replace-not-merge strictness)', () => {
     expect(sanitizeSlidePatch({ elements: 'nope' }, 'text')).toEqual({});                          // not an array
     expect(sanitizeSlidePatch({ elements: [text, 'str'] }, 'text')).toEqual({});                    // non-object element
     expect(sanitizeSlidePatch({ elements: [{ ...text, type: 'bogus' }] }, 'text')).toEqual({});     // unknown type
-    expect(sanitizeSlidePatch({ elements: [{ type: 'text', x: 0, y: 0, w: 100 }] }, 'text')).toEqual({}); // missing h
+    expect(sanitizeSlidePatch({ elements: [{ id: 'x', type: 'text', x: 0, y: 0, w: 100 }] }, 'text')).toEqual({}); // missing h
+    expect(sanitizeSlidePatch({ elements: [{ type: 'text', x: 0, y: 0, w: 10, h: 10 }] }, 'text')).toEqual({}); // missing id
     expect(sanitizeSlidePatch({ elements: [{ ...text, x: NaN }] }, 'text')).toEqual({});            // non-finite geometry
     expect(sanitizeSlidePatch({ elements: [{ ...text, w: 'wide' }] }, 'text')).toEqual({});         // non-numeric geometry
     expect(sanitizeSlidePatch({ elements: [{ ...text, w: '100' }] }, 'text')).toEqual({});          // a NUMERIC string is still rejected (no coercion at the gate)
@@ -458,7 +472,9 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     // JSON.parse creates an OWN enumerable __proto__ property (an object literal
     // wouldn't). The validator must reject it like any unknown key, not try to
     // call Object.prototype (which `ELEMENT_FIELD_OK['__proto__']` resolves to).
-    const patch = JSON.parse('{"elements":[{"type":"text","x":0,"y":0,"w":10,"h":10,"__proto__":{"polluted":true}}]}');
+    // The id makes it reach the key-loop (so the __proto__ guard is exercised,
+    // not short-circuited by the missing-id check).
+    const patch = JSON.parse('{"elements":[{"id":"p","type":"text","x":0,"y":0,"w":10,"h":10,"__proto__":{"polluted":true}}]}');
     expect(() => sanitizeSlidePatch(patch, 'text')).not.toThrow();
     expect(sanitizeSlidePatch(patch, 'text')).toEqual({});
     expect({}.polluted).toBeUndefined(); // and nothing was polluted

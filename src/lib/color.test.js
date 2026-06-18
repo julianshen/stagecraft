@@ -1,5 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { toHex } from './color.js';
+import { toHex, isHexColor } from './color.js';
+
+describe('isHexColor', () => {
+  it('accepts #rgb and #rrggbb (any case)', () => {
+    expect(isHexColor('#abc')).toBe(true);
+    expect(isHexColor('#AABBCC')).toBe(true);
+    expect(isHexColor('#1a1a2e')).toBe(true);
+  });
+  it('rejects CSS names, malformed hex, and non-strings', () => {
+    expect(isHexColor('red')).toBe(false);
+    expect(isHexColor('#12')).toBe(false);
+    expect(isHexColor('#12345')).toBe(false);
+    expect(isHexColor('1a1a2e')).toBe(false); // missing #
+    expect(isHexColor(42)).toBe(false);
+    expect(isHexColor(null)).toBe(false);
+  });
+});
 
 describe('toHex', () => {
   it('passes a #rrggbb value through, lowercased', () => {

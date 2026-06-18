@@ -327,6 +327,7 @@ describe('editSlide', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.system).toMatch(/elements/i);   // the overlay schema is described
     expect(body.system).toMatch(/1920|1080/);    // in the canvas coordinate space
+    expect(body.system).toMatch(/existing/i);    // and tells it to preserve existing elements (incl. images)
   });
 });
 

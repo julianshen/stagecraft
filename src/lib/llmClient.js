@@ -181,8 +181,10 @@ numeric "x","y","w","h". Types: "text" (with "content", optional "fontSize",
 "bold","italic","underline","align","fontFamily","fill" hex), "line", and shapes
 "shape","rounded","circle","triangle","diamond","pentagon","hexagon","star",
 "arrow" (with a "fill" hex). Setting "elements" REPLACES the whole overlay, so
-include any existing elements you want to keep. Omit "elements" to leave it
-unchanged. Do not author "image" elements.`;
+include EVERY existing element you want to keep — including any existing "image"
+elements, copied verbatim. Omit "elements" to leave the overlay unchanged. Don't
+create NEW "image" elements (you can't produce their data), but never drop an
+existing one. Fills must be hex (e.g. "#1a1a2e").`;
   // The shape-type list above mirrors the SHAPES registry (lib/shapes.js); a new
   // shape there should be added here too so the Co-pilot can author it.
 

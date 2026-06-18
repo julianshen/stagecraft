@@ -298,16 +298,14 @@ export function clampElement(el, { bounds = { w: SLIDE_W, h: SLIDE_H }, min = MI
   return out;
 }
 
-// Normalize AI-authored elements (from a validated `elements` patch) into the
-// same shape a manual create produces: a fresh unique id per element (minted
-// here, outside any reducer, so it's deterministic under StrictMode and never
-// collides) and geometry clamped to the slide. `genId` is injected so callers
-// supply their own id source (and tests can make it deterministic).
-export function normalizeAIElements(elements, genId) {
-  // Only normalize plain objects — a non-object entry (LLM junk) is passed
-  // through untouched (spreading it would make a char-indexed object) for the
-  // validation gate to reject as-is.
+// Mint a fresh unique id on each AI-authored element (`genId` injected, so it's
+// deterministic in tests and minted outside any reducer → StrictMode-safe). Runs
+// on the RAW elements BEFORE the validation gate — adding an id can't launder a
+// bad geometry value, so the gate still validates raw x/y/w/h strictly; the
+// validated elements are clamped separately (clampElement) afterwards. A
+// non-object entry (LLM junk) passes through untouched for the gate to reject.
+export function assignElementIds(elements, genId) {
   return elements.map((el) =>
-    el && typeof el === 'object' && !Array.isArray(el) ? clampElement({ ...el, id: genId() }) : el,
+    el && typeof el === 'object' && !Array.isArray(el) ? { ...el, id: genId() } : el,
   );
 }

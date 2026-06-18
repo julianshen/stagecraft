@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, normalizeAIElements, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -58,37 +58,30 @@ describe('createElement', () => {
   });
 });
 
-describe('normalizeAIElements', () => {
+describe('assignElementIds', () => {
   // A deterministic id generator so the test can assert exact ids.
   const seqGen = () => { let n = 0; return () => `gen-${++n}`; };
 
   it('assigns a fresh id to every element, overriding any provided id', () => {
-    const out = normalizeAIElements([
+    const out = assignElementIds([
       { type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'A' },
       { id: 'llm-supplied', type: 'shape', x: 0, y: 0, w: 50, h: 50 },
     ], seqGen());
     expect(out.map((e) => e.id)).toEqual(['gen-1', 'gen-2']); // unique, ours — not the LLM's
   });
 
-  it('clamps each element to the slide bounds + min size (like a manual create)', () => {
-    const [el] = normalizeAIElements([{ type: 'rect', x: 5000, y: -50, w: 8, h: 8 }], seqGen());
-    expect(el.w).toBe(MIN_SIZE);                 // sub-min width raised
-    expect(el.x).toBeLessThanOrEqual(SLIDE_W - el.w); // pulled on-screen
-    expect(el.y).toBe(0);                         // negative y clamped
-  });
-
-  it('preserves type and renderable fields', () => {
-    const [el] = normalizeAIElements([{ type: 'text', x: 100, y: 100, w: 200, h: 80, content: 'Hi', bold: true, fontSize: 32 }], seqGen());
-    expect(el).toMatchObject({ type: 'text', content: 'Hi', bold: true, fontSize: 32 });
+  it('preserves all other fields and does NOT clamp (clamping happens after validation)', () => {
+    const [el] = assignElementIds([{ type: 'text', x: 5000, y: 100, w: 200, h: 80, content: 'Hi', bold: true }], seqGen());
+    expect(el).toMatchObject({ type: 'text', x: 5000, content: 'Hi', bold: true, id: 'gen-1' }); // x kept raw (not clamped here)
   });
 
   it('returns an empty array unchanged', () => {
-    expect(normalizeAIElements([], seqGen())).toEqual([]);
+    expect(assignElementIds([], seqGen())).toEqual([]);
   });
 
   it('passes non-object entries through untouched (no char-indexed spread)', () => {
     const gen = seqGen();
-    const out = normalizeAIElements(['junk', null, { type: 'text', x: 0, y: 0, w: 10, h: 10 }], gen);
+    const out = assignElementIds(['junk', null, { type: 'text', x: 0, y: 0, w: 10, h: 10 }], gen);
     expect(out[0]).toBe('junk');                 // string left as-is, not spread into {0:'j',...}
     expect(out[1]).toBe(null);
     expect(out[2]).toMatchObject({ type: 'text', id: 'gen-1' }); // only the real object got an id

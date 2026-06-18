@@ -1,5 +1,6 @@
 import { FORMATTABLE_FIELDS } from './slideFmt.js';
 import { shapeDef } from './shapes.js';
+import { isHexColor } from './color.js';
 
 export function getFlatSlideIds(deck) {
   if (!deck) return [];
@@ -114,16 +115,22 @@ const isFinite_ = Number.isFinite;
 const isStr = (v) => typeof v === 'string';
 const isBool = (v) => typeof v === 'boolean';
 const isKnownElementType = (t) => typeof t === 'string' && (t === 'text' || t === 'image' || !!shapeDef(t));
+// An overlay image must be an embedded data URL — the app never fetches remote
+// images (privacy/offline), and the exporter passes `src` straight to addImage.
+// A remote/other URL would trigger a network load on the canvas and break export.
+const isDataImage = (v) => typeof v === 'string' && v.startsWith('data:image/');
 // The element FIELD vocabulary. Unlike `type` (single-sourced via shapeDef),
 // these keys are scattered across the renderer's style object and the exporter's
 // options, so there's no registry to derive from — keep this in sync with the
 // fields `ElementView` (SlideRenderer.jsx) reads, `addElements` (pptxExport.js)
 // exports, and `clampElement` (elements.js) normalizes. A field missing here is
-// silently stripped from AI patches (manual edits bypass this gate).
+// silently stripped from AI patches (manual edits bypass this gate). `fill` is
+// gated to a hex (renders identically on canvas + export) and `src` to a data
+// URL (no remote fetch) — a plausible-but-unsafe string would otherwise persist.
 const ELEMENT_FIELD_OK = {
   id: isStr, type: isKnownElementType,
   x: isFinite_, y: isFinite_, w: isFinite_, h: isFinite_,
-  fill: isStr, content: isStr, src: isStr,
+  fill: isHexColor, content: isStr, src: isDataImage,
   fontSize: isFinite_, rot: isFinite_, opacity: isFinite_,
   bold: isBool, italic: isBool, underline: isBool,
   align: isStr, fontFamily: isStr,
@@ -134,6 +141,7 @@ const ELEMENT_FIELD_OK = {
 const ownFieldOk = (k, v) =>
   Object.prototype.hasOwnProperty.call(ELEMENT_FIELD_OK, k) && ELEMENT_FIELD_OK[k](v) === true;
 const isValidElement = (el) => isPlainObject(el)
+  && isStr(el.id)                                                 // id required — every consumer keys/selects by it
   && isKnownElementType(el.type)                                  // type present + known
   && isFinite_(el.x) && isFinite_(el.y) && isFinite_(el.w) && isFinite_(el.h) // geometry present + finite
   && Object.entries(el).every(([k, v]) => ownFieldOk(k, v));      // every key known (own) + correctly typed
