@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
-import { getFlatSlideIds, reconcileCurId } from '../../lib/deckUtils.js';
+import { getFlatSlideIds, reconcileCurId, applySlidePatch } from '../../lib/deckUtils.js';
 import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, cloneElements, moveElement, GRID } from '../../lib/elements.js';
 import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
 import { fieldPatch, prepareAIPatch, applyPreparedPatch } from '../../lib/slideEdit.js';
@@ -40,13 +40,12 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   function addComponent(id) { pushSlide(createComponentSlide(id)); }
 
   function changeLayout(layout) {
-    if (!curId) return;
-    onDeckChange(prev => {
-      const next = JSON.parse(JSON.stringify(prev));
-      const s = next.slides.find(x => x.id === curId);
-      if (s) s.layout = layout;
-      return next;
-    });
+    if (!curId || currentSlide?.layout === layout) return; // skip a no-op re-select (avoids churn + a redundant PUT)
+    // Route through the shared patch gate so switching layout drops collections
+    // that don't fit the new layout (mergeSlide), exactly like the AI/inline edit
+    // path — otherwise carried-over items render blank and the inspector can't
+    // edit them (the gate rejects a mixed-shape collection on commit).
+    onDeckChange(prev => applySlidePatch(prev, curId, { layout }));
   }
 
   function changeTheme(theme) {
