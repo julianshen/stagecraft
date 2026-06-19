@@ -3,7 +3,7 @@ import { chartSpec, CHART_SERIES_HEX } from './chartSpec.js';
 import { SEVERITY_HEX } from './riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
 import { resolveNotes } from '../data/deck.js';
-import { toHex } from './color.js';
+import { toHex, isHexColor } from './color.js';
 import { SLIDE_W } from './elements.js';
 import { shapeDef } from './shapes.js';
 
@@ -65,7 +65,11 @@ function fmtOpts(fmt) {
   // underline XML only for an object/string, so a boolean would silently drop
   // in exported tables. The object form underlines on both paths.
   if (fmt.underline) o.underline = { style: 'sng' };
-  if (typeof fmt.color === 'string') o.color = pxHex(fmt.color);
+  // Only a #hex colour exports faithfully. The patch gate allows any string for
+  // fmt.color and the toolbar emits #rrggbb, but an AI patch could set a named/
+  // oklch colour toHex can't convert (it would fall back to indigo) — leave the
+  // field's own colour rather than export a wrong one.
+  if (isHexColor(fmt.color)) o.color = pxHex(fmt.color);
   return o;
 }
 // The pptx text-option override for a slide field (its `slide.fmt[key]` record,
@@ -145,8 +149,11 @@ function addAgendaSlide(pptx, slide, tc) {
     fontSize: 22, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const items = slide.items || [];
+  let row = 0; // gap-free layout position; `i` stays the true index for the fmt key
   items.forEach((it, i) => {
-    const y = 1.3 + i * 0.9;
+    if (!it) return; // null item — skip like the canvas, keep `i` the true fmt index
+    const y = 1.3 + row * 0.9;
+    row += 1;
     fmtText(sld, slide, `items.${i}.n`, it.n, { x: 0.5, y, w: 0.5, h: 0.4, fontSize: 12, color: tc.accent, fontFace: 'Courier New' });
     fmtText(sld, slide, `items.${i}.t`, it.t, { x: 1.1, y, w: 5, h: 0.4, fontSize: 15, bold: true, color: tc.ink, fontFace: 'Inter' });
     fmtText(sld, slide, `items.${i}.d`, it.d, { x: 1.1, y: y + 0.38, w: 7, h: 0.35, fontSize: 11, color: 'AAAAAA', fontFace: 'Inter' });
@@ -179,9 +186,12 @@ function addKpiSlide(pptx, slide, tc) {
   });
   const kpis = slide.kpis || [];
   const cols = 3;
+  let n = 0; // grid position of rendered cards (gap-free); `i` stays the true fmt index
   kpis.forEach((k, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
+    if (!k) return; // null KPI — skip like the canvas, keep `i` the true fmt index
+    const col = n % cols;
+    const row = Math.floor(n / cols);
+    n += 1;
     const x = 0.5 + col * 3.2;
     const y = 1.1 + row * 1.8;
     sld.addShape(pptx.ShapeType.rect, { x, y, w: 3, h: 1.5, fill: { color: '1A1A2E' }, line: { color: '333355', width: 1 } });
@@ -217,11 +227,14 @@ function addListSlide(pptx, slide, tc) {
     x: 0.5, y: 0.3, w: 9, h: 0.6, fontSize: 24, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const items = slide.items || [];
+  let row = 0; // gap-free position; `i` stays the true index for the fmt key
   items.forEach((item, i) => {
+    if (item == null) return; // nullish bullet — skip like the canvas (no "• null"), keep `i` the true index
     fmtText(sld, slide, `items.${i}`, `• ${item}`, {
-      x: 0.7, y: 1.2 + i * 0.65, w: 8.5, h: 0.55,
+      x: 0.7, y: 1.2 + row * 0.65, w: 8.5, h: 0.55,
       fontSize: 14, color: 'DDDDDD', fontFace: 'Inter',
     });
+    row += 1;
   });
   return sld;
 }
@@ -282,8 +295,11 @@ function addSplitSlide(pptx, slide, tc) {
     });
   }
   const stats = slide.stats || [];
+  let srow = 0; // gap-free position; `i` stays the true index for the fmt key
   stats.forEach((s, i) => {
-    const y = 1.0 + i * 1.4;
+    if (!s) return; // null stat — skip like the canvas, keep `i` the true fmt index
+    const y = 1.0 + srow * 1.4;
+    srow += 1;
     fmtText(sld, slide, `stats.${i}.val`, s.val, { x: 6.5, y, w: 3, h: 0.7, fontSize: 32, bold: true, color: tc.accent, align: 'center', fontFace: 'Inter' });
     fmtText(sld, slide, `stats.${i}.lbl`, s.lbl, { x: 6.5, y: y + 0.65, w: 3, h: 0.4, fontSize: 12, color: 'AAAAAA', align: 'center', fontFace: 'Inter' });
   });

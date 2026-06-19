@@ -303,6 +303,33 @@ describe('per-field / per-item formatting (slide.fmt)', () => {
     expect(table.rows[1][0].options.underline).toEqual({ style: 'sng' }); // body cell rows.0.0
   });
 
+  it('tolerates null per-item entries — no crash, gap-free layout, true-index fmt key', async () => {
+    // The renderer guards null items (it && …) keeping the true index for the
+    // fmt key; the export must match — drop nulls, lay survivors out gap-free,
+    // and key fmt by the original index.
+    await exportToPPTX(deckWith({ id: 'a', layout: 'agenda', title: 'T', items: [null, { n: '02', t: 'Second', d: 'd' }], fmt: { 'items.1.t': { bold: true } } }));
+    const ag = optsOf(last(), 'Second');
+    expect(ag.bold).toBe(true); // survivor keeps its TRUE-index fmt (items.1.t)
+    expect(ag.y).toBe(1.3);     // laid out at the first row (gap-free), not row 1
+    // kpi + split (object items) must not crash on a null entry either
+    await exportToPPTX(deckWith({ id: 'k', layout: 'kpi', title: 'T', kpis: [null, { val: '42', label: 'L' }] }));
+    expect(optsOf(last(), '42')).toBeTruthy();
+    await exportToPPTX(deckWith({ id: 'sp', layout: 'split', title: 'T', stats: [null, { val: '9', lbl: 'L' }] }));
+    expect(optsOf(last(), '9')).toBeTruthy();
+    // list (primitive items) drops a nullish entry rather than emitting "• null"
+    await exportToPPTX(deckWith({ id: 'l', layout: 'list', title: 'T', items: [null, 'B'] }));
+    expect(optsOf(last(), '• null')).toBeUndefined();
+    expect(optsOf(last(), '• B')).toBeTruthy();
+  });
+
+  it('keeps the field’s own colour when fmt.color is not a #hex (avoids exporting a wrong indigo)', async () => {
+    // The toolbar always emits #rrggbb, but an AI patch may set a named/oklch
+    // colour the export can't convert; rather than toHex's indigo fallback,
+    // leave the field's template colour.
+    await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Body', fmt: { body: { color: 'red' } } }));
+    expect(optsOf(last(), 'Body').color).toBe('CCCCCC'); // base body colour — NOT indigo
+  });
+
   it('ignores a malformed fmt entry (non-object) without crashing or formatting', async () => {
     // The export is a serialization boundary (disk-persisted / agent-authored
     // decks can bypass the patch gate), so a non-object fmt entry must be a no-op.
