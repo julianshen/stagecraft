@@ -45,4 +45,16 @@ describe('Editor changeLayout', () => {
     expect(slide.layout).toBe('list');
     expect(slide.items).toBeUndefined(); // agenda objects don't fit list → cleared
   });
+
+  it('does not fire a deck update when the picked layout is already current', () => {
+    // Re-selecting the active layout would otherwise churn a no-op deck update,
+    // re-render, and a debounced PUT sync — guard it.
+    const onDeckChange = vi.fn();
+    renderEditor(agendaDeck(), onDeckChange);
+    const layoutBtn = [...document.querySelectorAll('button.select')].find((b) => b.textContent.includes('Agenda'));
+    fireEvent.click(layoutBtn);
+    const popover = document.querySelector('.menu-pop');
+    fireEvent.click(within(popover).getByText('Agenda')); // pick the CURRENT layout
+    expect(onDeckChange).not.toHaveBeenCalled();
+  });
 });

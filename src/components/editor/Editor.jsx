@@ -40,7 +40,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   function addComponent(id) { pushSlide(createComponentSlide(id)); }
 
   function changeLayout(layout) {
-    if (!curId) return;
+    if (!curId || currentSlide?.layout === layout) return; // skip a no-op re-select (avoids churn + a redundant PUT)
     // Route through the shared patch gate so switching layout drops collections
     // that don't fit the new layout (mergeSlide), exactly like the AI/inline edit
     // path — otherwise carried-over items render blank and the inspector can't
