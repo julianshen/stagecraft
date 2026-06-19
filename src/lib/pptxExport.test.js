@@ -15,12 +15,12 @@ vi.mock('pptxgenjs', () => {
     }
     addSlide() {
       const s = {
-        texts: [], shapes: [], charts: [], images: [], background: null, notes: null,
+        texts: [], shapes: [], charts: [], images: [], tables: [], background: null, notes: null,
         addText(t, o) { this.texts.push({ t, o }); },
         addShape(type, o) { this.shapes.push({ type, o }); },
         addChart(type, data, o) { this.charts.push({ type, data, o }); },
         addImage(o) { this.images.push({ o }); },
-        addTable() {},
+        addTable(rows, o) { this.tables.push({ rows, o }); },
         addNotes(t) { this.notes = t; },
       };
       rec.slides.push(s);
@@ -252,5 +252,70 @@ describe('exportToPPTX — free-form elements overlay', () => {
   it('treats a non-array slide.elements as empty (no garbage shapes from iterating a string)', async () => {
     await exportToPPTX(elemDeck('oops'));
     expect(last().shapes).toHaveLength(0); // not 4 rects from 'o','o','p','s'
+  });
+});
+
+describe('per-field / per-item formatting (slide.fmt)', () => {
+  const deckWith = (slide) => ({
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's1', name: 'X', slides: [slide.id] }],
+    slides: [slide],
+  });
+  const optsOf = (s, text) => s.texts.find((x) => String(x.t) === text)?.o;
+
+  it('maps bold + colour onto a field that has neither by default (text body)', async () => {
+    await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Body', fmt: { body: { bold: true, color: '#ff0000' } } }));
+    const o = optsOf(last(), 'Body');
+    expect(o.bold).toBe(true);
+    expect(o.color).toBe('FF0000'); // CSS hex → bare RRGGBB
+  });
+
+  it('maps italic + underline, and is relative: a template-bold title stays bold', async () => {
+    await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'Keep', fmt: { title: { italic: true, underline: true } } }));
+    const o = optsOf(last(), 'Keep');
+    expect(o.italic).toBe(true);
+    expect(o.underline).toEqual({ style: 'sng' }); // object form underlines on both addText + addTable paths
+    expect(o.bold).toBe(true); // base bold preserved — fmt set no bold, so no override
+  });
+
+  it('formats a per-item agenda field (items.0.t)', async () => {
+    await exportToPPTX(deckWith({ id: 'a', layout: 'agenda', title: 'T', items: [{ n: '01', t: 'First', d: 'd' }], fmt: { 'items.0.t': { color: '#0088ff' } } }));
+    expect(optsOf(last(), 'First').color).toBe('0088FF');
+  });
+
+  it('formats a per-item list bullet (items.1)', async () => {
+    await exportToPPTX(deckWith({ id: 'l', layout: 'list', title: 'T', items: ['A', 'B'], fmt: { 'items.1': { bold: true } } }));
+    expect(optsOf(last(), '• B').bold).toBe(true);
+  });
+
+  it('formats kpi and stat item fields', async () => {
+    await exportToPPTX(deckWith({ id: 'k', layout: 'kpi', title: 'T', kpis: [{ val: '42', label: 'Users', delta: '+5' }], fmt: { 'kpis.0.val': { color: '#00ff00' } } }));
+    expect(optsOf(last(), '42').color).toBe('00FF00');
+    await exportToPPTX(deckWith({ id: 'sp', layout: 'split', title: 'T', stats: [{ val: '9', lbl: 'L' }], fmt: { 'stats.0.lbl': { bold: true } } }));
+    expect(optsOf(last(), 'L').bold).toBe(true);
+  });
+
+  it('formats a table header cell and a body cell', async () => {
+    await exportToPPTX(deckWith({ id: 'tb', layout: 'table', title: 'T', columns: ['H1', 'H2'], rows: [['a', 'b']], fmt: { 'columns.1': { italic: true }, 'rows.0.0': { underline: true } } }));
+    const table = last().tables[0];
+    expect(table.rows[0][1].options.italic).toBe(true);     // header columns.1
+    // object form, so it underlines in the real exported table (a boolean would be dropped on the addTable path)
+    expect(table.rows[1][0].options.underline).toEqual({ style: 'sng' }); // body cell rows.0.0
+  });
+
+  it('ignores a malformed fmt entry (non-object) without crashing or formatting', async () => {
+    // The export is a serialization boundary (disk-persisted / agent-authored
+    // decks can bypass the patch gate), so a non-object fmt entry must be a no-op.
+    await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Body', fmt: { body: 'bold' } }));
+    const o = optsOf(last(), 'Body');
+    expect(o.bold).toBeUndefined();   // string entry → no override
+    expect(o.fontSize).toBe(15);      // base unchanged, no crash
+  });
+
+  it('does NOT apply fmt.fontSize — the export keeps its hand-tuned pt scale (B/I/U/colour still apply)', async () => {
+    await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Big', fmt: { body: { fontSize: 300, bold: true } } }));
+    const o = optsOf(last(), 'Big');
+    expect(o.fontSize).toBe(15); // base body size unchanged — NOT PT(300)
+    expect(o.bold).toBe(true);   // other axes still apply
   });
 });

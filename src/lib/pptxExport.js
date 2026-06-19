@@ -45,6 +45,38 @@ const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
 // An element's fill as a bare RRGGBB (pptx wants no '#'); toHex supplies the
 // canonical hex + indigo fallback so a bad value can't break the export.
 const pxHex = (fill) => toHex(fill).slice(1).toUpperCase();
+
+// Per-field/per-item formatting (slide.fmt, keyed by the renderer's E() path —
+// 'title', 'items.0.t', 'rows.1.4', …). Map a fmt record to pptx text-option
+// overrides: bold/italic/underline/colour translate 1:1, and only set props
+// override (so un-setting returns the field to its template baseline, matching
+// the canvas). `fontSize` is intentionally NOT applied — fmt.fontSize is an
+// absolute canvas-px size, but the layout builders use a hand-tuned pt scale
+// (not PT(px)), so applying it would mis-scale against the unformatted base.
+// Keep the prop set in sync with the canvas equivalent `fmtStyle` (slideFmt.js)
+// and the `FMT_PROP_OK` gate (deckUtils.js) if a new formatting prop is added.
+function fmtOpts(fmt) {
+  if (!fmt || typeof fmt !== 'object') return undefined;
+  const o = {};
+  if (fmt.bold) o.bold = true;
+  if (fmt.italic) o.italic = true;
+  // Object form, not `true`: pptxgenjs normalizes a boolean underline to
+  // {style:'sng'} only on the addText path — table cells (addTable) emit the
+  // underline XML only for an object/string, so a boolean would silently drop
+  // in exported tables. The object form underlines on both paths.
+  if (fmt.underline) o.underline = { style: 'sng' };
+  if (typeof fmt.color === 'string') o.color = pxHex(fmt.color);
+  return o;
+}
+// The pptx text-option override for a slide field (its `slide.fmt[key]` record,
+// if any) — the single accessor used by both addText fields (fmtText) and the
+// table-cell builder, so the fmt-map lookup lives in one place.
+const fmtFor = (slide, key) => fmtOpts(slide.fmt?.[key]);
+// addText with the slide.fmt[key] override (if any) merged over the base options.
+function fmtText(sld, slide, key, value, opts) {
+  sld.addText(value, { ...opts, ...fmtFor(slide, key) });
+}
+
 function elementGeo(el) {
   const g = { x: IN(num(el.x)), y: IN(num(el.y)), w: IN(num(el.w)), h: IN(num(el.h)) };
   const rot = num(el.rot);
@@ -90,13 +122,13 @@ function addElements(pptx, sld, slide) {
 function addCoverSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: slide.bg === 'accent' ? tc.accent : tc.bg };
-  sld.addText(slide.title || 'Untitled', {
+  fmtText(sld, slide, 'title', slide.title || 'Untitled', {
     x: 0.5, y: 2.5, w: 9, h: 1.2,
     fontSize: 44, bold: true, color: tc.ink,
     fontFace: 'Inter', align: 'left',
   });
   if (slide.subtitle) {
-    sld.addText(slide.subtitle, {
+    fmtText(sld, slide, 'subtitle', slide.subtitle, {
       x: 0.5, y: 3.9, w: 9, h: 0.5,
       fontSize: 16, color: 'AAAAAA',
       fontFace: 'Inter', align: 'left',
@@ -108,16 +140,16 @@ function addCoverSlide(pptx, slide, tc) {
 function addAgendaSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
-  sld.addText(slide.title || 'Agenda', {
+  fmtText(sld, slide, 'title', slide.title || 'Agenda', {
     x: 0.5, y: 0.4, w: 9, h: 0.6,
     fontSize: 22, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const items = slide.items || [];
   items.forEach((it, i) => {
     const y = 1.3 + i * 0.9;
-    sld.addText(it.n, { x: 0.5, y, w: 0.5, h: 0.4, fontSize: 12, color: tc.accent, fontFace: 'Courier New' });
-    sld.addText(it.t, { x: 1.1, y, w: 5, h: 0.4, fontSize: 15, bold: true, color: tc.ink, fontFace: 'Inter' });
-    sld.addText(it.d, { x: 1.1, y: y + 0.38, w: 7, h: 0.35, fontSize: 11, color: 'AAAAAA', fontFace: 'Inter' });
+    fmtText(sld, slide, `items.${i}.n`, it.n, { x: 0.5, y, w: 0.5, h: 0.4, fontSize: 12, color: tc.accent, fontFace: 'Courier New' });
+    fmtText(sld, slide, `items.${i}.t`, it.t, { x: 1.1, y, w: 5, h: 0.4, fontSize: 15, bold: true, color: tc.ink, fontFace: 'Inter' });
+    fmtText(sld, slide, `items.${i}.d`, it.d, { x: 1.1, y: y + 0.38, w: 7, h: 0.35, fontSize: 11, color: 'AAAAAA', fontFace: 'Inter' });
   });
   return sld;
 }
@@ -132,7 +164,7 @@ function addDividerSlide(pptx, slide, tc) {
       fontFace: 'Courier New',
     });
   }
-  sld.addText(slide.title || '', {
+  fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 3.0, w: 9, h: 0.8,
     fontSize: 36, bold: true, color: tc.ink, fontFace: 'Inter',
   });
@@ -142,7 +174,7 @@ function addDividerSlide(pptx, slide, tc) {
 function addKpiSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
-  sld.addText(slide.title || '', {
+  fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const kpis = slide.kpis || [];
@@ -153,10 +185,10 @@ function addKpiSlide(pptx, slide, tc) {
     const x = 0.5 + col * 3.2;
     const y = 1.1 + row * 1.8;
     sld.addShape(pptx.ShapeType.rect, { x, y, w: 3, h: 1.5, fill: { color: '1A1A2E' }, line: { color: '333355', width: 1 } });
-    sld.addText(k.val, { x, y: y + 0.2, w: 3, h: 0.6, fontSize: 28, bold: true, color: tc.ink, align: 'center', fontFace: 'Inter' });
-    sld.addText(k.label, { x, y: y + 0.85, w: 3, h: 0.3, fontSize: 11, color: 'AAAAAA', align: 'center', fontFace: 'Inter' });
+    fmtText(sld, slide, `kpis.${i}.val`, k.val, { x, y: y + 0.2, w: 3, h: 0.6, fontSize: 28, bold: true, color: tc.ink, align: 'center', fontFace: 'Inter' });
+    fmtText(sld, slide, `kpis.${i}.label`, k.label, { x, y: y + 0.85, w: 3, h: 0.3, fontSize: 11, color: 'AAAAAA', align: 'center', fontFace: 'Inter' });
     const deltaColor = k.good === true ? '2ECC71' : k.good === false ? 'E74C3C' : 'AAAAAA';
-    sld.addText(k.delta || '', { x, y: y + 1.15, w: 3, h: 0.25, fontSize: 10, color: deltaColor, align: 'center', fontFace: 'Courier New' });
+    fmtText(sld, slide, `kpis.${i}.delta`, k.delta || '', { x, y: y + 1.15, w: 3, h: 0.25, fontSize: 10, color: deltaColor, align: 'center', fontFace: 'Courier New' });
   });
   return sld;
 }
@@ -165,12 +197,12 @@ function addTextSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   if (slide.title) {
-    sld.addText(slide.title, {
+    fmtText(sld, slide, 'title', slide.title, {
       x: 0.5, y: 0.4, w: 9, h: 0.7, fontSize: 26, bold: true, color: tc.ink, fontFace: 'Inter',
     });
   }
   if (slide.body) {
-    sld.addText(slide.body, {
+    fmtText(sld, slide, 'body', slide.body, {
       x: 0.5, y: 1.3, w: 9, h: 4, fontSize: 15, color: 'CCCCCC', fontFace: 'Inter', valign: 'top',
       wrap: true,
     });
@@ -181,12 +213,12 @@ function addTextSlide(pptx, slide, tc) {
 function addListSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
-  sld.addText(slide.title || '', {
+  fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 0.3, w: 9, h: 0.6, fontSize: 24, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const items = slide.items || [];
   items.forEach((item, i) => {
-    sld.addText(`• ${item}`, {
+    fmtText(sld, slide, `items.${i}`, `• ${item}`, {
       x: 0.7, y: 1.2 + i * 0.65, w: 8.5, h: 0.55,
       fontSize: 14, color: 'DDDDDD', fontFace: 'Inter',
     });
@@ -197,15 +229,15 @@ function addListSlide(pptx, slide, tc) {
 function addTableSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
-  sld.addText(slide.title || '', {
+  fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const cols = slide.columns || [];
   const rows = slide.rows || [];
   if (cols.length && rows.length) {
     const tableRows = [
-      cols.map(c => ({ text: c, options: { bold: true, color: tc.accent, fontSize: 11, fontFace: 'Courier New', fill: { color: '1A1A2E' } } })),
-      ...rows.map(row => row.map(cell => ({ text: cell, options: { color: 'DDDDDD', fontSize: 11, fontFace: 'Inter' } }))),
+      cols.map((c, ci) => ({ text: c, options: { bold: true, color: tc.accent, fontSize: 11, fontFace: 'Courier New', fill: { color: '1A1A2E' }, ...fmtFor(slide, `columns.${ci}`) } })),
+      ...rows.map((row, ri) => row.map((cell, ci) => ({ text: cell, options: { color: 'DDDDDD', fontSize: 11, fontFace: 'Inter', ...fmtFor(slide, `rows.${ri}.${ci}`) } }))),
     ];
     sld.addTable(tableRows, {
       x: 0.5, y: 1.0, w: 9, colW: Array(cols.length).fill(9 / cols.length),
@@ -219,7 +251,7 @@ function addTableSlide(pptx, slide, tc) {
 function addChartSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
-  sld.addText(slide.title || 'Chart', {
+  fmtText(sld, slide, 'title', slide.title || 'Chart', {
     x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const { type, barDir, data } = chartSpec(slide);
@@ -241,19 +273,19 @@ function addChartSlide(pptx, slide, tc) {
 function addSplitSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
-  sld.addText(slide.title || '', {
+  fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 0.4, w: 5.5, h: 0.8, fontSize: 26, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   if (slide.body) {
-    sld.addText(slide.body, {
+    fmtText(sld, slide, 'body', slide.body, {
       x: 0.5, y: 1.4, w: 5.5, h: 3.5, fontSize: 14, color: 'CCCCCC', fontFace: 'Inter', wrap: true, valign: 'top',
     });
   }
   const stats = slide.stats || [];
   stats.forEach((s, i) => {
     const y = 1.0 + i * 1.4;
-    sld.addText(s.val, { x: 6.5, y, w: 3, h: 0.7, fontSize: 32, bold: true, color: tc.accent, align: 'center', fontFace: 'Inter' });
-    sld.addText(s.lbl, { x: 6.5, y: y + 0.65, w: 3, h: 0.4, fontSize: 12, color: 'AAAAAA', align: 'center', fontFace: 'Inter' });
+    fmtText(sld, slide, `stats.${i}.val`, s.val, { x: 6.5, y, w: 3, h: 0.7, fontSize: 32, bold: true, color: tc.accent, align: 'center', fontFace: 'Inter' });
+    fmtText(sld, slide, `stats.${i}.lbl`, s.lbl, { x: 6.5, y: y + 0.65, w: 3, h: 0.4, fontSize: 12, color: 'AAAAAA', align: 'center', fontFace: 'Inter' });
   });
   return sld;
 }
@@ -261,14 +293,19 @@ function addSplitSlide(pptx, slide, tc) {
 function addRisksSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
-  sld.addText(slide.title || '', {
+  fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, bold: true, color: tc.ink, fontFace: 'Inter',
   });
-  // Drop falsy items like the canvas renderer does, so a malformed deck can't
-  // crash the export on it.sev/it.t.
-  const items = (Array.isArray(slide.items) ? slide.items : []).filter(Boolean);
+  // Iterate the raw array with its true index `i` (so a fmt key like `items.2.t`
+  // matches the renderer, which keys per-item fmt by the original index), but
+  // drop falsy items like the canvas does and lay survivors out gap-free via a
+  // separate `row` counter — mirroring the renderer's flex column.
+  const items = Array.isArray(slide.items) ? slide.items : [];
+  let row = 0;
   items.forEach((it, i) => {
-    const y = 1.1 + i * 1.3;
+    if (!it) return; // malformed item — skip (matches the canvas), keep `i` the true index
+    const y = 1.1 + row * 1.3;
+    row += 1;
     // Severity colours come from the shared palette (exact sRGB of the canvas
     // oklch), so the export matches the on-screen severity colour. Spell the
     // severity out next to the dot too: in the export the colour is the only
@@ -278,10 +315,10 @@ function addRisksSlide(pptx, slide, tc) {
     const sevLabel = it.sev ? `● ${String(it.sev).toUpperCase()}` : '●';
     // wrap:false — the gutter box is only wide enough for one line; without it
     // PptxGenJS would wrap "● HIGH" onto two lines once PowerPoint's text inset
-    // eats into the 0.6" width.
+    // eats into the 0.6" width. (Severity isn't a formattable field — no fmt.)
     sld.addText(sevLabel, { x: 0.4, y: y + 0.05, w: 0.6, h: 0.4, fontSize: 13, bold: true, color: SEVERITY_HEX[it.sev] || SEVERITY_HEX.fallback, fontFace: 'Inter', wrap: false });
-    sld.addText(it.t || '', { x: 1.1, y, w: 8.4, h: 0.45, fontSize: 15, bold: true, color: tc.ink, fontFace: 'Inter' });
-    sld.addText(it.d || '', { x: 1.1, y: y + 0.45, w: 8.4, h: 0.5, fontSize: 12, color: 'AAAAAA', fontFace: 'Inter', wrap: true });
+    fmtText(sld, slide, `items.${i}.t`, it.t || '', { x: 1.1, y, w: 8.4, h: 0.45, fontSize: 15, bold: true, color: tc.ink, fontFace: 'Inter' });
+    fmtText(sld, slide, `items.${i}.d`, it.d || '', { x: 1.1, y: y + 0.45, w: 8.4, h: 0.5, fontSize: 12, color: 'AAAAAA', fontFace: 'Inter', wrap: true });
   });
   return sld;
 }
@@ -292,7 +329,7 @@ function addRisksSlide(pptx, slide, tc) {
 function addRoadmapSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
-  sld.addText(slide.title || 'Roadmap', {
+  fmtText(sld, slide, 'title', slide.title || 'Roadmap', {
     x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, bold: true, color: tc.ink, fontFace: 'Inter',
   });
 
@@ -353,11 +390,11 @@ function addRoadmapSlide(pptx, slide, tc) {
 function addThanksSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
-  sld.addText(slide.title || 'Thank you', {
+  fmtText(sld, slide, 'title', slide.title || 'Thank you', {
     x: 0.5, y: 2.2, w: 9, h: 1.2, fontSize: 52, bold: true, color: tc.ink, align: 'center', fontFace: 'Inter',
   });
   if (slide.subtitle) {
-    sld.addText(slide.subtitle, {
+    fmtText(sld, slide, 'subtitle', slide.subtitle, {
       x: 0.5, y: 3.6, w: 9, h: 0.5, fontSize: 15, color: 'AAAAAA', align: 'center', fontFace: 'Inter',
     });
   }
@@ -367,11 +404,11 @@ function addThanksSlide(pptx, slide, tc) {
 function addGenericSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
-  sld.addText(slide.title || slide.layout || '', {
+  fmtText(sld, slide, 'title', slide.title || slide.layout || '', {
     x: 0.5, y: 0.4, w: 9, h: 0.7, fontSize: 24, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   if (slide.body || slide.subtitle) {
-    sld.addText(slide.body || slide.subtitle, {
+    fmtText(sld, slide, slide.body ? 'body' : 'subtitle', slide.body || slide.subtitle, {
       x: 0.5, y: 1.3, w: 9, h: 4, fontSize: 14, color: 'CCCCCC', fontFace: 'Inter', wrap: true, valign: 'top',
     });
   }
