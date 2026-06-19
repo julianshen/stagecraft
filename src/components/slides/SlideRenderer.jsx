@@ -414,9 +414,10 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
   };
   // Each field carries any per-field formatting (fmt) merged over its template
   // style — applied on BOTH the read-only and editable renders so the canvas,
-  // thumbnails, sorter, and presenter stay pixel-identical. (PPTX export does
-  // not read fmt yet.) The editable render also tags the field with its fmtKey
-  // so the formatting toolbar can find the focused field.
+  // thumbnails, sorter, and presenter stay pixel-identical. (PPTX export also
+  // reads fmt for bold/italic/underline/colour — fmtOpts in lib/pptxExport.js;
+  // font size is export-deferred.) The editable render also tags the field with
+  // its fmtKey so the formatting toolbar can find the focused field.
   //
   // Formatting covers the fixed top-level fields AND per-item index paths
   // (['items', i, 't'], ['rows', i, j], …) — `isFormattablePath` is the shared
