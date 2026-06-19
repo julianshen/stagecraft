@@ -230,7 +230,7 @@ The core surface. Composed of toolbar, left thumbs, canvas, right inspector.
 #### 7.2.1 Editor wrapper (`Editor.jsx`) 🟢
 Owns a deep-cloned working `deck` and the current slide id. Exposes mutation callbacks and **syncs `deck → PUT /api/deck`** on every change.
 
-Mutations: `addComponent(id)`, `addText(style)`, `addTable(rows,cols)`, `addChart(type)`, `changeLayout(layout)`, `changeTheme(theme)`, `deleteSlide(id)`, `onNewSlide`, `duplicateSlide(id)`. 🟢 **Duplicate slide** deep-clones the current slide with fresh slide + element ids, inserts the copy right after it in its section (`duplicateSlide` in `lib/deckOrder.js`), and selects it.
+Mutations: `addComponent(id)`, `addText(style)`, `addTable(rows,cols)`, `addChart(type)`, `changeLayout(layout)`, `changeTheme(theme)`, `deleteSlide(id)`, `onNewSlide`, `duplicateSlide(id)`. 🟢 **Duplicate slide** deep-clones the current slide with fresh slide + element ids, inserts the copy right after it in its section (`duplicateSlide` in `lib/deckOrder.js`), and selects it. 🟢 **`changeLayout`** routes through `applySlidePatch` (the same gate the Co-pilot/inline edits use), so switching layout drops collections that don't fit the new layout — a list slide never keeps agenda object items, so the canvas and the Data-tab editor never see a mismatched shape.
 
 #### 7.2.2 Toolbar (`SlideEditor.jsx`)
 | Group | Control | Status |
