@@ -47,7 +47,7 @@ const SUBMENU_CHOOSERS = {
 const subMenuItems = (kind, callbacks) => {
   const { header, options, cb } = SUBMENU_CHOOSERS[kind];
   return [{ header }, ...options.map((o) => ({
-    icon: o.icon || 'palette', label: o.label, onClick: () => callbacks[cb] && callbacks[cb](o.id),
+    icon: o.icon || 'palette', label: o.label, onClick: () => callbacks?.[cb]?.(o.id),
   }))];
 };
 
@@ -170,6 +170,15 @@ export default function SlideEditor(props) {
   // { x, y, kind } — the shared Menu closes on every item click, so we open a
   // second Menu at the same spot rather than nesting.
   const [subMenu, setSubMenu] = useState(null);
+  // Dismiss the context menu (and its chooser) on any click outside a menu —
+  // the toolbar, inspector, or empty canvas. A click on a `.ctx` item is the
+  // item's own job (it commits, then closes), so leave those alone.
+  useEffect(() => {
+    if (!ctxMenu && !subMenu) return undefined;
+    const close = (e) => { if (!e.target.closest('.ctx')) { setCtxMenu(null); setSubMenu(null); } };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [ctxMenu, subMenu]);
 
   const curIdx = flat.findIndex(f => f.id === curId);
   const cur = flat[Math.max(0, curIdx)];
@@ -293,7 +302,15 @@ export default function SlideEditor(props) {
           />
         )}
 
-        <section className="canvas-area" onContextMenu={(e) => { e.preventDefault(); setSubMenu(null); setCtxMenu({ x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY }); }} onClick={()=>{ setCtxMenu(null); setSubMenu(null); }}>
+        <section className="canvas-area" onContextMenu={(e) => {
+          // Position relative to the canvas, not e.target: offsetX/Y is measured
+          // from whatever child (shape/text box) was right-clicked. (Outside-click
+          // dismissal is handled by the document listener above.)
+          e.preventDefault();
+          const r = e.currentTarget.getBoundingClientRect();
+          setSubMenu(null);
+          setCtxMenu({ x: e.clientX - r.left, y: e.clientY - r.top });
+        }}>
           <Ruler/>
           <div className="canvas-inner">
             <div className="canvas-backdrop"/>

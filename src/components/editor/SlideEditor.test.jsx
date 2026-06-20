@@ -245,4 +245,26 @@ describe('SlideEditor canvas context menu', () => {
     fireEvent.click(within(submenu(container, 'Apply theme')).getByText('Emerald'));
     expect(onChangeTheme).toHaveBeenCalledWith('emerald');
   });
+
+  it('positions the menu from the canvas rect, not the right-clicked child', () => {
+    // Position from clientX/Y minus the canvas rect — NOT offsetX/Y, which is
+    // relative to whatever child (a shape/text box) was right-clicked, so it
+    // mispositions the menu. A non-zero canvas rect distinguishes the two: jsdom
+    // mirrors offsetX←clientX, so only the rect-subtracting math gives 150-50.
+    const { container } = renderEditor({});
+    const canvas = container.querySelector('.canvas-area');
+    canvas.getBoundingClientRect = () => ({ left: 50, top: 30, right: 0, bottom: 0, width: 0, height: 0, x: 50, y: 30, toJSON() {} });
+    fireEvent.contextMenu(canvas, { clientX: 150, clientY: 200 });
+    const menu = container.querySelector('.ctx');
+    expect(menu.style.left).toBe('100px'); // 150 - 50
+    expect(menu.style.top).toBe('170px');  // 200 - 30
+  });
+
+  it('closes the menu on a click outside it (e.g. the toolbar or inspector)', () => {
+    const { container, queryByText } = renderEditor({});
+    openCtx(container);
+    expect(queryByText('Paste')).not.toBeNull(); // open
+    fireEvent.click(document.body); // a click outside any .ctx menu
+    expect(queryByText('Paste')).toBeNull(); // closed
+  });
 });
