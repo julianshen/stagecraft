@@ -68,6 +68,27 @@ export function fmtKey(path) {
   return path.join('.');
 }
 
+// A valid formatting record: a plain object carrying only the known props, each
+// with the right type — the validation analog of `fmtStyle`'s reads below. The
+// own-property guard before the lookup keeps a prototype key (`__proto__`,
+// `toString`) from a JSON-parsed fmt out of the table. Single source for "what is
+// a valid fmt value", shared by the patch gate (`isFmtMap`) and the remappers
+// below (which drop any entry it rejects, so their output stays gate-valid — the
+// gate rejects the whole map if any one value is junk).
+const isPlainObject = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+const FMT_PROP_OK = {
+  bold: (v) => typeof v === 'boolean',
+  italic: (v) => typeof v === 'boolean',
+  underline: (v) => typeof v === 'boolean',
+  fontSize: (v) => Number.isFinite(v),
+  color: (v) => typeof v === 'string',
+};
+export function isFmtRecord(e) {
+  return isPlainObject(e)
+    && Object.entries(e).every(([k, v]) =>
+      Object.prototype.hasOwnProperty.call(FMT_PROP_OK, k) && FMT_PROP_OK[k](v));
+}
+
 // Remap a slide's index-keyed `fmt` when a per-item `collection` is reordered or
 // an item is deleted, so formatting follows its item. `newOrder[newIndex] =
 // oldIndex`; an old index absent from `newOrder` was deleted, so its keys are
@@ -79,10 +100,16 @@ export function remapCollectionFmt(fmt, collection, newOrder) {
   if (!fmt) return fmt;
   const out = {};
   for (const [key, val] of Object.entries(fmt)) {
+    if (!isFmtRecord(val)) continue; // malformed value → drop (gate rejects the whole map)
     const [coll, idx, ...leaf] = key.split('.');
-    if (coll !== collection) { out[key] = val; continue; } // other collection / top-level field
+    if (coll !== collection) {
+      if (isFormattableKey(key)) out[key] = val; // a valid other-collection / top-level key — preserve
+      continue;
+    }
     const newIdx = newOrder.indexOf(Number(idx)); // item's new position; -1 once deleted
-    if (newIdx !== -1) out[[collection, newIdx, ...leaf].join('.')] = val;
+    if (newIdx === -1) continue;
+    const newKey = [collection, newIdx, ...leaf].join('.');
+    if (isFormattableKey(newKey)) out[newKey] = val; // drop a malformed (e.g. bad-leaf) key
   }
   return out;
 }
@@ -102,6 +129,7 @@ export function remapTableFmt(fmt, rowOrder, colOrder) {
   if (!fmt) return fmt;
   const out = {};
   for (const [key, val] of Object.entries(fmt)) {
+    if (!isFmtRecord(val)) continue; // malformed value → drop (gate rejects the whole map)
     const parts = key.split('.');
     const [coll, a, b] = parts;
     if (coll === 'columns' && parts.length === 2 && isIndexStr(a)) {

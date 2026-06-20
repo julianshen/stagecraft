@@ -125,6 +125,22 @@ describe('remapCollectionFmt', () => {
     // remap kpis with a swap; items.* and subtitle must be left exactly as-is
     expect(remapCollectionFmt(fmt, 'kpis', [0])).toEqual(fmt);
   });
+
+  it('drops entries with a malformed value or an unformattable key (keeps the output gate-valid)', () => {
+    // The gate rejects the WHOLE fmt map if any entry has an unformattable key or
+    // a non-record value, so a hand-edited deck's junk must not ride along in the
+    // remap — else a later item delete/reorder silently drops all formatting.
+    const fmt = {
+      'items.0.t': { bold: true },        // valid surviving item → remapped
+      'items.2.t': 'oops',                // malformed value on a survivor → dropped
+      'items.0.bogus': { italic: true },  // unformattable leaf → dropped
+      'items.2.n': { fontSize: 12 },      // valid survivor → remapped
+    };
+    expect(remapCollectionFmt(fmt, 'items', [0, 2])).toEqual({
+      'items.0.t': { bold: true },  // old 0 → new 0
+      'items.1.n': { fontSize: 12 }, // old 2 → new 1
+    });
+  });
 });
 
 // Table fmt is 2D — `columns.C` (header) and `rows.R.C` (cell). A row op remaps R
@@ -169,5 +185,19 @@ describe('remapTableFmt', () => {
       title: { italic: true }, 'columns.1': { color: '#f00' },
     };
     expect(remapTableFmt(fmt, [0], [0, 1])).toEqual({ title: { italic: true }, 'columns.1': { color: '#f00' } });
+  });
+
+  it('drops a fmt entry whose value is not a valid formatting record', () => {
+    // A valid key can still hold a malformed value (a non-object, a wrong-typed or
+    // unknown prop) in a hand-edited deck. The gate's isFmtMap rejects the whole
+    // map on any such value, so the remap must drop these entries too — otherwise
+    // a row/column delete drops all the valid (remapped) formatting with them.
+    const fmt = {
+      'rows.0.1': 'bad',              // not an object
+      'rows.1.0': { fontSize: 'big' }, // known prop, wrong type
+      'columns.1': { weird: 1 },       // unknown prop
+      'columns.0': { bold: true },     // valid → survives
+    };
+    expect(remapTableFmt(fmt, [0, 1], [0, 1])).toEqual({ 'columns.0': { bold: true } });
   });
 });
