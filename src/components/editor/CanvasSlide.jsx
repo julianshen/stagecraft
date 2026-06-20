@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
-import { moveElement, resizeElement, elementsInMarquee, rotateElement, hitBox } from '../../lib/elements.js';
+import { moveElement, resizeElement, elementsInMarquee, rotateElement, hitBox, MIN_SIZE } from '../../lib/elements.js';
 import { alignSnap } from '../../lib/align.js';
 
 const HANDLE_CURSOR = {
@@ -17,6 +17,12 @@ const HANDLE_POS = {
 // truth for the transform + origin).
 const rotStyle = (rot) => (rot ? { transform: `rotate(${rot}deg)`, transformOrigin: 'center' } : null);
 
+// Normalize two sweep corners into a positive-size box — shared by the draw
+// gesture's commit and the marquee/draw preview rectangle.
+const boxFromCorners = (x1, y1, x2, y2) => ({
+  x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1),
+});
+
 // A caret Range at a viewport point, across browsers: Chrome/Safari expose
 // caretRangeFromPoint; Firefox exposes caretPositionFromPoint instead.
 function caretRangeAt(x, y) {
@@ -31,7 +37,7 @@ function caretRangeAt(x, y) {
   return null;
 }
 
-export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selectedIds = [], onSelectElement, onUpdateElements, onMarqueeSelect }) {
+export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selectedIds = [], onSelectElement, onUpdateElements, onMarqueeSelect, drawTool = null, onDrawElement }) {
   const frameRef = useRef(null);
   const [scale, setScale] = useState(0.5);
   const scaleRef = useRef(scale);
@@ -265,12 +271,58 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     }
   }
 
+  // Draw a new element: with a draw tool active, a sweep on the canvas defines
+  // the element's box; a click (no sweep) drops a default-size one at the point.
+  // Reuses the marquee rectangle as the live preview; commits via onDrawElement.
+  function startDraw(e, type) {
+    const frame = frameRef.current;
+    if (!frame) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = frame.getBoundingClientRect();
+    const startX = e.clientX, startY = e.clientY;
+    const start = toSlide(rect, startX, startY);
+    const swept = (cx, cy) => Math.abs(cx - startX) > 3 || Math.abs(cy - startY) > 3;
+    function move(ev) {
+      if (!swept(ev.clientX, ev.clientY)) return;
+      const p = toSlide(rect, ev.clientX, ev.clientY);
+      setMarquee({ x1: start.x, y1: start.y, x2: p.x, y2: p.y });
+    }
+    function removeListeners() {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      dragCleanup.current = null;
+      setMarquee(null);
+    }
+    function up(ev) {
+      removeListeners();
+      // The release position is authoritative (a fast flick may emit no move).
+      if (swept(ev.clientX, ev.clientY)) {
+        const p = toSlide(rect, ev.clientX, ev.clientY);
+        const box = boxFromCorners(start.x, start.y, p.x, p.y);
+        // Floor each dimension: an on-axis sweep (e.g. purely horizontal) yields a
+        // zero-thickness box, which would be an invisible/degenerate element.
+        onDrawElement?.(type, { x: box.x, y: box.y, w: Math.max(box.w, MIN_SIZE), h: Math.max(box.h, MIN_SIZE) });
+      } else {
+        onDrawElement?.(type, { x: start.x, y: start.y }); // click → factory default size
+      }
+    }
+    function cancel() { removeListeners(); }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    dragCleanup.current = removeListeners;
+  }
+
   // Rubber-band selection: a drag on empty canvas sweeps a rectangle and selects
   // the elements it overlaps on pointer-up. A click (no drag) deselects.
   function startMarquee(e) {
     if (dragCleanup.current) return;
     // Primary button only — let right/middle clicks through to the context menu.
     if (e.button !== 0) return;
+    // A draw tool turns the empty-canvas sweep into element creation instead.
+    if (drawTool) return startDraw(e, drawTool);
     const frame = frameRef.current;
     if (!frame) { onSelectElement?.(null); return; }
     e.preventDefault();
@@ -319,8 +371,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
         {renderSlide(liveSlide, deckCtx)}
       </ScaledSlide>
 
-      {/* Interaction overlay — drag empty space to marquee-select, click to deselect. */}
-      <div className="elements-overlay" style={{ position: 'absolute', inset: 0 }} onPointerDown={startMarquee} onDoubleClick={focusTextUnder}>
+      {/* Interaction overlay — drag empty space to marquee-select, click to deselect.
+          With a draw tool active it becomes a drawing surface (crosshair). */}
+      <div className="elements-overlay" style={{ position: 'absolute', inset: 0, cursor: drawTool ? 'crosshair' : undefined }} onPointerDown={startMarquee} onDoubleClick={focusTextUnder}>
         {elements.map((el) => {
           // Click/selection target is padded to a minimum (hitBox) so a thin rule
           // is grabbable and shows a visible outline. Only the click+outline pads:
@@ -340,6 +393,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
                 // element (move is a screen translation, so the math is unchanged).
                 ...rotStyle(el.rot),
                 cursor: 'move',
+                // In draw mode, let the pointer fall through to the overlay so a
+                // sweep starting over an element still draws a new one.
+                pointerEvents: drawTool ? 'none' : undefined,
                 outline: selectedSet.has(el.id) ? '1.5px solid oklch(0.62 0.2 265)' : '1px solid transparent',
               }}
               onPointerDown={(e) => startMove(e, el)}
@@ -350,7 +406,7 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
         {/* Selection frame: positioned at the element box and rotated with it,
             so the resize handles and rotate knob sit on the rotated element's
             edges. Handles/knob are placed relative to the box (px within it). */}
-        {resizeTarget && (
+        {resizeTarget && !drawTool && (
           <div
             style={{
               position: 'absolute',
@@ -415,21 +471,21 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
           />
         ))}
 
-        {marquee && (
-          <div
-            className="marquee-rect"
-            style={{
-              position: 'absolute',
-              left: Math.min(marquee.x1, marquee.x2) * scale,
-              top: Math.min(marquee.y1, marquee.y2) * scale,
-              width: Math.abs(marquee.x2 - marquee.x1) * scale,
-              height: Math.abs(marquee.y2 - marquee.y1) * scale,
-              border: '1px solid oklch(0.62 0.2 265)',
-              background: 'oklch(0.62 0.2 265 / 0.12)',
-              pointerEvents: 'none',
-            }}
-          />
-        )}
+        {marquee && (() => {
+          const b = boxFromCorners(marquee.x1, marquee.y1, marquee.x2, marquee.y2);
+          return (
+            <div
+              className="marquee-rect"
+              style={{
+                position: 'absolute',
+                left: b.x * scale, top: b.y * scale, width: b.w * scale, height: b.h * scale,
+                border: '1px solid oklch(0.62 0.2 265)',
+                background: 'oklch(0.62 0.2 265 / 0.12)',
+                pointerEvents: 'none',
+              }}
+            />
+          );
+        })()}
       </div>
     </div>
   );

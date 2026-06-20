@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import CanvasSlide from './CanvasSlide.jsx';
+import { MIN_SIZE } from '../../lib/elements.js';
 
 // jsdom has no ResizeObserver; CanvasSlide measures its frame with one. Restore
 // the original afterwards so the stub can't leak across test files.
@@ -432,5 +433,83 @@ describe('CanvasSlide malformed elements', () => {
       ));
     }).not.toThrow();
     expect(hits(container)).toHaveLength(2); // the two real rects, nulls skipped
+  });
+});
+
+describe('CanvasSlide draw tool', () => {
+  // With a drawTool active, a drag on the canvas draws a new element of that type
+  // at the swept rect (slide coords = clientX/Y here: scale 1, frame rect at 0,0).
+  const renderDraw = (onDrawElement, extra = {}) => render(
+    <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+      selectedIds={[]} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} onMarqueeSelect={vi.fn()}
+      drawTool="rect" onDrawElement={onDrawElement} {...extra} />,
+  );
+
+  it('sweeping a rect with a draw tool creates the element at that rect', () => {
+    const onDrawElement = vi.fn();
+    const { container } = renderDraw(onDrawElement);
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 40, clientY: 60 });
+    fire(window, 'pointermove', { clientX: 240, clientY: 260 });
+    fire(window, 'pointerup', { clientX: 240, clientY: 260 });
+    expect(onDrawElement).toHaveBeenCalledWith('rect', { x: 40, y: 60, w: 200, h: 200 });
+  });
+
+  it('normalizes a rect swept up-and-left to a positive-size box', () => {
+    const onDrawElement = vi.fn();
+    const { container } = renderDraw(onDrawElement);
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 300, clientY: 300 });
+    fire(window, 'pointermove', { clientX: 100, clientY: 120 }); // drag up-left
+    fire(window, 'pointerup', { clientX: 100, clientY: 120 });
+    expect(onDrawElement).toHaveBeenCalledWith('rect', { x: 100, y: 120, w: 200, h: 180 });
+  });
+
+  it('clamps a degenerate (zero-thickness) sweep to the minimum element size', () => {
+    const onDrawElement = vi.fn();
+    const { container } = renderDraw(onDrawElement);
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 200, clientY: 0 }); // purely horizontal → height 0
+    fire(window, 'pointerup', { clientX: 200, clientY: 0 });
+    expect(onDrawElement).toHaveBeenCalledWith('rect', { x: 0, y: 0, w: 200, h: MIN_SIZE }); // h floored
+  });
+
+  it('cancels a draw on pointercancel without creating an element', () => {
+    const onDrawElement = vi.fn();
+    const { container } = renderDraw(onDrawElement);
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 10, clientY: 10 });
+    fire(window, 'pointermove', { clientX: 100, clientY: 100 });
+    fire(window, 'pointercancel', {});
+    expect(onDrawElement).not.toHaveBeenCalled();        // canceled → nothing created
+    expect(container.querySelector('.marquee-rect')).toBeNull(); // preview cleared
+  });
+
+  it('a click (no sweep) with a draw tool creates a default-size element at the point', () => {
+    const onDrawElement = vi.fn();
+    const { container } = renderDraw(onDrawElement);
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 80, clientY: 90 });
+    fire(window, 'pointerup', { clientX: 80, clientY: 90 }); // no move → click
+    expect(onDrawElement).toHaveBeenCalledWith('rect', { x: 80, y: 90 }); // no w/h → factory default
+  });
+
+  it('draws instead of marquee-selecting while a draw tool is active', () => {
+    const onDrawElement = vi.fn();
+    const onMarqueeSelect = vi.fn();
+    const { container } = renderDraw(onDrawElement, { onMarqueeSelect });
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 400, clientY: 250 }); // would marquee-select 'a'
+    fire(window, 'pointerup', { clientX: 400, clientY: 250 });
+    expect(onDrawElement).toHaveBeenCalled();
+    expect(onMarqueeSelect).not.toHaveBeenCalled();
+  });
+
+  it('shows a crosshair cursor and lets pointer events fall through the element hit boxes', () => {
+    const { container } = renderDraw(vi.fn());
+    expect(container.querySelector('.elements-overlay').style.cursor).toBe('crosshair');
+    expect(hits(container)[0].style.pointerEvents).toBe('none'); // draw over elements, don't grab them
   });
 });

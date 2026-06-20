@@ -13,7 +13,7 @@ import { useToasts } from '../../hooks/useToasts.js';
 import { clampElement, GRID } from '../../lib/elements.js';
 import { readImageFile } from '../../lib/imageFile.js';
 import { isTextEntryTarget } from '../../lib/domEvents.js';
-import ShapeMenu from './menus/ShapeMenu.jsx';
+import ShapeMenu, { SHAPE_TOOLS } from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
 import TableSizePicker from './menus/TableSizePicker.jsx';
 import ChartTypePicker from './menus/ChartTypePicker.jsx';
@@ -35,6 +35,10 @@ const PEN_TOOLS = [
 
 // Arrow key → unit nudge direction for the selection.
 const NUDGE_DIR = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+
+// Tool ids that draw an element on the canvas (the shape tools). When one is the
+// active tool, a canvas sweep draws that shape rather than marquee-selecting.
+const DRAW_TOOL_IDS = new Set(SHAPE_TOOLS.map((s) => s.id));
 
 // The context menu's "Change layout" / "Apply theme" drill-in choosers, built
 // from the same option lists the toolbar menus use. One config so the two
@@ -214,7 +218,9 @@ export default function SlideEditor(props) {
               title={t.title}
             />
           ))}
-          <ShapeMenu tool={tool} setTool={setTool} onPick={(id) => callbacks.onAddElement && callbacks.onAddElement(id)}/>
+          {/* Picking a shape only activates the draw tool (ShapeMenu sets `tool`);
+              the element is created by drawing on the canvas, not on pick. */}
+          <ShapeMenu tool={tool} setTool={setTool}/>
           <IconButton name="text" title="Text box" onClick={() => callbacks.onAddElement && callbacks.onAddElement('text')}/>
           {/* Image is an insert action (like Text), not a tool toggle — it opens
               the file picker and adds the picked file as an element. */}
@@ -323,6 +329,8 @@ export default function SlideEditor(props) {
                 onSelectElement={onSelectElement}
                 onUpdateElements={callbacks.onUpdateElements}
                 onMarqueeSelect={callbacks.onMarqueeSelect}
+                drawTool={DRAW_TOOL_IDS.has(tool) ? tool : null}
+                onDrawElement={(type, rect) => { callbacks.onAddElement?.(type, rect); setTool('select'); }}
                 zoom={zoom}
               />
             )}

@@ -268,3 +268,29 @@ describe('SlideEditor canvas context menu', () => {
     expect(queryByText('Paste')).toBeNull(); // closed
   });
 });
+
+describe('SlideEditor draw tools', () => {
+  // A MouseEvent typed as a pointer event carries clientX/button (jsdom drops
+  // those from PointerEvent) and still drives React's onPointerDown + listeners.
+  const fire = (node, type, init) => fireEvent(node, new MouseEvent(type, { bubbles: true, cancelable: true, ...init }));
+
+  it('picking a shape sets the draw tool without immediately inserting an element', () => {
+    const onAddElement = vi.fn();
+    const { getByTitle } = renderEditor({ onAddElement });
+    fireEvent.click(getByTitle('Shapes'));  // open the shape menu (also sets the tool)
+    fireEvent.click(getByTitle('Ellipse')); // pick a shape
+    expect(onAddElement).not.toHaveBeenCalled(); // no insert-on-pick; you draw on the canvas
+  });
+
+  it('drawing on the canvas with a shape tool adds the sized element and reverts to Select', () => {
+    const onAddElement = vi.fn();
+    const { container, getByTitle } = renderEditor({ onAddElement });
+    fireEvent.click(getByTitle('Shapes')); // activate the default shape tool ('shape')
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 40, clientY: 60, button: 0 });
+    fire(window, 'pointermove', { clientX: 240, clientY: 260 });
+    fire(window, 'pointerup', { clientX: 240, clientY: 260 });
+    expect(onAddElement).toHaveBeenCalledWith('shape', { x: 40, y: 60, w: 200, h: 200 });
+    expect(getByTitle('Select · V').className).toContain('active'); // tool reverted after drawing
+  });
+});
