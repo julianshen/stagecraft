@@ -18,6 +18,14 @@ const agenda = (over = {}) => ({
   ...over,
 });
 const list = (over = {}) => ({ id: 's', layout: 'list', items: ['First', 'Second', 'Third'], ...over });
+// kpi/split carry object items in their own collections (kpis / stats) — the same
+// editor, parameterised by the slide layout's collection + field schema.
+const kpi = (over = {}) => ({
+  id: 's', layout: 'kpi',
+  kpis: [{ label: 'Users', val: '1.2k', delta: '+5%', target: '2k' }, { label: 'Revenue', val: '$8k', delta: '-2%', target: '$10k' }],
+  ...over,
+});
+const split = (over = {}) => ({ id: 's', layout: 'split', stats: [{ lbl: 'Uptime', val: '99.9%' }], ...over });
 
 describe('ListItemsEditor', () => {
   it('renders each agenda item’s number, title, and description', () => {
@@ -147,5 +155,55 @@ describe('ListItemsEditor', () => {
     expect(screen.queryAllByTitle('Remove item')).toHaveLength(0); // no rows
     await userEvent.click(screen.getByText('Add item'));
     expect(onApply).toHaveBeenCalledWith({ items: [''] });
+  });
+});
+
+describe('ListItemsEditor — kpi & stat collections', () => {
+  it('renders each kpi item’s label, value, delta, and target fields', () => {
+    render(<ListItemsEditor slide={kpi()} onApply={vi.fn()} />);
+    expect(screen.getByDisplayValue('Users')).toBeTruthy();
+    expect(screen.getByDisplayValue('1.2k')).toBeTruthy();
+    expect(screen.getByDisplayValue('+5%')).toBeTruthy();
+    expect(screen.getByDisplayValue('$10k')).toBeTruthy();
+  });
+
+  it('edits a kpi field and commits the kpis collection (not items)', () => {
+    const onApply = vi.fn();
+    render(<ListItemsEditor slide={kpi()} onApply={onApply} />);
+    fireEvent.change(screen.getByDisplayValue('Users'), { target: { value: 'Active users' } });
+    expect(onApply).toHaveBeenCalledWith({
+      kpis: [{ label: 'Active users', val: '1.2k', delta: '+5%', target: '2k' }, { label: 'Revenue', val: '$8k', delta: '-2%', target: '$10k' }],
+    });
+  });
+
+  it('adds a blank kpi item carrying all its fields', async () => {
+    const onApply = vi.fn();
+    render(<ListItemsEditor slide={kpi({ kpis: [{ label: 'A', val: '1', delta: '', target: '' }] })} onApply={onApply} />);
+    await userEvent.click(screen.getByText('Add item'));
+    expect(onApply).toHaveBeenCalledWith({ kpis: [{ label: 'A', val: '1', delta: '', target: '' }, { label: '', val: '', delta: '', target: '' }] });
+  });
+
+  it('deletes a kpi item and remaps the kpis collection’s formatting', async () => {
+    const onApply = vi.fn();
+    const slide = kpi({ kpis: [{ label: 'A', val: '1' }, { label: 'B', val: '2' }], fmt: { 'kpis.0.val': { bold: true }, 'kpis.1.val': { italic: true } } });
+    render(<ListItemsEditor slide={slide} onApply={onApply} />);
+    await userEvent.click(screen.getAllByTitle('Remove item')[0]); // delete kpi 0
+    expect(onApply).toHaveBeenCalledWith({
+      kpis: [{ label: 'B', val: '2' }],
+      fmt: { 'kpis.0.val': { italic: true } }, // old kpis.1.val → kpis.0.val; kpis.0.val dropped
+    });
+  });
+
+  it('renders and edits a split slide’s stat fields, committing the stats collection', () => {
+    const onApply = vi.fn();
+    render(<ListItemsEditor slide={split()} onApply={onApply} />);
+    expect(screen.getByDisplayValue('Uptime')).toBeTruthy();
+    fireEvent.change(screen.getByDisplayValue('99.9%'), { target: { value: '100%' } });
+    expect(onApply).toHaveBeenCalledWith({ stats: [{ lbl: 'Uptime', val: '100%' }] });
+  });
+
+  it('renders nothing for a layout it does not handle (defensive — DataPanel never routes one here)', () => {
+    const { container } = render(<ListItemsEditor slide={{ id: 'x', layout: 'text' }} onApply={vi.fn()} />);
+    expect(container.querySelector('.pane-section')).toBeNull();
   });
 });
