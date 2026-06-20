@@ -107,6 +107,17 @@ describe('TableDataEditor', () => {
     expect(slide).toEqual(snapshot); // onApply is mocked, so the original must be untouched
   });
 
+  it('normalizes ragged or non-array rows to the column count without crashing', () => {
+    // Malformed data (a hand-edited persisted deck can carry non-rectangular rows;
+    // the gate only validates mutations). The editor is the repair tool, so it
+    // must open such a table — a non-array row would otherwise crash row.map().
+    const { container } = render(
+      <TableDataEditor slide={{ id: 't', layout: 'table', columns: ['A', 'B', 'C'], rows: ['oops', ['x'], ['p', 'q', 'r', 's']] }} onApply={vi.fn()} />,
+    );
+    // 3 header inputs + 3 rows × 3 cells (padded/truncated to the column count) = 12
+    expect(container.querySelectorAll('input')).toHaveLength(3 + 9);
+  });
+
   it('handles a table with no columns/rows yet — shows the Add controls', () => {
     render(<TableDataEditor slide={{ id: 't', layout: 'table' }} onApply={vi.fn()} />);
     expect(screen.getByText('Add column')).toBeTruthy();
