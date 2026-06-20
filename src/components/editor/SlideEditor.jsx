@@ -13,7 +13,7 @@ import { useToasts } from '../../hooks/useToasts.js';
 import { clampElement, GRID } from '../../lib/elements.js';
 import { readImageFile } from '../../lib/imageFile.js';
 import { isTextEntryTarget } from '../../lib/domEvents.js';
-import ShapeMenu from './menus/ShapeMenu.jsx';
+import ShapeMenu, { SHAPE_TOOLS } from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
 import TableSizePicker from './menus/TableSizePicker.jsx';
 import ChartTypePicker from './menus/ChartTypePicker.jsx';
@@ -35,6 +35,10 @@ const PEN_TOOLS = [
 
 // Arrow key → unit nudge direction for the selection.
 const NUDGE_DIR = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+
+// Tool ids that draw an element on the canvas (the shape tools). When one is the
+// active tool, a canvas sweep draws that shape rather than marquee-selecting.
+const DRAW_TOOL_IDS = new Set(SHAPE_TOOLS.map((s) => s.id));
 
 // The context menu's "Change layout" / "Apply theme" drill-in choosers, built
 // from the same option lists the toolbar menus use. One config so the two
@@ -96,7 +100,7 @@ export default function SlideEditor(props) {
     e.target.value = ''; // reset so re-picking the same file fires onChange again
     if (file) {
       readImageFile(file)
-        .then((src) => callbacks.onAddElement?.('image', { src }))
+        .then((src) => insertElement('image', { src }))
         .catch((err) => {
           // Toast the friendly message for the user; keep the raw error in the
           // console for debugging (stack/name a plain message would drop).
@@ -134,14 +138,14 @@ export default function SlideEditor(props) {
       const plain = cmd && !e.shiftKey && !e.altKey; // exact ⌘/Ctrl-<key>
       // Paste acts on the clipboard, so it needs no current selection.
       if (plain && (e.key === 'v' || e.key === 'V') && cb.onPasteElements) {
-        e.preventDefault(); cb.onPasteElements(); return;
+        e.preventDefault(); pasteElements(); return; // also exits draw mode (pasted elements are selected)
       }
       if (!props.selectedElementCount) return; // the rest act on the selection
       if ((e.key === 'Delete' || e.key === 'Backspace') && cb.onDeleteElements) {
         e.preventDefault(); cb.onDeleteElements(); return;
       }
       if (plain && (e.key === 'd' || e.key === 'D') && cb.onDuplicateElements) {
-        e.preventDefault(); cb.onDuplicateElements(); return; // don't swallow Ctrl+Shift+D etc.
+        e.preventDefault(); duplicateElements(); return; // exits draw mode; don't swallow Ctrl+Shift+D etc.
       }
       if (plain && (e.key === 'c' || e.key === 'C') && cb.onCopyElements) {
         e.preventDefault(); cb.onCopyElements(); return;
@@ -180,6 +184,17 @@ export default function SlideEditor(props) {
     return () => document.removeEventListener('click', close);
   }, [ctxMenu, subMenu]);
 
+  // Insert an element and return to the Select tool. Every element-insert path
+  // (a drawn shape, the Text Box / Image buttons) routes through here, so an
+  // insert never leaves the canvas stuck in a shape draw mode (which hides the
+  // selection frame + disables hit boxes — the inserted element couldn't be moved).
+  const insertElement = (type, opts) => { callbacks.onAddElement?.(type, opts); setTool('select'); };
+  // Paste and duplicate also create a fresh selection, so they exit draw mode
+  // too — otherwise the new elements sit under a hidden frame + disabled hit
+  // boxes. Via the ref so the keyboard handler stays current without re-binding.
+  const pasteElements = () => { callbacksRef.current.onPasteElements?.(); setTool('select'); };
+  const duplicateElements = () => { callbacksRef.current.onDuplicateElements?.(); setTool('select'); };
+
   const curIdx = flat.findIndex(f => f.id === curId);
   const cur = flat[Math.max(0, curIdx)];
 
@@ -214,8 +229,10 @@ export default function SlideEditor(props) {
               title={t.title}
             />
           ))}
-          <ShapeMenu tool={tool} setTool={setTool} onPick={(id) => callbacks.onAddElement && callbacks.onAddElement(id)}/>
-          <IconButton name="text" title="Text box" onClick={() => callbacks.onAddElement && callbacks.onAddElement('text')}/>
+          {/* Picking a shape only activates the draw tool (ShapeMenu sets `tool`);
+              the element is created by drawing on the canvas, not on pick. */}
+          <ShapeMenu tool={tool} setTool={setTool}/>
+          <IconButton name="text" title="Text box" onClick={() => insertElement('text')}/>
           {/* Image is an insert action (like Text), not a tool toggle — it opens
               the file picker and adds the picked file as an element. */}
           <IconButton name="image" title="Image · I" onClick={() => imageInputRef.current?.click()}/>
@@ -323,6 +340,8 @@ export default function SlideEditor(props) {
                 onSelectElement={onSelectElement}
                 onUpdateElements={callbacks.onUpdateElements}
                 onMarqueeSelect={callbacks.onMarqueeSelect}
+                drawTool={DRAW_TOOL_IDS.has(tool) ? tool : null}
+                onDrawElement={insertElement}
                 zoom={zoom}
               />
             )}
@@ -339,7 +358,7 @@ export default function SlideEditor(props) {
               onClose={()=>setCtxMenu(null)}
               items={[
                 { header: 'Canvas' },
-                { icon:'frame', label:'Paste', kbd:'⌘V', onClick: () => callbacks.onPasteElements && callbacks.onPasteElements() },
+                { icon:'frame', label:'Paste', kbd:'⌘V', onClick: pasteElements },
                 { icon:'magic', label:'Generate with AI', kbd:'⌘K', onClick: () => setShowAI(true) },
                 '-',
                 // Drill in: the shared Menu auto-closes on click, so reopen a

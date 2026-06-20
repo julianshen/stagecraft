@@ -268,3 +268,60 @@ describe('SlideEditor canvas context menu', () => {
     expect(queryByText('Paste')).toBeNull(); // closed
   });
 });
+
+describe('SlideEditor draw tools', () => {
+  // A MouseEvent typed as a pointer event carries clientX/button (jsdom drops
+  // those from PointerEvent) and still drives React's onPointerDown + listeners.
+  const fire = (node, type, init) => fireEvent(node, new MouseEvent(type, { bubbles: true, cancelable: true, ...init }));
+
+  it('picking a shape sets the draw tool without immediately inserting an element', () => {
+    const onAddElement = vi.fn();
+    const { getByTitle } = renderEditor({ onAddElement });
+    fireEvent.click(getByTitle('Shapes'));  // open the shape menu (also sets the tool)
+    fireEvent.click(getByTitle('Ellipse')); // pick a shape
+    expect(onAddElement).not.toHaveBeenCalled(); // no insert-on-pick; you draw on the canvas
+  });
+
+  it('drawing on the canvas with a shape tool adds the sized element and reverts to Select', () => {
+    const onAddElement = vi.fn();
+    const { container, getByTitle } = renderEditor({ onAddElement });
+    fireEvent.click(getByTitle('Shapes')); // activate the default shape tool ('shape')
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 40, clientY: 60, button: 0 });
+    fire(window, 'pointermove', { clientX: 240, clientY: 260 });
+    fire(window, 'pointerup', { clientX: 240, clientY: 260 });
+    expect(onAddElement).toHaveBeenCalledWith('shape', { x: 40, y: 64, w: 200, h: 200 }); // grid-snapped (60→64)
+    expect(getByTitle('Select · V').className).toContain('active'); // tool reverted after drawing
+  });
+
+  it('inserting a text box while a shape tool is active resets to the Select tool', () => {
+    // An insert that doesn't set a tool (Text/Image) must still clear draw mode,
+    // or the canvas stays in draw mode and the inserted element can't be grabbed.
+    const onAddElement = vi.fn();
+    const { getByTitle } = renderEditor({ onAddElement });
+    fireEvent.click(getByTitle('Shapes'));   // activate a shape (draw) tool
+    fireEvent.click(getByTitle('Text box')); // insert a text element
+    expect(onAddElement).toHaveBeenCalledWith('text', undefined); // no geometry opts → factory default
+    expect(getByTitle('Select · V').className).toContain('active'); // not left in draw mode
+  });
+
+  it('pasting while a shape tool is active resets to the Select tool', () => {
+    // Paste creates a fresh selection; it must exit draw mode too, or the pasted
+    // elements aren't draggable (frame hidden, hit boxes off).
+    const onPasteElements = vi.fn();
+    const { getByTitle } = renderEditor({ onPasteElements });
+    fireEvent.click(getByTitle('Shapes'));
+    fireEvent.keyDown(document.body, { key: 'v', metaKey: true });
+    expect(onPasteElements).toHaveBeenCalled();
+    expect(getByTitle('Select · V').className).toContain('active');
+  });
+
+  it('duplicating while a shape tool is active resets to the Select tool', () => {
+    const onDuplicateElements = vi.fn();
+    const { getByTitle } = renderEditor({ onDuplicateElements }); // default 3 selected
+    fireEvent.click(getByTitle('Shapes'));
+    fireEvent.keyDown(document.body, { key: 'd', metaKey: true });
+    expect(onDuplicateElements).toHaveBeenCalled();
+    expect(getByTitle('Select · V').className).toContain('active');
+  });
+});

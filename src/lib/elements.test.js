@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -41,6 +41,20 @@ describe('createElement', () => {
     expect(el.type).toBe('line');
     expect(el.w).toBe(320);
     expect(el.h).toBe(8);  // a thin default rule — now an adjustable thickness, not a hard cap
+  });
+
+  it('clamps a new element to the slide bounds (a draw/click past the right/bottom edge)', () => {
+    // Like every other element op, a created element must stay fully on-slide —
+    // moveElement clamps, so creation must too (a draw released off-frame, or a
+    // default-size shape clicked near the edge, would otherwise be partly clipped).
+    const el = createElement('rect', { id: 'e', x: 1900, y: 1000, w: 320, h: 200 });
+    expect(el).toMatchObject({ x: 1600, y: 880, w: 320, h: 200 }); // 1920-320, 1080-200
+  });
+
+  it('clamps a default-size element clicked near the edge (no explicit w/h)', () => {
+    const el = createElement('rect', { id: 'e', x: 1900, y: 1000 }); // defaults 320×200
+    expect(el.x).toBe(1600);
+    expect(el.y).toBe(880);
   });
 
   it('creates an image element carrying its src and no fill', () => {
@@ -643,5 +657,17 @@ describe('rotateElement', () => {
     const r = rotateElement(el, 60, -50); // slightly right of straight-up
     expect(Number.isInteger(r.rot)).toBe(true);
     expect({ x: r.x, y: r.y, w: r.w, h: r.h, id: r.id }).toEqual({ x: 0, y: 0, w: 100, h: 100, id: 'a' });
+  });
+});
+
+describe('snapDrawnBox', () => {
+  it('snaps position and size to the grid and floors a dimension to MIN_SIZE', () => {
+    // A drawn box carries raw pointer coords; align it to the grid like the
+    // move/resize gestures, and don't let a thin sweep make a sub-MIN_SIZE shape.
+    expect(snapDrawnBox('rect', { x: 100, y: 60, w: 203, h: 4 })).toEqual({ x: 104, y: 64, w: 200, h: MIN_SIZE });
+  });
+
+  it('floors a line\'s height at MIN_LINE_THICKNESS, not MIN_SIZE (its height is a thickness)', () => {
+    expect(snapDrawnBox('line', { x: 0, y: 0, w: 320, h: 1 })).toEqual({ x: 0, y: 0, w: 320, h: MIN_LINE_THICKNESS });
   });
 });

@@ -54,14 +54,29 @@ export function createElement(type, opts = {}) {
     w,
     h,
   };
-  // An image carries a `src` (data URL) instead of a colour fill.
   if (type === 'image') {
-    el.src = opts.src ?? '';
-    return el;
+    el.src = opts.src ?? ''; // an image carries a `src` (data URL) instead of a colour fill
+  } else {
+    if (d.content !== undefined) el.content = opts.content ?? d.content;
+    el.fill = opts.fill ?? d.fill ?? '#4f46e5'; // canonical hex so the inspector swatch matches the render
   }
-  if (d.content !== undefined) el.content = opts.content ?? d.content;
-  el.fill = opts.fill ?? d.fill ?? '#4f46e5'; // canonical hex so the inspector swatch matches the render
-  return el;
+  // Keep a new element on-slide and at/above its per-type minimum, like every
+  // other element op (moveElement/resizeElement) — so a draw or click near the
+  // edge can't create clipped or degenerate geometry.
+  return clampElement(el);
+}
+
+// Snap a freshly DRAWN element box (raw pointer-sweep coords) to the grid and
+// floor each dimension to its minimum, so a canvas draw aligns like the move/
+// resize gestures and can't produce a degenerate (zero/sub-min) shape. A line's
+// height is a thickness, so it floors at MIN_LINE_THICKNESS rather than MIN_SIZE.
+export function snapDrawnBox(type, { x, y, w, h }) {
+  return {
+    x: snap(x),
+    y: snap(y),
+    w: Math.max(snap(w), MIN_SIZE),
+    h: Math.max(snap(h), heightMin({ type }, MIN_SIZE)),
+  };
 }
 
 // Move an element by (dx, dy), snapped to the grid and clamped to the slide.
