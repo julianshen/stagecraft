@@ -149,7 +149,8 @@ describe('TableDataEditor', () => {
     const slide = { id: 't', layout: 'table', columns: ['A', 'B'], rows: [['x', 'y'], ['a', 'b', 'c']], fmt: { 'rows.1.2': { bold: true } } };
     render(<TableDataEditor slide={slide} onApply={onApply} />);
     await userEvent.click(screen.getAllByTitle('Delete row')[0]); // delete row 0
-    expect(onApply).toHaveBeenCalledWith({ rows: [['a', 'b', 'c']], fmt: { 'rows.0.2': { bold: true } } });
+    // Also persists the widened header row so the saved slide isn't left ragged.
+    expect(onApply).toHaveBeenCalledWith({ columns: ['A', 'B', ''], rows: [['a', 'b', 'c']], fmt: { 'rows.0.2': { bold: true } } });
   });
 
   it('keeps formatting on an over-wide cell when deleting an unrelated column', async () => {
@@ -192,5 +193,33 @@ describe('TableDataEditor', () => {
     render(<TableDataEditor slide={{ id: 't', layout: 'table' }} onApply={onApply} />);
     await userEvent.click(screen.getByText('Add row'));
     expect(onApply).toHaveBeenCalledWith({ columns: [''], rows: [['']] });
+  });
+
+  it('persists the widened header row when editing a body cell of a ragged table', () => {
+    // The editor displays a padded rectangle; a body-cell edit that committed only
+    // rows would leave the saved slide ragged (columns shorter than the row), which
+    // the renderer/export then misalign. The commit also carries the normalized
+    // columns so the persisted slide matches what was shown.
+    const onApply = vi.fn();
+    render(<TableDataEditor slide={{ id: 't', layout: 'table', columns: ['A', 'B'], rows: [['a', 'b', 'c']] }} onApply={onApply} />);
+    fireEvent.change(screen.getByDisplayValue('a'), { target: { value: 'X' } });
+    expect(onApply).toHaveBeenCalledWith({ columns: ['A', 'B', ''], rows: [['X', 'b', 'c']] });
+  });
+
+  it('persists the padded rows when editing a header of a table with a short row', () => {
+    // Companion direction: a header edit on a table whose row was padded must also
+    // carry the normalized rows, or the saved slide keeps the short (ragged) row.
+    const onApply = vi.fn();
+    render(<TableDataEditor slide={{ id: 't', layout: 'table', columns: ['A', 'B', 'C'], rows: [['a']] }} onApply={onApply} />);
+    fireEvent.change(screen.getByDisplayValue('A'), { target: { value: 'Z' } });
+    expect(onApply).toHaveBeenCalledWith({ columns: ['Z', 'B', 'C'], rows: [['a', '', '']] });
+  });
+
+  it('persists the widened header row when adding a row to a ragged table', async () => {
+    // The add path heals too: adding a row must not leave the old short columns.
+    const onApply = vi.fn();
+    render(<TableDataEditor slide={{ id: 't', layout: 'table', columns: ['A', 'B'], rows: [['a', 'b', 'c']] }} onApply={onApply} />);
+    await userEvent.click(screen.getByText('Add row'));
+    expect(onApply).toHaveBeenCalledWith({ columns: ['A', 'B', ''], rows: [['a', 'b', 'c'], ['', '', '']] });
   });
 });

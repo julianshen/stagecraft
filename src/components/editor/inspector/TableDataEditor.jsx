@@ -30,24 +30,40 @@ export default function TableDataEditor({ slide, onApply }) {
   const rows = rawRows.map(pad);
   const ids = (n) => Array.from({ length: n }, (_, i) => i); // identity order [0..n-1]
 
-  // Edits/adds keep cell positions → commit the data alone. A delete shifts
-  // positions → also send the remapped fmt (only when the slide carries any).
+  // Persist what the editor displays. The grid above is the normalized rectangle,
+  // but the slide round-trips through a shallow merge, so a single-axis patch
+  // (e.g. a body-cell edit sending only `rows`) would leave the companion axis at
+  // its raw, ragged value — columns shorter than a row, which the renderer/export
+  // then misalign. So every commit also carries the normalized companion axis
+  // when normalization actually changed it; a rectangular table (the common case)
+  // keeps minimal single-axis patches.
+  const eq = (norm, raw) => Array.isArray(raw) && norm.length === raw.length && norm.every((v, i) => v === raw[i]);
+  const colsNormalized = !eq(columns, slide.columns);
+  const rowsNormalized = !Array.isArray(slide.rows) || slide.rows.some((raw, i) => !eq(rows[i], raw));
+  const commit = (patch) => onApply({
+    ...(colsNormalized ? { columns } : {}),
+    ...(rowsNormalized ? { rows } : {}),
+    ...patch, // the edited axis (and any fmt) wins over the normalized base
+  });
+
+  // A delete shifts positions → also send the remapped fmt (only when the slide
+  // carries any); edits/adds keep positions, so they need no fmt remap.
   const commitDelete = (patch, rowOrder, colOrder) => {
     const fmt = slide.fmt ? remapTableFmt(slide.fmt, rowOrder, colOrder) : undefined;
-    onApply(fmt ? { ...patch, fmt } : patch);
+    commit(fmt ? { ...patch, fmt } : patch);
   };
 
-  const editColumn = (c, value) => onApply({ columns: columns.map((h, i) => (i === c ? value : h)) });
+  const editColumn = (c, value) => commit({ columns: columns.map((h, i) => (i === c ? value : h)) });
   const editCell = (r, c, value) =>
-    onApply({ rows: rows.map((row, i) => (i === r ? row.map((cell, j) => (j === c ? value : cell)) : row)) });
+    commit({ rows: rows.map((row, i) => (i === r ? row.map((cell, j) => (j === c ? value : cell)) : row)) });
   // Adding the first column/row must seed the other axis too: a single-axis table
   // renders on the canvas but vanishes from the PPTX export (addTable needs both
   // axes non-empty) — the same invariant the last-cell delete guards protect.
-  const addColumn = () => onApply({
+  const addColumn = () => commit({
     columns: [...columns, ''],
     rows: rows.length ? rows.map((row) => [...row, '']) : [Array(columns.length + 1).fill('')],
   });
-  const addRow = () => onApply(
+  const addRow = () => commit(
     columns.length
       ? { rows: [...rows, columns.map(() => '')] }
       : { columns: [''], rows: [...rows, ['']] },
