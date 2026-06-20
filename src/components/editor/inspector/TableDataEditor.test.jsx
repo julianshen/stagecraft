@@ -117,16 +117,49 @@ describe('TableDataEditor', () => {
     expect(onApply).toHaveBeenCalledWith({ rows: [['X', '']] }); // the object cell is now '' (primitive), not preserved
   });
 
-  it('opens ragged/non-array rows without crashing or dropping cells', () => {
+  it('opens ragged/non-array rows as a rectangle (widens headers to the widest row; never drops cells)', () => {
     // Malformed data (a hand-edited persisted deck can carry non-rectangular rows;
     // the gate only validates mutations). The editor is the repair tool, so it
     // must open such a table — a non-array row would otherwise crash row.map().
+    // The widest row has 4 cells, so the header row widens to 4 (a blank 4th
+    // header) and every row pads to 4: a rectangle where every cell has a header.
     const { container } = render(
       <TableDataEditor slide={{ id: 't', layout: 'table', columns: ['A', 'B', 'C'], rows: ['oops', ['x'], ['p', 'q', 'r', 's']] }} onApply={vi.fn()} />,
     );
     expect(screen.getByDisplayValue('s')).toBeTruthy(); // long row's 4th cell preserved (NOT truncated — it renders/exports)
-    // 3 headers + (['','',''] + ['x','',''] padded to 3) + (['p','q','r','s'] kept) = 3 + 10
-    expect(container.querySelectorAll('input')).toHaveLength(3 + 10);
+    // 4 headers (C + a blank) + 3 rows × 4 cells (all padded to the widest) = 4 + 12
+    expect(container.querySelectorAll('input')).toHaveLength(4 + 12);
+  });
+
+  it('keeps the table rectangular when adding a column to a table loaded with an over-wide row', async () => {
+    // An over-wide cell ('c', no header) is adopted by a blank header on read, so
+    // Add column extends a clean rectangle rather than appending an orphan blank
+    // that the old code could never headerise (P2: orphan cells on ragged add).
+    const onApply = vi.fn();
+    render(<TableDataEditor slide={{ id: 't', layout: 'table', columns: ['A', 'B'], rows: [['a', 'b', 'c']] }} onApply={onApply} />);
+    await userEvent.click(screen.getByText('Add column'));
+    expect(onApply).toHaveBeenCalledWith({ columns: ['A', 'B', '', ''], rows: [['a', 'b', 'c', '']] });
+  });
+
+  it('keeps formatting on an over-wide cell when deleting a different row', async () => {
+    // 2 headers, a surviving row with a 3rd cell carrying fmt. Read widens to 3
+    // columns, so deleting the other row remaps rows.1.2 → rows.0.2 instead of
+    // dropping it for a cell that still renders/exports (P2: fmt loss on ragged delete).
+    const onApply = vi.fn();
+    const slide = { id: 't', layout: 'table', columns: ['A', 'B'], rows: [['x', 'y'], ['a', 'b', 'c']], fmt: { 'rows.1.2': { bold: true } } };
+    render(<TableDataEditor slide={slide} onApply={onApply} />);
+    await userEvent.click(screen.getAllByTitle('Delete row')[0]); // delete row 0
+    expect(onApply).toHaveBeenCalledWith({ rows: [['a', 'b', 'c']], fmt: { 'rows.0.2': { bold: true } } });
+  });
+
+  it('keeps formatting on an over-wide cell when deleting an unrelated column', async () => {
+    // Sibling of the row case: read widens to 3 columns, so deleting column 0
+    // remaps the over-wide cell's fmt rows.0.2 → rows.0.1 rather than dropping it.
+    const onApply = vi.fn();
+    const slide = { id: 't', layout: 'table', columns: ['A', 'B'], rows: [['a', 'b', 'c']], fmt: { 'rows.0.2': { bold: true } } };
+    render(<TableDataEditor slide={slide} onApply={onApply} />);
+    await userEvent.click(screen.getAllByTitle('Delete column')[0]); // delete column 0 (A)
+    expect(onApply).toHaveBeenCalledWith({ columns: ['B', ''], rows: [['b', 'c']], fmt: { 'rows.0.1': { bold: true } } });
   });
 
   it('disables deleting the last row and the last column (a table needs ≥1×1; an empty grid vanishes from the PPTX export)', () => {

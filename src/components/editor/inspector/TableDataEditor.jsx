@@ -10,21 +10,24 @@ import { remapTableFmt } from '../../../lib/slideFmt.js';
 // (the patch merge replaces `fmt` wholesale) — keeping per-cell formatting on its
 // cell. Row/column reordering is a planned follow-up.
 export default function TableDataEditor({ slide, onApply }) {
-  // Open malformed data without crashing, losing it, or blocking edits. A loaded
-  // deck (the gate validates mutations, not a loaded deck) can carry a non-array
-  // row, a ragged length, or a non-primitive cell. Coerce every header/cell to
-  // the primitive the gate accepts (`prim`) — a non-primitive that only displayed
-  // blank would otherwise ride along in a patch and trip the gate's primitive
-  // check, dropping the whole edit and making the table unrepairable. Coerce each
-  // row to an array (so row.map can't throw) and pad short rows so every header
-  // has a cell; NEVER truncate a long row — the canvas and PPTX export both
-  // render every cell, so dropping the extras would lose data.
+  // Open malformed data without crashing, losing it, or blocking edits, by
+  // normalizing to a rectangle on read. A loaded deck (the gate validates
+  // mutations, not a loaded deck) can carry a non-array row, a ragged length, or
+  // a non-primitive cell. Coerce every header/cell to the primitive the gate
+  // accepts (`prim`) — a non-primitive that only displayed blank would otherwise
+  // ride along in a patch and trip the gate's primitive check, dropping the whole
+  // edit. Then size the grid to the widest of the header row and any body row and
+  // pad both axes out to it: every cell (incl. an over-wide row's extras — the
+  // canvas and export render every cell, so we NEVER truncate) gets a header, and
+  // `columns.length` becomes the true width every handler below can rely on.
   const prim = (v) => (typeof v === 'object' && v !== null ? '' : (v ?? ''));
-  const columns = (Array.isArray(slide.columns) ? slide.columns : []).map(prim);
-  const rows = (Array.isArray(slide.rows) ? slide.rows : []).map((row) => {
-    const r = (Array.isArray(row) ? row : []).map(prim);
-    return r.length < columns.length ? [...r, ...Array(columns.length - r.length).fill('')] : r;
-  });
+  const rawCols = (Array.isArray(slide.columns) ? slide.columns : []).map(prim);
+  const rawRows = (Array.isArray(slide.rows) ? slide.rows : []).map((row) =>
+    (Array.isArray(row) ? row : []).map(prim));
+  const width = Math.max(0, rawCols.length, ...rawRows.map((r) => r.length));
+  const pad = (arr) => (arr.length < width ? [...arr, ...Array(width - arr.length).fill('')] : arr);
+  const columns = pad(rawCols);
+  const rows = rawRows.map(pad);
   const ids = (n) => Array.from({ length: n }, (_, i) => i); // identity order [0..n-1]
 
   // Edits/adds keep cell positions → commit the data alone. A delete shifts
