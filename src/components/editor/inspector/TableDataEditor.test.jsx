@@ -174,4 +174,23 @@ describe('TableDataEditor', () => {
     expect(screen.getByText('Add row')).toBeTruthy();
     expect(screen.queryAllByTitle('Delete row')).toHaveLength(0);
   });
+
+  it('seeds a body row when adding the first column to a header-only table', async () => {
+    // A single-axis table (headers, no rows) renders on the canvas but vanishes
+    // from the PPTX export (addTable needs both axes non-empty) — the same export
+    // invariant the last-cell delete guards protect. Add column must seed a row.
+    const onApply = vi.fn();
+    render(<TableDataEditor slide={{ id: 't', layout: 'table', columns: ['A'], rows: [] }} onApply={onApply} />);
+    await userEvent.click(screen.getByText('Add column'));
+    expect(onApply).toHaveBeenCalledWith({ columns: ['A', ''], rows: [['', '']] });
+  });
+
+  it('seeds a header column and one cell when adding the first row to an empty table', async () => {
+    // Mirror of the above: Add row on a 0×0 table must seed a header so the new
+    // row has a cell, yielding a 1×1 rectangle rather than a column-less table.
+    const onApply = vi.fn();
+    render(<TableDataEditor slide={{ id: 't', layout: 'table' }} onApply={onApply} />);
+    await userEvent.click(screen.getByText('Add row'));
+    expect(onApply).toHaveBeenCalledWith({ columns: [''], rows: [['']] });
+  });
 });

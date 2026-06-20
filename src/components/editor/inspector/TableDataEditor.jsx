@@ -40,8 +40,18 @@ export default function TableDataEditor({ slide, onApply }) {
   const editColumn = (c, value) => onApply({ columns: columns.map((h, i) => (i === c ? value : h)) });
   const editCell = (r, c, value) =>
     onApply({ rows: rows.map((row, i) => (i === r ? row.map((cell, j) => (j === c ? value : cell)) : row)) });
-  const addColumn = () => onApply({ columns: [...columns, ''], rows: rows.map((row) => [...row, '']) });
-  const addRow = () => onApply({ rows: [...rows, columns.map(() => '')] });
+  // Adding the first column/row must seed the other axis too: a single-axis table
+  // renders on the canvas but vanishes from the PPTX export (addTable needs both
+  // axes non-empty) — the same invariant the last-cell delete guards protect.
+  const addColumn = () => onApply({
+    columns: [...columns, ''],
+    rows: rows.length ? rows.map((row) => [...row, '']) : [Array(columns.length + 1).fill('')],
+  });
+  const addRow = () => onApply(
+    columns.length
+      ? { rows: [...rows, columns.map(() => '')] }
+      : { columns: [''], rows: [...rows, ['']] },
+  );
   const deleteColumn = (c) => commitDelete(
     { columns: columns.filter((_, i) => i !== c), rows: rows.map((row) => row.filter((_, i) => i !== c)) },
     ids(rows.length),                          // rows untouched (identity)
