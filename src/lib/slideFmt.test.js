@@ -157,12 +157,17 @@ describe('remapTableFmt', () => {
     });
   });
 
-  it('preserves a malformed table key as-is instead of "repairing" it into a valid one', () => {
+  it('drops a malformed table key (neither "repairs" it nor lets it poison the gate)', () => {
     // A pre-existing invalid key (extra segment, or a non-index part) does not
-    // render. The remap reconstructs table keys from scratch, so it must NOT strip
-    // the extra segments — that would turn columns.0.extra / rows.0.1.extra into a
-    // valid columns.0 / rows.0.1 and apply stale formatting after a structural edit.
-    const fmt = { 'columns.0.extra': { bold: true }, 'rows.0.1.extra': { italic: true }, 'columns.x': { underline: true } };
-    expect(remapTableFmt(fmt, [0], [0, 1])).toEqual(fmt); // every key passes through untouched
+    // render. It must NOT be stripped to a valid columns.0 / rows.0.1 (that would
+    // resurrect stale formatting), and it must NOT ride along in the output either:
+    // the gate's isFmtMap rejects the WHOLE fmt field if any key is unformattable,
+    // which would drop the valid remap with it. So drop the malformed keys; keep
+    // valid table keys remapped and valid non-table keys (e.g. a top-level field).
+    const fmt = {
+      'columns.0.extra': { bold: true }, 'rows.0.1.extra': { italic: true }, 'columns.x': { underline: true },
+      title: { italic: true }, 'columns.1': { color: '#f00' },
+    };
+    expect(remapTableFmt(fmt, [0], [0, 1])).toEqual({ title: { italic: true }, 'columns.1': { color: '#f00' } });
   });
 });

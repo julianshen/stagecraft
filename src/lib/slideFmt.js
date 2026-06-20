@@ -93,9 +93,11 @@ export function remapCollectionFmt(fmt, collection, newOrder) {
 // its keys drop. A row op passes an identity `colOrder` (and vice-versa), so the
 // untouched axis maps each index to itself. Because this REBUILDS the key, it
 // matches only the exact `isFormattableKey` table shapes ({columns}.{i} /
-// {rows}.{r}.{c}, index parts only) before remapping — a malformed key (extra
-// segment, non-index part) passes through untouched rather than being silently
-// "repaired" into a valid one that would then apply stale formatting.
+// {rows}.{r}.{c}, index parts only) before remapping. A malformed key (extra
+// segment, non-index part) is DROPPED — not "repaired" into a valid one (which
+// would resurrect stale formatting), and not passed through (the gate's `isFmtMap`
+// rejects the whole map if any key is unformattable, which would drop the valid
+// remap with it). Valid non-table keys (a top-level field) pass through.
 export function remapTableFmt(fmt, rowOrder, colOrder) {
   if (!fmt) return fmt;
   const out = {};
@@ -109,9 +111,9 @@ export function remapTableFmt(fmt, rowOrder, colOrder) {
       const nr = rowOrder.indexOf(Number(a)); // rows.R.C — remap both axes
       const nc = colOrder.indexOf(Number(b));
       if (nr !== -1 && nc !== -1) out[`rows.${nr}.${nc}`] = val;
-    } else {
-      out[key] = val; // top-level field or an unrecognized/malformed key — preserve as-is
-    }
+    } else if (isFormattableKey(key)) {
+      out[key] = val; // a valid non-table key (e.g. a top-level field) — preserve
+    } // else: a malformed/unrenderable key — drop, keeping the output gate-valid
   }
   return out;
 }
