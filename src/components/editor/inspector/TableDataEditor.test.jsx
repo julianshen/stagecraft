@@ -107,6 +107,16 @@ describe('TableDataEditor', () => {
     expect(slide).toEqual(snapshot); // onApply is mocked, so the original must be untouched
   });
 
+  it('coerces non-primitive cells to primitives in committed patches (so a malformed table is repairable cell-by-cell)', () => {
+    // The gate rejects columns/rows with a non-primitive; if an unedited object
+    // cell rode along in the patch, editing a different cell would be dropped
+    // wholesale. Coercing on read makes every emitted array gate-valid.
+    const onApply = vi.fn();
+    render(<TableDataEditor slide={{ id: 't', layout: 'table', columns: ['A', 'B'], rows: [['a', { bad: 1 }]] }} onApply={onApply} />);
+    fireEvent.change(screen.getByDisplayValue('a'), { target: { value: 'X' } }); // edit a DIFFERENT cell
+    expect(onApply).toHaveBeenCalledWith({ rows: [['X', '']] }); // the object cell is now '' (primitive), not preserved
+  });
+
   it('opens ragged/non-array rows without crashing or dropping cells', () => {
     // Malformed data (a hand-edited persisted deck can carry non-rectangular rows;
     // the gate only validates mutations). The editor is the repair tool, so it

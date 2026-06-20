@@ -10,19 +10,22 @@ import { remapTableFmt } from '../../../lib/slideFmt.js';
 // (the patch merge replaces `fmt` wholesale) — keeping per-cell formatting on its
 // cell. Row/column reordering is a planned follow-up.
 export default function TableDataEditor({ slide, onApply }) {
-  const columns = Array.isArray(slide.columns) ? slide.columns : [];
-  // Open malformed data without crashing or losing it: a hand-edited persisted
-  // deck can carry a non-array row or a ragged length (the gate validates
-  // mutations, not a loaded deck), and the editor is the tool you'd open to
-  // repair it. Coerce each row to an array (so row.map can't throw) and pad short
-  // rows so every header has a cell. NEVER truncate a long row — the canvas and
-  // PPTX export both render every cell, so dropping the extras would lose data.
+  // Open malformed data without crashing, losing it, or blocking edits. A loaded
+  // deck (the gate validates mutations, not a loaded deck) can carry a non-array
+  // row, a ragged length, or a non-primitive cell. Coerce every header/cell to
+  // the primitive the gate accepts (`prim`) — a non-primitive that only displayed
+  // blank would otherwise ride along in a patch and trip the gate's primitive
+  // check, dropping the whole edit and making the table unrepairable. Coerce each
+  // row to an array (so row.map can't throw) and pad short rows so every header
+  // has a cell; NEVER truncate a long row — the canvas and PPTX export both
+  // render every cell, so dropping the extras would lose data.
+  const prim = (v) => (typeof v === 'object' && v !== null ? '' : (v ?? ''));
+  const columns = (Array.isArray(slide.columns) ? slide.columns : []).map(prim);
   const rows = (Array.isArray(slide.rows) ? slide.rows : []).map((row) => {
-    const r = Array.isArray(row) ? row : [];
+    const r = (Array.isArray(row) ? row : []).map(prim);
     return r.length < columns.length ? [...r, ...Array(columns.length - r.length).fill('')] : r;
   });
   const ids = (n) => Array.from({ length: n }, (_, i) => i); // identity order [0..n-1]
-  const cellText = (v) => (typeof v === 'object' && v !== null ? '' : (v ?? '')); // a layout switch can leave non-primitive cells
 
   // Edits/adds keep cell positions → commit the data alone. A delete shifts
   // positions → also send the remapped fmt (only when the slide carries any).
@@ -62,14 +65,14 @@ export default function TableDataEditor({ slide, onApply }) {
         ))}
         {columns.length > 0 && <span />}{/* corner above the row-delete column */}
         {columns.map((h, ci) => (
-          <input key={`h${ci}`} className="cell-input" title={`Column ${ci + 1} header`} value={cellText(h)}
+          <input key={`h${ci}`} className="cell-input" title={`Column ${ci + 1} header`} value={h}
             style={{ fontWeight: 600 }} onChange={(e) => editColumn(ci, e.target.value)} />
         ))}
         {columns.length > 0 && <span />}
         {rows.map((row, ri) => (
           <React.Fragment key={`r${ri}`}>
             {row.map((cell, ci) => (
-              <input key={ci} className="cell-input" title={`Row ${ri + 1} column ${ci + 1}`} value={cellText(cell)}
+              <input key={ci} className="cell-input" title={`Row ${ri + 1} column ${ci + 1}`} value={cell}
                 onChange={(e) => editCell(ri, ci, e.target.value)} />
             ))}
             <IconButton name="trash" size={11} title="Delete row" disabled={rows.length <= 1} onClick={() => deleteRow(ri)} />
