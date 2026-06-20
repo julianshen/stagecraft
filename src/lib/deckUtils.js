@@ -1,4 +1,4 @@
-import { isFormattableKey } from './slideFmt.js';
+import { isFormattableKey, isFmtRecord } from './slideFmt.js';
 import { shapeDef } from './shapes.js';
 import { isHexColor } from './color.js';
 
@@ -93,27 +93,16 @@ const isLane = (l) => isPlainObject(l)
 const ownValidate = (table, k, v) =>
   Object.prototype.hasOwnProperty.call(table, k) && table[k](v) === true;
 
-// fmt: a map from a field path-key to a formatting record. Each record may only
-// carry the known props with the right type — an unknown or wrong-typed prop
-// (e.g. bold:'yes', fontSize:'64') is rejected so junk can't persist and the
-// renderer (which spreads these into a style) never gets a bad value.
-const FMT_PROP_OK = {
-  bold: (v) => typeof v === 'boolean',
-  italic: (v) => typeof v === 'boolean',
-  underline: (v) => typeof v === 'boolean',
-  fontSize: (v) => Number.isFinite(v),
-  color: (v) => typeof v === 'string',
-};
-const isFmtEntry = (e) => isPlainObject(e)
-  && Object.entries(e).every(([k, v]) => ownValidate(FMT_PROP_OK, k, v));
-// Keys must be fields the renderer actually formats (`isFormattableKey`: the
-// fixed top-level fields plus the per-item index paths E() emits, e.g.
-// `items.0.t`, `rows.1.4`). A key the renderer ignores (a collection root like
-// `items`, an unknown leaf, or an invented name) would persist as an "applied"
-// edit that renders nothing, so reject the whole map if any key isn't
-// formattable — matching how the renderer scopes formatting.
+// fmt: a map from a field path-key to a formatting record. Keys must be fields
+// the renderer actually formats (`isFormattableKey`: the fixed top-level fields
+// plus the per-item index paths E() emits, e.g. `items.0.t`, `rows.1.4`) and each
+// value must be a valid record (`isFmtRecord`: only the known props, right type).
+// A key the renderer ignores (a collection root, an unknown leaf, an invented
+// name) or a junk value would persist as an "applied" edit that renders nothing,
+// so reject the whole map if any entry fails. `isFmtRecord` is single-sourced in
+// slideFmt and reused by the fmt remappers, so the gate and they can't drift.
 const isFmtMap = (v) => isPlainObject(v)
-  && Object.entries(v).every(([k, e]) => isFormattableKey(k) && isFmtEntry(e));
+  && Object.entries(v).every(([k, e]) => isFormattableKey(k) && isFmtRecord(e));
 
 // A free-form canvas element (`slide.elements[]`, the overlay layer). An AI
 // patch may set the whole array; each entry must be renderable, so validate it
