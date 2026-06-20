@@ -195,6 +195,16 @@ describe('TableDataEditor', () => {
     expect(onApply).toHaveBeenCalledWith({ columns: [''], rows: [['']] });
   });
 
+  it('backfills a pre-existing empty row when adding the first row to a column-less table', async () => {
+    // A loaded table can have empty rows but no columns (the gate accepts it).
+    // Seeding the header must also give every existing row a cell, or the result
+    // is ragged (a cell-less row under a header). Backfill, don't just append.
+    const onApply = vi.fn();
+    render(<TableDataEditor slide={{ id: 't', layout: 'table', columns: [], rows: [[]] }} onApply={onApply} />);
+    await userEvent.click(screen.getByText('Add row'));
+    expect(onApply).toHaveBeenCalledWith({ columns: [''], rows: [[''], ['']] });
+  });
+
   it('persists the widened header row when editing a body cell of a ragged table', () => {
     // The editor displays a padded rectangle; a body-cell edit that committed only
     // rows would leave the saved slide ragged (columns shorter than the row), which

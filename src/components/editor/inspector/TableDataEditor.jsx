@@ -66,7 +66,9 @@ export default function TableDataEditor({ slide, onApply }) {
   const addRow = () => commit(
     columns.length
       ? { rows: [...rows, columns.map(() => '')] }
-      : { columns: [''], rows: [...rows, ['']] },
+      // No columns: seed a header and give every row (the pre-existing empty ones
+      // too, all cell-less while width was 0) a cell, so the result is a rectangle.
+      : { columns: [''], rows: [...rows.map(() => ['']), ['']] },
   );
   const deleteColumn = (c) => commitDelete(
     { columns: columns.filter((_, i) => i !== c), rows: rows.map((row) => row.filter((_, i) => i !== c)) },
