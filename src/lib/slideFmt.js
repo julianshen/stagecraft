@@ -87,6 +87,30 @@ export function remapCollectionFmt(fmt, collection, newOrder) {
   return out;
 }
 
+// Remap a table slide's 2D `fmt` when rows/columns are reordered or deleted:
+// `columns.C` (header) and `rows.R.C` (cell). `rowOrder[newRow] = oldRow`,
+// `colOrder[newCol] = oldCol`; an old index absent from its order was deleted, so
+// its keys drop. A row op passes an identity `colOrder` (and vice-versa), so the
+// untouched axis maps each index to itself. Other keys pass through untouched.
+export function remapTableFmt(fmt, rowOrder, colOrder) {
+  if (!fmt) return fmt;
+  const out = {};
+  for (const [key, val] of Object.entries(fmt)) {
+    const [coll, a, b] = key.split('.');
+    if (coll === 'columns') {
+      const nc = colOrder.indexOf(Number(a)); // columns.C
+      if (nc !== -1) out[`columns.${nc}`] = val;
+    } else if (coll === 'rows') {
+      const nr = rowOrder.indexOf(Number(a)); // rows.R.C — remap both axes
+      const nc = colOrder.indexOf(Number(b));
+      if (nr !== -1 && nc !== -1) out[`rows.${nr}.${nc}`] = val;
+    } else {
+      out[key] = val; // top-level / non-table key
+    }
+  }
+  return out;
+}
+
 // Translate a formatting record into a CSS style object, emitting ONLY the props
 // that are set. A toggle stored as `false` (or absent) contributes nothing, so
 // un-bolding a field returns it to the template's baseline weight rather than

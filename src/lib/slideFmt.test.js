@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fmtKey, fmtStyle, isFormattablePath, isFormattableKey, remapCollectionFmt } from './slideFmt.js';
+import { fmtKey, fmtStyle, isFormattablePath, isFormattableKey, remapCollectionFmt, remapTableFmt } from './slideFmt.js';
 
 // The formattable vocabulary, validated as both a render path (array, indices
 // are numbers — used by the renderer's E()) and a stored key (string, indices
@@ -124,5 +124,36 @@ describe('remapCollectionFmt', () => {
     const fmt = { 'items.0.t': { bold: true }, 'kpis.0.val': { color: '#08f' }, subtitle: { italic: true } };
     // remap kpis with a swap; items.* and subtitle must be left exactly as-is
     expect(remapCollectionFmt(fmt, 'kpis', [0])).toEqual(fmt);
+  });
+});
+
+// Table fmt is 2D — `columns.C` (header) and `rows.R.C` (cell). A row op remaps R
+// (identity colOrder), a column op remaps C and `columns.C` (identity rowOrder).
+// `rowOrder[newRow] = oldRow`, `colOrder[newCol] = oldCol`; an index absent from
+// its order was deleted (its keys drop).
+describe('remapTableFmt', () => {
+  it('returns a falsy fmt unchanged, and leaves non-table keys alone', () => {
+    expect(remapTableFmt(undefined, [], [])).toBeUndefined();
+    expect(remapTableFmt({ title: { bold: true } }, [0], [0])).toEqual({ title: { bold: true } });
+  });
+
+  it('remaps row indices on a row delete (columns untouched)', () => {
+    const fmt = { 'rows.0.1': { bold: true }, 'rows.1.0': { italic: true }, 'rows.2.1': { underline: true }, 'columns.0': { bold: true } };
+    // delete row 1 of 3 (2 columns): rowOrder keeps 0 and 2, colOrder is identity
+    expect(remapTableFmt(fmt, [0, 2], [0, 1])).toEqual({
+      'rows.0.1': { bold: true },      // row 0 stays
+      'rows.1.1': { underline: true }, // old row 2 → row 1
+      'columns.0': { bold: true },     // a row delete doesn't touch columns
+    });
+  });
+
+  it('remaps cell + header column indices on a column delete', () => {
+    const fmt = { 'columns.1': { bold: true }, 'columns.2': { italic: true }, 'rows.0.1': { bold: true }, 'rows.0.2': { underline: true }, 'rows.1.0': { italic: true } };
+    // delete column 1 of 3 (2 rows): colOrder keeps 0 and 2, rowOrder is identity
+    expect(remapTableFmt(fmt, [0, 1], [0, 2])).toEqual({
+      'columns.1': { italic: true },   // old columns.2 → columns.1
+      'rows.0.1': { underline: true }, // old rows.0.2 → rows.0.1
+      'rows.1.0': { italic: true },    // column 0 stays
+    });
   });
 });

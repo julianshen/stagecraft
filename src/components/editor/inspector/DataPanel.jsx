@@ -2,6 +2,7 @@ import React from 'react';
 import ChartDataEditor from './ChartDataEditor.jsx';
 import RoadmapLanesEditor from './RoadmapLanesEditor.jsx';
 import ListItemsEditor, { ITEM_LAYOUTS } from './ListItemsEditor.jsx';
+import TableDataEditor from './TableDataEditor.jsx';
 
 // The inspector's Data tab: in-app authoring for the data-driven layouts.
 // Edits flow through the same validated patch path the Co-pilot uses
@@ -16,5 +17,6 @@ export default function DataPanel({ slide, onApply }) {
   if (slide.layout === 'chart') return <ChartDataEditor key={slide.id} slide={slide} onApply={onApply} />;
   if (slide.layout === 'roadmap') return <RoadmapLanesEditor key={slide.id} slide={slide} onApply={onApply} />;
   if (ITEM_LAYOUTS.includes(slide.layout)) return <ListItemsEditor key={slide.id} slide={slide} onApply={onApply} />;
-  return hint('Data editing applies to chart, roadmap, agenda, list, KPI, and split slides — select one on the canvas.');
+  if (slide.layout === 'table') return <TableDataEditor key={slide.id} slide={slide} onApply={onApply} />;
+  return hint('Data editing applies to chart, roadmap, agenda, list, KPI, split, and table slides — select one on the canvas.');
 }
