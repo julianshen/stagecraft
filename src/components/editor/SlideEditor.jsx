@@ -100,7 +100,7 @@ export default function SlideEditor(props) {
     e.target.value = ''; // reset so re-picking the same file fires onChange again
     if (file) {
       readImageFile(file)
-        .then((src) => callbacks.onAddElement?.('image', { src }))
+        .then((src) => insertElement('image', { src }))
         .catch((err) => {
           // Toast the friendly message for the user; keep the raw error in the
           // console for debugging (stack/name a plain message would drop).
@@ -184,6 +184,12 @@ export default function SlideEditor(props) {
     return () => document.removeEventListener('click', close);
   }, [ctxMenu, subMenu]);
 
+  // Insert an element and return to the Select tool. Every element-insert path
+  // (a drawn shape, the Text Box / Image buttons) routes through here, so an
+  // insert never leaves the canvas stuck in a shape draw mode (which hides the
+  // selection frame + disables hit boxes — the inserted element couldn't be moved).
+  const insertElement = (type, opts) => { callbacks.onAddElement?.(type, opts); setTool('select'); };
+
   const curIdx = flat.findIndex(f => f.id === curId);
   const cur = flat[Math.max(0, curIdx)];
 
@@ -221,7 +227,7 @@ export default function SlideEditor(props) {
           {/* Picking a shape only activates the draw tool (ShapeMenu sets `tool`);
               the element is created by drawing on the canvas, not on pick. */}
           <ShapeMenu tool={tool} setTool={setTool}/>
-          <IconButton name="text" title="Text box" onClick={() => callbacks.onAddElement && callbacks.onAddElement('text')}/>
+          <IconButton name="text" title="Text box" onClick={() => insertElement('text')}/>
           {/* Image is an insert action (like Text), not a tool toggle — it opens
               the file picker and adds the picked file as an element. */}
           <IconButton name="image" title="Image · I" onClick={() => imageInputRef.current?.click()}/>
@@ -330,7 +336,7 @@ export default function SlideEditor(props) {
                 onUpdateElements={callbacks.onUpdateElements}
                 onMarqueeSelect={callbacks.onMarqueeSelect}
                 drawTool={DRAW_TOOL_IDS.has(tool) ? tool : null}
-                onDrawElement={(type, rect) => { callbacks.onAddElement?.(type, rect); setTool('select'); }}
+                onDrawElement={insertElement}
                 zoom={zoom}
               />
             )}

@@ -293,4 +293,15 @@ describe('SlideEditor draw tools', () => {
     expect(onAddElement).toHaveBeenCalledWith('shape', { x: 40, y: 64, w: 200, h: 200 }); // grid-snapped (60→64)
     expect(getByTitle('Select · V').className).toContain('active'); // tool reverted after drawing
   });
+
+  it('inserting a text box while a shape tool is active resets to the Select tool', () => {
+    // An insert that doesn't set a tool (Text/Image) must still clear draw mode,
+    // or the canvas stays in draw mode and the inserted element can't be grabbed.
+    const onAddElement = vi.fn();
+    const { getByTitle } = renderEditor({ onAddElement });
+    fireEvent.click(getByTitle('Shapes'));   // activate a shape (draw) tool
+    fireEvent.click(getByTitle('Text box')); // insert a text element
+    expect(onAddElement).toHaveBeenCalledWith('text', undefined); // no geometry opts → factory default
+    expect(getByTitle('Select · V').className).toContain('active'); // not left in draw mode
+  });
 });
