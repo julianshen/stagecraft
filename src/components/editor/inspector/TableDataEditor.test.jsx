@@ -118,6 +118,12 @@ describe('TableDataEditor', () => {
     expect(container.querySelectorAll('input')).toHaveLength(3 + 9);
   });
 
+  it('disables deleting the last row and the last column (a table needs ≥1×1; an empty grid vanishes from the PPTX export)', () => {
+    render(<TableDataEditor slide={{ id: 't', layout: 'table', columns: ['A'], rows: [['a']] }} onApply={vi.fn()} />);
+    expect(screen.getByTitle('Delete row').disabled).toBe(true);
+    expect(screen.getByTitle('Delete column').disabled).toBe(true);
+  });
+
   it('handles a table with no columns/rows yet — shows the Add controls', () => {
     render(<TableDataEditor slide={{ id: 't', layout: 'table' }} onApply={vi.fn()} />);
     expect(screen.getByText('Add column')).toBeTruthy();

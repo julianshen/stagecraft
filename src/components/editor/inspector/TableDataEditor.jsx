@@ -55,7 +55,10 @@ export default function TableDataEditor({ slide, onApply }) {
       <h4>Table</h4>
       <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 4, alignItems: 'center' }}>
         {columns.map((_, ci) => (
-          <IconButton key={`dc${ci}`} name="trash" size={11} title="Delete column" onClick={() => deleteColumn(ci)} />
+          // Keep ≥1 column: an empty grid renders header-only on the canvas but
+          // vanishes from the PPTX export (addTable needs both axes non-empty).
+          <IconButton key={`dc${ci}`} name="trash" size={11} title="Delete column"
+            disabled={columns.length <= 1} onClick={() => deleteColumn(ci)} />
         ))}
         {columns.length > 0 && <span />}{/* corner above the row-delete column */}
         {columns.map((h, ci) => (
@@ -69,7 +72,7 @@ export default function TableDataEditor({ slide, onApply }) {
               <input key={ci} className="cell-input" title={`Row ${ri + 1} column ${ci + 1}`} value={cellText(cell)}
                 onChange={(e) => editCell(ri, ci, e.target.value)} />
             ))}
-            <IconButton name="trash" size={11} title="Delete row" onClick={() => deleteRow(ri)} />
+            <IconButton name="trash" size={11} title="Delete row" disabled={rows.length <= 1} onClick={() => deleteRow(ri)} />
           </React.Fragment>
         ))}
       </div>
