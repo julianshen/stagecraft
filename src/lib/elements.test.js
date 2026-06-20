@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
+import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -643,5 +643,17 @@ describe('rotateElement', () => {
     const r = rotateElement(el, 60, -50); // slightly right of straight-up
     expect(Number.isInteger(r.rot)).toBe(true);
     expect({ x: r.x, y: r.y, w: r.w, h: r.h, id: r.id }).toEqual({ x: 0, y: 0, w: 100, h: 100, id: 'a' });
+  });
+});
+
+describe('snapDrawnBox', () => {
+  it('snaps position and size to the grid and floors a dimension to MIN_SIZE', () => {
+    // A drawn box carries raw pointer coords; align it to the grid like the
+    // move/resize gestures, and don't let a thin sweep make a sub-MIN_SIZE shape.
+    expect(snapDrawnBox('rect', { x: 100, y: 60, w: 203, h: 4 })).toEqual({ x: 104, y: 64, w: 200, h: MIN_SIZE });
+  });
+
+  it('floors a line\'s height at MIN_LINE_THICKNESS, not MIN_SIZE (its height is a thickness)', () => {
+    expect(snapDrawnBox('line', { x: 0, y: 0, w: 320, h: 1 })).toEqual({ x: 0, y: 0, w: 320, h: MIN_LINE_THICKNESS });
   });
 });

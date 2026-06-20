@@ -452,7 +452,7 @@ describe('CanvasSlide draw tool', () => {
     fire(overlay, 'pointerdown', { clientX: 40, clientY: 60 });
     fire(window, 'pointermove', { clientX: 240, clientY: 260 });
     fire(window, 'pointerup', { clientX: 240, clientY: 260 });
-    expect(onDrawElement).toHaveBeenCalledWith('rect', { x: 40, y: 60, w: 200, h: 200 });
+    expect(onDrawElement).toHaveBeenCalledWith('rect', { x: 40, y: 64, w: 200, h: 200 }); // grid-snapped (60→64)
   });
 
   it('normalizes a rect swept up-and-left to a positive-size box', () => {
@@ -462,7 +462,7 @@ describe('CanvasSlide draw tool', () => {
     fire(overlay, 'pointerdown', { clientX: 300, clientY: 300 });
     fire(window, 'pointermove', { clientX: 100, clientY: 120 }); // drag up-left
     fire(window, 'pointerup', { clientX: 100, clientY: 120 });
-    expect(onDrawElement).toHaveBeenCalledWith('rect', { x: 100, y: 120, w: 200, h: 180 });
+    expect(onDrawElement).toHaveBeenCalledWith('rect', { x: 104, y: 120, w: 200, h: 184 }); // grid-snapped (100→104, 180→184)
   });
 
   it('clamps a degenerate (zero-thickness) sweep to the minimum element size', () => {
@@ -492,7 +492,7 @@ describe('CanvasSlide draw tool', () => {
     const overlay = container.querySelector('.elements-overlay');
     fire(overlay, 'pointerdown', { clientX: 80, clientY: 90 });
     fire(window, 'pointerup', { clientX: 80, clientY: 90 }); // no move → click
-    expect(onDrawElement).toHaveBeenCalledWith('rect', { x: 80, y: 90 }); // no w/h → factory default
+    expect(onDrawElement).toHaveBeenCalledWith('rect', { x: 80, y: 88 }); // snapped point, no w/h → factory default
   });
 
   it('draws instead of marquee-selecting while a draw tool is active', () => {

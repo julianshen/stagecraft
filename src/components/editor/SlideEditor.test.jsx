@@ -290,7 +290,7 @@ describe('SlideEditor draw tools', () => {
     fire(overlay, 'pointerdown', { clientX: 40, clientY: 60, button: 0 });
     fire(window, 'pointermove', { clientX: 240, clientY: 260 });
     fire(window, 'pointerup', { clientX: 240, clientY: 260 });
-    expect(onAddElement).toHaveBeenCalledWith('shape', { x: 40, y: 60, w: 200, h: 200 });
+    expect(onAddElement).toHaveBeenCalledWith('shape', { x: 40, y: 64, w: 200, h: 200 }); // grid-snapped (60→64)
     expect(getByTitle('Select · V').className).toContain('active'); // tool reverted after drawing
   });
 });

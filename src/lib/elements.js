@@ -64,6 +64,19 @@ export function createElement(type, opts = {}) {
   return el;
 }
 
+// Snap a freshly DRAWN element box (raw pointer-sweep coords) to the grid and
+// floor each dimension to its minimum, so a canvas draw aligns like the move/
+// resize gestures and can't produce a degenerate (zero/sub-min) shape. A line's
+// height is a thickness, so it floors at MIN_LINE_THICKNESS rather than MIN_SIZE.
+export function snapDrawnBox(type, { x, y, w, h }) {
+  return {
+    x: snap(x),
+    y: snap(y),
+    w: Math.max(snap(w), MIN_SIZE),
+    h: Math.max(snap(h), heightMin({ type }, MIN_SIZE)),
+  };
+}
+
 // Move an element by (dx, dy), snapped to the grid and clamped to the slide.
 export function moveElement(el, dx, dy, { grid = GRID, bounds = { w: SLIDE_W, h: SLIDE_H } } = {}) {
   return {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
-import { moveElement, resizeElement, elementsInMarquee, rotateElement, hitBox, MIN_SIZE } from '../../lib/elements.js';
+import { moveElement, resizeElement, elementsInMarquee, rotateElement, hitBox, snap, snapDrawnBox } from '../../lib/elements.js';
 import { alignSnap } from '../../lib/align.js';
 
 const HANDLE_CURSOR = {
@@ -86,6 +86,8 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   // Selection-frame box in screen px (only meaningful when there's a target).
   const fw = resizeTarget ? resizeTarget.w * scale : 0;
   const fh = resizeTarget ? resizeTarget.h * scale : 0;
+  // The marquee/draw preview rectangle (slide coords), normalized from its corners.
+  const marqueeBox = marquee ? boxFromCorners(marquee.x1, marquee.y1, marquee.x2, marquee.y2) : null;
 
   // Drag `targets` (array): each pointermove maps the screen delta to slide
   // coords and applies `apply(el, dx, dy)`; commits once on pointer-up.
@@ -300,12 +302,11 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       // The release position is authoritative (a fast flick may emit no move).
       if (swept(ev.clientX, ev.clientY)) {
         const p = toSlide(rect, ev.clientX, ev.clientY);
-        const box = boxFromCorners(start.x, start.y, p.x, p.y);
-        // Floor each dimension: an on-axis sweep (e.g. purely horizontal) yields a
-        // zero-thickness box, which would be an invisible/degenerate element.
-        onDrawElement?.(type, { x: box.x, y: box.y, w: Math.max(box.w, MIN_SIZE), h: Math.max(box.h, MIN_SIZE) });
+        // Grid-snap + per-type floor the drawn box (snapDrawnBox), so a draw
+        // aligns like move/resize and an on-axis sweep can't make a degenerate one.
+        onDrawElement?.(type, snapDrawnBox(type, boxFromCorners(start.x, start.y, p.x, p.y)));
       } else {
-        onDrawElement?.(type, { x: start.x, y: start.y }); // click → factory default size
+        onDrawElement?.(type, { x: snap(start.x), y: snap(start.y) }); // click → factory default size
       }
     }
     function cancel() { removeListeners(); }
@@ -471,21 +472,18 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
           />
         ))}
 
-        {marquee && (() => {
-          const b = boxFromCorners(marquee.x1, marquee.y1, marquee.x2, marquee.y2);
-          return (
-            <div
-              className="marquee-rect"
-              style={{
-                position: 'absolute',
-                left: b.x * scale, top: b.y * scale, width: b.w * scale, height: b.h * scale,
-                border: '1px solid oklch(0.62 0.2 265)',
-                background: 'oklch(0.62 0.2 265 / 0.12)',
-                pointerEvents: 'none',
-              }}
-            />
-          );
-        })()}
+        {marqueeBox && (
+          <div
+            className="marquee-rect"
+            style={{
+              position: 'absolute',
+              left: marqueeBox.x * scale, top: marqueeBox.y * scale, width: marqueeBox.w * scale, height: marqueeBox.h * scale,
+              border: '1px solid oklch(0.62 0.2 265)',
+              background: 'oklch(0.62 0.2 265 / 0.12)',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
       </div>
     </div>
   );
