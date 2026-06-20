@@ -17,8 +17,8 @@ import ShapeMenu from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
 import TableSizePicker from './menus/TableSizePicker.jsx';
 import ChartTypePicker from './menus/ChartTypePicker.jsx';
-import LayoutMenu from './menus/LayoutMenu.jsx';
-import ThemeMenu from './menus/ThemeMenu.jsx';
+import LayoutMenu, { LAYOUT_OPTIONS } from './menus/LayoutMenu.jsx';
+import ThemeMenu, { THEME_OPTIONS } from './menus/ThemeMenu.jsx';
 import ComponentMenu from './menus/ComponentMenu.jsx';
 import InspectorPane from './inspector/InspectorPane.jsx';
 import FloatingInspector from './inspector/FloatingInspector.jsx';
@@ -36,6 +36,20 @@ const PEN_TOOLS = [
 // Arrow key → unit nudge direction for the selection.
 const NUDGE_DIR = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
+// The context menu's "Change layout" / "Apply theme" drill-in choosers, built
+// from the same option lists the toolbar menus use. One config so the two
+// choosers don't duplicate the option→item mapping (theme options carry no icon
+// of their own, so they fall back to the menu's palette icon).
+const SUBMENU_CHOOSERS = {
+  layout: { header: 'Change layout', options: LAYOUT_OPTIONS, cb: 'onChangeLayout' },
+  theme: { header: 'Apply theme', options: THEME_OPTIONS, cb: 'onChangeTheme' },
+};
+const subMenuItems = (kind, callbacks) => {
+  const { header, options, cb } = SUBMENU_CHOOSERS[kind];
+  return [{ header }, ...options.map((o) => ({
+    icon: o.icon || 'palette', label: o.label, onClick: () => callbacks?.[cb]?.(o.id),
+  }))];
+};
 
 export default function SlideEditor(props) {
   const {
@@ -152,6 +166,19 @@ export default function SlideEditor(props) {
   const [showAI, setShowAI] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null);
+  // Drill-in chooser for the context menu's "Change layout" / "Apply theme":
+  // { x, y, kind } — the shared Menu closes on every item click, so we open a
+  // second Menu at the same spot rather than nesting.
+  const [subMenu, setSubMenu] = useState(null);
+  // Dismiss the context menu (and its chooser) on any click outside a menu —
+  // the toolbar, inspector, or empty canvas. A click on a `.ctx` item is the
+  // item's own job (it commits, then closes), so leave those alone.
+  useEffect(() => {
+    if (!ctxMenu && !subMenu) return undefined;
+    const close = (e) => { if (!e.target.closest('.ctx')) { setCtxMenu(null); setSubMenu(null); } };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [ctxMenu, subMenu]);
 
   const curIdx = flat.findIndex(f => f.id === curId);
   const cur = flat[Math.max(0, curIdx)];
@@ -275,7 +302,15 @@ export default function SlideEditor(props) {
           />
         )}
 
-        <section className="canvas-area" onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY }); }} onClick={()=>setCtxMenu(null)}>
+        <section className="canvas-area" onContextMenu={(e) => {
+          // Position relative to the canvas, not e.target: offsetX/Y is measured
+          // from whatever child (shape/text box) was right-clicked. (Outside-click
+          // dismissal is handled by the document listener above.)
+          e.preventDefault();
+          const r = e.currentTarget.getBoundingClientRect();
+          setSubMenu(null);
+          setCtxMenu({ x: e.clientX - r.left, y: e.clientY - r.top });
+        }}>
           <Ruler/>
           <div className="canvas-inner">
             <div className="canvas-backdrop"/>
@@ -304,15 +339,24 @@ export default function SlideEditor(props) {
               onClose={()=>setCtxMenu(null)}
               items={[
                 { header: 'Canvas' },
-                { icon:'frame', label:'Paste slide', kbd:'⌘V' },
-                { icon:'magic', label:'Generate with AI', kbd:'⌘K' },
+                { icon:'frame', label:'Paste', kbd:'⌘V', onClick: () => callbacks.onPasteElements && callbacks.onPasteElements() },
+                { icon:'magic', label:'Generate with AI', kbd:'⌘K', onClick: () => setShowAI(true) },
                 '-',
-                { icon:'layers', label:'Change layout' },
-                { icon:'palette', label:'Apply theme' },
+                // Drill in: the shared Menu auto-closes on click, so reopen a
+                // chooser submenu at the same spot (see subMenu state).
+                { icon:'layers', label:'Change layout', onClick: () => setSubMenu({ x: ctxMenu.x, y: ctxMenu.y, kind: 'layout' }) },
+                { icon:'palette', label:'Apply theme', onClick: () => setSubMenu({ x: ctxMenu.x, y: ctxMenu.y, kind: 'theme' }) },
                 '-',
                 { icon:'copy', label:'Duplicate slide', kbd:'⌘D', onClick: callbacks.onDuplicateSlide },
                 { icon:'trash', label:'Delete slide', kbd:'⌫', onClick: () => callbacks.onDeleteSlide && callbacks.onDeleteSlide(curId) },
               ]}
+            />
+          )}
+          {subMenu && (
+            <Menu
+              style={{ left: subMenu.x, top: subMenu.y }}
+              onClose={()=>setSubMenu(null)}
+              items={subMenuItems(subMenu.kind, callbacks)}
             />
           )}
           {slots.belowCanvas}
