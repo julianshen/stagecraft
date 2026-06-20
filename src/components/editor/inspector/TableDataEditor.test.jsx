@@ -107,15 +107,16 @@ describe('TableDataEditor', () => {
     expect(slide).toEqual(snapshot); // onApply is mocked, so the original must be untouched
   });
 
-  it('normalizes ragged or non-array rows to the column count without crashing', () => {
+  it('opens ragged/non-array rows without crashing or dropping cells', () => {
     // Malformed data (a hand-edited persisted deck can carry non-rectangular rows;
     // the gate only validates mutations). The editor is the repair tool, so it
     // must open such a table — a non-array row would otherwise crash row.map().
     const { container } = render(
       <TableDataEditor slide={{ id: 't', layout: 'table', columns: ['A', 'B', 'C'], rows: ['oops', ['x'], ['p', 'q', 'r', 's']] }} onApply={vi.fn()} />,
     );
-    // 3 header inputs + 3 rows × 3 cells (padded/truncated to the column count) = 12
-    expect(container.querySelectorAll('input')).toHaveLength(3 + 9);
+    expect(screen.getByDisplayValue('s')).toBeTruthy(); // long row's 4th cell preserved (NOT truncated — it renders/exports)
+    // 3 headers + (['','',''] + ['x','',''] padded to 3) + (['p','q','r','s'] kept) = 3 + 10
+    expect(container.querySelectorAll('input')).toHaveLength(3 + 10);
   });
 
   it('disables deleting the last row and the last column (a table needs ≥1×1; an empty grid vanishes from the PPTX export)', () => {

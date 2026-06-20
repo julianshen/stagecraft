@@ -11,15 +11,15 @@ import { remapTableFmt } from '../../../lib/slideFmt.js';
 // cell. Row/column reordering is a planned follow-up.
 export default function TableDataEditor({ slide, onApply }) {
   const columns = Array.isArray(slide.columns) ? slide.columns : [];
-  // Normalize to a rectangular grid: a hand-edited persisted deck can carry a
-  // non-array row or a ragged length (the gate validates mutations, not a loaded
-  // deck), and the editor is the tool you'd open to repair it — so a non-array
-  // row mustn't crash row.map(). Pad short rows / truncate long ones to the
-  // column count (truncated cells are unrenderable — the renderer reads only
-  // columns.length per row anyway).
+  // Open malformed data without crashing or losing it: a hand-edited persisted
+  // deck can carry a non-array row or a ragged length (the gate validates
+  // mutations, not a loaded deck), and the editor is the tool you'd open to
+  // repair it. Coerce each row to an array (so row.map can't throw) and pad short
+  // rows so every header has a cell. NEVER truncate a long row — the canvas and
+  // PPTX export both render every cell, so dropping the extras would lose data.
   const rows = (Array.isArray(slide.rows) ? slide.rows : []).map((row) => {
     const r = Array.isArray(row) ? row : [];
-    return r.length < columns.length ? [...r, ...Array(columns.length - r.length).fill('')] : r.slice(0, columns.length);
+    return r.length < columns.length ? [...r, ...Array(columns.length - r.length).fill('')] : r;
   });
   const ids = (n) => Array.from({ length: n }, (_, i) => i); // identity order [0..n-1]
   const cellText = (v) => (typeof v === 'object' && v !== null ? '' : (v ?? '')); // a layout switch can leave non-primitive cells
