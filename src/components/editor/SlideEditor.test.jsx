@@ -304,4 +304,24 @@ describe('SlideEditor draw tools', () => {
     expect(onAddElement).toHaveBeenCalledWith('text', undefined); // no geometry opts → factory default
     expect(getByTitle('Select · V').className).toContain('active'); // not left in draw mode
   });
+
+  it('pasting while a shape tool is active resets to the Select tool', () => {
+    // Paste creates a fresh selection; it must exit draw mode too, or the pasted
+    // elements aren't draggable (frame hidden, hit boxes off).
+    const onPasteElements = vi.fn();
+    const { getByTitle } = renderEditor({ onPasteElements });
+    fireEvent.click(getByTitle('Shapes'));
+    fireEvent.keyDown(document.body, { key: 'v', metaKey: true });
+    expect(onPasteElements).toHaveBeenCalled();
+    expect(getByTitle('Select · V').className).toContain('active');
+  });
+
+  it('duplicating while a shape tool is active resets to the Select tool', () => {
+    const onDuplicateElements = vi.fn();
+    const { getByTitle } = renderEditor({ onDuplicateElements }); // default 3 selected
+    fireEvent.click(getByTitle('Shapes'));
+    fireEvent.keyDown(document.body, { key: 'd', metaKey: true });
+    expect(onDuplicateElements).toHaveBeenCalled();
+    expect(getByTitle('Select · V').className).toContain('active');
+  });
 });

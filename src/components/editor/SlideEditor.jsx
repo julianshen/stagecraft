@@ -138,14 +138,14 @@ export default function SlideEditor(props) {
       const plain = cmd && !e.shiftKey && !e.altKey; // exact ⌘/Ctrl-<key>
       // Paste acts on the clipboard, so it needs no current selection.
       if (plain && (e.key === 'v' || e.key === 'V') && cb.onPasteElements) {
-        e.preventDefault(); cb.onPasteElements(); return;
+        e.preventDefault(); pasteElements(); return; // also exits draw mode (pasted elements are selected)
       }
       if (!props.selectedElementCount) return; // the rest act on the selection
       if ((e.key === 'Delete' || e.key === 'Backspace') && cb.onDeleteElements) {
         e.preventDefault(); cb.onDeleteElements(); return;
       }
       if (plain && (e.key === 'd' || e.key === 'D') && cb.onDuplicateElements) {
-        e.preventDefault(); cb.onDuplicateElements(); return; // don't swallow Ctrl+Shift+D etc.
+        e.preventDefault(); duplicateElements(); return; // exits draw mode; don't swallow Ctrl+Shift+D etc.
       }
       if (plain && (e.key === 'c' || e.key === 'C') && cb.onCopyElements) {
         e.preventDefault(); cb.onCopyElements(); return;
@@ -189,6 +189,11 @@ export default function SlideEditor(props) {
   // insert never leaves the canvas stuck in a shape draw mode (which hides the
   // selection frame + disables hit boxes — the inserted element couldn't be moved).
   const insertElement = (type, opts) => { callbacks.onAddElement?.(type, opts); setTool('select'); };
+  // Paste and duplicate also create a fresh selection, so they exit draw mode
+  // too — otherwise the new elements sit under a hidden frame + disabled hit
+  // boxes. Via the ref so the keyboard handler stays current without re-binding.
+  const pasteElements = () => { callbacksRef.current.onPasteElements?.(); setTool('select'); };
+  const duplicateElements = () => { callbacksRef.current.onDuplicateElements?.(); setTool('select'); };
 
   const curIdx = flat.findIndex(f => f.id === curId);
   const cur = flat[Math.max(0, curIdx)];
@@ -353,7 +358,7 @@ export default function SlideEditor(props) {
               onClose={()=>setCtxMenu(null)}
               items={[
                 { header: 'Canvas' },
-                { icon:'frame', label:'Paste', kbd:'⌘V', onClick: () => callbacks.onPasteElements && callbacks.onPasteElements() },
+                { icon:'frame', label:'Paste', kbd:'⌘V', onClick: pasteElements },
                 { icon:'magic', label:'Generate with AI', kbd:'⌘K', onClick: () => setShowAI(true) },
                 '-',
                 // Drill in: the shared Menu auto-closes on click, so reopen a
