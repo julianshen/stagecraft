@@ -156,4 +156,13 @@ describe('remapTableFmt', () => {
       'rows.1.0': { italic: true },    // column 0 stays
     });
   });
+
+  it('preserves a malformed table key as-is instead of "repairing" it into a valid one', () => {
+    // A pre-existing invalid key (extra segment, or a non-index part) does not
+    // render. The remap reconstructs table keys from scratch, so it must NOT strip
+    // the extra segments — that would turn columns.0.extra / rows.0.1.extra into a
+    // valid columns.0 / rows.0.1 and apply stale formatting after a structural edit.
+    const fmt = { 'columns.0.extra': { bold: true }, 'rows.0.1.extra': { italic: true }, 'columns.x': { underline: true } };
+    expect(remapTableFmt(fmt, [0], [0, 1])).toEqual(fmt); // every key passes through untouched
+  });
 });
