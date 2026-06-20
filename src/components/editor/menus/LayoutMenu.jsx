@@ -7,7 +7,7 @@ const LAYOUT_LABELS = {
   list: 'List', thanks: 'Closing',
 };
 
-const LAYOUT_OPTIONS = [
+export const LAYOUT_OPTIONS = [
   { id: 'cover', icon: 'frame', label: 'Cover' },
   { id: 'agenda', icon: 'list', label: 'Agenda' },
   { id: 'divider', icon: 'flag', label: 'Section' },

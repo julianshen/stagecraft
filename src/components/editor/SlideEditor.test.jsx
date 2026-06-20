@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import { render, fireEvent, cleanup } from '@testing-library/react';
+import { render, fireEvent, cleanup, within } from '@testing-library/react';
 import SlideEditor from './SlideEditor.jsx';
 import { GRID } from '../../lib/elements.js';
 
@@ -201,5 +201,48 @@ describe('SlideEditor keyboard shortcuts', () => {
     const input = container.querySelector('input'); // the hidden image file input
     fireEvent.keyDown(input, { key: 'd', metaKey: true });
     expect(onDuplicateElements).not.toHaveBeenCalled();
+  });
+});
+
+describe('SlideEditor canvas context menu', () => {
+  // Right-click the canvas area to open the context menu, then act on its items.
+  const openCtx = (container) => fireEvent.contextMenu(container.querySelector('.canvas-area'));
+  // The drill-in submenu (a popover Menu) identified by its header — scopes
+  // option queries to it, since layout/theme names also appear in the inspector.
+  const submenu = (container, header) =>
+    [...container.querySelectorAll('.ctx')].find((m) => within(m).queryByText(header));
+
+  it('Paste pastes elements onto the current slide via onPasteElements', () => {
+    const onPasteElements = vi.fn();
+    const { container, getByText } = renderEditor({ onPasteElements });
+    openCtx(container);
+    fireEvent.click(getByText('Paste'));
+    expect(onPasteElements).toHaveBeenCalledTimes(1);
+  });
+
+  it('Generate with AI opens the Co-pilot drawer', () => {
+    const { container, getByText, queryByPlaceholderText } = renderEditor({});
+    expect(queryByPlaceholderText(/Ask Co-pilot/i)).toBeNull(); // closed initially
+    openCtx(container);
+    fireEvent.click(getByText('Generate with AI'));
+    expect(queryByPlaceholderText(/Ask Co-pilot/i)).not.toBeNull(); // drawer opened
+  });
+
+  it('Change layout opens a chooser whose options change the slide layout', () => {
+    const onChangeLayout = vi.fn();
+    const { container, getByText } = renderEditor({ onChangeLayout });
+    openCtx(container);
+    fireEvent.click(getByText('Change layout'));
+    fireEvent.click(within(submenu(container, 'Change layout')).getByText('Agenda'));
+    expect(onChangeLayout).toHaveBeenCalledWith('agenda');
+  });
+
+  it('Apply theme opens a chooser whose options change the deck theme', () => {
+    const onChangeTheme = vi.fn();
+    const { container, getByText } = renderEditor({ onChangeTheme });
+    openCtx(container);
+    fireEvent.click(getByText('Apply theme'));
+    fireEvent.click(within(submenu(container, 'Apply theme')).getByText('Emerald'));
+    expect(onChangeTheme).toHaveBeenCalledWith('emerald');
   });
 });
