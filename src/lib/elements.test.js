@@ -43,6 +43,20 @@ describe('createElement', () => {
     expect(el.h).toBe(8);  // a thin default rule — now an adjustable thickness, not a hard cap
   });
 
+  it('clamps a new element to the slide bounds (a draw/click past the right/bottom edge)', () => {
+    // Like every other element op, a created element must stay fully on-slide —
+    // moveElement clamps, so creation must too (a draw released off-frame, or a
+    // default-size shape clicked near the edge, would otherwise be partly clipped).
+    const el = createElement('rect', { id: 'e', x: 1900, y: 1000, w: 320, h: 200 });
+    expect(el).toMatchObject({ x: 1600, y: 880, w: 320, h: 200 }); // 1920-320, 1080-200
+  });
+
+  it('clamps a default-size element clicked near the edge (no explicit w/h)', () => {
+    const el = createElement('rect', { id: 'e', x: 1900, y: 1000 }); // defaults 320×200
+    expect(el.x).toBe(1600);
+    expect(el.y).toBe(880);
+  });
+
   it('creates an image element carrying its src and no fill', () => {
     const el = createElement('image', { id: 'i1', src: 'data:image/png;base64,AAA' });
     expect(el).toMatchObject({ id: 'i1', type: 'image', src: 'data:image/png;base64,AAA' });
