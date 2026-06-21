@@ -843,5 +843,9 @@ describe('element grouping', () => {
       expect(out.find((e) => e.id === 'c')).toBe(input.find((e) => e.id === 'c')); // ungrouped → untouched
       expect(out.find((e) => e.id === 'd')).toBe(input.find((e) => e.id === 'd')); // unselected → untouched
     });
+    it('returns the SAME array reference when nothing was ungrouped (no redundant deck write)', () => {
+      const input = [{ id: 'a', x: 0, y: 0, w: 1, h: 1 }, { id: 'b', x: 0, y: 0, w: 1, h: 1 }]; // both ungrouped
+      expect(ungroupElements(input, ['a', 'b'])).toBe(input); // no grouped member → unchanged ref (like reorderElement)
+    });
   });
 });

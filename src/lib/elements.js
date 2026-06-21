@@ -243,7 +243,8 @@ export function duplicateElements(elements, ids, newIds, opts = {}) {
 // group-mates. Returns ids in element order (deduped), so the selection always
 // holds complete groups and the existing multi-element ops act on them as a unit.
 export function expandToGroups(elements, ids) {
-  const sel = new Set(ids || []);
+  if (!ids || !ids.length) return []; // no selection → skip iterating elements
+  const sel = new Set(ids);
   const groups = new Set();
   // A truthy groupId is a real group; '' / null / undefined = ungrouped (so a
   // stray empty-string id can't couple unrelated elements).
@@ -265,11 +266,16 @@ export function groupElements(elements, ids, groupId) {
 // keep their reference.
 export function ungroupElements(elements, ids) {
   const sel = new Set(ids || []);
-  return (elements || []).map((el) => {
+  let changed = false;
+  const out = (elements || []).map((el) => {
     if (!el || !sel.has(el.id) || !el.groupId) return el;
+    changed = true;
     const { groupId, ...rest } = el;
     return rest;
   });
+  // Same-reference on a no-op (like reorderElement) so ungrouping an already-
+  // ungrouped selection doesn't trigger a redundant deck write / PUT.
+  return changed ? out : (elements || []);
 }
 
 // Z-order: move element `id` within `elements` (paint order = array order, so
