@@ -151,6 +151,10 @@ const ELEMENT_FIELD_OK = {
   // px width (0 = no outline). Rendered/exported only for box shapes (see
   // `isStrokeableShape`); the gate accepts the fields on any element.
   stroke: isHexColor, strokeWidth: isNonNeg, shadow: isShadow, gradient: isGradient,
+  // A group membership tag (a canvas-editing relationship; absent = ungrouped).
+  // The renderer/export ignore it — selecting/moving a member acts on the group,
+  // but each element still exports at its own absolute geometry.
+  groupId: isStr,
   fontSize: isPosFinite, rot: isFinite_, opacity: isFinite_,
   bold: isBool, italic: isBool, underline: isBool,
   // align is an enum the renderer maps to flex/textAlign (anything else falls

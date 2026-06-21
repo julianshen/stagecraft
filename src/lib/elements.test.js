@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
+import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -301,6 +301,29 @@ describe('cloneElements', () => {
 
   it('returns an empty array for no sources', () => {
     expect(cloneElements([], [])).toEqual([]);
+  });
+
+  it('re-keys a cloned group to a fresh shared id — the copy is its own group, not merged with the source', () => {
+    const s = [{ id: 'a', x: 0, y: 0, w: 10, h: 10, groupId: 'g1' }, { id: 'b', x: 0, y: 0, w: 10, h: 10, groupId: 'g1' }, { id: 'c', x: 0, y: 0, w: 10, h: 10 }];
+    const out = cloneElements(s, ['a2', 'b2', 'c2']);
+    expect(out[0].groupId).toBeTruthy();
+    expect(out[0].groupId).toBe(out[1].groupId); // both clones of g1 → ONE new group
+    expect(out[0].groupId).not.toBe('g1');        // not fused with the original
+    expect('groupId' in out[2]).toBe(false);       // ungrouped clone stays ungrouped
+  });
+
+  it('gives two distinct source groups two distinct cloned groups', () => {
+    const s = [{ id: 'a', x: 0, y: 0, w: 10, h: 10, groupId: 'g1' }, { id: 'd', x: 0, y: 0, w: 10, h: 10, groupId: 'g2' }];
+    const out = cloneElements(s, ['a2', 'd2']);
+    expect(out[0].groupId).not.toBe(out[1].groupId);
+  });
+
+  it('consumes newIds compactly across a falsy source — no index shift / undefined id', () => {
+    // filter(Boolean) yields a compact array whose .map index is the sequential
+    // truthy index, and callers size newIds to the truthy/matched count — so a
+    // dropped falsy entry never mis-assigns an id.
+    const out = cloneElements([{ id: 'a', x: 0, y: 0, w: 1, h: 1 }, null, { id: 'b', x: 0, y: 0, w: 1, h: 1 }], ['a2', 'b2']);
+    expect(out.map((e) => e.id)).toEqual(['a2', 'b2']);
   });
 });
 
@@ -753,5 +776,76 @@ describe('isRenderableGradient', () => {
   });
   it('rejects non-object values without throwing', () => {
     for (const v of [null, undefined, 'grad', 5, true, [1, 2]]) expect(isRenderableGradient(v)).toBe(false);
+  });
+});
+
+describe('element grouping', () => {
+  // A group is the set of elements sharing a non-null `groupId`. Grouping is a
+  // canvas-editing relationship only — the export flattens it (each element keeps
+  // its absolute position), so no group geometry lives here.
+  const els = () => [
+    { id: 'a', x: 0, y: 0, w: 10, h: 10, groupId: 'g1' },
+    { id: 'b', x: 0, y: 0, w: 10, h: 10, groupId: 'g1' },
+    { id: 'c', x: 0, y: 0, w: 10, h: 10 },
+    { id: 'd', x: 0, y: 0, w: 10, h: 10, groupId: 'g2' },
+    { id: 'e', x: 0, y: 0, w: 10, h: 10, groupId: 'g2' },
+  ];
+
+  describe('expandToGroups', () => {
+    it('expands a selected member to its whole group', () => {
+      expect(expandToGroups(els(), ['a'])).toEqual(['a', 'b']);
+    });
+    it('leaves an ungrouped selection untouched', () => {
+      expect(expandToGroups(els(), ['c'])).toEqual(['c']);
+    });
+    it('mixes grouped and ungrouped, and unions multiple touched groups', () => {
+      expect(expandToGroups(els(), ['a', 'c'])).toEqual(['a', 'b', 'c']);
+      expect(expandToGroups(els(), ['a', 'd'])).toEqual(['a', 'b', 'd', 'e']);
+    });
+    it('returns ids in element order and dedupes when two members are already selected', () => {
+      expect(expandToGroups(els(), ['b', 'a'])).toEqual(['a', 'b']);
+    });
+    it('handles empty / missing input', () => {
+      expect(expandToGroups(els(), [])).toEqual([]);
+      expect(expandToGroups(undefined, ['a'])).toEqual([]);
+    });
+    it('treats an empty-string groupId as ungrouped — no phantom coupling', () => {
+      // The gate accepts any string; the app never mints '', but a stray external
+      // '' must not couple unrelated elements (only a truthy groupId is a group).
+      const e = [{ id: 'a', groupId: '' }, { id: 'b', groupId: '' }, { id: 'c' }];
+      expect(expandToGroups(e, ['a'])).toEqual(['a']);
+    });
+  });
+
+  describe('groupElements', () => {
+    it('stamps the new groupId onto every selected element, leaving others untouched', () => {
+      const out = groupElements(els(), ['c', 'a'], 'g9');
+      expect(out.find((e) => e.id === 'c').groupId).toBe('g9');
+      expect(out.find((e) => e.id === 'a').groupId).toBe('g9'); // reassigned from g1
+      expect(out.find((e) => e.id === 'd').groupId).toBe('g2'); // unselected, unchanged
+    });
+    it('returns the same element reference for unselected elements (no needless copies)', () => {
+      const input = els();
+      const out = groupElements(input, ['a'], 'g9');
+      expect(out.find((e) => e.id === 'c')).toBe(input.find((e) => e.id === 'c'));
+    });
+  });
+
+  describe('ungroupElements', () => {
+    it('removes the groupId key from selected grouped elements', () => {
+      const out = ungroupElements(els(), ['a', 'b']);
+      expect('groupId' in out.find((e) => e.id === 'a')).toBe(false);
+      expect('groupId' in out.find((e) => e.id === 'b')).toBe(false);
+    });
+    it('is a no-op for ungrouped or unselected elements (same reference)', () => {
+      const input = els();
+      const out = ungroupElements(input, ['c', 'a']);
+      expect(out.find((e) => e.id === 'c')).toBe(input.find((e) => e.id === 'c')); // ungrouped → untouched
+      expect(out.find((e) => e.id === 'd')).toBe(input.find((e) => e.id === 'd')); // unselected → untouched
+    });
+    it('returns the SAME array reference when nothing was ungrouped (no redundant deck write)', () => {
+      const input = [{ id: 'a', x: 0, y: 0, w: 1, h: 1 }, { id: 'b', x: 0, y: 0, w: 1, h: 1 }]; // both ungrouped
+      expect(ungroupElements(input, ['a', 'b'])).toBe(input); // no grouped member → unchanged ref (like reorderElement)
+    });
   });
 });

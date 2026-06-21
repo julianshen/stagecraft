@@ -494,6 +494,13 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...shape, gradient: 'on' }] }, 'text')).toEqual({});                                         // not an object
   });
 
+  it('accepts a string groupId, rejects a non-string', () => {
+    const grouped = { ...shape, groupId: 'grp-1' };
+    expect(sanitizeSlidePatch({ elements: [grouped] }, 'text')).toEqual({ elements: [grouped] });
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, groupId: 42 }] }, 'text')).toEqual({});   // non-string id
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, groupId: { a: 1 } }] }, 'text')).toEqual({}); // object
+  });
+
   it('constrains align to left/center/right (the renderer maps only those)', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...text, align: 'center' }] }, 'text')).toEqual({ elements: [{ ...text, align: 'center' }] });
     expect(sanitizeSlidePatch({ elements: [{ ...text, align: 'justify' }] }, 'text')).toEqual({}); // not a value the renderer maps

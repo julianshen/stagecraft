@@ -207,7 +207,17 @@ export function rotateElement(el, px, py) {
 // group keeps its relative layout. Pure; sources are shallow-copied (canvas
 // elements are flat — no nested mutable fields).
 export function cloneElements(sources, newIds, { dx = GRID * 2, dy = GRID * 2 } = {}) {
-  return (sources || []).filter(Boolean).map((s, i) => ({ ...s, id: newIds[i], x: s.x + dx, y: s.y + dy }));
+  const src = (sources || []).filter(Boolean);
+  // Re-key each source group to a fresh id (derived from the clone's own new
+  // element id → caller-deterministic, StrictMode-safe) so a duplicated/pasted
+  // group is its OWN group, not fused with the original it was copied from.
+  const groupMap = new Map();
+  src.forEach((s, i) => { if (s.groupId && !groupMap.has(s.groupId)) groupMap.set(s.groupId, `grp-${newIds[i]}`); });
+  return src.map((s, i) => {
+    const clone = { ...s, id: newIds[i], x: s.x + dx, y: s.y + dy };
+    if (s.groupId) clone.groupId = groupMap.get(s.groupId);
+    return clone;
+  });
 }
 
 // Duplicate the elements whose ids are in `ids`: append an offset clone of each
@@ -221,6 +231,51 @@ export function duplicateElements(elements, ids, newIds, opts = {}) {
   const matched = (elements || []).filter((el) => el && sel.has(el.id)).slice(0, newIds.length);
   if (!matched.length) return elements;
   return [...elements, ...cloneElements(matched, newIds, opts)];
+}
+
+// --- Grouping: a group is the set of elements sharing a non-null `groupId`. It
+// is a canvas-editing relationship only — selecting/moving/duplicating a member
+// acts on the whole group, but the export flattens it (each element keeps its
+// absolute geometry), so there is no group geometry to track. The caller
+// supplies a fresh `groupId` (generated outside any reducer, like `newIds`).
+
+// Expand a selection to whole groups: any selected member pulls in its
+// group-mates. Returns ids in element order (deduped), so the selection always
+// holds complete groups and the existing multi-element ops act on them as a unit.
+export function expandToGroups(elements, ids) {
+  if (!ids || !ids.length) return []; // no selection → skip iterating elements
+  const sel = new Set(ids);
+  const groups = new Set();
+  // A truthy groupId is a real group; '' / null / undefined = ungrouped (so a
+  // stray empty-string id can't couple unrelated elements).
+  for (const el of elements || []) if (el && sel.has(el.id) && el.groupId) groups.add(el.groupId);
+  return (elements || [])
+    .filter((el) => el && (sel.has(el.id) || (el.groupId && groups.has(el.groupId))))
+    .map((el) => el.id);
+}
+
+// Stamp `groupId` onto every selected element (reassigning any prior group).
+// Unselected elements keep their reference (no needless deck churn).
+export function groupElements(elements, ids, groupId) {
+  const sel = new Set(ids || []);
+  return (elements || []).map((el) => (el && sel.has(el.id) ? { ...el, groupId } : el));
+}
+
+// Remove the `groupId` key from selected grouped elements (the key, not a
+// `undefined` value, so the gate stays clean). Ungrouped/unselected elements
+// keep their reference.
+export function ungroupElements(elements, ids) {
+  const sel = new Set(ids || []);
+  let changed = false;
+  const out = (elements || []).map((el) => {
+    if (!el || !sel.has(el.id) || !el.groupId) return el;
+    changed = true;
+    const { groupId, ...rest } = el;
+    return rest;
+  });
+  // Same-reference on a no-op (like reorderElement) so ungrouping an already-
+  // ungrouped selection doesn't trigger a redundant deck write / PUT.
+  return changed ? out : (elements || []);
 }
 
 // Z-order: move element `id` within `elements` (paint order = array order, so

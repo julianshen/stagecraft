@@ -3,7 +3,7 @@ import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch } from '../../lib/deckUtils.js';
-import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, cloneElements, moveElement, GRID } from '../../lib/elements.js';
+import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, cloneElements, moveElement, expandToGroups, groupElements, ungroupElements, GRID } from '../../lib/elements.js';
 import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
 import { fieldPatch, prepareAIPatch, applyPreparedPatch } from '../../lib/slideEdit.js';
 
@@ -131,18 +131,27 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   }, [slideElements, selElIds]);
 
   // Select an element; with `additive` (shift-click) toggle it within the set.
+  // Selecting any element pulls in its whole group, so a group always moves /
+  // deletes / duplicates as a unit. Shift-click toggles the whole group in/out.
   function selectElement(id, additive = false) {
     if (id == null) { setSelElIds([]); return; }
-    setSelElIds(prev => additive
-      ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-      : [id]);
+    const group = expandToGroups(slideElements, [id]); // ≥ [id] for any real element; its whole group if grouped
+    setSelElIds(prev => {
+      if (!additive) return group;
+      const allIn = group.every(m => prev.includes(m));
+      return allIn ? prev.filter(x => !group.includes(x)) : [...new Set([...prev, ...group])];
+    });
   }
-  // Replace the selection with the elements swept by a marquee.
+  // Replace the selection with the marquee-swept elements, expanded to whole
+  // groups (touching one member selects the group).
   function marqueeSelect(ids) {
-    setSelElIds(ids || []);
+    setSelElIds(expandToGroups(slideElements, ids || []));
   }
 
-  const genElId = () => `el-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
+  // Fresh prefixed id (element / group), minted outside any reducer so a
+  // StrictMode double-run is deterministic. randomUUID with a time+random fallback.
+  const genId = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
+  const genElId = () => genId('el');
   function addElement(type, opts = {}) {
     if (!curId) return;
     const id = genElId();
@@ -160,6 +169,23 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     const newIds = live.map(genElId);
     onDeckChange(prev => updateSlideElements(prev, curId, els => duplicateElements(els, selElIds, newIds)));
     setSelElIds(newIds);
+  }
+  const genGroupId = () => genId('grp');
+  // Group the selection under one fresh id (needs 2+ live members); selecting any
+  // member then re-selects the whole group. Ungroup strips the id back off. The
+  // export is unaffected — a group is a canvas relationship, not slide geometry.
+  function groupSelectedElements() {
+    // Expand at the mutation boundary too (not just at selection) so it's self-
+    // defending — and `ids` are the live, whole-group members regrouped as one.
+    const ids = expandToGroups(slideElements, selElIds);
+    if (ids.length < 2) return;
+    const gid = genGroupId();
+    onDeckChange(prev => updateSlideElements(prev, curId, els => groupElements(els, ids, gid)));
+  }
+  function ungroupSelectedElements() {
+    const ids = expandToGroups(slideElements, selElIds);
+    if (!ids.length) return;
+    onDeckChange(prev => updateSlideElements(prev, curId, els => ungroupElements(els, ids)));
   }
   // Keyboard nudge: move the whole selection by (dx, dy) (grid-snapped + clamped
   // by moveElement), committed as one batch update. Elements already pinned at
@@ -288,6 +314,8 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onDistributeElements: distributeSelected,
         onArrangeElement: arrangeElement,
         onDuplicateElements: duplicateSelectedElements,
+        onGroupElements: groupSelectedElements,
+        onUngroupElements: ungroupSelectedElements,
         onNudgeElements: nudgeSelectedElements,
         onCopyElements: copySelectedElements,
         onCutElements: cutSelectedElements,

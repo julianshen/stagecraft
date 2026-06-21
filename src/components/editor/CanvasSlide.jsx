@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
-import { moveElement, resizeElement, elementsInMarquee, rotateElement, hitBox, snap, snapDrawnBox } from '../../lib/elements.js';
+import { moveElement, resizeElement, elementsInMarquee, rotateElement, hitBox, snap, snapDrawnBox, expandToGroups } from '../../lib/elements.js';
 import { alignSnap } from '../../lib/align.js';
 
 const HANDLE_CURSOR = {
@@ -173,9 +173,13 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     // already-selected element is deferred to pointer-up (only when it's a click,
     // not a drag) so shift-dragging a selected element still moves the selection.
     if (!inSelection) onSelectElement?.(el.id, additive);
-    // Drag the whole selection when the grabbed element is part of it. A
-    // shift-grab adds this element, so drag the combined set; otherwise just it.
-    const targets = inSelection ? selected : additive ? [...selected, el] : [el];
+    // Drag the whole selection when the grabbed element is part of it. Otherwise
+    // drag the grabbed element's GROUP (expandToGroups → just [el] if ungrouped),
+    // so a group moves as a unit on the first drag — the pointer-down selection
+    // above is async, so the targets can't read it yet. A shift-grab adds that set.
+    const grabIds = new Set(expandToGroups(baseElements, [el.id]));
+    const grabbed = baseElements.filter((x) => grabIds.has(x.id));
+    const targets = inSelection ? selected : additive ? [...new Set([...selected, ...grabbed])] : grabbed;
     const onClick = additive && inSelection ? () => onSelectElement?.(el.id, true) : undefined;
     // Snap a lone dragged element against the others (and the slide edges/centre).
     const snapOthers = targets.length === 1 ? baseElements.filter((x) => x.id !== targets[0].id) : null;
