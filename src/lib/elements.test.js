@@ -317,6 +317,14 @@ describe('cloneElements', () => {
     const out = cloneElements(s, ['a2', 'd2']);
     expect(out[0].groupId).not.toBe(out[1].groupId);
   });
+
+  it('consumes newIds compactly across a falsy source — no index shift / undefined id', () => {
+    // filter(Boolean) yields a compact array whose .map index is the sequential
+    // truthy index, and callers size newIds to the truthy/matched count — so a
+    // dropped falsy entry never mis-assigns an id.
+    const out = cloneElements([{ id: 'a', x: 0, y: 0, w: 1, h: 1 }, null, { id: 'b', x: 0, y: 0, w: 1, h: 1 }], ['a2', 'b2']);
+    expect(out.map((e) => e.id)).toEqual(['a2', 'b2']);
+  });
 });
 
 describe('hitBox (padded click/selection target for thin elements)', () => {
