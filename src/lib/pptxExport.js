@@ -104,7 +104,7 @@ function addElements(pptx, sld, slide) {
     // polar offset/angle; blur px → pt. Its opacity is the shared soft alpha
     // dimmed by the element opacity, since the canvas opacity dims the whole
     // element (shadow included) — matching the fill/line transparency.
-    const op = (Number.isFinite(el.opacity) ? el.opacity : 100) / 100;
+    const op = clampPct(Number.isFinite(el.opacity) ? el.opacity : 100) / 100;
     const withShadow = el.shadow ? { shadow: {
       type: 'outer',
       color: pxHex(el.shadow.color),
