@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
+import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -715,5 +715,43 @@ describe('isRenderableShadow', () => {
   });
   it('rejects non-object values without throwing', () => {
     for (const v of [null, undefined, 'big', 5, true, [1, 2]]) expect(isRenderableShadow(v)).toBe(false);
+  });
+});
+
+describe('linearGradientCss', () => {
+  it('builds a CSS linear-gradient from a 2-stop gradient', () => {
+    expect(linearGradientCss({ from: '#4f46e5', to: '#06b6d4', angle: 135 })).toBe('linear-gradient(135deg, #4f46e5, #06b6d4)');
+  });
+  it('seeds a frozen { from, to, angle } default', () => {
+    expect(DEFAULT_GRADIENT).toEqual({ from: '#4f46e5', to: '#06b6d4', angle: 135 });
+    expect(Object.isFrozen(DEFAULT_GRADIENT)).toBe(true);
+  });
+});
+
+describe('isRenderableGradient', () => {
+  // The fill predicate shared by the canvas (real CSS gradient) and the export
+  // (a solid midpoint blend — pptxgen has no shape gradient). A gate-bypassing
+  // write can persist any JSON; a malformed gradient falls back to the solid
+  // `fill` on BOTH surfaces. Looser than the gate's isGradient (allows extras).
+  it('accepts a fully-valid gradient', () => {
+    expect(isRenderableGradient({ from: '#000000', to: '#ffffff', angle: 90 })).toBe(true);
+  });
+  it('accepts shorthand stop colours (isHexColor allows them)', () => {
+    expect(isRenderableGradient({ from: '#abc', to: '#def', angle: 0 })).toBe(true);
+  });
+  it('accepts extra keys (the canvas renders it, ignoring them — parity over the strict gate)', () => {
+    expect(isRenderableGradient({ from: '#000', to: '#fff', angle: 45, stops: 3 })).toBe(true);
+  });
+  it('rejects a missing stop', () => {
+    expect(isRenderableGradient({ from: '#000000', angle: 90 })).toBe(false);
+  });
+  it('rejects a non-hex stop', () => {
+    expect(isRenderableGradient({ from: 'red', to: '#fff', angle: 90 })).toBe(false);
+  });
+  it('rejects a non-finite angle', () => {
+    expect(isRenderableGradient({ from: '#000', to: '#fff', angle: 'x' })).toBe(false);
+  });
+  it('rejects non-object values without throwing', () => {
+    for (const v of [null, undefined, 'grad', 5, true, [1, 2]]) expect(isRenderableGradient(v)).toBe(false);
   });
 });

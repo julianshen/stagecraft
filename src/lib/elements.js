@@ -42,6 +42,19 @@ export const isRenderableShadow = (s) => !!s && isHexColor(s.color)
   && Number.isFinite(s.blur) && s.blur >= 0
   && Number.isFinite(s.x) && Number.isFinite(s.y);
 
+// Gradient fill: a per-element `{ from, to, angle }` 2-stop linear gradient
+// (absent = the solid `fill`). The canvas renders a real CSS gradient; the PPTX
+// export approximates it with the midpoint blend (pptxgen has no shape gradient
+// — a documented degradation). DEFAULT_GRADIENT seeds the Properties toggle.
+export const DEFAULT_GRADIENT = Object.freeze({ from: '#4f46e5', to: '#06b6d4', angle: 135 });
+export const linearGradientCss = (g) => `linear-gradient(${g.angle}deg, ${g.from}, ${g.to})`;
+// Is this gradient safe for both surfaces? Same gate-bypass reasoning as
+// isRenderableShadow: a malformed gradient falls back to the solid fill on the
+// canvas AND the export. Looser than the gate's isGradient (extra keys still
+// render). The angle is any finite degrees (CSS wraps; the export ignores it).
+export const isRenderableGradient = (g) => !!g && isHexColor(g.from) && isHexColor(g.to)
+  && Number.isFinite(g.angle);
+
 // A line's thickness (its height) floors at MIN_LINE_THICKNESS — deliberately
 // lower than the caller's `min` (a rule may be a hairline). Non-lines use `min`.
 const isLine = (el) => !!shapeDef(el.type)?.line;

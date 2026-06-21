@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SHAPES, shapeDef, isStrokeableShape, hasVisibleStroke } from './shapes.js';
+import { SHAPES, shapeDef, isStrokeableShape, isFillableShape, hasVisibleStroke } from './shapes.js';
 
 describe('shapeDef', () => {
   it('resolves the menu rectangle type to a rect with a border radius', () => {
@@ -49,6 +49,15 @@ describe('isStrokeableShape', () => {
   });
   it('is false for non-shapes / unknown types', () => {
     ['text', 'image', 'nope', 'constructor'].forEach((t) => expect(isStrokeableShape(t)).toBe(false));
+  });
+});
+
+describe('isFillableShape', () => {
+  it('is true for every shape — incl. clip polygons and the line (all carry a background fill)', () => {
+    ['shape', 'rounded', 'circle', 'rect', 'ellipse', 'triangle', 'diamond', 'pentagon', 'hexagon', 'star', 'arrow', 'line'].forEach((t) => expect(isFillableShape(t)).toBe(true));
+  });
+  it('is false for non-shapes / unknown types (text uses fill as its ink, image has none)', () => {
+    ['text', 'image', 'nope', 'constructor'].forEach((t) => expect(isFillableShape(t)).toBe(false));
   });
 });
 

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PropsPanel from './PropsPanel.jsx';
-import { DEFAULT_SHADOW } from '../../../lib/elements.js';
+import { DEFAULT_SHADOW, DEFAULT_GRADIENT } from '../../../lib/elements.js';
 
 // Distinct x/y/w/h so getByDisplayValue('0'|'100') uniquely hits angle/opacity.
 const el = { id: 'e1', type: 'text', x: 120, y: 140, w: 300, h: 80, content: 'Old', rot: 0, opacity: 100 };
@@ -112,6 +112,42 @@ describe('PropsPanel', () => {
     render(<PropsPanel selected={{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc', shadow: { color: '#000', blur: 16, x: 0, y: 8 } }} setSelected={setSelected} />);
     fireEvent.click(screen.getByLabelText('Shadow'));
     expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ shadow: undefined }));
+  });
+
+  it('toggles a gradient fill on/off (seeding the default) and edits its stops + angle', () => {
+    const setSelected = vi.fn();
+    const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc' }; // no gradient
+    const { rerender } = render(<PropsPanel selected={rect} setSelected={setSelected} />);
+    expect(screen.queryByLabelText('Gradient from')).not.toBeInTheDocument(); // fields hidden until enabled
+    fireEvent.click(screen.getByLabelText('Gradient'));                       // toggle on → seed the default
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ gradient: DEFAULT_GRADIENT }));
+    rerender(<PropsPanel selected={{ ...rect, gradient: { from: '#4f46e5', to: '#06b6d4', angle: 135 } }} setSelected={setSelected} />);
+    fireEvent.change(screen.getByLabelText('Gradient to'), { target: { value: '#00ff00' } });
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ gradient: { from: '#4f46e5', to: '#00ff00', angle: 135 } }));
+    fireEvent.change(screen.getByLabelText('Gradient angle'), { target: { value: '45' } });
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ gradient: { from: '#4f46e5', to: '#06b6d4', angle: 45 } }));
+  });
+
+  it('toggling the gradient off removes it', () => {
+    const setSelected = vi.fn();
+    render(<PropsPanel selected={{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc', gradient: { from: '#000', to: '#fff', angle: 90 } }} setSelected={setSelected} />);
+    fireEvent.click(screen.getByLabelText('Gradient'));
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ gradient: undefined }));
+  });
+
+  it('treats a malformed persisted gradient as off (matches the canvas; no uncontrolled-input warning)', () => {
+    // A gate-bypassing PUT/MCP write can persist a gradient missing `angle` (or
+    // with a non-hex stop). isRenderableGradient is false, so the canvas/export
+    // paint the solid fill — the inspector must agree: toggle unchecked, fields
+    // hidden, so the angle input never mounts as value={undefined}.
+    render(<PropsPanel selected={{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc', gradient: { from: '#000', to: '#fff' } }} setSelected={vi.fn()} />);
+    expect(screen.getByLabelText('Gradient')).not.toBeChecked();
+    expect(screen.queryByLabelText('Gradient from')).not.toBeInTheDocument();
+  });
+
+  it('hides the gradient control for non-shapes (text uses fill as ink, image has none)', () => {
+    render(<PropsPanel selected={{ id: 't', type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'A' }} setSelected={vi.fn()} />);
+    expect(screen.queryByLabelText('Gradient')).not.toBeInTheDocument();
   });
 
   it('binds font size and family for a text element', () => {

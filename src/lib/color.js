@@ -13,3 +13,14 @@ export function toHex(fill) {
 // that renders identically on the canvas (CSS) and in the export (`toHex`) — a
 // CSS colour name renders on canvas but exports as the indigo fallback.
 export const isHexColor = (v) => typeof v === 'string' && /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(v);
+
+// The channel-by-channel midpoint of two colours as #rrggbb. Used by the export
+// to approximate a gradient fill with a single solid (pptxgenjs has no shape
+// gradient), so the PPTX colour sits between the two CSS stops. toHex normalises
+// each input (expands shorthand, indigo fallback) so the channels are never NaN.
+export function mixHex(a, b) {
+  const ha = toHex(a), hb = toHex(b);
+  const ch = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+  const avg = (i) => Math.round((ch(ha, i) + ch(hb, i)) / 2).toString(16).padStart(2, '0');
+  return `#${avg(0)}${avg(1)}${avg(2)}`;
+}

@@ -2,8 +2,8 @@ import React from 'react';
 import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup, Seg } from '../../ui/Primitives.jsx';
 import { toHex } from '../../../lib/color.js';
-import { isStrokeableShape } from '../../../lib/shapes.js';
-import { DEFAULT_SHADOW } from '../../../lib/elements.js';
+import { isStrokeableShape, isFillableShape } from '../../../lib/shapes.js';
+import { DEFAULT_SHADOW, DEFAULT_GRADIENT, isRenderableGradient } from '../../../lib/elements.js';
 
 export default function PropsPanel({ selected, setSelected, count = 0 }) {
   if (count > 1) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{count} elements selected — drag to move them together, or align via the toolbar.</div>;
@@ -58,6 +58,39 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
           />
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12 }}>{toHex(selected.fill)}</div>
         </div>
+      </div>
+      )}
+      {/* Gradient fill (any shape) overrides the solid fill: a toggle seeds the
+          default; the two stops + angle edit it. The export approximates it with
+          the midpoint blend (pptxgen has no shape gradient). */}
+      {isFillableShape(selected.type) && (
+      <div className="pane-section">
+        <h4>Gradient</h4>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontFamily: 'var(--f-mono)', padding: '4px 0' }}>
+          {/* Gate the toggle + fields on isRenderableGradient (not mere
+              truthiness) so a malformed persisted gradient reads as off —
+              matching the canvas/export, which paint the solid fill — and the
+              angle input never mounts as value={undefined}. */}
+          <input type="checkbox" aria-label="Gradient" checked={isRenderableGradient(selected.gradient)}
+            onChange={e => setSelected({ ...selected, gradient: e.target.checked ? DEFAULT_GRADIENT : undefined })} />
+          Gradient fill
+        </label>
+        {isRenderableGradient(selected.gradient) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0' }}>
+            <input type="color" aria-label="Gradient from" value={toHex(selected.gradient.from)}
+              onChange={e => setSelected({ ...selected, gradient: { ...selected.gradient, from: e.target.value } })}
+              style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 4, background: 'none' }} />
+            <input type="color" aria-label="Gradient to" value={toHex(selected.gradient.to)}
+              onChange={e => setSelected({ ...selected, gradient: { ...selected.gradient, to: e.target.value } })}
+              style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 4, background: 'none' }} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 2, fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
+              °
+              <input type="number" aria-label="Gradient angle" value={selected.gradient.angle}
+                onChange={e => setSelected({ ...selected, gradient: { ...selected.gradient, angle: +e.target.value || 0 } })}
+                style={{ width: 44, height: 28, padding: '0 4px', border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'var(--f-mono)', fontSize: 12 }} />
+            </label>
+          </div>
+        )}
       </div>
       )}
       {isStrokeableShape(selected.type) && (
