@@ -69,14 +69,16 @@ describe('PropsPanel', () => {
     expect(screen.getByText('POS')).toBeInTheDocument();
   });
 
-  it('binds the stroke colour and width on a box shape', () => {
+  it('binds the stroke colour and width, seeding the co-dependent field so an outline actually shows', () => {
     const setSelected = vi.fn();
-    const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc' };
+    const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc' }; // no stroke yet
     render(<PropsPanel selected={rect} setSelected={setSelected} />);
+    // Setting a colour on an unstroked shape seeds a 1px width (else hasVisibleStroke stays false → nothing renders).
     fireEvent.change(screen.getByLabelText('Stroke color'), { target: { value: '#123456' } });
-    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ stroke: '#123456' }));
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ stroke: '#123456', strokeWidth: 1 }));
+    // Setting a positive width on an uncoloured shape seeds black.
     fireEvent.change(screen.getByLabelText('Stroke width'), { target: { value: '3' } });
-    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ strokeWidth: 3 }));
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ strokeWidth: 3, stroke: '#000000' }));
   });
 
   it('shows the Stroke control only for box shapes — hidden for clip shapes, text, and images', () => {

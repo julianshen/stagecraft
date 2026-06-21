@@ -63,11 +63,14 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
       <div className="pane-section">
         <h4>Stroke</h4>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+          {/* The outline needs BOTH a colour and a positive width to render, so
+              setting either seeds the other: picking a colour seeds a 1px width,
+              and a positive width seeds black — otherwise a single edit shows nothing. */}
           <input
             type="color"
             aria-label="Stroke color"
             value={toHex(selected.stroke || '#000000')}
-            onChange={e => setSelected({ ...selected, stroke: e.target.value })}
+            onChange={e => setSelected({ ...selected, stroke: e.target.value, strokeWidth: selected.strokeWidth || 1 })}
             style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 4, background: 'none' }}
           />
           <input
@@ -75,7 +78,10 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
             aria-label="Stroke width"
             min={0}
             value={selected.strokeWidth ?? 0}
-            onChange={e => setSelected({ ...selected, strokeWidth: Math.max(0, +e.target.value || 0) })}
+            onChange={e => {
+              const strokeWidth = Math.max(0, +e.target.value || 0);
+              setSelected({ ...selected, strokeWidth, stroke: strokeWidth > 0 ? (selected.stroke || '#000000') : selected.stroke });
+            }}
             style={{ width: 56, height: 28, padding: '0 6px', border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'var(--f-mono)', fontSize: 12 }}
           />
           <span style={{ fontFamily: 'var(--f-mono)', fontSize: 12, color: 'var(--ink-4)' }}>px</span>
