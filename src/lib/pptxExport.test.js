@@ -227,6 +227,21 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(l.o.h).toBeCloseTo(24 / 192, 4); // its real thickness, not clamped to 8/192
   });
 
+  it('exports a box shape stroke as a pptx line (hex colour + pt width); clip shapes get none', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#ffffff', stroke: '#123456', strokeWidth: 4 },
+      { id: 'g', type: 'triangle', x: 0, y: 0, w: 192, h: 192, fill: '#ffffff', stroke: '#123456', strokeWidth: 4 },
+    ]));
+    const byType = Object.fromEntries(last().shapes.map((s) => [s.type, s.o]));
+    expect(byType.rect.line).toEqual({ color: '123456', width: 1.5 }); // PT(4) = 4*72/192; canvas border == export line
+    expect(byType.triangle.line).toBeUndefined();                       // clip shape: no outline (parity with canvas)
+  });
+
+  it('omits the line when a box shape has no stroke (or a zero width)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', stroke: '#123456', strokeWidth: 0 }]));
+    expect(last().shapes.find((s) => s.type === 'rect').o.line).toBeUndefined();
+  });
+
   it('draws nothing extra for a slide with no elements', async () => {
     await exportToPPTX(elemDeck(undefined));
     expect(last().images).toHaveLength(0);

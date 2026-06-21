@@ -38,3 +38,21 @@ export function shapeDef(type) {
   if (own(ALIASES, type)) return SHAPES[ALIASES[type]];
   return null;
 }
+
+// Does this shape take a stroke (outline)? Only the box shapes — rect / rounded
+// rect / ellipse — whose visual edge is the element's `border-radius` box, so a
+// CSS `border` follows the outline on the canvas (and `addShape`'s `line` matches
+// on export). A `clip`-path polygon would have its border clipped away, and a
+// `line` is itself a stroke; both are excluded (proper outlines for them need SVG
+// rendering — a follow-up). Non-shapes (text/image) take no stroke.
+export function isStrokeableShape(type) {
+  const def = shapeDef(type);
+  return !!def && !def.clip && !def.line;
+}
+
+// Does this element have a VISIBLE outline to draw — a strokeable box shape with a
+// colour and a positive width? The single predicate the canvas border and the
+// export line both gate on, so the two can't disagree (canvas == export).
+export function hasVisibleStroke(el) {
+  return !!el && isStrokeableShape(el.type) && !!el.stroke && el.strokeWidth > 0;
+}

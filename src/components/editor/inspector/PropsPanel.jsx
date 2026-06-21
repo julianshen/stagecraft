@@ -2,6 +2,7 @@ import React from 'react';
 import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup, Seg } from '../../ui/Primitives.jsx';
 import { toHex } from '../../../lib/color.js';
+import { isStrokeableShape } from '../../../lib/shapes.js';
 
 export default function PropsPanel({ selected, setSelected, count = 0 }) {
   if (count > 1) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{count} elements selected — drag to move them together, or align via the toolbar.</div>;
@@ -55,6 +56,29 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
             style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 4, background: 'none' }}
           />
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12 }}>{toHex(selected.fill)}</div>
+        </div>
+      </div>
+      )}
+      {isStrokeableShape(selected.type) && (
+      <div className="pane-section">
+        <h4>Stroke</h4>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+          <input
+            type="color"
+            aria-label="Stroke color"
+            value={toHex(selected.stroke || '#000000')}
+            onChange={e => setSelected({ ...selected, stroke: e.target.value })}
+            style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 4, background: 'none' }}
+          />
+          <input
+            type="number"
+            aria-label="Stroke width"
+            min={0}
+            value={selected.strokeWidth ?? 0}
+            onChange={e => setSelected({ ...selected, strokeWidth: Math.max(0, +e.target.value || 0) })}
+            style={{ width: 56, height: 28, padding: '0 6px', border: '1px solid var(--line)', borderRadius: 4, background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'var(--f-mono)', fontSize: 12 }}
+          />
+          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 12, color: 'var(--ink-4)' }}>px</span>
         </div>
       </div>
       )}

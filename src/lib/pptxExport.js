@@ -5,7 +5,7 @@ import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roa
 import { resolveNotes } from '../data/deck.js';
 import { toHex, isHexColor } from './color.js';
 import { SLIDE_W } from './elements.js';
-import { shapeDef } from './shapes.js';
+import { shapeDef, hasVisibleStroke } from './shapes.js';
 
 // ---- theme colours (fallback to indigo) ----
 const THEME_COLORS = {
@@ -118,7 +118,14 @@ function addElements(pptx, sld, slide) {
     // so the generic shape path covers it (def.pptx === 'rect').
     const def = shapeDef(el.type);
     const fill = { color: pxHex(el.fill || '#15171C'), ...withOpacity };
-    sld.addShape(ST[def?.pptx] || ST.rect, { ...geo, fill });
+    const opts = { ...geo, fill };
+    // A box shape's stroke → a pptx line (colour + pt width), matching the
+    // canvas CSS border. Only the box shapes carry it (clip shapes don't stroke
+    // on the canvas, so they don't here either — parity). See isStrokeableShape.
+    if (hasVisibleStroke(el)) {
+      opts.line = { color: pxHex(el.stroke), width: PT(el.strokeWidth) };
+    }
+    sld.addShape(ST[def?.pptx] || ST.rect, opts);
   }
 }
 

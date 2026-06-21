@@ -465,6 +465,15 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: 24 }] }, 'text')).toEqual({ elements: [{ ...text, fontSize: 24 }] });
   });
 
+  it('accepts a shape stroke (hex colour + non-negative width), rejects malformed ones', () => {
+    const stroked = { ...shape, stroke: '#123456', strokeWidth: 2 };
+    expect(sanitizeSlidePatch({ elements: [stroked] }, 'text')).toEqual({ elements: [stroked] });
+    const noOutline = { ...shape, stroke: '#123456', strokeWidth: 0 }; // 0 = no outline, still valid
+    expect(sanitizeSlidePatch({ elements: [noOutline] }, 'text')).toEqual({ elements: [noOutline] });
+    expect(sanitizeSlidePatch({ elements: [{ ...stroked, stroke: 'red' }] }, 'text')).toEqual({});        // non-hex stroke
+    expect(sanitizeSlidePatch({ elements: [{ ...stroked, strokeWidth: -1 }] }, 'text')).toEqual({});       // negative width
+  });
+
   it('constrains align to left/center/right (the renderer maps only those)', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...text, align: 'center' }] }, 'text')).toEqual({ elements: [{ ...text, align: 'center' }] });
     expect(sanitizeSlidePatch({ elements: [{ ...text, align: 'justify' }] }, 'text')).toEqual({}); // not a value the renderer maps

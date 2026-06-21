@@ -69,6 +69,26 @@ describe('PropsPanel', () => {
     expect(screen.getByText('POS')).toBeInTheDocument();
   });
 
+  it('binds the stroke colour and width on a box shape', () => {
+    const setSelected = vi.fn();
+    const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc' };
+    render(<PropsPanel selected={rect} setSelected={setSelected} />);
+    fireEvent.change(screen.getByLabelText('Stroke color'), { target: { value: '#123456' } });
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ stroke: '#123456' }));
+    fireEvent.change(screen.getByLabelText('Stroke width'), { target: { value: '3' } });
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ strokeWidth: 3 }));
+  });
+
+  it('shows the Stroke control only for box shapes — hidden for clip shapes, text, and images', () => {
+    const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc' };
+    const { rerender } = render(<PropsPanel selected={rect} setSelected={vi.fn()} />);
+    expect(screen.getByLabelText('Stroke color')).toBeInTheDocument();
+    for (const type of ['triangle', 'line', 'text', 'image']) {
+      rerender(<PropsPanel selected={{ id: 'x', type, x: 0, y: 0, w: 100, h: 100, fill: '#abc', content: 'c', src: 'data:image/png;base64,A' }} setSelected={vi.fn()} />);
+      expect(screen.queryByLabelText('Stroke color')).not.toBeInTheDocument();
+    }
+  });
+
   it('binds font size and family for a text element', () => {
     const setSelected = vi.fn();
     render(<PropsPanel selected={el} setSelected={setSelected} />);
