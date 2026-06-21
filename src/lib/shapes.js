@@ -50,6 +50,16 @@ export function isStrokeableShape(type) {
   return !!def && !def.clip && !def.line;
 }
 
+// Does this element take a fill background — any shape (box, clip polygon, or
+// line), but not text (its `fill` is the text ink) or image. Broader than
+// `isStrokeableShape`: a clip polygon and a line can't take a border but their
+// background can be a solid or a gradient. The single predicate the Properties
+// panel gates the gradient control on (the renderer/export apply it inside the
+// shape branch, where shape-ness is already established).
+export function isFillableShape(type) {
+  return !!shapeDef(type);
+}
+
 // Does this element have a VISIBLE outline to draw — a strokeable box shape with a
 // colour and a positive width? The single predicate the canvas border and the
 // export line both gate on, so the two can't disagree (canvas == export).

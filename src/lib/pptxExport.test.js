@@ -248,6 +248,16 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(r.o.line).toEqual({ color: '123456', width: 1.5, transparency: 60 }); // matches the fill's transparency
   });
 
+  it('exports a gradient fill as the midpoint-blend solid (pptxgen has no shape gradient)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', gradient: { from: '#000000', to: '#ffffff', angle: 90 } }]));
+    expect(last().shapes.find((s) => s.type === 'rect').o.fill.color).toBe('808080'); // mixHex(#000,#fff)=#808080
+  });
+
+  it('exports the solid fill for a malformed gradient (parity with the canvas fallback)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#abcdef', gradient: { from: 'red', to: '#fff', angle: 90 } }]));
+    expect(last().shapes.find((s) => s.type === 'rect').o.fill.color).toBe('ABCDEF'); // non-hex stop → solid fill, not a blend
+  });
+
   it('exports an element shadow as a pptx outer shadow (colour, blur/offset in pt, angle from x/y)', async () => {
     await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', shadow: { color: '#112233', blur: 16, x: 0, y: 8 } }]));
     const r = last().shapes.find((s) => s.type === 'rect');

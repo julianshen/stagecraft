@@ -3,8 +3,8 @@ import { chartSpec, CHART_SERIES_HEX } from './chartSpec.js';
 import { SEVERITY_HEX } from './riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
 import { resolveNotes } from '../data/deck.js';
-import { toHex, isHexColor } from './color.js';
-import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow } from './elements.js';
+import { toHex, isHexColor, mixHex } from './color.js';
+import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient } from './elements.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
 
 // ---- theme colours (fallback to indigo) ----
@@ -143,7 +143,11 @@ function addElements(pptx, sld, slide) {
     // A line maps to a rect at its real geometry — its height IS its thickness,
     // so the generic shape path covers it (def.pptx === 'rect').
     const def = shapeDef(el.type);
-    const fill = { color: pxHex(el.fill || '#15171C'), ...withOpacity };
+    // A gradient fill has no pptx shape equivalent, so it exports as the midpoint
+    // blend of its two stops — the solid that sits between the canvas gradient.
+    // A malformed gradient falls back to the solid `fill`, matching the canvas.
+    const fillColor = isRenderableGradient(el.gradient) ? mixHex(el.gradient.from, el.gradient.to) : (el.fill || '#15171C');
+    const fill = { color: pxHex(fillColor), ...withOpacity };
     const opts = { ...geo, fill, ...withShadow };
     // A box shape's stroke → a pptx line (colour + pt width), matching the
     // canvas CSS border. Only the box shapes carry it (clip shapes don't stroke

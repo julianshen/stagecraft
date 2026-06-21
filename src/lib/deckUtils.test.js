@@ -484,6 +484,16 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...shape, shadow: 'on' }] }, 'text')).toEqual({});                                    // not an object
   });
 
+  it('accepts a gradient object (hex stops + finite angle), rejects malformed ones', () => {
+    const grad = { ...shape, gradient: { from: '#4f46e5', to: '#06b6d4', angle: 135 } };
+    expect(sanitizeSlidePatch({ elements: [grad] }, 'text')).toEqual({ elements: [grad] });
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, gradient: { from: 'red', to: '#fff', angle: 90 } }] }, 'text')).toEqual({});       // non-hex stop
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, gradient: { from: '#000', to: '#fff', angle: 'x' } }] }, 'text')).toEqual({});     // non-finite angle
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, gradient: { from: '#000', to: '#fff' } }] }, 'text')).toEqual({});                 // missing angle
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, gradient: { from: '#000', to: '#fff', angle: 0, bogus: 1 } }] }, 'text')).toEqual({}); // extra key
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, gradient: 'on' }] }, 'text')).toEqual({});                                         // not an object
+  });
+
   it('constrains align to left/center/right (the renderer maps only those)', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...text, align: 'center' }] }, 'text')).toEqual({ elements: [{ ...text, align: 'center' }] });
     expect(sanitizeSlidePatch({ elements: [{ ...text, align: 'justify' }] }, 'text')).toEqual({}); // not a value the renderer maps

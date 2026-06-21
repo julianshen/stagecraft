@@ -7,7 +7,7 @@ import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
 import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
 import { shapeDef, hasVisibleStroke } from '../../lib/shapes.js';
-import { dropShadowCss, isRenderableShadow } from '../../lib/elements.js';
+import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
 // fallbacks). This is the memo contract for thumbnail re-rendering
@@ -370,11 +370,15 @@ function ElementView({ el }) {
   // Every shape (incl. the line special case) dispatches off the shared registry
   // so the canvas and the export can't drift (lib/shapes.js).
   const def = shapeDef(el.type);
+  // A gradient fill (any shape) overrides the solid `fill` as the background; a
+  // malformed one falls back to the solid on both this surface and the export
+  // (isRenderableGradient is shared). The export approximates it with a blend.
+  const grad = isRenderableGradient(el.gradient) ? linearGradientCss(el.gradient) : null;
   // A line is a sharp-cornered bar (no border-radius, ink-default fill) at its
   // real height (its stroke thickness) — distinct from the rect fallback below,
   // which rounds to an 8px radius and uses the indigo fill. base already sets the height.
-  if (def?.line) return <div style={{ ...base, background: el.fill || 'var(--ink, #15171C)' }} />;
-  const fill = { background: el.fill || 'oklch(0.62 0.17 265)' };
+  if (def?.line) return <div style={{ ...base, background: grad || el.fill || 'var(--ink, #15171C)' }} />;
+  const fill = { background: grad || el.fill || 'oklch(0.62 0.17 265)' };
   if (def?.clip) return <div style={{ ...base, ...fill, clipPath: def.clip }} />;
   // A stroke is a CSS border on the box shapes (it follows the border-radius);
   // box-sizing keeps the element's w/h footprint constant. Clip shapes are

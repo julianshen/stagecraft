@@ -128,6 +128,13 @@ const SHADOW_FIELD_OK = { color: isHexColor, blur: isNonNeg, x: isFinite_, y: is
 const isShadow = (v) => isPlainObject(v)
   && Object.entries(SHADOW_FIELD_OK).every(([k, ok]) => ok(v[k]))           // all present + valid
   && Object.keys(v).every((k) => Object.prototype.hasOwnProperty.call(SHADOW_FIELD_OK, k)); // no extras
+// A 2-stop linear gradient fill: hex stops + a finite angle (degrees). Same
+// strict shape as isShadow — see isRenderableGradient (elements.js) for the
+// looser predicate the canvas/export render on.
+const GRADIENT_FIELD_OK = { from: isHexColor, to: isHexColor, angle: isFinite_ };
+const isGradient = (v) => isPlainObject(v)
+  && Object.entries(GRADIENT_FIELD_OK).every(([k, ok]) => ok(v[k]))         // all present + valid
+  && Object.keys(v).every((k) => Object.prototype.hasOwnProperty.call(GRADIENT_FIELD_OK, k)); // no extras
 // The element FIELD vocabulary. Unlike `type` (single-sourced via shapeDef),
 // these keys are scattered across the renderer's style object and the exporter's
 // options, so there's no registry to derive from — keep this in sync with the
@@ -143,7 +150,7 @@ const ELEMENT_FIELD_OK = {
   // A shape outline: hex colour (canvas border == export line) + a non-negative
   // px width (0 = no outline). Rendered/exported only for box shapes (see
   // `isStrokeableShape`); the gate accepts the fields on any element.
-  stroke: isHexColor, strokeWidth: isNonNeg, shadow: isShadow,
+  stroke: isHexColor, strokeWidth: isNonNeg, shadow: isShadow, gradient: isGradient,
   fontSize: isPosFinite, rot: isFinite_, opacity: isFinite_,
   bold: isBool, italic: isBool, underline: isBool,
   // align is an enum the renderer maps to flex/textAlign (anything else falls

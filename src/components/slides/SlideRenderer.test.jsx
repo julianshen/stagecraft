@@ -135,6 +135,30 @@ describe('ElementsLayer', () => {
     expect(boxes.some((b) => b.style.filter.includes('drop-shadow'))).toBe(false);
   });
 
+  it('renders a gradient fill as a CSS linear-gradient on every shape (box / clip / line)', () => {
+    const gradient = { from: '#4f46e5', to: '#06b6d4', angle: 135 };
+    const { container } = render(
+      <ElementsLayer elements={[
+        { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff', gradient },     // box
+        { id: 't', type: 'triangle', x: 0, y: 0, w: 100, h: 100, fill: '#fff', gradient },  // clip
+        { id: 'l', type: 'line', x: 0, y: 0, w: 100, h: 8, fill: '#fff', gradient },         // line
+      ]} />
+    );
+    const boxes = [...container.querySelectorAll('div > div')];
+    expect(boxes.filter((b) => b.style.background.includes('linear-gradient') && b.style.background.includes('135deg'))).toHaveLength(3);
+  });
+
+  it('falls back to the solid fill for a malformed gradient (parity with the export blend)', () => {
+    // A gate-bypassing write can persist a non-hex gradient; both surfaces must
+    // ignore it and use the solid fill (no indigo-fallback gradient on canvas).
+    const { container } = render(
+      <ElementsLayer elements={[{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abcdef', gradient: { from: 'red', to: '#fff', angle: 90 } }]} />
+    );
+    const box = [...container.querySelectorAll('div > div')].find((b) => b.style.background);
+    expect(box.style.background).not.toContain('linear-gradient');
+    expect(box.style.background).toContain('rgb(171, 205, 239)'); // the solid #abcdef
+  });
+
   it('renders no border when a box shape has no stroke (or a zero width)', () => {
     const { container } = render(
       <ElementsLayer elements={[{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff', stroke: '#112233', strokeWidth: 0 }]} />
