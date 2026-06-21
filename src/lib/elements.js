@@ -1,6 +1,7 @@
 // Pure geometry for free-form canvas elements (the overlay layer on a slide).
 // All coordinates are in the slide's 1920×1080 authoring space.
 import { shapeDef } from './shapes.js';
+import { toHex } from './color.js';
 
 export const SLIDE_W = 1920;
 export const SLIDE_H = 1080;
@@ -27,7 +28,9 @@ export const SHADOW_OPACITY = 0.35;
 export const DEFAULT_SHADOW = Object.freeze({ color: '#000000', blur: 16, x: 0, y: 8 });
 export const dropShadowCss = (s) => {
   const a = Math.round(SHADOW_OPACITY * 255).toString(16).padStart(2, '0');
-  return `drop-shadow(${s.x}px ${s.y}px ${s.blur}px ${s.color}${a})`;
+  // toHex expands a shorthand (#abc → #aabbcc) so appending the 2-digit alpha
+  // yields a valid 8-digit hex, not an invalid 5-digit one the browser ignores.
+  return `drop-shadow(${s.x}px ${s.y}px ${s.blur}px ${toHex(s.color)}${a})`;
 };
 
 // A line's thickness (its height) floors at MIN_LINE_THICKNESS — deliberately

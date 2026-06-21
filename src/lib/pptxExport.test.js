@@ -257,7 +257,7 @@ describe('exportToPPTX — free-form elements overlay', () => {
 
   it('dims the exported shadow by the element opacity (the canvas opacity dims the whole element)', async () => {
     await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', opacity: 50, shadow: { color: '#000000', blur: 8, x: 0, y: 8 } }]));
-    expect(last().shapes.find((s) => s.type === 'rect').o.shadow.opacity).toBe(0.17); // 0.35 × 0.5 = 0.175 → 0.17 (toFixed)
+    expect(last().shapes.find((s) => s.type === 'rect').o.shadow.opacity).toBe(0.18); // 0.35 × 0.5 = 0.175 → 0.18 (round half-up)
   });
 
   it('draws nothing extra for a slide with no elements', async () => {

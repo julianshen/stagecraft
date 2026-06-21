@@ -673,10 +673,13 @@ describe('snapDrawnBox', () => {
 });
 
 describe('dropShadowCss', () => {
+  const alpha = Math.round(SHADOW_OPACITY * 255).toString(16).padStart(2, '0');
   it('builds a drop-shadow filter from a shadow object at the fixed soft opacity', () => {
     // The canvas filter and the export shadow share SHADOW_OPACITY (a soft alpha),
     // appended as an 8-digit hex so the same value reaches both surfaces.
-    const a = Math.round(SHADOW_OPACITY * 255).toString(16).padStart(2, '0');
-    expect(dropShadowCss({ color: '#112233', blur: 16, x: 4, y: 8 })).toBe(`drop-shadow(4px 8px 16px #112233${a})`);
+    expect(dropShadowCss({ color: '#112233', blur: 16, x: 4, y: 8 })).toBe(`drop-shadow(4px 8px 16px #112233${alpha})`);
+  });
+  it('expands a shorthand hex colour first (#abc + alpha would be an invalid 5-digit hex)', () => {
+    expect(dropShadowCss({ color: '#abc', blur: 8, x: 0, y: 4 })).toBe(`drop-shadow(0px 4px 8px #aabbcc${alpha})`);
   });
 });

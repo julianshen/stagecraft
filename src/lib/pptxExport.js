@@ -108,7 +108,7 @@ function addElements(pptx, sld, slide) {
     const withShadow = el.shadow ? { shadow: {
       type: 'outer',
       color: pxHex(el.shadow.color),
-      opacity: +(SHADOW_OPACITY * op).toFixed(2),
+      opacity: Math.round(SHADOW_OPACITY * op * 100) / 100, // round half-up (toFixed has a float artifact at .175)
       blur: PT(el.shadow.blur),
       offset: PT(Math.hypot(el.shadow.x, el.shadow.y)),
       angle: Math.round((Math.atan2(el.shadow.y, el.shadow.x) * 180 / Math.PI + 360) % 360),
