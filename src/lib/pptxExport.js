@@ -108,10 +108,11 @@ function addElements(pptx, sld, slide) {
     // A drop shadow (any element type) → a pptx outer shadow. x/y px offset →
     // polar offset/angle; blur px → pt. Its opacity is the shared soft alpha
     // dimmed by the element opacity, since the canvas opacity dims the whole
-    // element (shadow included) — matching the fill/line transparency. angle is
-    // the LOCAL offset direction, and rotateWithShape lets it turn with el.rot —
-    // matching the canvas, where the drop-shadow filter and the rotate transform
-    // share one node (pptx defaults rotWithShape=0, an absolute angle).
+    // element (shadow included) — matching the fill/line transparency. pptxgen
+    // 3.12 emits the shape shadow with a hardcoded rotWithShape="0" (an ABSOLUTE
+    // angle; the `rotateWithShape` option is ignored), so el.rot is baked into
+    // the angle — on the canvas the drop-shadow filter and the rotate transform
+    // share one node, so the offset turns with the shape.
     const op = clampPct(Number.isFinite(el.opacity) ? el.opacity : 100) / 100;
     const withShadow = isRenderableShadow(el.shadow) ? { shadow: {
       type: 'outer',
@@ -119,8 +120,10 @@ function addElements(pptx, sld, slide) {
       opacity: keepZero(Math.round(SHADOW_OPACITY * op * 100) / 100), // round half-up (toFixed has a float artifact at .175)
       blur: keepZero(PT(el.shadow.blur)),
       offset: keepZero(PT(Math.hypot(el.shadow.x, el.shadow.y))),
-      angle: keepZero(Math.round((Math.atan2(el.shadow.y, el.shadow.x) * 180 / Math.PI + 360) % 360)),
-      rotateWithShape: true,
+      // Local offset direction (atan2, y-down so it reads clockwise like pptx
+      // dir) + el.rot, normalised to [0,360). The rotation is baked in because
+      // pptxgen 3.12 emits rotWithShape="0" — an absolute angle.
+      angle: keepZero(Math.round(((Math.atan2(el.shadow.y, el.shadow.x) * 180 / Math.PI + num(el.rot)) % 360 + 360) % 360)),
     } } : {};
     if (el.type === 'text') {
       sld.addText(el.content || '', {

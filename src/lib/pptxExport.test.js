@@ -251,21 +251,22 @@ describe('exportToPPTX — free-form elements overlay', () => {
   it('exports an element shadow as a pptx outer shadow (colour, blur/offset in pt, angle from x/y)', async () => {
     await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', shadow: { color: '#112233', blur: 16, x: 0, y: 8 } }]));
     const r = last().shapes.find((s) => s.type === 'rect');
-    // PT(16)=6, PT(hypot(0,8))=PT(8)=3, atan2(8,0)=90°; opacity = SHADOW_OPACITY (0.35) × 1.
-    // rotateWithShape keeps the angle local (see the rotated-parity test below).
-    expect(r.o.shadow).toEqual({ type: 'outer', color: '112233', opacity: 0.35, blur: 6, offset: 3, angle: 90, rotateWithShape: true });
+    // PT(16)=6, PT(hypot(0,8))=PT(8)=3, atan2(8,0)=90° (+ el.rot 0); opacity =
+    // SHADOW_OPACITY (0.35) × 1. See the el.rot-baking test below for rotation.
+    expect(r.o.shadow).toEqual({ type: 'outer', color: '112233', opacity: 0.35, blur: 6, offset: 3, angle: 90 });
   });
 
-  it('rotates the exported shadow with the element (the canvas filter + transform share one node)', async () => {
+  it('bakes el.rot into the shadow angle (pptxgen 3.12 emits rotWithShape=0, ignoring the option)', async () => {
     // On the canvas the drop-shadow is painted in the element's local space then
     // rotated by the same transform, so the offset turns with the shape. pptxgen
-    // defaults rotWithShape=0 (absolute angle), so the angle (computed from the
-    // LOCAL x/y) needs rotateWithShape:true to track el.rot — else a rotated
-    // element casts its shadow in the wrong direction.
+    // 3.12 hardcodes rotWithShape="0" on the shape shadow (an ABSOLUTE angle, the
+    // option is ignored), so the local angle must carry el.rot itself. A local
+    // down shadow (90°) on a +45° element casts down-left → 135° absolute.
     await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', rot: 45, shadow: { color: '#000000', blur: 8, x: 0, y: 8 } }]));
     const r = last().shapes.find((s) => s.type === 'rect');
     expect(r.o.rotate).toBe(45);
-    expect(r.o.shadow.rotateWithShape).toBe(true);
+    expect(r.o.shadow.angle).toBe(135); // local atan2(8,0)=90 + el.rot 45
+    expect(r.o.shadow.rotateWithShape).toBeUndefined(); // not a real 3.12 option
   });
 
   // pptxgen 3.12 coalesces a falsy shadow field to its OWN default (blur||8,
