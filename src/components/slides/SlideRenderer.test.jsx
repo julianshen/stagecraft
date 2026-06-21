@@ -108,6 +108,33 @@ describe('ElementsLayer', () => {
     expect(triangle.style.border).toBe('');                   // a clip-path border would be clipped away — not applied
   });
 
+  it('applies a drop-shadow filter to any element with a shadow — including clip shapes (filter follows the clip)', () => {
+    const shadow = { color: '#112233', blur: 16, x: 4, y: 8 };
+    const { container } = render(
+      <ElementsLayer elements={[
+        { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff', shadow },
+        { id: 't', type: 'triangle', x: 0, y: 0, w: 100, h: 100, fill: '#fff', shadow },
+        { id: 'p', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff' }, // no shadow
+      ]} />
+    );
+    const boxes = [...container.querySelectorAll('div > div')];
+    expect(boxes.filter(b => b.style.filter.includes('drop-shadow'))).toHaveLength(2); // rect + triangle
+    expect(boxes.find(b => b.style.clipPath.includes('polygon')).style.filter).toContain('drop-shadow'); // clip shape too
+    expect(boxes.find(b => b.style.borderRadius === '8px' && !b.style.filter)).toBeTruthy(); // the plain rect has none
+  });
+
+  it('skips a non-hex-colour shadow so the canvas matches the export (no indigo-fallback divergence)', () => {
+    // A gate-bypassing write can persist `shadow: { color: 'red', … }`. dropShadowCss
+    // would render it as a *valid* indigo drop-shadow (toHex falls back to #4f46e5),
+    // but the export skips it (isHexColor rejects 'red'). Gate the canvas on the same
+    // isRenderableShadow predicate so both surfaces agree — no shadow on either.
+    const { container } = render(
+      <ElementsLayer elements={[{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff', shadow: { color: 'red', blur: 16, x: 5, y: 8 } }]} />
+    );
+    const boxes = [...container.querySelectorAll('div > div')];
+    expect(boxes.some((b) => b.style.filter.includes('drop-shadow'))).toBe(false);
+  });
+
   it('renders no border when a box shape has no stroke (or a zero width)', () => {
     const { container } = render(
       <ElementsLayer elements={[{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff', stroke: '#112233', strokeWidth: 0 }]} />

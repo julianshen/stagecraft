@@ -121,6 +121,13 @@ const isKnownElementType = (t) => typeof t === 'string' && (t === 'text' || t ==
 // images (privacy/offline), and the exporter passes `src` straight to addImage.
 // A remote/other URL would trigger a network load on the canvas and break export.
 const isDataImage = (v) => typeof v === 'string' && v.startsWith('data:image/');
+// A drop shadow: { color: hex, blur: ≥0 px, x/y: finite px offsets } — every key
+// required + correctly typed, and no extra keys (junk would persist and render/
+// export nothing useful). The softness is a fixed shared opacity, not stored.
+const SHADOW_FIELD_OK = { color: isHexColor, blur: isNonNeg, x: isFinite_, y: isFinite_ };
+const isShadow = (v) => isPlainObject(v)
+  && Object.entries(SHADOW_FIELD_OK).every(([k, ok]) => ok(v[k]))           // all present + valid
+  && Object.keys(v).every((k) => Object.prototype.hasOwnProperty.call(SHADOW_FIELD_OK, k)); // no extras
 // The element FIELD vocabulary. Unlike `type` (single-sourced via shapeDef),
 // these keys are scattered across the renderer's style object and the exporter's
 // options, so there's no registry to derive from — keep this in sync with the
@@ -136,7 +143,7 @@ const ELEMENT_FIELD_OK = {
   // A shape outline: hex colour (canvas border == export line) + a non-negative
   // px width (0 = no outline). Rendered/exported only for box shapes (see
   // `isStrokeableShape`); the gate accepts the fields on any element.
-  stroke: isHexColor, strokeWidth: isNonNeg,
+  stroke: isHexColor, strokeWidth: isNonNeg, shadow: isShadow,
   fontSize: isPosFinite, rot: isFinite_, opacity: isFinite_,
   bold: isBool, italic: isBool, underline: isBool,
   // align is an enum the renderer maps to flex/textAlign (anything else falls

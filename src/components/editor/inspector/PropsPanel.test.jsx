@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PropsPanel from './PropsPanel.jsx';
+import { DEFAULT_SHADOW } from '../../../lib/elements.js';
 
 // Distinct x/y/w/h so getByDisplayValue('0'|'100') uniquely hits angle/opacity.
 const el = { id: 'e1', type: 'text', x: 120, y: 140, w: 300, h: 80, content: 'Old', rot: 0, opacity: 100 };
@@ -89,6 +90,28 @@ describe('PropsPanel', () => {
       rerender(<PropsPanel selected={{ id: 'x', type, x: 0, y: 0, w: 100, h: 100, fill: '#abc', content: 'c', src: 'data:image/png;base64,A' }} setSelected={vi.fn()} />);
       expect(screen.queryByLabelText('Stroke color')).not.toBeInTheDocument();
     }
+  });
+
+  it('toggles a drop shadow on/off (seeding the default) and edits its fields', () => {
+    const setSelected = vi.fn();
+    const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc' }; // no shadow
+    const { rerender } = render(<PropsPanel selected={rect} setSelected={setSelected} />);
+    expect(screen.queryByLabelText('Shadow color')).not.toBeInTheDocument(); // fields hidden until enabled
+    fireEvent.click(screen.getByLabelText('Shadow'));                        // toggle on → seed the default
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ shadow: DEFAULT_SHADOW }));
+    // With a shadow present, the fields edit it.
+    rerender(<PropsPanel selected={{ ...rect, shadow: { color: '#000000', blur: 16, x: 0, y: 8 } }} setSelected={setSelected} />);
+    fireEvent.change(screen.getByLabelText('Shadow color'), { target: { value: '#ff0000' } });
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ shadow: { color: '#ff0000', blur: 16, x: 0, y: 8 } }));
+    fireEvent.change(screen.getByLabelText('Shadow blur'), { target: { value: '24' } });
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ shadow: { color: '#000000', blur: 24, x: 0, y: 8 } }));
+  });
+
+  it('toggling the shadow off removes it', () => {
+    const setSelected = vi.fn();
+    render(<PropsPanel selected={{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc', shadow: { color: '#000', blur: 16, x: 0, y: 8 } }} setSelected={setSelected} />);
+    fireEvent.click(screen.getByLabelText('Shadow'));
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ shadow: undefined }));
   });
 
   it('binds font size and family for a text element', () => {

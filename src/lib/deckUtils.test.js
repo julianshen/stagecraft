@@ -474,6 +474,16 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...stroked, strokeWidth: -1 }] }, 'text')).toEqual({});       // negative width
   });
 
+  it('accepts a shadow object (hex colour + non-neg blur + finite offsets), rejects malformed ones', () => {
+    const shadowed = { ...shape, shadow: { color: '#000000', blur: 16, x: 4, y: 8 } };
+    expect(sanitizeSlidePatch({ elements: [shadowed] }, 'text')).toEqual({ elements: [shadowed] });
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, shadow: { color: 'black', blur: 16, x: 0, y: 0 } }] }, 'text')).toEqual({}); // non-hex
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, shadow: { color: '#000', blur: -1, x: 0, y: 0 } }] }, 'text')).toEqual({}); // negative blur
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, shadow: { color: '#000', blur: 0, x: 0 } }] }, 'text')).toEqual({});        // missing y
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, shadow: { color: '#000', blur: 0, x: 0, y: 0, bogus: 1 } }] }, 'text')).toEqual({}); // extra key
+    expect(sanitizeSlidePatch({ elements: [{ ...shape, shadow: 'on' }] }, 'text')).toEqual({});                                    // not an object
+  });
+
   it('constrains align to left/center/right (the renderer maps only those)', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...text, align: 'center' }] }, 'text')).toEqual({ elements: [{ ...text, align: 'center' }] });
     expect(sanitizeSlidePatch({ elements: [{ ...text, align: 'justify' }] }, 'text')).toEqual({}); // not a value the renderer maps

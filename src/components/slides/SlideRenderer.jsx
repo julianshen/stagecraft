@@ -7,6 +7,7 @@ import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
 import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
 import { shapeDef, hasVisibleStroke } from '../../lib/shapes.js';
+import { dropShadowCss, isRenderableShadow } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
 // fallbacks). This is the memo contract for thumbnail re-rendering
@@ -331,6 +332,11 @@ function ElementView({ el }) {
     position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h,
     ...(el.rot ? { transform: `rotate(${el.rot}deg)` } : {}),
     ...(el.opacity != null ? { opacity: Math.max(0, Math.min(100, el.opacity)) / 100 } : {}),
+    // A drop shadow applies to any element type and follows the painted shape
+    // (clip-path included), so it lives on the shared base style. A malformed
+    // shadow (gate-bypassing write) is skipped on the same predicate the export
+    // uses, so neither surface renders one toHex would silently recolour.
+    ...(isRenderableShadow(el.shadow) ? { filter: dropShadowCss(el.shadow) } : {}),
   };
   if (el.type === 'text') {
     const align = el.align || 'left';

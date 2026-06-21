@@ -4,7 +4,7 @@ import { SEVERITY_HEX } from './riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
 import { resolveNotes } from '../data/deck.js';
 import { toHex, isHexColor } from './color.js';
-import { SLIDE_W } from './elements.js';
+import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow } from './elements.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
 
 // ---- theme colours (fallback to indigo) ----
@@ -38,6 +38,12 @@ const PX_PER_IN = SLIDE_W / SLIDE_IN_W;
 const IN = (px) => +(px / PX_PER_IN).toFixed(4);
 const PT = (px) => +((px * 72) / PX_PER_IN).toFixed(2);
 const clampPct = (v) => Math.max(0, Math.min(100, v));
+// pptxgenjs 3.12 coalesces a falsy shadow field to its OWN default (blur||8,
+// offset||4, angle||270, opacity||0.75), so a genuine 0 — a centred glow, a
+// rightward shadow, a sharp shadow, a faint element — would export as pptx's
+// upward 4pt default. A sub-unit epsilon survives the `||` but rounds back to 0
+// in the EMU / 60000ths / 100000ths pptx serialises to, preserving the 0.
+const keepZero = (v) => (v === 0 ? 1e-6 : v);
 // Coerce to a finite number (default `d`) — the export is a serialization
 // boundary: the deck is disk-persisted and may be agent/MCP-authored, so a
 // non-finite coord/size would otherwise write NaN into the .pptx and corrupt it.
@@ -99,18 +105,38 @@ function addElements(pptx, sld, slide) {
     const geo = elementGeo(el);
     const transparency = Number.isFinite(el.opacity) ? clampPct(100 - el.opacity) : undefined;
     const withOpacity = transparency != null ? { transparency } : {};
+    // A drop shadow (any element type) → a pptx outer shadow. x/y px offset →
+    // polar offset/angle; blur px → pt. Its opacity is the shared soft alpha
+    // dimmed by the element opacity, since the canvas opacity dims the whole
+    // element (shadow included) — matching the fill/line transparency. pptxgen
+    // 3.12 emits the shape shadow with a hardcoded rotWithShape="0" (an ABSOLUTE
+    // angle; the `rotateWithShape` option is ignored), so el.rot is baked into
+    // the angle — on the canvas the drop-shadow filter and the rotate transform
+    // share one node, so the offset turns with the shape.
+    const op = clampPct(Number.isFinite(el.opacity) ? el.opacity : 100) / 100;
+    const withShadow = isRenderableShadow(el.shadow) ? { shadow: {
+      type: 'outer',
+      color: pxHex(el.shadow.color),
+      opacity: keepZero(Math.round(SHADOW_OPACITY * op * 100) / 100), // round half-up (toFixed has a float artifact at .175)
+      blur: keepZero(PT(el.shadow.blur)),
+      offset: keepZero(PT(Math.hypot(el.shadow.x, el.shadow.y))),
+      // Local offset direction (atan2, y-down so it reads clockwise like pptx
+      // dir) + el.rot, normalised to [0,360). The rotation is baked in because
+      // pptxgen 3.12 emits rotWithShape="0" — an absolute angle.
+      angle: keepZero(Math.round(((Math.atan2(el.shadow.y, el.shadow.x) * 180 / Math.PI + num(el.rot)) % 360 + 360) % 360)),
+    } } : {};
     if (el.type === 'text') {
       sld.addText(el.content || '', {
         ...geo, fontSize: PT(num(el.fontSize, 48)), bold: !!el.bold, italic: !!el.italic,
         underline: !!el.underline, align: el.align || 'left', valign: 'middle',
         // Match ElementView's `var(--ink, #15171C)` text default (not the deck
         // theme's white ink) so a fill-less text element isn't invisible.
-        color: pxHex(el.fill || '#15171C'), fontFace: el.fontFamily || 'Inter', ...withOpacity,
+        color: pxHex(el.fill || '#15171C'), fontFace: el.fontFamily || 'Inter', ...withOpacity, ...withShadow,
       });
       continue;
     }
     if (el.type === 'image') {
-      if (el.src) sld.addImage({ ...geo, data: el.src, ...withOpacity });
+      if (el.src) sld.addImage({ ...geo, data: el.src, ...withOpacity, ...withShadow });
       continue;
     }
     // Shapes (incl. line) carry a colour fill; the registry drives the mapping.
@@ -118,7 +144,7 @@ function addElements(pptx, sld, slide) {
     // so the generic shape path covers it (def.pptx === 'rect').
     const def = shapeDef(el.type);
     const fill = { color: pxHex(el.fill || '#15171C'), ...withOpacity };
-    const opts = { ...geo, fill };
+    const opts = { ...geo, fill, ...withShadow };
     // A box shape's stroke → a pptx line (colour + pt width), matching the
     // canvas CSS border. Only the box shapes carry it (clip shapes don't stroke
     // on the canvas, so they don't here either — parity). See isStrokeableShape.
