@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
+import { snap, SHADOW_OPACITY, dropShadowCss, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -669,5 +669,14 @@ describe('snapDrawnBox', () => {
 
   it('floors a line\'s height at MIN_LINE_THICKNESS, not MIN_SIZE (its height is a thickness)', () => {
     expect(snapDrawnBox('line', { x: 0, y: 0, w: 320, h: 1 })).toEqual({ x: 0, y: 0, w: 320, h: MIN_LINE_THICKNESS });
+  });
+});
+
+describe('dropShadowCss', () => {
+  it('builds a drop-shadow filter from a shadow object at the fixed soft opacity', () => {
+    // The canvas filter and the export shadow share SHADOW_OPACITY (a soft alpha),
+    // appended as an 8-digit hex so the same value reaches both surfaces.
+    const a = Math.round(SHADOW_OPACITY * 255).toString(16).padStart(2, '0');
+    expect(dropShadowCss({ color: '#112233', blur: 16, x: 4, y: 8 })).toBe(`drop-shadow(4px 8px 16px #112233${a})`);
   });
 });

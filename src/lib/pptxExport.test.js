@@ -248,6 +248,18 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(r.o.line).toEqual({ color: '123456', width: 1.5, transparency: 60 }); // matches the fill's transparency
   });
 
+  it('exports an element shadow as a pptx outer shadow (colour, blur/offset in pt, angle from x/y)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', shadow: { color: '#112233', blur: 16, x: 0, y: 8 } }]));
+    const r = last().shapes.find((s) => s.type === 'rect');
+    // PT(16)=6, PT(hypot(0,8))=PT(8)=3, atan2(8,0)=90°; opacity = SHADOW_OPACITY (0.35) × 1
+    expect(r.o.shadow).toEqual({ type: 'outer', color: '112233', opacity: 0.35, blur: 6, offset: 3, angle: 90 });
+  });
+
+  it('dims the exported shadow by the element opacity (the canvas opacity dims the whole element)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', opacity: 50, shadow: { color: '#000000', blur: 8, x: 0, y: 8 } }]));
+    expect(last().shapes.find((s) => s.type === 'rect').o.shadow.opacity).toBe(0.17); // 0.35 × 0.5 = 0.175 → 0.17 (toFixed)
+  });
+
   it('draws nothing extra for a slide with no elements', async () => {
     await exportToPPTX(elemDeck(undefined));
     expect(last().images).toHaveLength(0);

@@ -6,6 +6,7 @@ import { resolveNotes } from '../data/deck.js';
 import { toHex, isHexColor } from './color.js';
 import { SLIDE_W } from './elements.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
+import { SHADOW_OPACITY } from './elements.js';
 
 // ---- theme colours (fallback to indigo) ----
 const THEME_COLORS = {
@@ -99,18 +100,31 @@ function addElements(pptx, sld, slide) {
     const geo = elementGeo(el);
     const transparency = Number.isFinite(el.opacity) ? clampPct(100 - el.opacity) : undefined;
     const withOpacity = transparency != null ? { transparency } : {};
+    // A drop shadow (any element type) → a pptx outer shadow. x/y px offset →
+    // polar offset/angle; blur px → pt. Its opacity is the shared soft alpha
+    // dimmed by the element opacity, since the canvas opacity dims the whole
+    // element (shadow included) — matching the fill/line transparency.
+    const op = (Number.isFinite(el.opacity) ? el.opacity : 100) / 100;
+    const withShadow = el.shadow ? { shadow: {
+      type: 'outer',
+      color: pxHex(el.shadow.color),
+      opacity: +(SHADOW_OPACITY * op).toFixed(2),
+      blur: PT(el.shadow.blur),
+      offset: PT(Math.hypot(el.shadow.x, el.shadow.y)),
+      angle: Math.round((Math.atan2(el.shadow.y, el.shadow.x) * 180 / Math.PI + 360) % 360),
+    } } : {};
     if (el.type === 'text') {
       sld.addText(el.content || '', {
         ...geo, fontSize: PT(num(el.fontSize, 48)), bold: !!el.bold, italic: !!el.italic,
         underline: !!el.underline, align: el.align || 'left', valign: 'middle',
         // Match ElementView's `var(--ink, #15171C)` text default (not the deck
         // theme's white ink) so a fill-less text element isn't invisible.
-        color: pxHex(el.fill || '#15171C'), fontFace: el.fontFamily || 'Inter', ...withOpacity,
+        color: pxHex(el.fill || '#15171C'), fontFace: el.fontFamily || 'Inter', ...withOpacity, ...withShadow,
       });
       continue;
     }
     if (el.type === 'image') {
-      if (el.src) sld.addImage({ ...geo, data: el.src, ...withOpacity });
+      if (el.src) sld.addImage({ ...geo, data: el.src, ...withOpacity, ...withShadow });
       continue;
     }
     // Shapes (incl. line) carry a colour fill; the registry drives the mapping.
@@ -118,7 +132,7 @@ function addElements(pptx, sld, slide) {
     // so the generic shape path covers it (def.pptx === 'rect').
     const def = shapeDef(el.type);
     const fill = { color: pxHex(el.fill || '#15171C'), ...withOpacity };
-    const opts = { ...geo, fill };
+    const opts = { ...geo, fill, ...withShadow };
     // A box shape's stroke → a pptx line (colour + pt width), matching the
     // canvas CSS border. Only the box shapes carry it (clip shapes don't stroke
     // on the canvas, so they don't here either — parity). See isStrokeableShape.

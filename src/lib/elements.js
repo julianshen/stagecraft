@@ -19,6 +19,17 @@ export const HIT_MIN = MIN_SIZE;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export const snap = (v, grid = GRID) => Math.round(v / grid) * grid;
 
+// Drop shadow: a per-element `{ color, blur, x, y }` (absent = no shadow). The
+// softness is a fixed opacity shared by the canvas filter (an 8-digit hex alpha)
+// and the PPTX export (a 0–1 opacity), so the two surfaces match. DEFAULT_SHADOW
+// seeds the Properties toggle.
+export const SHADOW_OPACITY = 0.35;
+export const DEFAULT_SHADOW = Object.freeze({ color: '#000000', blur: 16, x: 0, y: 8 });
+export const dropShadowCss = (s) => {
+  const a = Math.round(SHADOW_OPACITY * 255).toString(16).padStart(2, '0');
+  return `drop-shadow(${s.x}px ${s.y}px ${s.blur}px ${s.color}${a})`;
+};
+
 // A line's thickness (its height) floors at MIN_LINE_THICKNESS — deliberately
 // lower than the caller's `min` (a rule may be a hairline). Non-lines use `min`.
 const isLine = (el) => !!shapeDef(el.type)?.line;
