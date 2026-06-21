@@ -90,6 +90,31 @@ describe('ElementsLayer', () => {
     expect(line).toBeTruthy();
   });
 
+  it('renders a stroke as a CSS border on box shapes (inset so the footprint holds), not on clip shapes', () => {
+    const { container } = render(
+      <ElementsLayer
+        elements={[
+          { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff', stroke: '#112233', strokeWidth: 4 },
+          { id: 't', type: 'triangle', x: 0, y: 0, w: 100, h: 100, fill: '#fff', stroke: '#112233', strokeWidth: 4 },
+        ]}
+      />
+    );
+    const boxes = container.querySelectorAll('div > div');
+    const rect = [...boxes].find(b => b.style.borderRadius && b.style.borderRadius !== '50%'); // rect → 8px radius
+    expect(rect.style.border).toContain('4px');
+    expect(rect.style.border).toContain('rgb(17, 34, 51)');  // #112233
+    expect(rect.style.boxSizing).toBe('border-box');          // border inset, w/h footprint preserved
+    const triangle = [...boxes].find(b => b.style.clipPath.includes('polygon'));
+    expect(triangle.style.border).toBe('');                   // a clip-path border would be clipped away — not applied
+  });
+
+  it('renders no border when a box shape has no stroke (or a zero width)', () => {
+    const { container } = render(
+      <ElementsLayer elements={[{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff', stroke: '#112233', strokeWidth: 0 }]} />
+    );
+    expect(container.querySelector('div > div').style.border).toBe(''); // width 0 → no outline
+  });
+
   it('skips falsy entries and tolerates a non-array (malformed deck) without crashing', () => {
     const { container } = render(
       <ElementsLayer elements={[null, { id: 'c', type: 'circle', x: 0, y: 0, w: 100, h: 100 }, undefined]} />

@@ -113,6 +113,7 @@ const isFmtMap = (v) => isPlainObject(v)
 // feed the renderer a bad value); a non-finite x/y/w/h would break layout/export.
 const isFinite_ = Number.isFinite;
 const isPosFinite = (v) => isFinite_(v) && v > 0; // a size that must render (font px); ≤0 breaks export (negative pt)
+const isNonNeg = (v) => isFinite_(v) && v >= 0;   // a width where 0 means "off" (e.g. no stroke)
 const isStr = (v) => typeof v === 'string';
 const isBool = (v) => typeof v === 'boolean';
 const isKnownElementType = (t) => typeof t === 'string' && (t === 'text' || t === 'image' || !!shapeDef(t));
@@ -132,6 +133,10 @@ const ELEMENT_FIELD_OK = {
   id: isStr, type: isKnownElementType,
   x: isFinite_, y: isFinite_, w: isFinite_, h: isFinite_,
   fill: isHexColor, content: isStr, src: isDataImage,
+  // A shape outline: hex colour (canvas border == export line) + a non-negative
+  // px width (0 = no outline). Rendered/exported only for box shapes (see
+  // `isStrokeableShape`); the gate accepts the fields on any element.
+  stroke: isHexColor, strokeWidth: isNonNeg,
   fontSize: isPosFinite, rot: isFinite_, opacity: isFinite_,
   bold: isBool, italic: isBool, underline: isBool,
   // align is an enum the renderer maps to flex/textAlign (anything else falls

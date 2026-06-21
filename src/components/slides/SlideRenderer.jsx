@@ -6,7 +6,7 @@ import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
 import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
-import { shapeDef } from '../../lib/shapes.js';
+import { shapeDef, hasVisibleStroke } from '../../lib/shapes.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
 // fallbacks). This is the memo contract for thumbnail re-rendering
@@ -370,7 +370,13 @@ function ElementView({ el }) {
   if (def?.line) return <div style={{ ...base, background: el.fill || 'var(--ink, #15171C)' }} />;
   const fill = { background: el.fill || 'oklch(0.62 0.17 265)' };
   if (def?.clip) return <div style={{ ...base, ...fill, clipPath: def.clip }} />;
-  return <div style={{ ...base, ...fill, borderRadius: def?.round ? '50%' : (def?.radius ?? 8) }} />; // rect / unknown → 8
+  // A stroke is a CSS border on the box shapes (it follows the border-radius);
+  // box-sizing keeps the element's w/h footprint constant. Clip shapes are
+  // excluded (a border would be clipped away) — see isStrokeableShape.
+  const stroke = hasVisibleStroke(el)
+    ? { border: `${el.strokeWidth}px solid ${el.stroke}`, boxSizing: 'border-box' }
+    : null;
+  return <div style={{ ...base, ...fill, ...stroke, borderRadius: def?.round ? '50%' : (def?.radius ?? 8) }} />; // rect / unknown → 8
 }
 
 export function ElementsLayer({ elements }) {

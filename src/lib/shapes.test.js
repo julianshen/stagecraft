@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SHAPES, shapeDef } from './shapes.js';
+import { SHAPES, shapeDef, isStrokeableShape, hasVisibleStroke } from './shapes.js';
 
 describe('shapeDef', () => {
   it('resolves the menu rectangle type to a rect with a border radius', () => {
@@ -37,5 +37,28 @@ describe('shapeDef', () => {
   it('freezes the registry and each shape definition', () => {
     expect(Object.isFrozen(SHAPES)).toBe(true);
     Object.values(SHAPES).forEach((def) => expect(Object.isFrozen(def)).toBe(true));
+  });
+});
+
+describe('isStrokeableShape', () => {
+  it('is true for the box shapes whose CSS border follows their outline (rect/rounded/ellipse)', () => {
+    ['shape', 'rounded', 'circle', 'rect', 'ellipse'].forEach((t) => expect(isStrokeableShape(t)).toBe(true));
+  });
+  it('is false for clip-path polygons (a CSS border would be clipped away) and the line', () => {
+    ['triangle', 'diamond', 'pentagon', 'hexagon', 'star', 'arrow', 'line'].forEach((t) => expect(isStrokeableShape(t)).toBe(false));
+  });
+  it('is false for non-shapes / unknown types', () => {
+    ['text', 'image', 'nope', 'constructor'].forEach((t) => expect(isStrokeableShape(t)).toBe(false));
+  });
+});
+
+describe('hasVisibleStroke', () => {
+  // The one predicate the canvas border and export line share, so they agree.
+  it('is true only for a strokeable box shape with a colour and a positive width', () => {
+    expect(hasVisibleStroke({ type: 'rect', stroke: '#000', strokeWidth: 2 })).toBe(true);
+    expect(hasVisibleStroke({ type: 'rect', stroke: '#000', strokeWidth: 0 })).toBe(false); // 0 width = no outline
+    expect(hasVisibleStroke({ type: 'rect', strokeWidth: 2 })).toBe(false);                 // no colour
+    expect(hasVisibleStroke({ type: 'triangle', stroke: '#000', strokeWidth: 2 })).toBe(false); // clip shape
+    expect(hasVisibleStroke(null)).toBe(false);
   });
 });
