@@ -145,6 +145,21 @@ describe('PropsPanel', () => {
     expect(screen.queryByLabelText('Gradient from')).not.toBeInTheDocument();
   });
 
+  it('stays mounted while editing the angle — clearing coerces to a finite 0, not NaN', () => {
+    // Guards the isRenderableGradient gating: the angle onChange coerces any
+    // empty/'-'/NaN input to a finite 0 (the panel-wide numeric convention), so
+    // editing never flips the gradient to non-renderable mid-edit.
+    const setSelected = vi.fn();
+    const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc' };
+    const { rerender } = render(<PropsPanel selected={{ ...rect, gradient: DEFAULT_GRADIENT }} setSelected={setSelected} />);
+    fireEvent.change(screen.getByLabelText('Gradient angle'), { target: { value: '' } }); // clear the field
+    const next = setSelected.mock.calls.at(-1)[0].gradient;
+    expect(next.angle).toBe(0); // finite, not NaN/undefined → still renderable
+    rerender(<PropsPanel selected={{ ...rect, gradient: next }} setSelected={setSelected} />);
+    expect(screen.getByLabelText('Gradient')).toBeChecked();            // toggle stays on
+    expect(screen.getByLabelText('Gradient from')).toBeInTheDocument(); // fields stay mounted
+  });
+
   it('hides the gradient control for non-shapes (text uses fill as ink, image has none)', () => {
     render(<PropsPanel selected={{ id: 't', type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'A' }} setSelected={vi.fn()} />);
     expect(screen.queryByLabelText('Gradient')).not.toBeInTheDocument();
