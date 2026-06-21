@@ -135,29 +135,16 @@ describe('PropsPanel', () => {
     expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ gradient: undefined }));
   });
 
-  it('treats a malformed persisted gradient as off (matches the canvas; no uncontrolled-input warning)', () => {
+  it('shows a malformed persisted gradient for correction (mounted, no uncontrolled-input warning)', () => {
     // A gate-bypassing PUT/MCP write can persist a gradient missing `angle` (or
-    // with a non-hex stop). isRenderableGradient is false, so the canvas/export
-    // paint the solid fill — the inspector must agree: toggle unchecked, fields
-    // hidden, so the angle input never mounts as value={undefined}.
+    // with a non-hex stop). Keep it shown so the user can fix it — toggling-on
+    // must not overwrite their other valid stop — and fall back the angle input
+    // to '' so it never mounts as value={undefined}. (Canvas/export still paint
+    // the solid fill until the gradient is renderable.)
     render(<PropsPanel selected={{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc', gradient: { from: '#000', to: '#fff' } }} setSelected={vi.fn()} />);
-    expect(screen.getByLabelText('Gradient')).not.toBeChecked();
-    expect(screen.queryByLabelText('Gradient from')).not.toBeInTheDocument();
-  });
-
-  it('stays mounted while editing the angle — clearing coerces to a finite 0, not NaN', () => {
-    // Guards the isRenderableGradient gating: the angle onChange coerces any
-    // empty/'-'/NaN input to a finite 0 (the panel-wide numeric convention), so
-    // editing never flips the gradient to non-renderable mid-edit.
-    const setSelected = vi.fn();
-    const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc' };
-    const { rerender } = render(<PropsPanel selected={{ ...rect, gradient: DEFAULT_GRADIENT }} setSelected={setSelected} />);
-    fireEvent.change(screen.getByLabelText('Gradient angle'), { target: { value: '' } }); // clear the field
-    const next = setSelected.mock.calls.at(-1)[0].gradient;
-    expect(next.angle).toBe(0); // finite, not NaN/undefined → still renderable
-    rerender(<PropsPanel selected={{ ...rect, gradient: next }} setSelected={setSelected} />);
-    expect(screen.getByLabelText('Gradient')).toBeChecked();            // toggle stays on
-    expect(screen.getByLabelText('Gradient from')).toBeInTheDocument(); // fields stay mounted
+    expect(screen.getByLabelText('Gradient')).toBeChecked();
+    expect(screen.getByLabelText('Gradient from')).toBeInTheDocument();
+    expect(screen.getByLabelText('Gradient angle')).toHaveValue(null); // missing angle → '' (number input reads null), not undefined
   });
 
   it('hides the gradient control for non-shapes (text uses fill as ink, image has none)', () => {
