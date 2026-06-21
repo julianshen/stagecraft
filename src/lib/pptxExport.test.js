@@ -251,8 +251,21 @@ describe('exportToPPTX — free-form elements overlay', () => {
   it('exports an element shadow as a pptx outer shadow (colour, blur/offset in pt, angle from x/y)', async () => {
     await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', shadow: { color: '#112233', blur: 16, x: 0, y: 8 } }]));
     const r = last().shapes.find((s) => s.type === 'rect');
-    // PT(16)=6, PT(hypot(0,8))=PT(8)=3, atan2(8,0)=90°; opacity = SHADOW_OPACITY (0.35) × 1
-    expect(r.o.shadow).toEqual({ type: 'outer', color: '112233', opacity: 0.35, blur: 6, offset: 3, angle: 90 });
+    // PT(16)=6, PT(hypot(0,8))=PT(8)=3, atan2(8,0)=90°; opacity = SHADOW_OPACITY (0.35) × 1.
+    // rotateWithShape keeps the angle local (see the rotated-parity test below).
+    expect(r.o.shadow).toEqual({ type: 'outer', color: '112233', opacity: 0.35, blur: 6, offset: 3, angle: 90, rotateWithShape: true });
+  });
+
+  it('rotates the exported shadow with the element (the canvas filter + transform share one node)', async () => {
+    // On the canvas the drop-shadow is painted in the element's local space then
+    // rotated by the same transform, so the offset turns with the shape. pptxgen
+    // defaults rotWithShape=0 (absolute angle), so the angle (computed from the
+    // LOCAL x/y) needs rotateWithShape:true to track el.rot — else a rotated
+    // element casts its shadow in the wrong direction.
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', rot: 45, shadow: { color: '#000000', blur: 8, x: 0, y: 8 } }]));
+    const r = last().shapes.find((s) => s.type === 'rect');
+    expect(r.o.rotate).toBe(45);
+    expect(r.o.shadow.rotateWithShape).toBe(true);
   });
 
   it('dims the exported shadow by the element opacity (the canvas opacity dims the whole element)', async () => {
