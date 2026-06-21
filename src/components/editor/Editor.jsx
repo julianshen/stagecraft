@@ -135,8 +135,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
   // deletes / duplicates as a unit. Shift-click toggles the whole group in/out.
   function selectElement(id, additive = false) {
     if (id == null) { setSelElIds([]); return; }
-    const mates = expandToGroups(slideElements, [id]);
-    const group = mates.length ? mates : [id];
+    const group = expandToGroups(slideElements, [id]); // ≥ [id] for any real element; its whole group if grouped
     setSelElIds(prev => {
       if (!additive) return group;
       const allIn = group.every(m => prev.includes(m));

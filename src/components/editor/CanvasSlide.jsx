@@ -179,7 +179,7 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     // above is async, so the targets can't read it yet. A shift-grab adds that set.
     const grabIds = new Set(expandToGroups(baseElements, [el.id]));
     const grabbed = baseElements.filter((x) => grabIds.has(x.id));
-    const targets = inSelection ? selected : additive ? [...selected, ...grabbed] : grabbed;
+    const targets = inSelection ? selected : additive ? [...new Set([...selected, ...grabbed])] : grabbed;
     const onClick = additive && inSelection ? () => onSelectElement?.(el.id, true) : undefined;
     // Snap a lone dragged element against the others (and the slide edges/centre).
     const snapOthers = targets.length === 1 ? baseElements.filter((x) => x.id !== targets[0].id) : null;
