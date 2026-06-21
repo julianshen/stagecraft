@@ -153,6 +153,13 @@ export default function SlideEditor(props) {
       if (plain && (e.key === 'x' || e.key === 'X') && cb.onCutElements) {
         e.preventDefault(); cb.onCutElements(); return;
       }
+      // ⌘/Ctrl-G groups (needs 2+ to be meaningful); ⌘/Ctrl-Shift-G ungroups.
+      if (plain && (e.key === 'g' || e.key === 'G') && props.selectedElementCount >= 2 && cb.onGroupElements) {
+        e.preventDefault(); cb.onGroupElements(); return;
+      }
+      if (cmd && e.shiftKey && !e.altKey && (e.key === 'g' || e.key === 'G') && cb.onUngroupElements) {
+        e.preventDefault(); cb.onUngroupElements(); return;
+      }
       if (NUDGE_DIR[e.key] && !cmd && cb.onNudgeElements) {
         e.preventDefault();
         const [sx, sy] = NUDGE_DIR[e.key];

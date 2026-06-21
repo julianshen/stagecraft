@@ -161,6 +161,27 @@ describe('SlideEditor keyboard shortcuts', () => {
     expect(onPasteElements).toHaveBeenCalledTimes(1);
   });
 
+  it('⌘/Ctrl-G groups the selection (2+ elements)', () => {
+    const onGroupElements = vi.fn();
+    renderEditor({ onGroupElements }, 2);
+    fireEvent.keyDown(document.body, { key: 'g', metaKey: true });
+    expect(onGroupElements).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not group a single element (⌘G needs 2+)', () => {
+    const onGroupElements = vi.fn();
+    renderEditor({ onGroupElements }, 1);
+    fireEvent.keyDown(document.body, { key: 'g', metaKey: true });
+    expect(onGroupElements).not.toHaveBeenCalled();
+  });
+
+  it('⌘/Ctrl-Shift-G ungroups the selection', () => {
+    const onUngroupElements = vi.fn();
+    renderEditor({ onUngroupElements }, 2);
+    fireEvent.keyDown(document.body, { key: 'G', metaKey: true, shiftKey: true });
+    expect(onUngroupElements).toHaveBeenCalledTimes(1);
+  });
+
   it('does not duplicate on a modified ⌘D (Ctrl+Shift+D etc. pass through to the browser)', () => {
     const onDuplicateElements = vi.fn();
     renderEditor({ onDuplicateElements }, 1);

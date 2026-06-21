@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import { render, within } from '@testing-library/react';
+import { render, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Editor from './Editor.jsx';
 
@@ -62,5 +62,54 @@ describe('Editor changeLayout', () => {
     const popover = await openLayoutMenu();
     await userEvent.click(within(popover).getByText('Agenda')); // pick the CURRENT layout
     expect(onDeckChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('Editor element grouping', () => {
+  // jsdom drops shiftKey on PointerEvent; a MouseEvent typed as a pointer event
+  // carries it and still triggers CanvasSlide's onPointerDown (see CanvasSlide.test).
+  const fire = (node, type, init) => fireEvent(node, new MouseEvent(type, { bubbles: true, cancelable: true, ...init }));
+  const click = (node, shiftKey = false) => { fire(node, 'pointerdown', { clientX: 0, clientY: 0, shiftKey }); fire(window, 'pointerup', {}); };
+  const deckWith = (elements) => ({
+    theme: 'indigo', title: 'D',
+    sections: [{ id: 's', name: 'S', slides: ['c1'] }],
+    slides: [{ id: 'c1', layout: 'text', title: 'T', body: '', elements }],
+  });
+  const E = (id, x, groupId) => ({ id, type: 'rect', x, y: 100, w: 100, h: 100, fill: '#aabbcc', ...(groupId ? { groupId } : {}) });
+
+  it('clicking one grouped element selects the whole group (Delete removes every member)', () => {
+    const deck = deckWith([E('a', 100, 'g1'), E('b', 400, 'g1'), E('z', 800)]);
+    const onDeckChange = vi.fn();
+    const { container } = renderEditor(deck, onDeckChange);
+    click(container.querySelectorAll('.el-hit')[0]); // element a → expands to the group
+    fireEvent.keyDown(document.body, { key: 'Delete' });
+    const next = onDeckChange.mock.calls.at(-1)[0](deck);
+    expect(next.slides[0].elements.map((e) => e.id)).toEqual(['z']); // a + b (the group) gone
+  });
+
+  it('⌘G stamps a single shared groupId onto the multi-selection', () => {
+    const deck = deckWith([E('a', 100), E('b', 400), E('z', 800)]); // all ungrouped
+    const onDeckChange = vi.fn();
+    const { container } = renderEditor(deck, onDeckChange);
+    const [hitA, hitB] = container.querySelectorAll('.el-hit');
+    click(hitA); click(hitB, true); // select a, shift-add b
+    fireEvent.keyDown(document.body, { key: 'g', metaKey: true });
+    const next = onDeckChange.mock.calls.at(-1)[0](deck);
+    const byId = Object.fromEntries(next.slides[0].elements.map((e) => [e.id, e]));
+    expect(byId.a.groupId).toBeTruthy();
+    expect(byId.a.groupId).toBe(byId.b.groupId); // shared
+    expect('groupId' in byId.z).toBe(false);      // unselected, untouched
+  });
+
+  it('⌘⇧G ungroups (clicking a member selects the group, then strips the groupId)', () => {
+    const deck = deckWith([E('a', 100, 'g1'), E('b', 400, 'g1'), E('z', 800)]);
+    const onDeckChange = vi.fn();
+    const { container } = renderEditor(deck, onDeckChange);
+    click(container.querySelectorAll('.el-hit')[0]); // selects the group a,b
+    fireEvent.keyDown(document.body, { key: 'G', metaKey: true, shiftKey: true });
+    const next = onDeckChange.mock.calls.at(-1)[0](deck);
+    const byId = Object.fromEntries(next.slides[0].elements.map((e) => [e.id, e]));
+    expect('groupId' in byId.a).toBe(false);
+    expect('groupId' in byId.b).toBe(false);
   });
 });

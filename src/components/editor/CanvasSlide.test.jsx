@@ -128,6 +128,22 @@ describe('CanvasSlide drag', () => {
     expect([...map.keys()].sort()).toEqual(['a', 'b']);
   });
 
+  it('dragging an unselected GROUPED element moves the whole group on the first drag', () => {
+    // The pointer-down selection is async, so the drag must derive its targets from
+    // the grabbed element's group (not the stale selection) or only one member moves.
+    const onUpdateElements = vi.fn();
+    const gslide = { id: 's1', elements: [
+      { id: 'a', type: 'rect', x: 100, y: 100, w: 200, h: 100, groupId: 'g1' },
+      { id: 'b', type: 'rect', x: 500, y: 100, w: 200, h: 100, groupId: 'g1' },
+    ] };
+    const { container } = render(
+      <CanvasSlide slide={gslide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={[]} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+    );
+    drag(hits(container)[0], { dy: 30 }); // grab 'a', nothing selected yet
+    expect([...onUpdateElements.mock.calls[0][0].keys()].sort()).toEqual(['a', 'b']);
+  });
+
   it('dragging a non-selected element without shift moves only that element', () => {
     const onUpdateElements = vi.fn();
     const onSelectElement = vi.fn();
