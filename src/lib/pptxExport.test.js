@@ -242,6 +242,12 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(last().shapes.find((s) => s.type === 'rect').o.line).toBeUndefined();
   });
 
+  it('applies the element opacity to the exported stroke line too (the canvas border is translucent)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', stroke: '#123456', strokeWidth: 4, opacity: 40 }]));
+    const r = last().shapes.find((s) => s.type === 'rect');
+    expect(r.o.line).toEqual({ color: '123456', width: 1.5, transparency: 60 }); // matches the fill's transparency
+  });
+
   it('draws nothing extra for a slide with no elements', async () => {
     await exportToPPTX(elemDeck(undefined));
     expect(last().images).toHaveLength(0);

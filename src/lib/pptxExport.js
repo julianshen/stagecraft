@@ -123,7 +123,9 @@ function addElements(pptx, sld, slide) {
     // canvas CSS border. Only the box shapes carry it (clip shapes don't stroke
     // on the canvas, so they don't here either — parity). See isStrokeableShape.
     if (hasVisibleStroke(el)) {
-      opts.line = { color: pxHex(el.stroke), width: PT(el.strokeWidth) };
+      // ...withOpacity so a translucent shape's outline matches its canvas border
+      // (the canvas applies the element opacity to the whole div, border included).
+      opts.line = { color: pxHex(el.stroke), width: PT(el.strokeWidth), ...withOpacity };
     }
     sld.addShape(ST[def?.pptx] || ST.rect, opts);
   }
