@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, SHADOW_OPACITY, dropShadowCss, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
+import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -681,5 +681,39 @@ describe('dropShadowCss', () => {
   });
   it('expands a shorthand hex colour first (#abc + alpha would be an invalid 5-digit hex)', () => {
     expect(dropShadowCss({ color: '#abc', blur: 8, x: 0, y: 4 })).toBe(`drop-shadow(0px 4px 8px #aabbcc${alpha})`);
+  });
+});
+
+describe('isRenderableShadow', () => {
+  // The render predicate shared by the canvas and the PPTX export: a shadow is
+  // renderable iff every field converts to a valid value. The server write paths
+  // (PUT /api/deck, MCP update_slide) bypass the deckUtils gate, so a malformed
+  // shadow can persist — both surfaces must skip it rather than emit `NaN`px / a
+  // corrupt pptx outer shadow. It is intentionally LOOSER than the gate's
+  // `isShadow` (no plain-object / no-extra-keys check): the canvas ignores extra
+  // keys, so the export must too, for parity.
+  it('accepts a fully-valid shadow', () => {
+    expect(isRenderableShadow({ color: '#112233', blur: 16, x: 4, y: 8 })).toBe(true);
+  });
+  it('accepts a shorthand colour (isHexColor allows it; dropShadowCss/pxHex expand it)', () => {
+    expect(isRenderableShadow({ color: '#abc', blur: 8, x: 0, y: 0 })).toBe(true);
+  });
+  it('accepts extra keys (the canvas renders it, ignoring them — parity over the strict gate)', () => {
+    expect(isRenderableShadow({ color: '#000000', blur: 8, x: 0, y: 8, spread: 4 })).toBe(true);
+  });
+  it('rejects a missing field (an empty object cannot render)', () => {
+    expect(isRenderableShadow({})).toBe(false);
+  });
+  it('rejects a non-finite offset (would emit NaNpx / a corrupt offset)', () => {
+    expect(isRenderableShadow({ color: '#000000', blur: 16, x: 'bad', y: 8 })).toBe(false);
+  });
+  it('rejects a non-hex colour', () => {
+    expect(isRenderableShadow({ color: 'nope', blur: 16, x: 0, y: 8 })).toBe(false);
+  });
+  it('rejects a negative blur (an invalid CSS blur radius / pptx blur)', () => {
+    expect(isRenderableShadow({ color: '#000000', blur: -4, x: 0, y: 8 })).toBe(false);
+  });
+  it('rejects non-object values without throwing', () => {
+    for (const v of [null, undefined, 'big', 5, true, [1, 2]]) expect(isRenderableShadow(v)).toBe(false);
   });
 });

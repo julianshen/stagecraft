@@ -1,7 +1,7 @@
 // Pure geometry for free-form canvas elements (the overlay layer on a slide).
 // All coordinates are in the slide's 1920×1080 authoring space.
 import { shapeDef } from './shapes.js';
-import { toHex } from './color.js';
+import { toHex, isHexColor } from './color.js';
 
 export const SLIDE_W = 1920;
 export const SLIDE_H = 1080;
@@ -32,6 +32,15 @@ export const dropShadowCss = (s) => {
   // yields a valid 8-digit hex, not an invalid 5-digit one the browser ignores.
   return `drop-shadow(${s.x}px ${s.y}px ${s.blur}px ${toHex(s.color)}${a})`;
 };
+// Is this shadow safe for both render surfaces to draw? The server write paths
+// (PUT /api/deck, MCP update_slide) bypass the deckUtils gate, so `shadow` can be
+// any persisted JSON. The canvas relies on CSS dropping an invalid filter, but
+// pptxgen turns NaN into a corrupt deck — so the export must skip a malformed
+// shadow, and the canvas gates on the same predicate for parity. Looser than the
+// gate's `isShadow` on purpose: extra keys still render, so they stay renderable.
+export const isRenderableShadow = (s) => !!s && isHexColor(s.color)
+  && Number.isFinite(s.blur) && s.blur >= 0
+  && Number.isFinite(s.x) && Number.isFinite(s.y);
 
 // A line's thickness (its height) floors at MIN_LINE_THICKNESS — deliberately
 // lower than the caller's `min` (a rule may be a hairline). Non-lines use `min`.

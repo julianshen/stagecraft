@@ -4,9 +4,8 @@ import { SEVERITY_HEX } from './riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
 import { resolveNotes } from '../data/deck.js';
 import { toHex, isHexColor } from './color.js';
-import { SLIDE_W } from './elements.js';
+import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow } from './elements.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
-import { SHADOW_OPACITY } from './elements.js';
 
 // ---- theme colours (fallback to indigo) ----
 const THEME_COLORS = {
@@ -105,7 +104,7 @@ function addElements(pptx, sld, slide) {
     // dimmed by the element opacity, since the canvas opacity dims the whole
     // element (shadow included) — matching the fill/line transparency.
     const op = clampPct(Number.isFinite(el.opacity) ? el.opacity : 100) / 100;
-    const withShadow = el.shadow ? { shadow: {
+    const withShadow = isRenderableShadow(el.shadow) ? { shadow: {
       type: 'outer',
       color: pxHex(el.shadow.color),
       opacity: Math.round(SHADOW_OPACITY * op * 100) / 100, // round half-up (toFixed has a float artifact at .175)
