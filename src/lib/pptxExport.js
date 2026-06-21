@@ -38,6 +38,12 @@ const PX_PER_IN = SLIDE_W / SLIDE_IN_W;
 const IN = (px) => +(px / PX_PER_IN).toFixed(4);
 const PT = (px) => +((px * 72) / PX_PER_IN).toFixed(2);
 const clampPct = (v) => Math.max(0, Math.min(100, v));
+// pptxgenjs 3.12 coalesces a falsy shadow field to its OWN default (blur||8,
+// offset||4, angle||270, opacity||0.75), so a genuine 0 — a centred glow, a
+// rightward shadow, a sharp shadow, a faint element — would export as pptx's
+// upward 4pt default. A sub-unit epsilon survives the `||` but rounds back to 0
+// in the EMU / 60000ths / 100000ths pptx serialises to, preserving the 0.
+const keepZero = (v) => (v === 0 ? 1e-6 : v);
 // Coerce to a finite number (default `d`) — the export is a serialization
 // boundary: the deck is disk-persisted and may be agent/MCP-authored, so a
 // non-finite coord/size would otherwise write NaN into the .pptx and corrupt it.
@@ -110,10 +116,10 @@ function addElements(pptx, sld, slide) {
     const withShadow = isRenderableShadow(el.shadow) ? { shadow: {
       type: 'outer',
       color: pxHex(el.shadow.color),
-      opacity: Math.round(SHADOW_OPACITY * op * 100) / 100, // round half-up (toFixed has a float artifact at .175)
-      blur: PT(el.shadow.blur),
-      offset: PT(Math.hypot(el.shadow.x, el.shadow.y)),
-      angle: Math.round((Math.atan2(el.shadow.y, el.shadow.x) * 180 / Math.PI + 360) % 360),
+      opacity: keepZero(Math.round(SHADOW_OPACITY * op * 100) / 100), // round half-up (toFixed has a float artifact at .175)
+      blur: keepZero(PT(el.shadow.blur)),
+      offset: keepZero(PT(Math.hypot(el.shadow.x, el.shadow.y))),
+      angle: keepZero(Math.round((Math.atan2(el.shadow.y, el.shadow.x) * 180 / Math.PI + 360) % 360)),
       rotateWithShape: true,
     } } : {};
     if (el.type === 'text') {

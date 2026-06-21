@@ -268,6 +268,33 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(r.o.shadow.rotateWithShape).toBe(true);
   });
 
+  // pptxgen 3.12 coalesces a falsy shadow field to its OWN default (blur||8,
+  // offset||4, angle||270, opacity||0.75), so a genuine 0 must reach it as a
+  // sub-unit epsilon (truthy, but rounds back to 0 in the serialised units) or
+  // the canvas shadow exports as pptx's upward 4pt default instead.
+  const shadowFor = (shadow, extra = {}) => exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', ...extra, shadow }]))
+    .then(() => last().shapes.find((s) => s.type === 'rect').o.shadow);
+  const nearZero = (v) => { expect(v).toBeGreaterThan(0); expect(v).toBeLessThan(0.001); };
+
+  it('preserves a centred glow (x=0,y=0) — zero offset/angle survive pptxgen falsy-coalescing', async () => {
+    const sh = await shadowFor({ color: '#000000', blur: 16, x: 0, y: 0 });
+    nearZero(sh.offset); // else pptxgen `offset || 4` → a 4pt directional shadow
+    nearZero(sh.angle);  // else pptxgen `angle || 270` → cast upward
+  });
+  it('preserves a rightward shadow (x>0,y=0) — zero angle survives, real offset kept', async () => {
+    const sh = await shadowFor({ color: '#000000', blur: 8, x: 10, y: 0 });
+    nearZero(sh.angle);          // atan2(0,10)=0; must not default to 270 (upward)
+    expect(sh.offset).toBeCloseTo(3.75, 2); // PT(10) — a real offset, unchanged
+  });
+  it('preserves a sharp shadow (blur=0) — does not default to pptxgen blur 8', async () => {
+    nearZero((await shadowFor({ color: '#000000', blur: 0, x: 0, y: 8 })).blur);
+  });
+  it('preserves a near-zero shadow opacity (a faint element) — not pptxgen opacity 0.75', async () => {
+    // op rounds to 0 for a fully-transparent element; without the guard pptxgen
+    // would paint a 0.75 shadow on an element the canvas renders invisible.
+    nearZero((await shadowFor({ color: '#000000', blur: 8, x: 0, y: 8 }, { opacity: 0 })).opacity);
+  });
+
   it('dims the exported shadow by the element opacity (the canvas opacity dims the whole element)', async () => {
     await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', opacity: 50, shadow: { color: '#000000', blur: 8, x: 0, y: 8 } }]));
     expect(last().shapes.find((s) => s.type === 'rect').o.shadow.opacity).toBe(0.18); // 0.35 × 0.5 = 0.175 → 0.18 (round half-up)
