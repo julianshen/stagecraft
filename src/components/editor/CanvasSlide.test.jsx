@@ -567,6 +567,13 @@ describe('CanvasSlide group transform (2+ selection)', () => {
     expect(typeof map.get('a').rot).toBe('number'); // rotateGroup stamped a rot (was absent)
   });
 
+  it('clicking the group rotate knob with no rotation commits nothing (rot 0 == no rot)', () => {
+    const onUpdateElements = vi.fn();
+    const { container } = renderGroup(onUpdateElements);
+    drag(container.querySelector('.rotate-handle'), {}); // dx=dy=0 → zero-delta rotation
+    expect(onUpdateElements).not.toHaveBeenCalled(); // rot:0 stamped on unrotated elements is not a change
+  });
+
   it('a group drag out then back to the start cancels (commits nothing)', () => {
     const onUpdateElements = vi.fn();
     const { container } = renderGroup(onUpdateElements);

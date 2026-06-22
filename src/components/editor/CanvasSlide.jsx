@@ -310,7 +310,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       const moved = new Map();
       latest.forEach((el, id) => {
         const o = origin?.get(id);
-        if (!o || el.x !== o.x || el.y !== o.y || el.w !== o.w || el.h !== o.h || el.rot !== o.rot) moved.set(id, el);
+        // Normalize rot (a zero-delta rotation stamps rot:0 on an unrotated
+        // element — 0 == "no rot", not a change), like the single-element path.
+        if (!o || el.x !== o.x || el.y !== o.y || el.w !== o.w || el.h !== o.h || (el.rot ?? 0) !== (o.rot ?? 0)) moved.set(id, el);
       });
       if (moved.size) onUpdateElements?.(moved);
     }
