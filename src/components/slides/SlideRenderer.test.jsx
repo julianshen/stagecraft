@@ -70,6 +70,30 @@ describe('ElementsLayer', () => {
     expect(screen.getByText(/image/i)).toBeInTheDocument(); // a "No image" placeholder
   });
 
+  it('renders a path element as an SVG polyline of its normalized points, stroked not filled', () => {
+    const { container } = render(
+      <ElementsLayer elements={[{ id: 'p', type: 'path', x: 100, y: 50, w: 200, h: 160, points: [[0, 0], [1, 0.5], [0.5, 1]], stroke: '#112233', strokeWidth: 3 }]} />,
+    );
+    const poly = container.querySelector('polyline');
+    expect(poly).toBeTruthy();
+    expect(poly.getAttribute('points')).toBe('0,0 1,0.5 0.5,1'); // 0..1, scaled into the box by the viewBox
+    expect(poly.getAttribute('fill')).toBe('none');              // a freehand stroke, not a filled shape
+    expect(poly.getAttribute('stroke')).toBe('#112233');
+    const svg = poly.closest('svg');
+    expect(svg.style.left).toBe('100px');  // positioned at the element box
+    expect(svg.style.width).toBe('200px');
+  });
+
+  it('skips malformed points in a path instead of crashing the canvas', () => {
+    // The renderer also draws non-gated decks (SAMPLE_DECK / manual edits / server PUT),
+    // so a malformed inner point must not throw (it would unmount the whole canvas).
+    const { container } = render(
+      <ElementsLayer elements={[{ id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], null, [1, 1], [0.5]], stroke: '#111', strokeWidth: 2 }]} />,
+    );
+    const poly = container.querySelector('polyline');
+    expect(poly.getAttribute('points')).toBe('0,0 1,1'); // null + the 1-coord point dropped, valid ones kept
+  });
+
   it('renders distinct shape types (preserves the picked shape)', () => {
     const { container } = render(
       <ElementsLayer

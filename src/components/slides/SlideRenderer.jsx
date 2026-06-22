@@ -7,7 +7,7 @@ import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
 import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
 import { shapeDef, hasVisibleStroke } from '../../lib/shapes.js';
-import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient } from '../../lib/elements.js';
+import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
 // fallbacks). This is the memo contract for thumbnail re-rendering
@@ -366,6 +366,19 @@ function ElementView({ el }) {
     return el.src
       ? <img src={el.src} alt="" draggable={false} style={{ ...base, objectFit: 'cover' }} />
       : <div style={{ ...base, display: 'grid', placeItems: 'center', background: '#eceae4', color: '#9a978f', fontFamily: 'var(--f-mono)', fontSize: 18 }}>No image</div>;
+  }
+  if (el.type === 'path') {
+    // A freehand pen stroke: an SVG polyline of the 0..1 points scaled into the
+    // box (viewBox + preserveAspectRatio="none"), stroked not filled. The stroke
+    // is non-scaling, so its width stays el.strokeWidth slide-px at any box size
+    // (matching the export's line width); it rides rot/opacity/shadow via `base`.
+    const pts = (Array.isArray(el.points) ? el.points : []).filter(isFinitePoint).map(([px, py]) => `${px},${py}`).join(' ');
+    return (
+      <svg style={{ ...base, overflow: 'visible' }} viewBox="0 0 1 1" preserveAspectRatio="none">
+        <polyline points={pts} fill="none" stroke={el.stroke || 'var(--ink, #15171C)'} strokeWidth={el.strokeWidth ?? 2}
+          vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+    );
   }
   // Every shape (incl. the line special case) dispatches off the shared registry
   // so the canvas and the export can't drift (lib/shapes.js).

@@ -75,6 +75,7 @@ const DEFAULTS = {
   circle: { w: 240, h: 240, fill: '#4f46e5' },
   image: { w: 480, h: 360 }, // a 4:3 box; carries `src` (a data URL), not a fill
   line: { w: 320, h: 8 }, // a thin rule by default; its height is an adjustable stroke thickness
+  path: { w: 320, h: 200, stroke: '#15171C', strokeWidth: 2 }, // a freehand pen stroke; carries `points` (0..1, relative to the box), stroked not filled
 };
 
 // Build a new element of `type`, centered by default, with snapped position.
@@ -92,6 +93,12 @@ export function createElement(type, opts = {}) {
   };
   if (type === 'image') {
     el.src = opts.src ?? ''; // an image carries a `src` (data URL) instead of a colour fill
+  } else if (type === 'path') {
+    // A freehand stroke: 0..1 points relative to the box (see pathFromStroke),
+    // stroked not filled — so no `fill`, mirroring image.
+    el.points = opts.points ?? [];
+    el.stroke = opts.stroke ?? d.stroke;       // DEFAULTS.path always carries stroke + strokeWidth
+    el.strokeWidth = opts.strokeWidth ?? d.strokeWidth;
   } else {
     if (d.content !== undefined) el.content = opts.content ?? d.content;
     el.fill = opts.fill ?? d.fill ?? '#4f46e5'; // canonical hex so the inspector swatch matches the render
@@ -112,6 +119,41 @@ export function snapDrawnBox(type, { x, y, w, h }) {
     y: snap(y),
     w: Math.max(snap(w), MIN_SIZE),
     h: Math.max(snap(h), heightMin({ type }, MIN_SIZE)),
+  };
+}
+
+// A renderable path vertex: a finite [x, y] pair. Single-sourced so the canvas
+// polyline and the custGeom export drop the same malformed points (a non-gated /
+// manual write can carry junk) — they read p[0]/p[1], so extra entries are ignored.
+export const isFinitePoint = (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]);
+
+// Build a `path` element's geometry from a freehand stroke: the raw pointer
+// points (absolute slide coords) → the stroke's bounding box + the points
+// normalized to 0..1 within it. Storing points relative to the box lets the path
+// ride every move/resize/rotate (which only touch x/y/w/h) untouched, while the
+// renderer/export scale them back into the box. A zero-range axis (a perfectly
+// straight stroke) floors to MIN_SIZE and collapses that axis to 0 (no NaN).
+export function pathFromStroke(pts) {
+  // Drop junk points up front (an exported helper shouldn't throw on a null entry
+  // or emit Infinity geometry) and fall back when none remain.
+  const valid = (Array.isArray(pts) ? pts : []).filter(isFinitePoint);
+  if (valid.length === 0) return { x: 0, y: 0, w: MIN_SIZE, h: MIN_SIZE, points: [] };
+  // Fold the bbox in one pass — never spread the points into Math.min/max, which
+  // throws RangeError once a stroke runs to the thousands of points a pen emits.
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [px, py] of valid) {
+    if (px < minX) minX = px;
+    if (px > maxX) maxX = px;
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
+  }
+  const rw = maxX - minX, rh = maxY - minY;
+  const norm = (v, min, range) => (range > 0 ? (v - min) / range : 0);
+  return {
+    x: minX, y: minY,
+    w: Math.max(rw, MIN_SIZE),
+    h: Math.max(rh, MIN_SIZE),
+    points: valid.map((p) => [norm(p[0], minX, rw), norm(p[1], minY, rh)]),
   };
 }
 

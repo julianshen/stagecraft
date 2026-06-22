@@ -116,11 +116,17 @@ const isPosFinite = (v) => isFinite_(v) && v > 0; // a size that must render (fo
 const isNonNeg = (v) => isFinite_(v) && v >= 0;   // a width where 0 means "off" (e.g. no stroke)
 const isStr = (v) => typeof v === 'string';
 const isBool = (v) => typeof v === 'boolean';
-const isKnownElementType = (t) => typeof t === 'string' && (t === 'text' || t === 'image' || !!shapeDef(t));
+const isKnownElementType = (t) => typeof t === 'string' && (t === 'text' || t === 'image' || t === 'path' || !!shapeDef(t));
 // An overlay image must be an embedded data URL — the app never fetches remote
 // images (privacy/offline), and the exporter passes `src` straight to addImage.
 // A remote/other URL would trigger a network load on the canvas and break export.
 const isDataImage = (v) => typeof v === 'string' && v.startsWith('data:image/');
+// A freehand path's geometry: ≥2 points, each a finite [x, y] pair (normalized
+// 0..1 to the element box — see pathFromStroke). The renderer draws a polyline
+// and the export a custGeom path from these, so a non-pair / <2 points would
+// render/export nothing or a NaN coordinate.
+const isPoints = (v) => Array.isArray(v) && v.length >= 2
+  && v.every((p) => Array.isArray(p) && p.length === 2 && isFinite_(p[0]) && isFinite_(p[1]));
 // A drop shadow: { color: hex, blur: ≥0 px, x/y: finite px offsets } — every key
 // required + correctly typed, and no extra keys (junk would persist and render/
 // export nothing useful). The softness is a fixed shared opacity, not stored.
@@ -151,6 +157,8 @@ const ELEMENT_FIELD_OK = {
   // px width (0 = no outline). Rendered/exported only for box shapes (see
   // `isStrokeableShape`); the gate accepts the fields on any element.
   stroke: isHexColor, strokeWidth: isNonNeg, shadow: isShadow, gradient: isGradient,
+  // A freehand path's polyline: ≥2 [x,y] pairs, normalized 0..1 to the box.
+  points: isPoints,
   // A group membership tag (a canvas-editing relationship; absent = ungrouped).
   // The renderer/export ignore it — selecting/moving a member acts on the group,
   // but each element still exports at its own absolute geometry.
@@ -170,13 +178,14 @@ const ownFieldOk = (k, v) => ownValidate(ELEMENT_FIELD_OK, k, v);
 // a fill-less element's canvas default diverges from the export (a shape renders
 // indigo vs #15171C; text/line render the editor theme's `--ink` — light under
 // the dark theme — vs #15171C). Only `image` has no fill.
-const requiresFill = (type) => isKnownElementType(type) && type !== 'image';
+const requiresFill = (type) => isKnownElementType(type) && type !== 'image' && type !== 'path';
 const isValidElement = (el) => isPlainObject(el)
   && isStr(el.id)                                                 // id required — every consumer keys/selects by it
   && isKnownElementType(el.type)                                  // type present + known
   && isFinite_(el.x) && isFinite_(el.y) && isFinite_(el.w) && isFinite_(el.h) // geometry present + finite
   && (!requiresFill(el.type) || isHexColor(el.fill))              // fill-bearing elements carry a hex fill (canvas == export)
   && (el.type !== 'text' || (isStr(el.content) && el.content.length > 0)) // a text element needs visible content
+  && (el.type !== 'path' || (isPoints(el.points) && isHexColor(el.stroke))) // a path needs a valid polyline + a stroke colour (its only colour; canvas == export)
   && Object.entries(el).every(([k, v]) => ownFieldOk(k, v));      // every key known (own) + correctly typed
 
 // Accept a patch field only if its value matches the slide schema's shape for
