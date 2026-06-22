@@ -36,9 +36,10 @@ const PEN_TOOLS = [
 // Arrow key → unit nudge direction for the selection.
 const NUDGE_DIR = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
-// Tool ids that draw an element on the canvas (the shape tools). When one is the
-// active tool, a canvas sweep draws that shape rather than marquee-selecting.
-const DRAW_TOOL_IDS = new Set(SHAPE_TOOLS.map((s) => s.id));
+// Tool ids that draw an element on the canvas (the shape tools + the pen). When
+// one is the active tool, a canvas gesture draws (a shape box, or a freehand pen
+// stroke) rather than marquee-selecting.
+const DRAW_TOOL_IDS = new Set([...SHAPE_TOOLS, ...PEN_TOOLS].map((t) => t.id));
 
 // The context menu's "Change layout" / "Apply theme" drill-in choosers, built
 // from the same option lists the toolbar menus use. One config so the two

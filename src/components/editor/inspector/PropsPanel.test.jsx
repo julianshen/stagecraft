@@ -185,4 +185,22 @@ describe('PropsPanel', () => {
     fireEvent.click(screen.getByTitle('Align center'));
     expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ align: 'center' }));
   });
+
+  it('shows a stroke control and no fill control for a path element', () => {
+    // A freehand path is stroked, not filled — its colour lives in `stroke`.
+    const path = { id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#15171C', strokeWidth: 2 };
+    render(<PropsPanel selected={path} setSelected={vi.fn()} />);
+    expect(screen.getByLabelText('Stroke color')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Fill color')).toBeNull();
+  });
+
+  it('edits a path stroke colour and width', () => {
+    const setSelected = vi.fn();
+    const path = { id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#15171C', strokeWidth: 2 };
+    render(<PropsPanel selected={path} setSelected={setSelected} />);
+    fireEvent.change(screen.getByLabelText('Stroke color'), { target: { value: '#abcdef' } });
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ stroke: '#abcdef' }));
+    fireEvent.change(screen.getByLabelText('Stroke width'), { target: { value: '5' } });
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ strokeWidth: 5 }));
+  });
 });
