@@ -270,9 +270,10 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     return new Map(next.filter((el) => selectedSet.has(el.id)).map((el) => [el.id, el]));
   }
   // Shared pointer scaffold for the group bbox handles: tracks the drag in slide
-  // space, previews via setDrag, commits the selection on pointer-up. `computeMap`
-  // (current slide point, start slide point) → Map<id, transformed el>.
-  function beginGroupDrag(e, computeMap) {
+  // space, previews via setDrag, commits the CHANGED selection on pointer-up.
+  // `computeMap` (current slide point, start slide point) → Map<id, transformed
+  // el>; `origin` is the pre-drag geometry, used to drop no-op writes (as startDrag does).
+  function beginGroupDrag(e, computeMap, origin) {
     if (dragCleanup.current || e.button !== 0) return;
     const frame = frameRef.current;
     if (!frame) return;
@@ -301,7 +302,15 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       // Refine from the release position when it carries coords (a flick may
       // deliver no pointermove); otherwise commit the last previewed transform.
       if (swept(ev.clientX, ev.clientY)) latest = computeMap(toSlide(rect, ev.clientX, ev.clientY), start);
-      if (latest && latest.size) onUpdateElements?.(latest);
+      if (!latest) return;
+      // Commit only elements whose geometry actually changed — a swept-but-net-
+      // zero drag (or a snap-back) shouldn't write the deck / push an undo entry.
+      const moved = new Map();
+      latest.forEach((el, id) => {
+        const o = origin?.get(id);
+        if (!o || el.x !== o.x || el.y !== o.y || el.w !== o.w || el.h !== o.h || el.rot !== o.rot) moved.set(id, el);
+      });
+      if (moved.size) onUpdateElements?.(moved);
     }
     function cancel() { removeListeners(); setDrag(null); }
     window.addEventListener('pointermove', move);
@@ -313,17 +322,18 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   // the edge opposite the dragged handle (resizeGroup operates on the bbox).
   function startGroupResize(e, handle) {
     const base = baseElements, ids = selectedIds;
-    beginGroupDrag(e, (p, start) => selectedMap(resizeGroup(base, ids, handle, p.x - start.x, p.y - start.y)));
+    beginGroupDrag(e, (p, start) => selectedMap(resizeGroup(base, ids, handle, p.x - start.x, p.y - start.y)), selectedMap(base));
   }
   // Group rotate: the angle the pointer sweeps about the bbox centre becomes the
   // delta applied to every selected child (orbit + own rot) via rotateGroup.
   function startGroupRotate(e) {
     const base = baseElements, ids = selectedIds;
+    const origin = selectedMap(base);
     const b = selectionBounds(selected), center = [b.cx, b.cy];
     beginGroupDrag(e, (p, start) => {
       const delta = (Math.atan2(p.y - center[1], p.x - center[0]) - Math.atan2(start.y - center[1], start.x - center[0])) * 180 / Math.PI;
       return selectedMap(rotateGroup(base, ids, delta, center));
-    });
+    }, origin);
   }
 
   // The interaction overlay sits above the slide, so a double-click on a text

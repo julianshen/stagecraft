@@ -305,9 +305,15 @@ export function resizeGroup(elements, ids, handle, dx, dy, { min = MIN_SIZE } = 
   else if (bw > 0 && edge.l) { sx = Math.max(floorX, (bw - dx) / bw); ax = b.x2; } // drag left → right edge anchored
   if (bh > 0 && edge.b) { sy = Math.max(floorY, (bh + dy) / bh); }             // drag bottom → top edge anchored
   else if (bh > 0 && edge.t) { sy = Math.max(floorY, (bh - dy) / bh); ay = b.y2; } // drag top → bottom edge anchored
-  return (elements || []).map((el) => (el && sel.has(el.id)
-    ? { ...el, x: Math.round(ax + (el.x - ax) * sx), y: Math.round(ay + (el.y - ay) * sy), w: Math.round(el.w * sx), h: Math.round(el.h * sy) }
-    : el));
+  return (elements || []).map((el) => {
+    if (!el || !sel.has(el.id)) return el;
+    // Round the scaled EDGES (not x and w independently) and derive w/h from
+    // them, so adjacent children keep their shared edge aligned — no 1px
+    // gaps/overlaps when a row/grid of elements is group-resized.
+    const x = Math.round(ax + (el.x - ax) * sx);
+    const y = Math.round(ay + (el.y - ay) * sy);
+    return { ...el, x, y, w: Math.round(ax + (el.x + el.w - ax) * sx) - x, h: Math.round(ay + (el.y + el.h - ay) * sy) - y };
+  });
 }
 
 // Rotate the selection by `angleDelta` degrees about `center` ([cx, cy], the
