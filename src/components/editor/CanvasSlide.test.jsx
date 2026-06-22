@@ -574,6 +574,13 @@ describe('CanvasSlide group transform (2+ selection)', () => {
     expect(onUpdateElements).not.toHaveBeenCalled(); // rot:0 stamped on unrotated elements is not a change
   });
 
+  it('a sub-threshold tremor on a group handle commits nothing (not a real drag)', () => {
+    const onUpdateElements = vi.fn();
+    const { container } = renderGroup(onUpdateElements);
+    drag(container.querySelector('[data-handle="se"]'), { dx: 2, dy: 0 }); // < 3px sweep threshold
+    expect(onUpdateElements).not.toHaveBeenCalled();
+  });
+
   it('a group drag out then back to the start cancels (commits nothing)', () => {
     const onUpdateElements = vi.fn();
     const { container } = renderGroup(onUpdateElements);

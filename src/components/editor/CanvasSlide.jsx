@@ -284,9 +284,10 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     const startX = e.clientX, startY = e.clientY;
     const start = toSlide(rect, startX, startY);
     const swept = (cx, cy) => Math.abs(cx - startX) > 3 || Math.abs(cy - startY) > 3;
-    let latest = null; // last previewed transform; committed on pointer-up
+    let latest = null, hasSwept = false; // committed on pointer-up only once a real drag has swept
     function move(ev) {
       if (!swept(ev.clientX, ev.clientY)) return;
+      hasSwept = true;
       latest = computeMap(toSlide(rect, ev.clientX, ev.clientY), start);
       setDrag(latest);
     }
@@ -299,11 +300,14 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     function up(ev) {
       removeListeners();
       setDrag(null);
-      // Recompute from the RELEASE position whenever it carries coords (even
-      // within the start threshold), so "drag out then back to start" commits
-      // the final transform — which the origin filter then drops as a no-op. A
-      // coordless flick keeps the last previewed transform instead.
-      if (Number.isFinite(ev.clientX) && Number.isFinite(ev.clientY)) latest = computeMap(toSlide(rect, ev.clientX, ev.clientY), start);
+      const releaseHasCoords = Number.isFinite(ev.clientX) && Number.isFinite(ev.clientY);
+      // A real gesture either swept during the drag or releases past the threshold
+      // (a no-move flick); a pure click / sub-threshold tremor never commits.
+      if (!hasSwept && !(releaseHasCoords && swept(ev.clientX, ev.clientY))) return;
+      // Recompute from the release when it carries coords — so "drag out then back
+      // to start" recomputes to a no-op the origin filter drops; a coordless flick
+      // keeps the last previewed transform.
+      if (releaseHasCoords) latest = computeMap(toSlide(rect, ev.clientX, ev.clientY), start);
       if (!latest) return;
       // Commit only elements whose geometry actually changed — a swept-but-net-
       // zero drag (or a snap-back) shouldn't write the deck / push an undo entry.
