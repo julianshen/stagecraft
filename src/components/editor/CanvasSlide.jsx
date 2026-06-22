@@ -84,6 +84,10 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
 
   // Live drag preview: a map id→element while dragging (commits once on pointer-up).
   const [drag, setDrag] = useState(null);
+  // During a group ROTATE drag: {x1,y1,x2,y2,rot} — the pre-drag bbox + swept
+  // angle, so the frame tilts rigidly instead of re-fitting to the rotated
+  // children every frame (the wobble). Null for resize / move / idle.
+  const [frameTilt, setFrameTilt] = useState(null);
   // Live marquee rectangle (slide coords) while rubber-band selecting on empty space.
   const [marquee, setMarquee] = useState(null);
   // Active alignment guide lines (slide coords) while dragging a single element.
@@ -116,8 +120,11 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   // A 2+ selection gets a group transform frame: an axis-aligned bbox whose
   // handles scale / rotate the whole selection as a unit (resizeGroup/rotateGroup).
   const groupBounds = !drawTool && selected.length >= 2 ? selectionBounds(selected) : null;
-  const gw = groupBounds ? (groupBounds.x2 - groupBounds.x1) * scale : 0;
-  const gh = groupBounds ? (groupBounds.y2 - groupBounds.y1) * scale : 0;
+  // While rotating, draw the pre-drag bbox tilted by the swept angle (frameTilt)
+  // so the frame stays rigid; otherwise the live axis-aligned bbox.
+  const frameBox = frameTilt ?? groupBounds;
+  const gw = frameBox ? (frameBox.x2 - frameBox.x1) * scale : 0;
+  const gh = frameBox ? (frameBox.y2 - frameBox.y1) * scale : 0;
   // The marquee/draw preview rectangle (slide coords), normalized from its corners.
   const marqueeBox = marquee ? boxFromCorners(marquee.x1, marquee.y1, marquee.x2, marquee.y2) : null;
 
@@ -273,7 +280,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   // space, previews via setDrag, commits the CHANGED selection on pointer-up.
   // `computeMap` (current slide point, start slide point) → Map<id, transformed
   // el>; `origin` is the pre-drag geometry, used to drop no-op writes (as startDrag does).
-  function beginGroupDrag(e, computeMap, origin) {
+  // `previewFrame` (optional, same args) → the frame's own {x1,y1,x2,y2,rot} for a
+  // rigid preview (rotate uses it; resize leaves it null → axis-aligned recompute).
+  function beginGroupDrag(e, computeMap, origin, previewFrame) {
     if (dragCleanup.current || e.button !== 0) return;
     const frame = frameRef.current;
     if (!frame) return;
@@ -288,14 +297,17 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     function move(ev) {
       if (!swept(ev.clientX, ev.clientY)) return;
       hasSwept = true;
-      latest = computeMap(toSlide(rect, ev.clientX, ev.clientY), start);
+      const p = toSlide(rect, ev.clientX, ev.clientY);
+      latest = computeMap(p, start);
       setDrag(latest);
+      if (previewFrame) setFrameTilt(previewFrame(p, start));
     }
     function removeListeners() {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
       dragCleanup.current = null;
+      setFrameTilt(null); // the tilt is transient — back to the axis-aligned bbox when the gesture ends
     }
     function up(ev) {
       removeListeners();
@@ -333,15 +345,19 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     beginGroupDrag(e, (p, start) => selectedMap(resizeGroup(base, ids, handle, p.x - start.x, p.y - start.y)), selectedMap(base));
   }
   // Group rotate: the angle the pointer sweeps about the bbox centre becomes the
-  // delta applied to every selected child (orbit + own rot) via rotateGroup.
+  // delta applied to every selected child (orbit + own rot) via rotateGroup. The
+  // frame tilts rigidly by the same delta around the pre-drag bbox `b`.
   function startGroupRotate(e) {
     const base = baseElements, ids = selectedIds;
-    const origin = selectedMap(base);
     const b = selectionBounds(selected), center = [b.cx, b.cy];
-    beginGroupDrag(e, (p, start) => {
-      const delta = (Math.atan2(p.y - center[1], p.x - center[0]) - Math.atan2(start.y - center[1], start.x - center[0])) * 180 / Math.PI;
-      return selectedMap(rotateGroup(base, ids, delta, center));
-    }, origin);
+    const deltaAt = (p, start) =>
+      (Math.atan2(p.y - center[1], p.x - center[0]) - Math.atan2(start.y - center[1], start.x - center[0])) * 180 / Math.PI;
+    beginGroupDrag(
+      e,
+      (p, start) => selectedMap(rotateGroup(base, ids, deltaAt(p, start), center)),
+      selectedMap(base),
+      (p, start) => ({ ...b, rot: deltaAt(p, start) }),
+    );
   }
 
   // The interaction overlay sits above the slide, so a double-click on a text
@@ -536,15 +552,17 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
           </div>
         )}
 
-        {/* Group transform frame: an axis-aligned box around a 2+ selection. Its
-            handles scale (startGroupResize) and the knob rotates (startGroupRotate)
-            the whole selection as a unit. No rotStyle — children rotate individually. */}
+        {/* Group transform frame around a 2+ selection. Its handles scale
+            (startGroupResize) and the knob rotates (startGroupRotate) the whole
+            selection as a unit. Normally axis-aligned (children rotate
+            individually); during a rotate drag it tilts rigidly via frameTilt. */}
         {groupBounds && (
           <div
             style={{
               position: 'absolute',
-              left: groupBounds.x1 * scale, top: groupBounds.y1 * scale,
+              left: frameBox.x1 * scale, top: frameBox.y1 * scale,
               width: gw, height: gh,
+              ...rotStyle(frameTilt?.rot),
               pointerEvents: 'none',
             }}
           >
