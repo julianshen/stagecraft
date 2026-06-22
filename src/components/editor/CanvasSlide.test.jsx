@@ -33,7 +33,7 @@ function fire(node, type, init) {
 function drag(target, { dx = 0, dy = 0, shiftKey = false } = {}) {
   fire(target, 'pointerdown', { clientX: 0, clientY: 0, shiftKey });
   fire(window, 'pointermove', { clientX: dx, clientY: dy });
-  fire(window, 'pointerup', {});
+  fire(window, 'pointerup', { clientX: dx, clientY: dy }); // release at the end, like a real pointerup (not the origin)
 }
 
 describe('CanvasSlide alignment guides', () => {
@@ -565,5 +565,16 @@ describe('CanvasSlide group transform (2+ selection)', () => {
     const map = onUpdateElements.mock.calls[0][0];
     expect([...map.keys()].sort()).toEqual(['a', 'b']);
     expect(typeof map.get('a').rot).toBe('number'); // rotateGroup stamped a rot (was absent)
+  });
+
+  it('a group drag out then back to the start cancels (commits nothing)', () => {
+    const onUpdateElements = vi.fn();
+    const { container } = renderGroup(onUpdateElements);
+    const se = container.querySelector('[data-handle="se"]');
+    fire(se, 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 60, clientY: 0 }); // drag out (sweeps)
+    fire(window, 'pointermove', { clientX: 0, clientY: 0 });   // return to the start
+    fire(window, 'pointerup', { clientX: 0, clientY: 0 });     // release at the start
+    expect(onUpdateElements).not.toHaveBeenCalled(); // final position == start → no net change
   });
 });

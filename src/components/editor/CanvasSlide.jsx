@@ -299,9 +299,11 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     function up(ev) {
       removeListeners();
       setDrag(null);
-      // Refine from the release position when it carries coords (a flick may
-      // deliver no pointermove); otherwise commit the last previewed transform.
-      if (swept(ev.clientX, ev.clientY)) latest = computeMap(toSlide(rect, ev.clientX, ev.clientY), start);
+      // Recompute from the RELEASE position whenever it carries coords (even
+      // within the start threshold), so "drag out then back to start" commits
+      // the final transform — which the origin filter then drops as a no-op. A
+      // coordless flick keeps the last previewed transform instead.
+      if (Number.isFinite(ev.clientX) && Number.isFinite(ev.clientY)) latest = computeMap(toSlide(rect, ev.clientX, ev.clientY), start);
       if (!latest) return;
       // Commit only elements whose geometry actually changed — a swept-but-net-
       // zero drag (or a snap-back) shouldn't write the deck / push an undo entry.
