@@ -428,7 +428,11 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     // Decimate: keep a point only once it's PEN_MIN_GAP slide-px from the last kept
     // one, so a slow stroke doesn't store a vertex per raw pointermove (which would
     // bloat the polyline + custGeom export and churn the per-move preview).
-    const farEnough = (p) => Math.hypot(p.x - pts[pts.length - 1].x, p.y - pts[pts.length - 1].y) >= PEN_MIN_GAP;
+    const farEnough = (p) => {
+      const last = pts[pts.length - 1];
+      const dx = p.x - last.x, dy = p.y - last.y;
+      return dx * dx + dy * dy >= PEN_MIN_GAP * PEN_MIN_GAP; // squared compare — no per-pointermove sqrt
+    };
     setPenStroke([...pts]);
     function move(ev) {
       if (swept(ev.clientX, ev.clientY)) hasSwept = true;
