@@ -567,6 +567,58 @@ describe('CanvasSlide group transform (2+ selection)', () => {
     expect(typeof map.get('a').rot).toBe('number'); // rotateGroup stamped a rot (was absent)
   });
 
+  it('tilts the group frame rigidly during a rotate drag (no axis-aligned wobble)', () => {
+    // bbox of a(0,0,100,100)+b(200,0,100,100) → centre (150,50).
+    const { container } = renderGroup(vi.fn());
+    fire(container.querySelector('.rotate-handle'), 'pointerdown', { clientX: 150, clientY: 0 }); // above centre
+    fire(window, 'pointermove', { clientX: 200, clientY: 50 }); // to the right of centre → +90°
+    // Mid-gesture (before release) the frame carries a rigid rotate() transform,
+    // rather than staying axis-aligned and re-fitting itself to the rotated children.
+    const frame = container.querySelector('.rotate-handle').parentElement;
+    expect(frame.style.transform).toContain('rotate(90deg)');
+    fire(window, 'pointerup', { clientX: 200, clientY: 50 }); // end the gesture
+  });
+
+  it('holds the tilted frame at the pre-drag box (rigid — not the rotated-children bbox)', () => {
+    // jsdom measures the frame as 0-wide → scale 0 → every box renders at 0px,
+    // which hides position/size. Give it a real 1920px measure so scale is 1 and
+    // the rendered px reflect slide coords, making rigid-vs-wobble observable.
+    const origRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = () => ({ width: 1920, height: 1080, top: 0, left: 0, right: 1920, bottom: 1080, x: 0, y: 0 });
+    try {
+      const { container } = renderGroup(vi.fn()); // pre-drag bbox of a+b: (0,0) 300×100, centre (150,50)
+      fire(container.querySelector('.rotate-handle'), 'pointerdown', { clientX: 150, clientY: 0 });
+      fire(window, 'pointermove', { clientX: 200, clientY: 50 }); // +90° about the centre
+      const frame = container.querySelector('.rotate-handle').parentElement;
+      // Rigid: the frame stays the pre-drag 300×100 box at (0,0), merely rotated —
+      // it does NOT collapse to the rotated children's bbox (100×300 at 100,-100),
+      // which is what re-fitting selectionBounds every frame (the wobble) would do.
+      expect(frame.style.transform).toContain('rotate(90deg)');
+      expect([frame.style.left, frame.style.top, frame.style.width, frame.style.height])
+        .toEqual(['0px', '0px', '300px', '100px']);
+      fire(window, 'pointerup', { clientX: 200, clientY: 50 });
+    } finally {
+      Element.prototype.getBoundingClientRect = origRect;
+    }
+  });
+
+  it('keeps the group frame axis-aligned during a resize drag (only rotate tilts)', () => {
+    const { container } = renderGroup(vi.fn());
+    fire(container.querySelector('[data-handle="se"]'), 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 60, clientY: 40 }); // a real resize sweep
+    expect(container.querySelector('.rotate-handle').parentElement.style.transform).toBe(''); // no tilt
+    fire(window, 'pointerup', { clientX: 60, clientY: 40 });
+  });
+
+  it('clears the frame tilt once the rotate gesture ends', () => {
+    const { container } = renderGroup(vi.fn());
+    fire(container.querySelector('.rotate-handle'), 'pointerdown', { clientX: 150, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 200, clientY: 50 });
+    expect(container.querySelector('.rotate-handle').parentElement.style.transform).toContain('rotate('); // tilted
+    fire(window, 'pointerup', { clientX: 200, clientY: 50 });
+    expect(container.querySelector('.rotate-handle').parentElement.style.transform).toBe(''); // transient — cleared
+  });
+
   it('clicking the group rotate knob with no rotation commits nothing (rot 0 == no rot)', () => {
     const onUpdateElements = vi.fn();
     const { container } = renderGroup(onUpdateElements);
