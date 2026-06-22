@@ -124,8 +124,8 @@ export function moveElement(el, dx, dy, { grid = GRID, bounds = { w: SLIDE_W, h:
   };
 }
 
-// Bounding box of a set of elements.
-function selectionBounds(els) {
+// Bounding box of a set of elements (also drives the group transform frame).
+export function selectionBounds(els) {
   const x1 = Math.min(...els.map((e) => e.x));
   const y1 = Math.min(...els.map((e) => e.y));
   const x2 = Math.max(...els.map((e) => e.x + e.w));
@@ -276,6 +276,54 @@ export function ungroupElements(elements, ids) {
   // Same-reference on a no-op (like reorderElement) so ungrouping an already-
   // ungrouped selection doesn't trigger a redundant deck write / PUT.
   return changed ? out : (elements || []);
+}
+
+// --- Transform a multi-selection as a unit (a group, or any 2+ selection). The
+// single-element handles still use resizeElement/rotateElement; these drive the
+// group bounding-box handles. Both bake the result into each child's geometry,
+// so the export (which reads absolute x/y/w/h) needs no group concept.
+
+// Resize the selection's bounding box by dragging `handle` (dx/dy in slide
+// space): every selected child scales proportionally, anchored to the edge
+// OPPOSITE the handle. The scale is floored so the SMALLEST child stays >= min
+// (matching the single-element resize) — which also keeps the bbox >= min and the
+// scale positive, so the group can't collapse or invert. A zero-extent axis
+// (bw/bh = 0, e.g. a degenerate gate-bypass element) can't scale and is skipped
+// (no divide-by-zero). Rotated children scale their x/y/w/h (rot preserved) —
+// exact for the common axis-aligned case. Fewer than two selected → unchanged.
+export function resizeGroup(elements, ids, handle, dx, dy, { min = MIN_SIZE } = {}) {
+  const sel = new Set(ids || []);
+  const group = (elements || []).filter((e) => e && sel.has(e.id));
+  if (group.length < 2) return elements;
+  const edge = HANDLE_EDGES[handle] || {};
+  const b = selectionBounds(group);
+  const bw = b.x2 - b.x1, bh = b.y2 - b.y1;
+  const minW = Math.min(...group.map((e) => e.w)), minH = Math.min(...group.map((e) => e.h));
+  const floorX = minW > 0 ? min / minW : 0, floorY = minH > 0 ? min / minH : 0; // smallest child >= min
+  let sx = 1, sy = 1, ax = b.x1, ay = b.y1;
+  if (bw > 0 && edge.r) { sx = Math.max(floorX, (bw + dx) / bw); }              // drag right → left edge anchored
+  else if (bw > 0 && edge.l) { sx = Math.max(floorX, (bw - dx) / bw); ax = b.x2; } // drag left → right edge anchored
+  if (bh > 0 && edge.b) { sy = Math.max(floorY, (bh + dy) / bh); }             // drag bottom → top edge anchored
+  else if (bh > 0 && edge.t) { sy = Math.max(floorY, (bh - dy) / bh); ay = b.y2; } // drag top → bottom edge anchored
+  return (elements || []).map((el) => (el && sel.has(el.id)
+    ? { ...el, x: Math.round(ax + (el.x - ax) * sx), y: Math.round(ay + (el.y - ay) * sy), w: Math.round(el.w * sx), h: Math.round(el.h * sy) }
+    : el));
+}
+
+// Rotate the selection by `angleDelta` degrees about `center` ([cx, cy], the
+// bbox centre captured at drag start): each child orbits the centre and its own
+// `rot` advances by the delta. Applied to the pre-drag elements each move, so
+// the total delta doesn't compound. Fewer than two → still valid (rotates one).
+export function rotateGroup(elements, ids, angleDelta, center) {
+  const sel = new Set(ids || []);
+  const [cx, cy] = center;
+  const t = (angleDelta * Math.PI) / 180;
+  return (elements || []).map((el) => {
+    if (!el || !sel.has(el.id)) return el;
+    const [ox, oy] = rotateVec(el.x + el.w / 2 - cx, el.y + el.h / 2 - cy, t); // orbit the centre offset
+    const rot = (((Math.round((el.rot || 0) + angleDelta)) % 360) + 360) % 360;
+    return { ...el, x: Math.round(cx + ox - el.w / 2), y: Math.round(cy + oy - el.h / 2), rot };
+  });
 }
 
 // Z-order: move element `id` within `elements` (paint order = array order, so

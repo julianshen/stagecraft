@@ -269,12 +269,15 @@ describe('CanvasSlide drag', () => {
     expect(onUpdateElements).not.toHaveBeenCalled();
   });
 
-  it('shows no rotate handle when multiple elements are selected', () => {
+  it('shows the GROUP transform frame (resize handles + rotate knob) for a multi-selection', () => {
+    // Was "no handles for 2+"; the group-transform feature now frames the whole
+    // selection. The single-element frame still requires exactly one selected.
     const { container } = render(
       <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
         selectedIds={['a', 'b']} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} />,
     );
-    expect(container.querySelector('.rotate-handle')).toBeNull();
+    expect(container.querySelector('.rotate-handle')).toBeTruthy();
+    expect(container.querySelectorAll('[data-handle]').length).toBe(8);
   });
 
   it('rotates the selection frame and hit box with a rotated element', () => {
@@ -527,5 +530,40 @@ describe('CanvasSlide draw tool', () => {
     const { container } = renderDraw(vi.fn());
     expect(container.querySelector('.elements-overlay').style.cursor).toBe('crosshair');
     expect(hits(container)[0].style.pointerEvents).toBe('none'); // draw over elements, don't grab them
+  });
+});
+
+describe('CanvasSlide group transform (2+ selection)', () => {
+  const gslide = () => ({ id: 's1', elements: [
+    { id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 100 },
+    { id: 'b', type: 'rect', x: 200, y: 0, w: 100, h: 100 },
+  ] });
+  const renderGroup = (onUpdateElements) => render(
+    <CanvasSlide slide={gslide()} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+      selectedIds={['a', 'b']} onSelectElement={vi.fn()} onUpdateElements={onUpdateElements} />,
+  );
+
+  it('shows 8 resize handles + a rotate knob on the group bounding box', () => {
+    const { container } = renderGroup(vi.fn());
+    expect(container.querySelectorAll('[data-handle]').length).toBe(8);
+    expect(container.querySelector('.rotate-handle')).toBeTruthy();
+  });
+
+  it('dragging a group resize handle scales every selected element', () => {
+    const onUpdateElements = vi.fn();
+    const { container } = renderGroup(onUpdateElements);
+    drag(container.querySelector('[data-handle="se"]'), { dx: 60, dy: 0 });
+    const map = onUpdateElements.mock.calls[0][0];
+    expect([...map.keys()].sort()).toEqual(['a', 'b']); // the whole group committed
+    expect(map.get('a').w).toBeGreaterThan(100);          // scaled up
+  });
+
+  it('dragging the group rotate knob rotates every selected element', () => {
+    const onUpdateElements = vi.fn();
+    const { container } = renderGroup(onUpdateElements);
+    drag(container.querySelector('.rotate-handle'), { dx: 50, dy: 50 });
+    const map = onUpdateElements.mock.calls[0][0];
+    expect([...map.keys()].sort()).toEqual(['a', 'b']);
+    expect(typeof map.get('a').rot).toBe('number'); // rotateGroup stamped a rot (was absent)
   });
 });
