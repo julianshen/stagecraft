@@ -644,3 +644,71 @@ describe('CanvasSlide group transform (2+ selection)', () => {
     expect(onUpdateElements).not.toHaveBeenCalled(); // final position == start → no net change
   });
 });
+
+describe('CanvasSlide pen tool', () => {
+  // With drawTool="pen", a freehand sweep on the canvas captures a polyline and
+  // commits it as a `path` element via onDrawElement (slide coords = clientX/Y: scale 1).
+  const renderPen = (onDrawElement) => render(
+    <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+      selectedIds={[]} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} onMarqueeSelect={vi.fn()}
+      drawTool="pen" onDrawElement={onDrawElement} />,
+  );
+
+  it('captures a freehand stroke as a path element (bbox + relative points)', () => {
+    const onDrawElement = vi.fn();
+    const { container } = renderPen(onDrawElement);
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 100, clientY: 100 });
+    fire(window, 'pointermove', { clientX: 200, clientY: 150 });
+    fire(window, 'pointermove', { clientX: 150, clientY: 300 });
+    fire(window, 'pointerup', { clientX: 150, clientY: 300 });
+    expect(onDrawElement).toHaveBeenCalledTimes(1);
+    const [type, opts] = onDrawElement.mock.calls[0];
+    expect(type).toBe('path');
+    expect(opts).toMatchObject({ x: 100, y: 100, w: 100, h: 200 }); // bbox of the stroke
+    expect(opts.points.length).toBeGreaterThanOrEqual(3);            // start + moves + release
+    expect(opts.points[0]).toEqual([0, 0]);                          // first point at the bbox origin
+  });
+
+  it('shows a live polyline preview while drawing, cleared on release', () => {
+    const { container } = renderPen(vi.fn());
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 100, clientY: 100 });
+    fire(window, 'pointermove', { clientX: 200, clientY: 150 });
+    expect(container.querySelector('polyline')).toBeTruthy(); // preview visible mid-stroke
+    fire(window, 'pointerup', { clientX: 200, clientY: 150 });
+    expect(container.querySelector('polyline')).toBeNull();   // cleared on release
+  });
+
+  it('decimates near-duplicate points so the stroke is not one-point-per-event', () => {
+    const onDrawElement = vi.fn();
+    const { container } = renderPen(onDrawElement);
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 100, clientY: 100 });
+    fire(window, 'pointermove', { clientX: 101, clientY: 100 }); // +1px → below the gap, dropped
+    fire(window, 'pointermove', { clientX: 102, clientY: 101 }); // still below the gap from start, dropped
+    fire(window, 'pointermove', { clientX: 300, clientY: 100 }); // far → kept
+    fire(window, 'pointerup', { clientX: 300, clientY: 100 });   // == last kept → not re-pushed
+    expect(onDrawElement.mock.calls[0][1].points).toHaveLength(2); // start + the far point only
+  });
+
+  it('treats a click (no sweep) as nothing, not a path', () => {
+    const onDrawElement = vi.fn();
+    const { container } = renderPen(onDrawElement);
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 100, clientY: 100 });
+    fire(window, 'pointerup', { clientX: 101, clientY: 101 }); // < 3px → a click
+    expect(onDrawElement).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pen stroke on pointercancel without creating a path', () => {
+    const onDrawElement = vi.fn();
+    const { container } = renderPen(onDrawElement);
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 100, clientY: 100 });
+    fire(window, 'pointermove', { clientX: 200, clientY: 150 });
+    fire(window, 'pointercancel', {});
+    expect(onDrawElement).not.toHaveBeenCalled();
+    expect(container.querySelector('polyline')).toBeNull();
+  });
+});

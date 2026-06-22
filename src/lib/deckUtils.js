@@ -178,7 +178,10 @@ const ownFieldOk = (k, v) => ownValidate(ELEMENT_FIELD_OK, k, v);
 // a fill-less element's canvas default diverges from the export (a shape renders
 // indigo vs #15171C; text/line render the editor theme's `--ink` — light under
 // the dark theme — vs #15171C). Only `image` has no fill.
-const requiresFill = (type) => isKnownElementType(type) && type !== 'image' && type !== 'path';
+// A fill-bearing element type (text colour / shape fill). image carries a `src`
+// and path is stroked, not filled. Exported so the inspector's Fill control and
+// this gate share one rule (single-sourced, like the shape predicates).
+export const requiresFill = (type) => isKnownElementType(type) && type !== 'image' && type !== 'path';
 const isValidElement = (el) => isPlainObject(el)
   && isStr(el.id)                                                 // id required — every consumer keys/selects by it
   && isKnownElementType(el.type)                                  // type present + known

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
-import { moveElement, resizeElement, elementsInMarquee, rotateElement, hitBox, snap, snapDrawnBox, expandToGroups, resizeGroup, rotateGroup, selectionBounds } from '../../lib/elements.js';
+import { moveElement, resizeElement, elementsInMarquee, rotateElement, hitBox, snap, snapDrawnBox, expandToGroups, resizeGroup, rotateGroup, selectionBounds, pathFromStroke } from '../../lib/elements.js';
 import { alignSnap } from '../../lib/align.js';
 
 const HANDLE_CURSOR = {
@@ -12,6 +12,9 @@ const HANDLE_POS = {
   w: [0, 0.5], e: [1, 0.5],
   sw: [0, 1], s: [0.5, 1], se: [1, 1],
 };
+// Min slide-px between kept freehand points — a pen stroke decimates to this gap
+// so a slow drag doesn't store one vertex per raw pointermove.
+const PEN_MIN_GAP = 4;
 // Rotate a box about its centre — shared by the hit-box outline and the
 // selection frame so both track the rotated content identically (one source of
 // truth for the transform + origin).
@@ -90,6 +93,8 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   const [frameTilt, setFrameTilt] = useState(null);
   // Live marquee rectangle (slide coords) while rubber-band selecting on empty space.
   const [marquee, setMarquee] = useState(null);
+  // Live freehand stroke (slide-coord points) while drawing with the pen tool.
+  const [penStroke, setPenStroke] = useState(null);
   // Active alignment guide lines (slide coords) while dragging a single element.
   const [guides, setGuides] = useState([]);
   const dragCleanup = useRef(null);
@@ -404,6 +409,56 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     }
   }
 
+  // Pen tool: capture a freehand stroke (raw slide-coord points) and commit it as
+  // a `path` element on release (pathFromStroke → box + normalized points). A live
+  // polyline preview tracks the stroke; a click / sub-threshold tremor draws
+  // nothing, matching the other draw gestures.
+  function startPen(e) {
+    if (dragCleanup.current || e.button !== 0) return;
+    const frame = frameRef.current;
+    if (!frame) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* unsupported */ }
+    const rect = frame.getBoundingClientRect();
+    const startX = e.clientX, startY = e.clientY;
+    const swept = (cx, cy) => Math.abs(cx - startX) > 3 || Math.abs(cy - startY) > 3;
+    const pts = [toSlide(rect, startX, startY)];
+    let hasSwept = false;
+    // Decimate: keep a point only once it's PEN_MIN_GAP slide-px from the last kept
+    // one, so a slow stroke doesn't store a vertex per raw pointermove (which would
+    // bloat the polyline + custGeom export and churn the per-move preview).
+    const farEnough = (p) => Math.hypot(p.x - pts[pts.length - 1].x, p.y - pts[pts.length - 1].y) >= PEN_MIN_GAP;
+    setPenStroke([...pts]);
+    function move(ev) {
+      if (swept(ev.clientX, ev.clientY)) hasSwept = true;
+      const p = toSlide(rect, ev.clientX, ev.clientY);
+      if (!farEnough(p)) return;
+      pts.push(p);
+      setPenStroke([...pts]);
+    }
+    function removeListeners() {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      dragCleanup.current = null;
+      setPenStroke(null);
+    }
+    function up(ev) {
+      removeListeners();
+      if (!hasSwept && !swept(ev.clientX, ev.clientY)) return; // a click — draws nothing
+      const p = toSlide(rect, ev.clientX, ev.clientY); // the release is authoritative (a no-move flick)
+      if (farEnough(p)) pts.push(p);
+      if (pts.length < 2) return; // nothing past the start survived decimation — draw nothing
+      onDrawElement?.('path', pathFromStroke(pts.map((q) => [q.x, q.y])));
+    }
+    function cancel() { removeListeners(); }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    dragCleanup.current = removeListeners;
+  }
+
   // Draw a new element: with a draw tool active, a sweep on the canvas defines
   // the element's box; a click (no sweep) drops a default-size one at the point.
   // Reuses the marquee rectangle as the live preview; commits via onDrawElement.
@@ -453,7 +508,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     if (dragCleanup.current) return;
     // Primary button only — let right/middle clicks through to the context menu.
     if (e.button !== 0) return;
-    // A draw tool turns the empty-canvas sweep into element creation instead.
+    // A draw tool turns the empty-canvas sweep into element creation instead. The
+    // pen captures a freehand polyline; the shape tools sweep a box.
+    if (drawTool === 'pen') return startPen(e);
     if (drawTool) return startDraw(e, drawTool);
     const frame = frameRef.current;
     if (!frame) { onSelectElement?.(null); return; }
@@ -584,6 +641,17 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
             }}
           />
         ))}
+
+        {/* Live freehand preview while the pen draws (screen px = slide × scale);
+            it commits to a `path` element on release. */}
+        {penStroke && penStroke.length >= 2 && (
+          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
+            <polyline
+              points={penStroke.map((p) => `${p.x * scale},${p.y * scale}`).join(' ')}
+              fill="none" stroke="oklch(0.62 0.2 265)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"
+            />
+          </svg>
+        )}
 
         {marqueeBox && (
           <div

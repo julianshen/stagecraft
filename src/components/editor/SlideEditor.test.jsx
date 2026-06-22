@@ -79,6 +79,16 @@ describe('SlideEditor align toolbar', () => {
   });
 });
 
+describe('SlideEditor pen tool', () => {
+  it('activates pen draw mode on the canvas when the Pen tool is selected', () => {
+    const { getByTitle, container } = renderEditor({});
+    expect(container.querySelector('.elements-overlay').style.cursor).not.toBe('crosshair'); // select mode
+    fireEvent.click(getByTitle('Pen · P'));
+    // The Pen tool must reach the canvas as a draw tool (crosshair cursor + draw-through hit boxes).
+    expect(container.querySelector('.elements-overlay').style.cursor).toBe('crosshair');
+  });
+});
+
 describe('SlideEditor undo/redo toolbar', () => {
   it('the Undo button calls onUndo and Redo calls onRedo', () => {
     const onUndo = vi.fn(); const onRedo = vi.fn();

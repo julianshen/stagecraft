@@ -4,6 +4,7 @@ import { FieldRow, InputGroup, Seg } from '../../ui/Primitives.jsx';
 import { toHex } from '../../../lib/color.js';
 import { isStrokeableShape, isFillableShape } from '../../../lib/shapes.js';
 import { DEFAULT_SHADOW, DEFAULT_GRADIENT } from '../../../lib/elements.js';
+import { requiresFill } from '../../../lib/deckUtils.js';
 
 export default function PropsPanel({ selected, setSelected, count = 0 }) {
   if (count > 1) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{count} elements selected — drag to move them together, or align via the toolbar.</div>;
@@ -45,7 +46,7 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
         </div>
       )}
 
-      {selected.type !== 'image' && (
+      {requiresFill(selected.type) && (
       <div className="pane-section">
         <h4>Fill</h4>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
@@ -94,7 +95,9 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
         )}
       </div>
       )}
-      {isStrokeableShape(selected.type) && (
+      {/* A path is stroked, not filled — its colour/width live in stroke/strokeWidth,
+          so it reuses this Stroke section (box shapes show it as an optional outline). */}
+      {(isStrokeableShape(selected.type) || selected.type === 'path') && (
       <div className="pane-section">
         <h4>Stroke</h4>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
