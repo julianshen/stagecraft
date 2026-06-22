@@ -147,6 +147,7 @@ function addElements(pptx, sld, slide) {
       const pts = (Array.isArray(el.points) ? el.points : []).filter(isFinitePoint).map(([nx, ny], i) => ({
         x: nx * geo.w, y: ny * geo.h, ...(i === 0 ? { moveTo: true } : {}),
       }));
+      if (pts.length < 2) continue; // a 0/1-point path is degenerate (a corrupt custGeom); the canvas draws nothing either
       const lw = PT(num(el.strokeWidth, 2));
       // No `fill` key → pptxgen emits <a:noFill/> (pptxgen.cjs.js:5471), i.e. an
       // open stroke matching the canvas polyline ({type:'none'} would instead emit

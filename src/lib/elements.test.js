@@ -721,6 +721,16 @@ describe('pathFromStroke', () => {
     });
   });
 
+  it('returns a safe fallback for an empty or all-malformed stroke (no Infinity, no throw)', () => {
+    // An exported helper shouldn't emit Infinity geometry or throw on junk input —
+    // filter to finite pairs and fall back when none remain (the pen never feeds
+    // this, but the gate would reject an Infinity-positioned element anyway).
+    const fallback = { x: 0, y: 0, w: MIN_SIZE, h: MIN_SIZE, points: [] };
+    expect(pathFromStroke([])).toEqual(fallback);
+    expect(() => pathFromStroke([null, [NaN, 1]])).not.toThrow();
+    expect(pathFromStroke([null, [NaN, 1]])).toEqual(fallback);
+  });
+
   it('handles a long stroke without a spread/argument-limit overflow', () => {
     // The pen feeds raw pointermove points — a real stroke is thousands of points.
     // Math.min(...xs) over that throws RangeError; the bbox must fold, not spread.

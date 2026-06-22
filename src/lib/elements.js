@@ -134,10 +134,14 @@ export const isFinitePoint = (p) => Array.isArray(p) && Number.isFinite(p[0]) &&
 // renderer/export scale them back into the box. A zero-range axis (a perfectly
 // straight stroke) floors to MIN_SIZE and collapses that axis to 0 (no NaN).
 export function pathFromStroke(pts) {
+  // Drop junk points up front (an exported helper shouldn't throw on a null entry
+  // or emit Infinity geometry) and fall back when none remain.
+  const valid = (Array.isArray(pts) ? pts : []).filter(isFinitePoint);
+  if (valid.length === 0) return { x: 0, y: 0, w: MIN_SIZE, h: MIN_SIZE, points: [] };
   // Fold the bbox in one pass — never spread the points into Math.min/max, which
   // throws RangeError once a stroke runs to the thousands of points a pen emits.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const [px, py] of pts) {
+  for (const [px, py] of valid) {
     if (px < minX) minX = px;
     if (px > maxX) maxX = px;
     if (py < minY) minY = py;
@@ -149,7 +153,7 @@ export function pathFromStroke(pts) {
     x: minX, y: minY,
     w: Math.max(rw, MIN_SIZE),
     h: Math.max(rh, MIN_SIZE),
-    points: pts.map((p) => [norm(p[0], minX, rw), norm(p[1], minY, rh)]),
+    points: valid.map((p) => [norm(p[0], minX, rw), norm(p[1], minY, rh)]),
   };
 }
 

@@ -234,6 +234,14 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(shape.o.line).toBeUndefined();
   });
 
+  it('skips exporting a path with fewer than 2 valid points (matches the blank canvas)', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], null], stroke: '#111', strokeWidth: 2 },
+    ]));
+    // only 1 valid point after filtering → a degenerate custGeom; skip it (the canvas draws nothing either)
+    expect(last().shapes.find((s) => s.type === 'custGeom')).toBeUndefined();
+  });
+
   it('maps shape types to pptx ShapeType and emits the fill colour', async () => {
     await exportToPPTX(elemDeck([
       { id: 'r', type: 'shape', x: 0, y: 0, w: 192, h: 192, fill: '#ff0000' }, // 'shape' = the menu's Rectangle
