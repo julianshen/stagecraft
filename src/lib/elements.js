@@ -330,7 +330,7 @@ export function rotateGroup(elements, ids, angleDelta, center) {
   return (elements || []).map((el) => {
     if (!el || !sel.has(el.id)) return el;
     const [ox, oy] = rotateVec(el.x + el.w / 2 - cx, el.y + el.h / 2 - cy, t); // orbit the centre offset
-    const rot = (((Math.round((el.rot || 0) + angleDelta)) % 360) + 360) % 360;
+    const rot = (((Math.round((+el.rot || 0) + angleDelta)) % 360) + 360) % 360; // coerce (a string rot would concatenate)
     return { ...el, x: Math.round(cx + ox - el.w / 2), y: Math.round(cy + oy - el.h / 2), rot };
   });
 }

@@ -267,7 +267,7 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
 
   // Only the selected elements out of a full transformed array (for preview/commit).
   function selectedMap(next) {
-    return new Map(next.filter((el) => selectedSet.has(el.id)).map((el) => [el.id, el]));
+    return new Map(next.filter((el) => el && selectedSet.has(el.id)).map((el) => [el.id, el]));
   }
   // Shared pointer scaffold for the group bbox handles: tracks the drag in slide
   // space, previews via setDrag, commits the CHANGED selection on pointer-up.

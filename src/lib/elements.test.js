@@ -911,6 +911,10 @@ describe('element grouping', () => {
       const out = rotateGroup([{ id: 'a', x: 0, y: 0, w: 10, h: 10, rot: 350 }], ['a'], 20, [5, 5]);
       expect(out[0].rot).toBe(10); // 350 + 20 = 370 → 10
     });
+    it('coerces a string rot (gate-bypass) numerically rather than concatenating', () => {
+      const out = rotateGroup([{ id: 'a', x: 0, y: 0, w: 10, h: 10, rot: '45' }], ['a'], 0, [5, 5]);
+      expect(out[0].rot).toBe(45); // +'45' + 0 = 45, not '45'+0 = '450' → 90
+    });
     it('leaves unselected elements untouched', () => {
       const out = rotateGroup([{ id: 'a', x: 0, y: 0, w: 10, h: 10 }, { id: 'z', x: 50, y: 50, w: 10, h: 10 }], ['a'], 90, [5, 5]);
       expect(out.find((e) => e.id === 'z')).toMatchObject({ x: 50, y: 50 });
