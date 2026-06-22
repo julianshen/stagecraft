@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
+import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -828,6 +828,96 @@ describe('element grouping', () => {
       const input = els();
       const out = groupElements(input, ['a'], 'g9');
       expect(out.find((e) => e.id === 'c')).toBe(input.find((e) => e.id === 'c'));
+    });
+  });
+
+  describe('resizeGroup', () => {
+    // Two 100×100 boxes side by side: bbox 0,0 → 300,100 (bw=300, bh=100).
+    const pair = () => [
+      { id: 'a', x: 0, y: 0, w: 100, h: 100 },
+      { id: 'b', x: 200, y: 0, w: 100, h: 100 },
+    ];
+    it("scales children proportionally from the anchored (opposite) edge — 'se' doubles width from the left", () => {
+      const out = resizeGroup(pair(), ['a', 'b'], 'se', 300, 0); // bw 300 + 300 = 600 → sx 2
+      const byId = Object.fromEntries(out.map((e) => [e.id, e]));
+      expect(byId.a).toMatchObject({ x: 0, w: 200, y: 0, h: 100 });   // left-anchored: a stays at x0, w doubles
+      expect(byId.b).toMatchObject({ x: 400, w: 200 });               // b's offset (200) doubles → 400
+    });
+    it("anchors the bottom-right for an 'nw' drag (scales toward the fixed corner)", () => {
+      const out = resizeGroup(pair(), ['a', 'b'], 'nw', 150, 0); // left moves +150 → bw 150 → sx 0.5, anchor x2=300
+      const byId = Object.fromEntries(out.map((e) => [e.id, e]));
+      expect(byId.b).toMatchObject({ x: 300 - 50, w: 50 }); // b right edge (300) fixed; w halves to 50 → x 250
+      expect(byId.a).toMatchObject({ x: 150, w: 50 });      // a scales toward the right anchor
+    });
+    it('leaves the cross axis untouched and only scales the dragged axis', () => {
+      const out = resizeGroup(pair(), ['a', 'b'], 'e', 300, 999); // only the right edge → sy stays 1
+      expect(out.find((e) => e.id === 'a')).toMatchObject({ h: 100, y: 0 }); // dy ignored on the e handle
+    });
+    it('floors the scale so the SMALLEST child stays >= MIN_SIZE (no collapse/invert)', () => {
+      // a is 100 wide; a hard shrink would drive it to 0 without the per-child floor.
+      const out = resizeGroup(pair(), ['a', 'b'], 'e', -10000, 0); // would invert
+      expect(out.find((e) => e.id === 'a').w).toBeGreaterThanOrEqual(MIN_SIZE);
+    });
+    it('protects a small child in a large group (smallest stays >= MIN_SIZE)', () => {
+      const mixed = [{ id: 'big', x: 0, y: 0, w: 400, h: 100 }, { id: 'tiny', x: 600, y: 0, w: 40, h: 100 }];
+      const out = resizeGroup(mixed, ['big', 'tiny'], 'e', -600, 0); // shrink hard
+      expect(out.find((e) => e.id === 'tiny').w).toBeGreaterThanOrEqual(MIN_SIZE);
+    });
+    it("uses each child's own height floor — a thin line doesn't force the group to double", () => {
+      // A line's height floor is MIN_LINE_THICKNESS, not MIN_SIZE; otherwise an 8px
+      // rule would force sy >= 16/8 = 2 and double every element on a vertical drag.
+      const withLine = [
+        { id: 'box', type: 'rect', x: 0, y: 0, w: 100, h: 100 },
+        { id: 'line', type: 'line', x: 0, y: 200, w: 100, h: 8 },
+      ];
+      const out = resizeGroup(withLine, ['box', 'line'], 's', 10, 0); // small south drag
+      expect(out.find((e) => e.id === 'box').h).toBeLessThan(150); // ~105, NOT doubled to 200
+    });
+    it('does not divide by a zero-extent bbox (no NaN/Infinity geometry)', () => {
+      // Two stacked zero-width elements (gate-bypass): bw = 0. Must not produce NaN.
+      const zero = [{ id: 'a', x: 50, y: 0, w: 0, h: 100 }, { id: 'b', x: 50, y: 200, w: 0, h: 100 }];
+      const out = resizeGroup(zero, ['a', 'b'], 'e', 80, 0);
+      expect(Number.isFinite(out.find((e) => e.id === 'a').w)).toBe(true);
+      expect(Number.isFinite(out.find((e) => e.id === 'a').x)).toBe(true);
+    });
+    it('returns the input unchanged for fewer than two selected', () => {
+      const els = pair();
+      expect(resizeGroup(els, ['a'], 'se', 50, 50)).toBe(els);
+    });
+  });
+
+  describe('rotateGroup', () => {
+    // a left, b right; bbox center [150, 50].
+    const pair = () => [
+      { id: 'a', x: 0, y: 0, w: 100, h: 100 },
+      { id: 'b', x: 200, y: 0, w: 100, h: 100 },
+    ];
+    it('orbits each child around the group centre and adds the delta to its rot (90°)', () => {
+      const out = rotateGroup(pair(), ['a', 'b'], 90, [150, 50]);
+      const byId = Object.fromEntries(out.map((e) => [e.id, e]));
+      // a centre (50,50) → (150,-50); b centre (250,50) → (150,150). Both rot 90.
+      expect(byId.a).toMatchObject({ x: 100, y: -100, rot: 90 });
+      expect(byId.b).toMatchObject({ x: 100, y: 100, rot: 90 });
+    });
+    it('is 360°-periodic, so an atan2 delta that wraps past ±180° gives the same result (no snap)', () => {
+      // The knob handler computes a raw atan2 delta in (-180,180]; crossing the
+      // boundary jumps the VALUE by ~360°, but rotateGroup is mod-360, so the
+      // geometry is identical — there is no visible snap / wrong commit.
+      const at = (d) => rotateGroup(pair(), ['a', 'b'], d, [150, 50]);
+      expect(at(270)).toEqual(at(-90));
+      expect(at(269)).toEqual(at(-91));
+    });
+    it('accumulates onto an existing rot and normalises to [0,360)', () => {
+      const out = rotateGroup([{ id: 'a', x: 0, y: 0, w: 10, h: 10, rot: 350 }], ['a'], 20, [5, 5]);
+      expect(out[0].rot).toBe(10); // 350 + 20 = 370 → 10
+    });
+    it('coerces a string rot (gate-bypass) numerically rather than concatenating', () => {
+      const out = rotateGroup([{ id: 'a', x: 0, y: 0, w: 10, h: 10, rot: '45' }], ['a'], 0, [5, 5]);
+      expect(out[0].rot).toBe(45); // +'45' + 0 = 45, not '45'+0 = '450' → 90
+    });
+    it('leaves unselected elements untouched', () => {
+      const out = rotateGroup([{ id: 'a', x: 0, y: 0, w: 10, h: 10 }, { id: 'z', x: 50, y: 50, w: 10, h: 10 }], ['a'], 90, [5, 5]);
+      expect(out.find((e) => e.id === 'z')).toMatchObject({ x: 50, y: 50 });
     });
   });
 

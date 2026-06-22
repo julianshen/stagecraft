@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
-import { moveElement, resizeElement, elementsInMarquee, rotateElement, hitBox, snap, snapDrawnBox, expandToGroups } from '../../lib/elements.js';
+import { moveElement, resizeElement, elementsInMarquee, rotateElement, hitBox, snap, snapDrawnBox, expandToGroups, resizeGroup, rotateGroup, selectionBounds } from '../../lib/elements.js';
 import { alignSnap } from '../../lib/align.js';
 
 const HANDLE_CURSOR = {
@@ -16,6 +16,33 @@ const HANDLE_POS = {
 // selection frame so both track the rotated content identically (one source of
 // truth for the transform + origin).
 const rotStyle = (rot) => (rot ? { transform: `rotate(${rot}deg)`, transformOrigin: 'center' } : null);
+
+// The 8 resize handles + rotate knob inside a selection frame (one element or a
+// group). The enclosing frame positions/rotates the box; this fills it.
+// onResize(handle, event) and onRotate(event) wire the gesture to either the
+// single-element (resizeElement/rotateElement) or group (resizeGroup/rotateGroup) path.
+function TransformHandles({ w, h, onResize, onRotate }) {
+  return (
+    <>
+      {Object.entries(HANDLE_POS).map(([hk, [fx, fy]]) => (
+        <div
+          key={hk}
+          className="sel-handle"
+          data-handle={hk}
+          style={{ position: 'absolute', left: w * fx - 4, top: h * fy - 4, cursor: HANDLE_CURSOR[hk], pointerEvents: 'auto' }}
+          onPointerDown={(e) => onResize(hk, e)}
+        />
+      ))}
+      {/* stem from the top-center handle up to the rotate knob */}
+      <div style={{ position: 'absolute', left: w / 2 - 0.5, top: -22, width: 1, height: 22, background: 'oklch(0.62 0.2 265)' }} />
+      <div
+        className="rotate-handle"
+        style={{ position: 'absolute', left: w / 2 - 6, top: -28, width: 12, height: 12, borderRadius: '50%', border: '1.5px solid oklch(0.62 0.2 265)', background: 'white', cursor: 'grab', pointerEvents: 'auto' }}
+        onPointerDown={onRotate}
+      />
+    </>
+  );
+}
 
 // Normalize two sweep corners into a positive-size box — shared by the draw
 // gesture's commit and the marquee/draw preview rectangle.
@@ -86,6 +113,11 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   // Selection-frame box in screen px (only meaningful when there's a target).
   const fw = resizeTarget ? resizeTarget.w * scale : 0;
   const fh = resizeTarget ? resizeTarget.h * scale : 0;
+  // A 2+ selection gets a group transform frame: an axis-aligned bbox whose
+  // handles scale / rotate the whole selection as a unit (resizeGroup/rotateGroup).
+  const groupBounds = !drawTool && selected.length >= 2 ? selectionBounds(selected) : null;
+  const gw = groupBounds ? (groupBounds.x2 - groupBounds.x1) * scale : 0;
+  const gh = groupBounds ? (groupBounds.y2 - groupBounds.y1) * scale : 0;
   // The marquee/draw preview rectangle (slide coords), normalized from its corners.
   const marqueeBox = marquee ? boxFromCorners(marquee.x1, marquee.y1, marquee.x2, marquee.y2) : null;
 
@@ -231,6 +263,85 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', cancel);
     dragCleanup.current = removeListeners;
+  }
+
+  // Only the selected elements out of a full transformed array (for preview/commit).
+  function selectedMap(next) {
+    return new Map(next.filter((el) => el && selectedSet.has(el.id)).map((el) => [el.id, el]));
+  }
+  // Shared pointer scaffold for the group bbox handles: tracks the drag in slide
+  // space, previews via setDrag, commits the CHANGED selection on pointer-up.
+  // `computeMap` (current slide point, start slide point) → Map<id, transformed
+  // el>; `origin` is the pre-drag geometry, used to drop no-op writes (as startDrag does).
+  function beginGroupDrag(e, computeMap, origin) {
+    if (dragCleanup.current || e.button !== 0) return;
+    const frame = frameRef.current;
+    if (!frame) return;
+    e.stopPropagation();
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* unsupported */ }
+    const rect = frame.getBoundingClientRect();
+    const startX = e.clientX, startY = e.clientY;
+    const start = toSlide(rect, startX, startY);
+    const swept = (cx, cy) => Math.abs(cx - startX) > 3 || Math.abs(cy - startY) > 3;
+    let latest = null, hasSwept = false; // committed on pointer-up only once a real drag has swept
+    function move(ev) {
+      if (!swept(ev.clientX, ev.clientY)) return;
+      hasSwept = true;
+      latest = computeMap(toSlide(rect, ev.clientX, ev.clientY), start);
+      setDrag(latest);
+    }
+    function removeListeners() {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      dragCleanup.current = null;
+    }
+    function up(ev) {
+      removeListeners();
+      setDrag(null);
+      const releaseHasCoords = Number.isFinite(ev.clientX) && Number.isFinite(ev.clientY);
+      // A real gesture either swept during the drag or releases past the threshold
+      // (a no-move flick); a pure click / sub-threshold tremor never commits.
+      if (!hasSwept && !(releaseHasCoords && swept(ev.clientX, ev.clientY))) return;
+      // Recompute from the release when it carries coords — so "drag out then back
+      // to start" recomputes to a no-op the origin filter drops; a coordless flick
+      // keeps the last previewed transform.
+      if (releaseHasCoords) latest = computeMap(toSlide(rect, ev.clientX, ev.clientY), start);
+      if (!latest) return;
+      // Commit only elements whose geometry actually changed — a swept-but-net-
+      // zero drag (or a snap-back) shouldn't write the deck / push an undo entry.
+      const moved = new Map();
+      latest.forEach((el, id) => {
+        const o = origin?.get(id);
+        // Normalize rot (a zero-delta rotation stamps rot:0 on an unrotated
+        // element — 0 == "no rot", not a change), like the single-element path.
+        if (!o || el.x !== o.x || el.y !== o.y || el.w !== o.w || el.h !== o.h || (el.rot ?? 0) !== (o.rot ?? 0)) moved.set(id, el);
+      });
+      if (moved.size) onUpdateElements?.(moved);
+    }
+    function cancel() { removeListeners(); setDrag(null); }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    dragCleanup.current = removeListeners;
+  }
+  // Group resize: the slide-space drag delta scales every selected child from
+  // the edge opposite the dragged handle (resizeGroup operates on the bbox).
+  function startGroupResize(e, handle) {
+    const base = baseElements, ids = selectedIds;
+    beginGroupDrag(e, (p, start) => selectedMap(resizeGroup(base, ids, handle, p.x - start.x, p.y - start.y)), selectedMap(base));
+  }
+  // Group rotate: the angle the pointer sweeps about the bbox centre becomes the
+  // delta applied to every selected child (orbit + own rot) via rotateGroup.
+  function startGroupRotate(e) {
+    const base = baseElements, ids = selectedIds;
+    const origin = selectedMap(base);
+    const b = selectionBounds(selected), center = [b.cx, b.cy];
+    beginGroupDrag(e, (p, start) => {
+      const delta = (Math.atan2(p.y - center[1], p.x - center[0]) - Math.atan2(start.y - center[1], start.x - center[0])) * 180 / Math.PI;
+      return selectedMap(rotateGroup(base, ids, delta, center));
+    }, origin);
   }
 
   // The interaction overlay sits above the slide, so a double-click on a text
@@ -421,43 +532,23 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
               pointerEvents: 'none',
             }}
           >
-            {Object.entries(HANDLE_POS).map(([h, [fx, fy]]) => (
-              <div
-                key={h}
-                className="sel-handle"
-                data-handle={h}
-                style={{
-                  position: 'absolute',
-                  left: fw * fx - 4, top: fh * fy - 4,
-                  cursor: HANDLE_CURSOR[h],
-                  pointerEvents: 'auto',
-                }}
-                onPointerDown={(e) => startResize(e, resizeTarget, h)}
-              />
-            ))}
-            {/* stem from the top-center handle up to the rotate knob */}
-            <div
-              style={{
-                position: 'absolute',
-                left: fw / 2 - 0.5, top: -22,
-                width: 1, height: 22,
-                background: 'oklch(0.62 0.2 265)',
-              }}
-            />
-            <div
-              className="rotate-handle"
-              style={{
-                position: 'absolute',
-                left: fw / 2 - 6, top: -28,
-                width: 12, height: 12,
-                borderRadius: '50%',
-                border: '1.5px solid oklch(0.62 0.2 265)',
-                background: 'white',
-                cursor: 'grab',
-                pointerEvents: 'auto',
-              }}
-              onPointerDown={(e) => startRotate(e, resizeTarget)}
-            />
+            <TransformHandles w={fw} h={fh} onResize={(h, e) => startResize(e, resizeTarget, h)} onRotate={(e) => startRotate(e, resizeTarget)} />
+          </div>
+        )}
+
+        {/* Group transform frame: an axis-aligned box around a 2+ selection. Its
+            handles scale (startGroupResize) and the knob rotates (startGroupRotate)
+            the whole selection as a unit. No rotStyle — children rotate individually. */}
+        {groupBounds && (
+          <div
+            style={{
+              position: 'absolute',
+              left: groupBounds.x1 * scale, top: groupBounds.y1 * scale,
+              width: gw, height: gh,
+              pointerEvents: 'none',
+            }}
+          >
+            <TransformHandles w={gw} h={gh} onResize={(h, e) => startGroupResize(e, h)} onRotate={startGroupRotate} />
           </div>
         )}
 
