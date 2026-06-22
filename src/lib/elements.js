@@ -298,8 +298,11 @@ export function resizeGroup(elements, ids, handle, dx, dy, { min = MIN_SIZE } = 
   const edge = HANDLE_EDGES[handle] || {};
   const b = selectionBounds(group);
   const bw = b.x2 - b.x1, bh = b.y2 - b.y1;
-  const minW = Math.min(...group.map((e) => e.w)), minH = Math.min(...group.map((e) => e.h));
-  const floorX = minW > 0 ? min / minW : 0, floorY = minH > 0 ? min / minH : 0; // smallest child >= min
+  // Floor each axis at the largest min/size ratio among the children, so every
+  // child stays >= its own min — heightMin keeps a thin line at MIN_LINE_THICKNESS
+  // rather than forcing the group up to MIN_SIZE. Zero-size children are skipped.
+  const floorX = group.reduce((m, e) => (e.w > 0 ? Math.max(m, min / e.w) : m), 0);
+  const floorY = group.reduce((m, e) => (e.h > 0 ? Math.max(m, heightMin(e, min) / e.h) : m), 0);
   let sx = 1, sy = 1, ax = b.x1, ay = b.y1;
   if (bw > 0 && edge.r) { sx = Math.max(floorX, (bw + dx) / bw); }              // drag right → left edge anchored
   else if (bw > 0 && edge.l) { sx = Math.max(floorX, (bw - dx) / bw); ax = b.x2; } // drag left → right edge anchored

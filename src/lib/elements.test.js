@@ -863,6 +863,16 @@ describe('element grouping', () => {
       const out = resizeGroup(mixed, ['big', 'tiny'], 'e', -600, 0); // shrink hard
       expect(out.find((e) => e.id === 'tiny').w).toBeGreaterThanOrEqual(MIN_SIZE);
     });
+    it("uses each child's own height floor — a thin line doesn't force the group to double", () => {
+      // A line's height floor is MIN_LINE_THICKNESS, not MIN_SIZE; otherwise an 8px
+      // rule would force sy >= 16/8 = 2 and double every element on a vertical drag.
+      const withLine = [
+        { id: 'box', type: 'rect', x: 0, y: 0, w: 100, h: 100 },
+        { id: 'line', type: 'line', x: 0, y: 200, w: 100, h: 8 },
+      ];
+      const out = resizeGroup(withLine, ['box', 'line'], 's', 10, 0); // small south drag
+      expect(out.find((e) => e.id === 'box').h).toBeLessThan(150); // ~105, NOT doubled to 200
+    });
     it('does not divide by a zero-extent bbox (no NaN/Infinity geometry)', () => {
       // Two stacked zero-width elements (gate-bypass): bw = 0. Must not produce NaN.
       const zero = [{ id: 'a', x: 50, y: 0, w: 0, h: 100 }, { id: 'b', x: 50, y: 200, w: 0, h: 100 }];
