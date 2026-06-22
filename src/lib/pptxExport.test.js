@@ -11,6 +11,7 @@ vi.mock('pptxgenjs', () => {
         rect: 'rect', roundRect: 'roundRect', line: 'line', ellipse: 'ellipse',
         triangle: 'triangle', diamond: 'diamond', pentagon: 'pentagon',
         hexagon: 'hexagon', star5: 'star5', rightArrow: 'rightArrow',
+        custGeom: 'custGeom', // freeform geometry — real pptxgen 3.12 enum value (pptxgen.cjs.js:242)
       };
     }
     addSlide() {
@@ -195,6 +196,42 @@ describe('exportToPPTX — free-form elements overlay', () => {
     ]));
     expect(last().images).toHaveLength(1);
     expect(last().images[0].o).toMatchObject({ data: 'data:image/png;base64,AAA', x: 0, y: 0, w: 2.5, h: 1.875 });
+  });
+
+  it('exports a path element as a custGeom shape: points scaled to box inches + a line, no fill', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'p', type: 'path', x: 192, y: 96, w: 384, h: 192, points: [[0, 0], [0.5, 1], [1, 0.5]], stroke: '#112233', strokeWidth: 4 },
+    ]));
+    const shape = last().shapes.find((s) => s.type === 'custGeom');
+    expect(shape).toBeTruthy();
+    expect(shape.o).toMatchObject({ x: 1, y: 0.5, w: 2, h: 1 }); // px→inch (192px = 1in)
+    // points: normalized × box-inches; first is moveTo, the rest lnTo (the serializer keys on this).
+    expect(shape.o.points).toEqual([
+      { x: 0, y: 0, moveTo: true }, // 0×2, 0×1
+      { x: 1, y: 1 },               // 0.5×2, 1×1
+      { x: 2, y: 0.5 },             // 1×2, 0.5×1
+    ]);
+    expect(shape.o.line).toMatchObject({ color: '112233', width: 1.5 }); // 4px → 1.5pt
+    // No `fill` key → pptxgen emits <a:noFill/> (an open stroke). Passing
+    // {type:'none'} instead emits an empty fill and the shape inherits a theme fill.
+    expect(shape.o.fill).toBeUndefined();
+  });
+
+  it('drops malformed points in a path export (no NaN coords, no crash)', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'p', type: 'path', x: 0, y: 0, w: 192, h: 192, points: [[0, 0], null, [1, 1]], stroke: '#111', strokeWidth: 2 },
+    ]));
+    const shape = last().shapes.find((s) => s.type === 'custGeom');
+    expect(shape.o.points).toEqual([{ x: 0, y: 0, moveTo: true }, { x: 1, y: 1 }]); // null dropped, no NaN
+  });
+
+  it('omits the line on a zero-width path so the export matches the invisible canvas stroke', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#111', strokeWidth: 0 },
+    ]));
+    const shape = last().shapes.find((s) => s.type === 'custGeom');
+    // width 0 → no line (pptxgen would otherwise emit <a:ln> + colour = a default ~0.75pt line, which the canvas does not draw)
+    expect(shape.o.line).toBeUndefined();
   });
 
   it('maps shape types to pptx ShapeType and emits the fill colour', async () => {

@@ -453,6 +453,18 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [img] }, 'text')).toEqual({ elements: [img] }); // image needs no fill
   });
 
+  it('accepts a path element (points + stroke, no fill) and rejects malformed/missing points', () => {
+    const path = { id: 'p', type: 'path', x: 0, y: 0, w: 200, h: 100, points: [[0, 0], [1, 1]], stroke: '#15171C', strokeWidth: 2 };
+    expect(sanitizeSlidePatch({ elements: [path] }, 'text')).toEqual({ elements: [path] }); // a freehand stroke needs no fill
+    // points must be ≥2 finite [x,y] pairs — the renderer/export need a polyline.
+    expect(sanitizeSlidePatch({ elements: [{ ...path, points: [[0, 0]] }] }, 'text')).toEqual({});        // <2 points
+    expect(sanitizeSlidePatch({ elements: [{ ...path, points: [[0], [1, 1]] }] }, 'text')).toEqual({});   // a non-pair point
+    const noPoints = { id: 'p', type: 'path', x: 0, y: 0, w: 200, h: 100, stroke: '#15171C', strokeWidth: 2 };
+    expect(sanitizeSlidePatch({ elements: [noPoints] }, 'text')).toEqual({});                              // a path with no points renders nothing
+    const noStroke = { id: 'p', type: 'path', x: 0, y: 0, w: 200, h: 100, points: [[0, 0], [1, 1]] };
+    expect(sanitizeSlidePatch({ elements: [noStroke] }, 'text')).toEqual({});                              // stroke is the path's colour — required (canvas --ink vs export #15171C otherwise)
+  });
+
   it('requires non-empty content on a text element (an empty one renders nothing)', () => {
     expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, fill: '#111' }] }, 'text')).toEqual({}); // no content
     expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, fill: '#111', content: '' }] }, 'text')).toEqual({}); // empty content

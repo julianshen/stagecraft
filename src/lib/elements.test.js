@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
+import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, pathFromStroke, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -69,6 +69,13 @@ describe('createElement', () => {
 
   it('defaults an image with no src to an empty string', () => {
     expect(createElement('image', { id: 'i2' }).src).toBe('');
+  });
+
+  it('creates a path element carrying its normalized points + a default stroke, no fill', () => {
+    const el = createElement('path', { id: 'p1', x: 100, y: 200, w: 200, h: 160, points: [[0, 0], [1, 1]] });
+    expect(el).toMatchObject({ id: 'p1', type: 'path', x: 104, y: 200, w: 200, h: 160, points: [[0, 0], [1, 1]], stroke: '#15171C', strokeWidth: 2 });
+    expect(el).not.toHaveProperty('fill');    // a freehand stroke is stroked, not filled
+    expect(el).not.toHaveProperty('content');
   });
 });
 
@@ -692,6 +699,37 @@ describe('snapDrawnBox', () => {
 
   it('floors a line\'s height at MIN_LINE_THICKNESS, not MIN_SIZE (its height is a thickness)', () => {
     expect(snapDrawnBox('line', { x: 0, y: 0, w: 320, h: 1 })).toEqual({ x: 0, y: 0, w: 320, h: MIN_LINE_THICKNESS });
+  });
+});
+
+describe('pathFromStroke', () => {
+  it('returns the stroke bbox and points normalized 0..1 relative to it', () => {
+    // A freehand stroke (absolute slide coords) → a box + points relative to it,
+    // so move/resize/rotate (which only touch x/y/w/h) carry the path untouched.
+    expect(pathFromStroke([[100, 100], [300, 200], [200, 300]])).toEqual({
+      x: 100, y: 100, w: 200, h: 200,
+      points: [[0, 0], [1, 0.5], [0.5, 1]],
+    });
+  });
+
+  it('floors a zero-range axis to MIN_SIZE and collapses that axis to 0', () => {
+    // A perfectly horizontal stroke has no height span — floor h so the box isn't
+    // degenerate, and map every y to 0 (no divide-by-zero).
+    expect(pathFromStroke([[10, 50], [110, 50]])).toEqual({
+      x: 10, y: 50, w: 100, h: MIN_SIZE,
+      points: [[0, 0], [1, 0]],
+    });
+  });
+
+  it('handles a long stroke without a spread/argument-limit overflow', () => {
+    // The pen feeds raw pointermove points — a real stroke is thousands of points.
+    // Math.min(...xs) over that throws RangeError; the bbox must fold, not spread.
+    const big = Array.from({ length: 200000 }, (_, i) => [i, i * 2]);
+    let res;
+    expect(() => { res = pathFromStroke(big); }).not.toThrow();
+    expect(res).toMatchObject({ x: 0, y: 0, w: 199999, h: 399998 });
+    expect(res.points[0]).toEqual([0, 0]);
+    expect(res.points[199999]).toEqual([1, 1]); // last point maps to the far corner
   });
 });
 

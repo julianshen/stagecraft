@@ -4,7 +4,7 @@ import { SEVERITY_HEX } from './riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
 import { resolveNotes } from '../data/deck.js';
 import { toHex, isHexColor, mixHex } from './color.js';
-import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient } from './elements.js';
+import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint } from './elements.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
 
 // ---- theme colours (fallback to indigo) ----
@@ -137,6 +137,27 @@ function addElements(pptx, sld, slide) {
     }
     if (el.type === 'image') {
       if (el.src) sld.addImage({ ...geo, data: el.src, ...withOpacity, ...withShadow });
+      continue;
+    }
+    if (el.type === 'path') {
+      // A freehand pen stroke → pptxgen custom geometry: the 0..1 points scaled
+      // into the box's inch dims (pptxgen converts each to EMU within the path's
+      // w/h, keying the first/moveTo vs the rest/lnTo), drawn as a line (stroke)
+      // with no fill — matching the canvas SVG polyline.
+      const pts = (Array.isArray(el.points) ? el.points : []).filter(isFinitePoint).map(([nx, ny], i) => ({
+        x: nx * geo.w, y: ny * geo.h, ...(i === 0 ? { moveTo: true } : {}),
+      }));
+      const lw = PT(num(el.strokeWidth, 2));
+      // No `fill` key → pptxgen emits <a:noFill/> (pptxgen.cjs.js:5471), i.e. an
+      // open stroke matching the canvas polyline ({type:'none'} would instead emit
+      // an empty fill and inherit a theme fill). A 0/negative width draws no line —
+      // pptxgen would otherwise emit <a:ln> + colour (a default ~0.75pt line) that
+      // the canvas's zero-width stroke does not draw.
+      sld.addShape(ST.custGeom, {
+        ...geo, points: pts,
+        ...(lw > 0 ? { line: { color: pxHex(el.stroke || '#15171C'), width: lw, ...withOpacity } } : {}),
+        ...withShadow,
+      });
       continue;
     }
     // Shapes (incl. line) carry a colour fill; the registry drives the mapping.
