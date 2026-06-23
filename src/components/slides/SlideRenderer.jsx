@@ -6,7 +6,7 @@ import { roadmapModel, renameLane, renameMonth, relabelMilestone, ROADMAP_STATES
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
 import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
-import { shapeDef, hasVisibleStroke } from '../../lib/shapes.js';
+import { shapeDef, hasVisibleStroke, clipPoints } from '../../lib/shapes.js';
 import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
@@ -388,6 +388,25 @@ export function RoadmapGraphic({ slide, editable = false, onCommitPatch } = {}) 
 // Free-form element overlay (the canvas-editing layer), rendered on top of the
 // layout template in the same 1920×1080 coordinate space.
 
+// A non-scaling SVG stroke over a 0..1 box — an open `polyline` (pen path) or a
+// closed `polygon` (clip-shape outline). The width stays slide-px at any box size
+// (matching the export line). Callers resolve their own colour/width/points + the
+// container `style` (the pen sits on `base`; a clip outline overlays a fill div).
+function StrokeSvg({ points, closed = false, style, stroke, strokeWidth, strokeDash }) {
+  // Filter to finite point pairs here (callers can pass raw points); a stroke
+  // needs at least two to draw anything.
+  const valid = (Array.isArray(points) ? points : []).filter(isFinitePoint);
+  if (valid.length < 2) return null;
+  const Tag = closed ? 'polygon' : 'polyline';
+  return (
+    <svg style={{ ...style, overflow: 'visible' }} viewBox="0 0 1 1" preserveAspectRatio="none">
+      <Tag points={valid.map(([px, py]) => `${px},${py}`).join(' ')} fill="none" stroke={stroke} strokeWidth={strokeWidth}
+        strokeDasharray={dashArray(strokeDash, strokeWidth) || undefined}
+        vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ElementView({ el }) {
   const base = {
     position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h,
@@ -429,18 +448,9 @@ function ElementView({ el }) {
       : <div style={{ ...base, display: 'grid', placeItems: 'center', background: '#eceae4', color: '#9a978f', fontFamily: 'var(--f-mono)', fontSize: 18 }}>No image</div>;
   }
   if (el.type === 'path') {
-    // A freehand pen stroke: an SVG polyline of the 0..1 points scaled into the
-    // box (viewBox + preserveAspectRatio="none"), stroked not filled. The stroke
-    // is non-scaling, so its width stays el.strokeWidth slide-px at any box size
-    // (matching the export's line width); it rides rot/opacity/shadow via `base`.
-    const pts = (Array.isArray(el.points) ? el.points : []).filter(isFinitePoint).map(([px, py]) => `${px},${py}`).join(' ');
-    return (
-      <svg style={{ ...base, overflow: 'visible' }} viewBox="0 0 1 1" preserveAspectRatio="none">
-        <polyline points={pts} fill="none" stroke={el.stroke || 'var(--ink, #15171C)'} strokeWidth={el.strokeWidth ?? 2}
-          strokeDasharray={dashArray(el.strokeDash, el.strokeWidth ?? 2) || undefined}
-          vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
-      </svg>
-    );
+    // A freehand pen stroke: an open SVG polyline of the 0..1 points, riding
+    // rot/opacity/shadow via `base` (StrokeSvg filters invalid points).
+    return <StrokeSvg points={el.points} style={base} stroke={el.stroke || 'var(--ink, #15171C)'} strokeWidth={el.strokeWidth ?? 2} strokeDash={el.strokeDash} />;
   }
   // Every shape (incl. the line special case) dispatches off the shared registry
   // so the canvas and the export can't drift (lib/shapes.js).
@@ -454,7 +464,19 @@ function ElementView({ el }) {
   // which rounds to an 8px radius and uses the indigo fill. base already sets the height.
   if (def?.line) return <div style={{ ...base, background: grad || el.fill || 'var(--ink, #15171C)' }} />;
   const fill = { background: grad || el.fill || 'oklch(0.62 0.17 265)' };
-  if (def?.clip) return <div style={{ ...base, ...fill, clipPath: def.clip }} />;
+  if (def?.clip) {
+    if (!hasVisibleStroke(el)) return <div style={{ ...base, ...fill, clipPath: def.clip }} />;
+    // A clip polygon's stroke can't be a CSS border (clipped away), so overlay a
+    // closed SVG <polygon> tracing the same clip points. The fill div keeps its CSS
+    // fill/gradient unchanged; the wrapper carries rot/opacity/shadow from `base`.
+    return (
+      <div style={base}>
+        <div style={{ position: 'absolute', inset: 0, ...fill, clipPath: def.clip }} />
+        <StrokeSvg points={clipPoints(def.clip)} closed style={{ position: 'absolute', inset: 0 }}
+          stroke={el.stroke} strokeWidth={el.strokeWidth} strokeDash={el.strokeDash} />
+      </div>
+    );
+  }
   // A stroke is a CSS border on the box shapes (it follows the border-radius);
   // box-sizing keeps the element's w/h footprint constant. Clip shapes are
   // excluded (a border would be clipped away) — see isStrokeableShape.

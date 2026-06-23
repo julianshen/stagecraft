@@ -157,6 +157,31 @@ describe('ElementsLayer', () => {
     expect(rect.style.border).toContain('solid');   // unknown dash → solid, matching dashType's fallback
   });
 
+  it('strokes a clip-path polygon via an SVG <polygon> outline overlay (a CSS border would be clipped)', () => {
+    const { container } = render(
+      <ElementsLayer elements={[{ id: 't', type: 'triangle', x: 0, y: 0, w: 100, h: 100, fill: '#abc', stroke: '#ff0000', strokeWidth: 3 }]} />,
+    );
+    const poly = container.querySelector('svg polygon');
+    expect(poly).toBeTruthy();
+    expect(poly.getAttribute('stroke')).toBe('#ff0000');
+    expect(poly.getAttribute('fill')).toBe('none');            // outline only; the fill stays the clip-path div
+    expect(poly.getAttribute('points')).toBe('0.5,0 1,1 0,1');  // triangle clip → 0..1 points
+  });
+
+  it('renders nothing for a stroke with fewer than two valid points', () => {
+    const { container } = render(
+      <ElementsLayer elements={[{ id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], null], stroke: '#111', strokeWidth: 2 }]} />,
+    );
+    expect(container.querySelector('polyline')).toBeNull(); // 1 valid point → no line to draw
+  });
+
+  it('renders a stroke-less clip polygon as a plain clip-path div (no SVG overlay)', () => {
+    const { container } = render(
+      <ElementsLayer elements={[{ id: 't', type: 'triangle', x: 0, y: 0, w: 100, h: 100, fill: '#abc' }]} />,
+    );
+    expect(container.querySelector('svg polygon')).toBeNull();
+  });
+
   it('applies a text element line spacing to line-height (default 1.2)', () => {
     render(
       <ElementsLayer elements={[

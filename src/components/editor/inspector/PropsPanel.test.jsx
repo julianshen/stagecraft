@@ -82,11 +82,14 @@ describe('PropsPanel', () => {
     expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ strokeWidth: 3, stroke: '#000000' }));
   });
 
-  it('shows the Stroke control only for box shapes — hidden for clip shapes, text, and images', () => {
+  it('shows the Stroke control for box shapes and clip polygons — hidden for the line, text, and images', () => {
     const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#abc' };
     const { rerender } = render(<PropsPanel selected={rect} setSelected={vi.fn()} />);
     expect(screen.getByLabelText('Stroke color')).toBeInTheDocument();
-    for (const type of ['triangle', 'line', 'text', 'image']) {
+    // a clip polygon now strokes too (via an SVG outline overlay) → the control shows
+    rerender(<PropsPanel selected={{ id: 't', type: 'triangle', x: 0, y: 0, w: 100, h: 100, fill: '#abc' }} setSelected={vi.fn()} />);
+    expect(screen.getByLabelText('Stroke color')).toBeInTheDocument();
+    for (const type of ['line', 'text', 'image']) {
       rerender(<PropsPanel selected={{ id: 'x', type, x: 0, y: 0, w: 100, h: 100, fill: '#abc', content: 'c', src: 'data:image/png;base64,A' }} setSelected={vi.fn()} />);
       expect(screen.queryByLabelText('Stroke color')).not.toBeInTheDocument();
     }
