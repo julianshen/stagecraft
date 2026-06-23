@@ -62,8 +62,12 @@ function TemplatePreview({ vibe }) {
 
 export default function TemplatePicker({ onClose, onPick }) {
   const [cat, setCat] = useState('All');
+  const [query, setQuery] = useState('');
   const cats = ['All', ...Array.from(new Set(TEMPLATES.map(t => t.cat)))];
-  const shown = TEMPLATES.filter(t => cat === 'All' || t.cat === cat);
+  // Filter by the active category AND a case-insensitive name match (trimmed).
+  const trimmed = query.trim();
+  const q = trimmed.toLowerCase();
+  const shown = TEMPLATES.filter(t => (cat === 'All' || t.cat === cat) && (q === '' || t.name.toLowerCase().includes(q)));
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -76,7 +80,7 @@ export default function TemplatePicker({ onClose, onPick }) {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <div className="input-group" style={{ width: 240 }}>
               <span className="ico"><Icon name="search" size={12}/></span>
-              <input placeholder="Search templates"/>
+              <input placeholder="Search templates" aria-label="Search templates" value={query} onChange={e => setQuery(e.target.value)}/>
               <span className="kbd">⌘F</span>
             </div>
             <IconButton name="x" onClick={onClose}/>
@@ -108,6 +112,11 @@ export default function TemplatePicker({ onClose, onPick }) {
               </div>
             ))}
           </div>
+          {shown.length === 0 && (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13 }}>
+              No templates match “{trimmed}”.
+            </div>
+          )}
         </div>
         <div className="modal-foot">
           <span style={{ flex: 1, fontSize: 12, color: 'var(--ink-3)' }}>Templates are fully editable. Swap theme tokens any time.</span>
