@@ -4,7 +4,7 @@ import { SEVERITY_HEX } from './riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
 import { resolveNotes } from '../data/deck.js';
 import { toHex, isHexColor, mixHex } from './color.js';
-import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint } from './elements.js';
+import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType } from './elements.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
 
 // ---- theme colours (fallback to indigo) ----
@@ -149,6 +149,7 @@ function addElements(pptx, sld, slide) {
       }));
       if (pts.length < 2) continue; // a 0/1-point path is degenerate (a corrupt custGeom); the canvas draws nothing either
       const lw = PT(num(el.strokeWidth, 2));
+      const dt = dashType(el.strokeDash);
       // No `fill` key → pptxgen emits <a:noFill/> (pptxgen.cjs.js:5471), i.e. an
       // open stroke matching the canvas polyline ({type:'none'} would instead emit
       // an empty fill and inherit a theme fill). A 0/negative width draws no line —
@@ -156,7 +157,7 @@ function addElements(pptx, sld, slide) {
       // the canvas's zero-width stroke does not draw.
       sld.addShape(ST.custGeom, {
         ...geo, points: pts,
-        ...(lw > 0 ? { line: { color: pxHex(el.stroke || '#15171C'), width: lw, ...withOpacity } } : {}),
+        ...(lw > 0 ? { line: { color: pxHex(el.stroke || '#15171C'), width: lw, ...withOpacity, ...(dt ? { dashType: dt } : {}) } } : {}),
         ...withShadow,
       });
       continue;
@@ -177,7 +178,8 @@ function addElements(pptx, sld, slide) {
     if (hasVisibleStroke(el)) {
       // ...withOpacity so a translucent shape's outline matches its canvas border
       // (the canvas applies the element opacity to the whole div, border included).
-      opts.line = { color: pxHex(el.stroke), width: PT(el.strokeWidth), ...withOpacity };
+      const dt = dashType(el.strokeDash);
+      opts.line = { color: pxHex(el.stroke), width: PT(el.strokeWidth), ...withOpacity, ...(dt ? { dashType: dt } : {}) };
     }
     sld.addShape(ST[def?.pptx] || ST.rect, opts);
   }

@@ -225,6 +225,24 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(shape.o.points).toEqual([{ x: 0, y: 0, moveTo: true }, { x: 1, y: 1 }]); // null dropped, no NaN
   });
 
+  it('exports a dashed box-shape stroke with a pptxgen line dashType', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#aabbcc', stroke: '#112233', strokeWidth: 4, strokeDash: 'dashed' },
+    ]));
+    expect(last().shapes.find((s) => s.type === 'rect').o.line.dashType).toBe('dash');
+  });
+
+  it('exports a dotted pen path with a line dashType, and omits it when solid', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#111', strokeWidth: 2, strokeDash: 'dotted' },
+    ]));
+    expect(last().shapes.find((s) => s.type === 'custGeom').o.line.dashType).toBe('sysDot');
+    await exportToPPTX(elemDeck([
+      { id: 'p2', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#111', strokeWidth: 2 },
+    ]));
+    expect(last().shapes.find((s) => s.type === 'custGeom').o.line).not.toHaveProperty('dashType'); // solid → no dashType
+  });
+
   it('omits the line on a zero-width path so the export matches the invisible canvas stroke', async () => {
     await exportToPPTX(elemDeck([
       { id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#111', strokeWidth: 0 },

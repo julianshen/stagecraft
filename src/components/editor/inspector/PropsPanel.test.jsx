@@ -203,4 +203,14 @@ describe('PropsPanel', () => {
     fireEvent.change(screen.getByLabelText('Stroke width'), { target: { value: '5' } });
     expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ strokeWidth: 5 }));
   });
+
+  it('binds the stroke dash style (solid clears the field)', () => {
+    const setSelected = vi.fn();
+    const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 50, h: 50, fill: '#abc', stroke: '#000', strokeWidth: 2 };
+    render(<PropsPanel selected={rect} setSelected={setSelected} />);
+    fireEvent.change(screen.getByLabelText('Stroke dash'), { target: { value: 'dashed' } });
+    expect(setSelected).toHaveBeenLastCalledWith(expect.objectContaining({ strokeDash: 'dashed' }));
+    fireEvent.change(screen.getByLabelText('Stroke dash'), { target: { value: 'solid' } });
+    expect(setSelected.mock.calls.at(-1)[0].strokeDash).toBeUndefined(); // solid → cleared, not stored
+  });
 });

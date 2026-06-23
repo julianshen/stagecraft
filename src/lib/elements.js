@@ -157,6 +157,35 @@ export function pathFromStroke(pts) {
   };
 }
 
+// Stroke dash styles for shape outlines + pen paths. `solid` is the default (an
+// absent field); only `dashed`/`dotted` are stored. Single-sourced so the gate,
+// the canvas (CSS border-style is the value itself + the SVG dash array below),
+// and the pptx export (line dashType) all agree on the same vocabulary.
+export const STROKE_DASHES = ['solid', 'dashed', 'dotted'];
+
+// SVG stroke-dasharray for a pen path's polyline (null = solid). Proportional to
+// the stroke width so the pattern scales with it; the polyline's round caps turn
+// the zero-length dotted dashes into round dots.
+export function dashArray(dash, strokeWidth) {
+  const w = strokeWidth > 0 ? strokeWidth : 2;
+  if (dash === 'dashed') return `${w * 3} ${w * 2}`;
+  if (dash === 'dotted') return `0 ${w * 2}`;
+  return null;
+}
+
+// pptxgen line dashType (undefined = solid) — 'dash'/'sysDot' approximate the canvas.
+export function dashType(dash) {
+  if (dash === 'dashed') return 'dash';
+  if (dash === 'dotted') return 'sysDot';
+  return undefined;
+}
+
+// CSS border-style for a box-shape outline — clamped to a known keyword. An
+// unknown value (a gate-bypassing write) would otherwise invalidate the whole
+// `border` shorthand and drop the outline; this degrades to solid, matching the
+// export's dashType fallback (canvas == export for a malformed dash).
+export const borderStyle = (dash) => (dash === 'dashed' || dash === 'dotted' ? dash : 'solid');
+
 // Move an element by (dx, dy), snapped to the grid and clamped to the slide.
 export function moveElement(el, dx, dy, { grid = GRID, bounds = { w: SLIDE_W, h: SLIDE_H } } = {}) {
   return {

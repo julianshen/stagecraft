@@ -1,6 +1,7 @@
 import { isFormattableKey, isFmtRecord } from './slideFmt.js';
 import { shapeDef } from './shapes.js';
 import { isHexColor } from './color.js';
+import { STROKE_DASHES } from './elements.js';
 
 export function getFlatSlideIds(deck) {
   if (!deck) return [];
@@ -157,6 +158,8 @@ const ELEMENT_FIELD_OK = {
   // px width (0 = no outline). Rendered/exported only for box shapes (see
   // `isStrokeableShape`); the gate accepts the fields on any element.
   stroke: isHexColor, strokeWidth: isNonNeg, shadow: isShadow, gradient: isGradient,
+  // A shape-outline / pen-stroke dash style — the renderer's vocabulary (single-sourced).
+  strokeDash: (v) => STROKE_DASHES.includes(v),
   // A freehand path's polyline: ≥2 [x,y] pairs, normalized 0..1 to the box.
   points: isPoints,
   // A group membership tag (a canvas-editing relationship; absent = ungrouped).
