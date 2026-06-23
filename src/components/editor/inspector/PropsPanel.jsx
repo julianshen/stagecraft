@@ -6,9 +6,17 @@ import { isStrokeableShape, isFillableShape } from '../../../lib/shapes.js';
 import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, borderStyle } from '../../../lib/elements.js';
 import { requiresFill } from '../../../lib/deckUtils.js';
 
+// Line-spacing presets for the dropdown (the field itself is a continuous
+// multiplier — the gate accepts any positive, a non-preset value is shown too).
+const LINE_SPACINGS = Object.freeze([1, 1.15, 1.2, 1.5, 2, 2.5, 3]);
+
 export default function PropsPanel({ selected, setSelected, count = 0 }) {
   if (count > 1) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{count} elements selected — drag to move them together, or align via the toolbar.</div>;
   if (!selected) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>Select an element.</div>;
+  // Line-spacing dropdown options: the presets, plus the current value if it's a
+  // non-preset (a continuous field) so the control reflects it rather than blanking.
+  const sp = selected.lineSpacing ?? 1.2;
+  const spOpts = LINE_SPACINGS.includes(sp) ? LINE_SPACINGS : [...LINE_SPACINGS, sp].sort((a, b) => a - b);
   return (
     <>
       <div className="pane-section">
@@ -173,7 +181,14 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
             </div>
           </FieldRow>
           <FieldRow label="SIZE"><InputGroup value={selected.fontSize ?? 48} onChange={v => setSelected({ ...selected, fontSize: Math.max(1, +v || 48) })} unit="px" /></FieldRow>
-          <FieldRow label="SPACING"><InputGroup value={selected.lineSpacing ?? 1.2} onChange={v => setSelected({ ...selected, lineSpacing: Math.max(0.5, +v || 1.2) })} unit="×" /></FieldRow>
+          <FieldRow label="SPACING">
+            <div className="input-group">
+              <select aria-label="Line spacing" value={sp} onChange={e => setSelected({ ...selected, lineSpacing: +e.target.value })}>
+                {spOpts.map(s => <option key={s} value={s}>{s}×</option>)}
+              </select>
+              <Icon name="chevron-down" size={11} />
+            </div>
+          </FieldRow>
           <FieldRow label="ALIGN">
             <Seg value={selected.align ?? 'left'} onChange={a => setSelected({ ...selected, align: a })}
               options={[{ v: 'left', ico: 'align-left', title: 'Align left' }, { v: 'center', ico: 'align-center', title: 'Align center' }, { v: 'right', ico: 'align-right', title: 'Align right' }]} />

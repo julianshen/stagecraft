@@ -186,11 +186,16 @@ describe('PropsPanel', () => {
     expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ align: 'center' }));
   });
 
-  it('binds line spacing for a text element', () => {
+  it('binds line spacing for a text element (a preset dropdown — avoids the decimal-typing trap)', () => {
     const setSelected = vi.fn();
     render(<PropsPanel selected={el} setSelected={setSelected} />);
-    fireEvent.change(screen.getByDisplayValue('1.2'), { target: { value: '1.5' } }); // SPACING (default 1.2)
+    fireEvent.change(screen.getByLabelText('Line spacing'), { target: { value: '1.5' } });
     expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ lineSpacing: 1.5 }));
+  });
+
+  it('shows a persisted non-preset line spacing in the dropdown (so it is not blank)', () => {
+    render(<PropsPanel selected={{ ...el, lineSpacing: 1.3 }} setSelected={vi.fn()} />);
+    expect(screen.getByLabelText('Line spacing').value).toBe('1.3'); // dynamically added as an option
   });
 
   it('shows a stroke control and no fill control for a path element', () => {
