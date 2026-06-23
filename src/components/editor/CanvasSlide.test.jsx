@@ -358,6 +358,19 @@ describe('CanvasSlide drag', () => {
     expect(onMarqueeSelect).toHaveBeenCalledWith(['a']); // replaces 'b'
   });
 
+  it('treats a null selectedIds as empty on a shift-marquee (defensive, no crash)', () => {
+    const onMarqueeSelect = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={null} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} onMarqueeSelect={onMarqueeSelect} />,
+    );
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 0, clientY: 0, shiftKey: true });
+    fire(window, 'pointermove', { clientX: 400, clientY: 250 });
+    fire(window, 'pointerup', { clientX: 400, clientY: 250 });
+    expect(onMarqueeSelect).toHaveBeenCalledWith(['a']); // null → treated as empty, so just the swept
+  });
+
   it('shift-clicking empty canvas (no sweep) keeps the selection — does not deselect', () => {
     const onSelectElement = vi.fn();
     const onMarqueeSelect = vi.fn();

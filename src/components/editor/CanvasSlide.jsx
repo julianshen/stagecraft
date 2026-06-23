@@ -549,7 +549,7 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       if (swept(ev.clientX, ev.clientY)) {
         const p = toSlide(rect, ev.clientX, ev.clientY);
         const hit = elementsInMarquee(baseElementsRef.current, start.x, start.y, p.x, p.y);
-        onMarqueeSelect?.(additive ? [...new Set([...selectedIds, ...hit])] : hit);
+        onMarqueeSelect?.(additive ? [...new Set([...(selectedIds || []), ...hit])] : hit);
       } else if (!additive) {
         onSelectElement?.(null);
       }
