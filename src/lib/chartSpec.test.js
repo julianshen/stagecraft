@@ -1,6 +1,27 @@
 import { describe, it, expect } from 'vitest';
-import { chartSpec, chartData, renameCategory, CHART_SERIES_OKLCH, CHART_SERIES_HEX } from './chartSpec.js';
+import { chartSpec, chartData, renameCategory, renameSeries, CHART_SERIES_OKLCH, CHART_SERIES_HEX } from './chartSpec.js';
 import { oklchToHex } from '../test/oklchToHex.js';
+
+describe('renameSeries — inline chart series-name edit', () => {
+  it('renames the target series and returns the full model with categories + other series intact', () => {
+    const slide = { chart: { categories: ['A', 'B'], series: [{ name: 'S1', values: [1, 2] }, { name: 'S2', values: [3, 4] }] } };
+    const patch = renameSeries(slide, 1, 'Renamed');
+    expect(patch.chart.series.map((s) => s.name)).toEqual(['S1', 'Renamed']);
+    expect(patch.chart.series[0]).toEqual({ name: 'S1', values: [1, 2] }); // other series intact
+    expect(patch.chart.categories).toEqual(['A', 'B']); // categories carried, not dropped
+  });
+
+  it('materializes a data-less chart so renaming the series keeps the default categories', () => {
+    const patch = renameSeries({}, 0, 'Metrics');
+    expect(patch.chart.series[0].name).toBe('Metrics');
+    expect(patch.chart.categories).toEqual(['Q1', 'Q2', 'Q3', 'Q4']);
+  });
+
+  it('is a no-op for an out-of-range series index', () => {
+    const slide = { chart: { categories: ['A'], series: [{ name: 'S', values: [1] }] } };
+    expect(renameSeries(slide, 9, 'X').chart.series.map((s) => s.name)).toEqual(['S']);
+  });
+});
 
 describe('renameCategory — inline chart category-label edit', () => {
   it('renames the target category and returns the full {chart:{categories,series}} model', () => {
