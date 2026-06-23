@@ -183,6 +183,15 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(t.o).toMatchObject({ x: 1, y: 0.5, w: 2, h: 1, fontSize: 18, bold: true, italic: true, underline: true, align: 'center', color: '112233' });
   });
 
+  it('exports a text element line spacing as a pptxgen lineSpacingMultiple (default 1.2, matching the canvas)', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Spaced', fill: '#111', lineSpacing: 1.8 },
+      { id: 'd', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Default', fill: '#111' },
+    ]));
+    expect(last().texts.find((t) => t.t === 'Spaced').o.lineSpacingMultiple).toBe(1.8);
+    expect(last().texts.find((t) => t.t === 'Default').o.lineSpacingMultiple).toBe(1.2); // absent → 1.2, matching the canvas line-height
+  });
+
   it('defaults a fill-less text element to the canvas ink colour, not the theme white', async () => {
     await exportToPPTX(elemDeck([{ id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'X' }]));
     const t = last().texts.find((x) => x.t === 'X');

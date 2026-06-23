@@ -7,7 +7,7 @@ import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
 import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
 import { shapeDef, hasVisibleStroke } from '../../lib/shapes.js';
-import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle } from '../../lib/elements.js';
+import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
 // fallbacks). This is the memo contract for thumbnail re-rendering
@@ -353,7 +353,7 @@ function ElementView({ el }) {
         // Preserve newlines/spaces typed into the Properties Content textarea
         // (HTML collapses them by default).
         whiteSpace: 'pre-wrap',
-        color: el.fill || 'var(--ink, #15171C)', lineHeight: 1.2, overflow: 'hidden',
+        color: el.fill || 'var(--ink, #15171C)', lineHeight: lineSpacingOf(el), overflow: 'hidden',
       }}>
         {el.content}
       </div>

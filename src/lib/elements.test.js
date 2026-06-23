@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, pathFromStroke, dashArray, dashType, borderStyle, STROKE_DASHES, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
+import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, pathFromStroke, dashArray, dashType, borderStyle, STROKE_DASHES, lineSpacingOf, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -769,6 +769,18 @@ describe('stroke dash', () => {
     expect(borderStyle('solid')).toBe('solid');
     expect(borderStyle(undefined)).toBe('solid');
     expect(borderStyle('wavy')).toBe('solid');
+  });
+});
+
+describe('lineSpacingOf', () => {
+  it('returns a text element line-spacing multiplier, clamped positive (default 1.2)', () => {
+    // Single-sourced default so the canvas (line-height) and export
+    // (lineSpacingMultiple) agree; a degenerate value falls back, not overlaps.
+    expect(lineSpacingOf({})).toBe(1.2);                  // absent
+    expect(lineSpacingOf({ lineSpacing: 1.5 })).toBe(1.5);
+    expect(lineSpacingOf({ lineSpacing: 0 })).toBe(1.2);  // 0 would overlap text → default
+    expect(lineSpacingOf({ lineSpacing: -1 })).toBe(1.2);
+    expect(lineSpacingOf({ lineSpacing: Infinity })).toBe(1.2); // non-finite → default (else a corrupt <a:spcPct val="Infinity"> export)
   });
 });
 

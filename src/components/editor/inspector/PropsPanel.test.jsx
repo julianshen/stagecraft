@@ -186,6 +186,13 @@ describe('PropsPanel', () => {
     expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ align: 'center' }));
   });
 
+  it('binds line spacing for a text element', () => {
+    const setSelected = vi.fn();
+    render(<PropsPanel selected={el} setSelected={setSelected} />);
+    fireEvent.change(screen.getByDisplayValue('1.2'), { target: { value: '1.5' } }); // SPACING (default 1.2)
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ lineSpacing: 1.5 }));
+  });
+
   it('shows a stroke control and no fill control for a path element', () => {
     // A freehand path is stroked, not filled — its colour lives in `stroke`.
     const path = { id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#15171C', strokeWidth: 2 };

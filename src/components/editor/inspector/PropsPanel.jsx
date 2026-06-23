@@ -173,6 +173,7 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
             </div>
           </FieldRow>
           <FieldRow label="SIZE"><InputGroup value={selected.fontSize ?? 48} onChange={v => setSelected({ ...selected, fontSize: Math.max(1, +v || 48) })} unit="px" /></FieldRow>
+          <FieldRow label="SPACING"><InputGroup value={selected.lineSpacing ?? 1.2} onChange={v => setSelected({ ...selected, lineSpacing: Math.max(0.5, +v || 1.2) })} unit="×" /></FieldRow>
           <FieldRow label="ALIGN">
             <Seg value={selected.align ?? 'left'} onChange={a => setSelected({ ...selected, align: a })}
               options={[{ v: 'left', ico: 'align-left', title: 'Align left' }, { v: 'center', ico: 'align-center', title: 'Align center' }, { v: 'right', ico: 'align-right', title: 'Align right' }]} />
