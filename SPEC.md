@@ -404,7 +404,7 @@ Format chooser: **PPTX 🟢**; Keynote / PDF / PNG seq / MP4 / Link 🔴 (close 
 ---
 
 ## 14. Templates — `TemplatePicker.jsx` 🟢
-Category-filtered gallery with visual `TemplatePreview` per `vibe`. 🟢 filter; 🟢 **picking a template creates a real library deck** — `templateDeck(template)` (`lib/templateDeck.js`) builds a themed starter (`vibe`→theme via `vibeTheme`, a cover titled after the template + a **per-vibe multi-section skeleton** of placeholder slides in the layouts that fit the category — e.g. Ledger: kpi/chart/table/risks, Substrate: agenda/chart/roadmap/risks — closing with a thanks slide; Blank and unknown vibes stay minimal cover+text), which `App.handlePickTemplate` persists via `createDeck(name, deck)` (`POST /api/decks`) and opens in the editor. 🔴 search.
+Category-filtered gallery with visual `TemplatePreview` per `vibe`. 🟢 filter; 🟢 **picking a template creates a real library deck** — `templateDeck(template)` (`lib/templateDeck.js`) builds a themed starter (`vibe`→theme via `vibeTheme`, a cover titled after the template + a **per-vibe multi-section skeleton** of placeholder slides in the layouts that fit the category — e.g. Ledger: kpi/chart/table/risks, Substrate: agenda/chart/roadmap/risks — closing with a thanks slide; Blank and unknown vibes stay minimal cover+text), which `App.handlePickTemplate` persists via `createDeck(name, deck)` (`POST /api/decks`) and opens in the editor. 🟢 **search** — the box filters the gallery by template name (case-insensitive, trimmed), combinable with the category chips; the header count and a no-match hint track the filtered set. (The `⌘F` badge stays decorative — binding it would hijack the browser's native find.)
 
 ---
 
