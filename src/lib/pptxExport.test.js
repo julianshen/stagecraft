@@ -47,6 +47,42 @@ const textsOf = (s) => s.texts.map((x) => String(x.t));
 
 beforeEach(() => { rec.slides.length = 0; });
 
+describe('exportToPPTX — slide range', () => {
+  const deck3 = {
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's', name: 'S', slides: ['a', 'b', 'c'] }],
+    slides: [
+      { id: 'a', layout: 'text', title: 'A' },
+      { id: 'b', layout: 'text', title: 'B' },
+      { id: 'c', layout: 'text', title: 'C' },
+    ],
+  };
+  it('exports every flattened slide when no range is given', async () => {
+    await exportToPPTX(deck3);
+    expect(rec.slides).toHaveLength(3);
+  });
+  it('exports only the slides within an inclusive 1-indexed range', async () => {
+    await exportToPPTX(deck3, { range: { from: 2, to: 3 } });
+    expect(rec.slides).toHaveLength(2); // b, c
+  });
+  it('clamps a range whose end overruns the deck', async () => {
+    await exportToPPTX(deck3, { range: { from: 2, to: 99 } });
+    expect(rec.slides).toHaveLength(2); // b, c — end clamped
+  });
+  it('normalises an inverted range (from > to) by swapping the bounds', async () => {
+    await exportToPPTX(deck3, { range: { from: 3, to: 1 } });
+    expect(rec.slides).toHaveLength(3); // 1..3 after the swap — not an empty export
+  });
+  it('clamps an out-of-range start into the deck instead of emitting nothing', async () => {
+    await exportToPPTX(deck3, { range: { from: 5, to: 5 } });
+    expect(rec.slides).toHaveLength(1); // clamped to the last slide
+  });
+  it('floors a start below 1 up to the first slide', async () => {
+    await exportToPPTX(deck3, { range: { from: 0, to: 2 } });
+    expect(rec.slides).toHaveLength(2); // 1..2
+  });
+});
+
 describe('addRoadmapSlide (PPTX timeline)', () => {
   it('renders the demo roadmap: month axis, lanes, bars, TODAY marker, and legend', async () => {
     await exportToPPTX(deckOf({ title: 'Roadmap' }));

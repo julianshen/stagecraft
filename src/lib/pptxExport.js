@@ -3,6 +3,7 @@ import { chartSpec, CHART_SERIES_HEX } from './chartSpec.js';
 import { SEVERITY_HEX } from './riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
 import { resolveNotes } from '../data/deck.js';
+import { flattenDeck } from './deckOrder.js';
 import { toHex, isHexColor, mixHex } from './color.js';
 import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType, lineSpacingOf } from './elements.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
@@ -499,7 +500,7 @@ function addGenericSlide(pptx, slide, tc) {
  * Export a deck object to a .pptx file using pptxgenjs.
  * @param {Object} deck — SAMPLE_DECK-shaped object
  */
-export async function exportToPPTX(deck, { includeNotes = true } = {}) {
+export async function exportToPPTX(deck, { includeNotes = true, range = null } = {}) {
   const pptx = new pptxgen();
   pptx.layout = 'LAYOUT_16x9';
   pptx.title = deck.title || 'Stagecraft Presentation';
@@ -508,16 +509,22 @@ export async function exportToPPTX(deck, { includeNotes = true } = {}) {
 
   const tc = themeColors(deck.theme);
 
-  // Flatten slides in section order
-  const flat = [];
-  (deck.sections || []).forEach(sec => {
-    sec.slides.forEach(sid => {
-      const s = (deck.slides || []).find(x => x.id === sid);
-      if (s) flat.push(s);
-    });
-  });
+  // Flatten slides in section order (the same order the canvas/sorter render +
+  // the export-modal range is measured against — single-sourced via flattenDeck).
+  const flat = flattenDeck(deck);
+  // An optional 1-indexed inclusive slide range selects a contiguous subset. Clamp
+  // both bounds into [1, len] and normalise (swap if inverted) so ANY caller — not
+  // just the modal, which already clamps — gets a sane slice rather than a silently
+  // empty/truncated deck; an absent range exports the full flattened order.
+  let slides = flat;
+  if (range) {
+    const len = flat.length;
+    const clampIdx = (n, dflt) => Math.max(1, Math.min(len, Number.isFinite(n) ? n : dflt));
+    const a = clampIdx(range.from, 1), b = clampIdx(range.to, len);
+    slides = flat.slice(Math.min(a, b) - 1, Math.max(a, b));
+  }
 
-  for (const slide of flat) {
+  for (const slide of slides) {
     let sld;
     switch (slide.layout) {
       case 'cover':    sld = addCoverSlide(pptx, slide, tc);   break;
