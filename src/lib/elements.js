@@ -161,7 +161,7 @@ export function pathFromStroke(pts) {
 // absent field); only `dashed`/`dotted` are stored. Single-sourced so the gate,
 // the canvas (CSS border-style is the value itself + the SVG dash array below),
 // and the pptx export (line dashType) all agree on the same vocabulary.
-export const STROKE_DASHES = ['solid', 'dashed', 'dotted'];
+export const STROKE_DASHES = Object.freeze(['solid', 'dashed', 'dotted']);
 
 // SVG stroke-dasharray for a pen path's polyline (null = solid). Proportional to
 // the stroke width so the pattern scales with it; the polyline's round caps turn

@@ -3,7 +3,7 @@ import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup, Seg } from '../../ui/Primitives.jsx';
 import { toHex } from '../../../lib/color.js';
 import { isStrokeableShape, isFillableShape } from '../../../lib/shapes.js';
-import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES } from '../../../lib/elements.js';
+import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, borderStyle } from '../../../lib/elements.js';
 import { requiresFill } from '../../../lib/deckUtils.js';
 
 export default function PropsPanel({ selected, setSelected, count = 0 }) {
@@ -127,7 +127,7 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
         {/* Dash style applies wherever the outline/stroke renders; `solid` clears the field. */}
         <FieldRow label="DASH">
           <div className="input-group">
-            <select aria-label="Stroke dash" value={selected.strokeDash || 'solid'}
+            <select aria-label="Stroke dash" value={borderStyle(selected.strokeDash)}
               onChange={e => setSelected({ ...selected, strokeDash: e.target.value === 'solid' ? undefined : e.target.value })}>
               {STROKE_DASHES.map(d => <option key={d} value={d}>{d[0].toUpperCase() + d.slice(1)}</option>)}
             </select>

@@ -744,8 +744,9 @@ describe('pathFromStroke', () => {
 });
 
 describe('stroke dash', () => {
-  it('lists the dash options solid/dashed/dotted for the inspector', () => {
+  it('lists the dash options solid/dashed/dotted for the inspector (frozen — shared const)', () => {
     expect(STROKE_DASHES).toEqual(['solid', 'dashed', 'dotted']);
+    expect(Object.isFrozen(STROKE_DASHES)).toBe(true);
   });
   it('maps a dash style to an SVG dash array scaled by the stroke width (null for solid)', () => {
     expect(dashArray('solid', 2)).toBeNull();
