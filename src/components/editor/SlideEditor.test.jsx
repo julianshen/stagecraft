@@ -49,6 +49,18 @@ describe('SlideEditor align toolbar', () => {
     expect(onDistributeElements).toHaveBeenCalled();
   });
 
+  it('the Auto-arrange button tidies the selection via onAutoArrange', () => {
+    const onAutoArrange = vi.fn();
+    const { getByTitle } = renderEditor({ onAutoArrange });
+    fireEvent.click(getByTitle('Auto-arrange'));
+    expect(onAutoArrange).toHaveBeenCalled();
+  });
+
+  it('disables Auto-arrange when fewer than two elements are selected', () => {
+    const { getByTitle } = renderEditor({}, 1);
+    expect(getByTitle('Auto-arrange')).toBeDisabled();
+  });
+
   it('disables the align buttons when fewer than two elements are selected', () => {
     const { getByTitle } = renderEditor({}, 1);
     ['Align left', 'Align center', 'Align right', 'Align top', 'Align middle', 'Align bottom']
@@ -57,8 +69,9 @@ describe('SlideEditor align toolbar', () => {
 
   it('disables only Distribute when exactly two elements are selected', () => {
     const { getByTitle } = renderEditor({}, 2);
-    expect(getByTitle('Align left')).not.toBeDisabled(); // align works at 2
-    expect(getByTitle('Distribute')).toBeDisabled();      // distribute needs 3
+    expect(getByTitle('Align left')).not.toBeDisabled();    // align works at 2
+    expect(getByTitle('Auto-arrange')).not.toBeDisabled();  // auto-arrange works at 2
+    expect(getByTitle('Distribute')).toBeDisabled();        // distribute needs 3
   });
 
   it('the z-order buttons arrange the single selected element', () => {
