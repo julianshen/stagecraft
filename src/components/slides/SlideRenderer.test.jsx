@@ -495,8 +495,9 @@ describe('ElementsLayer text typography', () => {
 describe('Slide inline editing (editable)', () => {
   const renderEditable = (slide) => {
     const onEditField = vi.fn();
-    const utils = render(<Slide slide={slide} deck={{ title: 'D' }} editable onEditField={onEditField} />);
-    return { ...utils, onEditField };
+    const onApplyPatch = vi.fn(); // roadmap labels commit a full materialized patch through this
+    const utils = render(<Slide slide={slide} deck={{ title: 'D' }} editable onEditField={onEditField} onApplyPatch={onApplyPatch} />);
+    return { ...utils, onEditField, onApplyPatch };
   };
   const editFirst = (container, selector, text) => {
     const el = container.querySelector(selector);
@@ -524,22 +525,43 @@ describe('Slide inline editing (editable)', () => {
     expect(onEditField).toHaveBeenCalledWith(['items', 1, 't'], 'Two!');
   });
 
-  it('commits a roadmap lane-name edit as a materialized {lanes} patch (siblings preserved)', () => {
+  // The three roadmap labels each commit the FULL materialized { months, lanes,
+  // todayIndex } model via onApplyPatch (so a demo roadmap's defaults survive).
+  const editForeign = (container, oldText, newText) => {
+    const f = [...container.querySelectorAll('foreignObject [contenteditable="true"]')].find((n) => n.textContent === oldText);
+    expect(f).toBeTruthy();
+    f.textContent = newText;
+    fireEvent.blur(f);
+  };
+
+  it('commits a roadmap lane-name edit as a full model patch (siblings preserved)', () => {
     const slide = { id: 'r', layout: 'roadmap', title: 'R', lanes: [
       { name: 'Platform', items: [{ t: 0, d: 2, lbl: 'X', state: 'done' }] },
       { name: 'Growth', items: [{ t: 1, d: 1, lbl: 'Y', state: 'planned' }] },
     ] };
-    const { container, onEditField } = renderEditable(slide);
-    // Scope to the foreignObject so an unrelated editable field (title/eyebrow)
-    // sharing the text can't be picked instead.
-    const lane = [...container.querySelectorAll('foreignObject [contenteditable="true"]')].find((n) => n.textContent === 'Platform');
-    expect(lane).toBeTruthy();
-    lane.textContent = 'Core';
-    fireEvent.blur(lane);
-    const call = onEditField.mock.calls.find((c) => c[0][0] === 'lanes');
-    expect(call).toBeTruthy();
-    expect(call[0]).toEqual(['lanes']);                       // a whole-array {lanes} patch…
-    expect(call[1].map((l) => l.name)).toEqual(['Core', 'Growth']); // …with the sibling preserved
+    const { container, onApplyPatch } = renderEditable(slide);
+    editForeign(container, 'Platform', 'Core');
+    expect(onApplyPatch).toHaveBeenCalledTimes(1);
+    const patch = onApplyPatch.mock.calls[0][0];
+    expect(Object.keys(patch).sort()).toEqual(['lanes', 'months', 'todayIndex']); // full model, not sparse
+    expect(patch.lanes.map((l) => l.name)).toEqual(['Core', 'Growth']);
+  });
+
+  it('commits a roadmap month-label edit as a full model patch', () => {
+    const slide = { id: 'r', layout: 'roadmap', title: 'R', months: ['Jan', 'Feb'], lanes: [{ name: 'A', items: [{ t: 0, d: 1, lbl: 'M', state: 'done' }] }] };
+    const { container, onApplyPatch } = renderEditable(slide);
+    editForeign(container, 'Jan', 'Q1');
+    const patch = onApplyPatch.mock.calls[0][0];
+    expect(patch.months).toEqual(['Q1', 'Feb']);
+    expect(patch.lanes).toHaveLength(1); // lanes carried along, not dropped
+  });
+
+  it('commits a roadmap milestone-label edit as a full model patch', () => {
+    const slide = { id: 'r', layout: 'roadmap', title: 'R', months: ['Jan', 'Feb', 'Mar'], lanes: [{ name: 'A', items: [{ t: 0, d: 1, lbl: 'Mile', state: 'done' }] }] };
+    const { container, onApplyPatch } = renderEditable(slide);
+    editForeign(container, 'Mile', 'Mile2');
+    const patch = onApplyPatch.mock.calls[0][0];
+    expect(patch.lanes[0].items[0].lbl).toBe('Mile2');
   });
 
   it('keeps roadmap lane names as non-editable SVG text when read-only (parity)', () => {
@@ -550,6 +572,11 @@ describe('Slide inline editing (editable)', () => {
     const laneText = [...container.querySelectorAll('svg text')].find((t) => t.textContent === 'Platform');
     expect(laneText).toBeTruthy();
     expect(container.querySelector('foreignObject')).toBeNull();
+    // MONTH_FONT defines no fontWeight → the month <text> must carry no spurious
+    // font-weight attr (React omits undefined attrs), preserving byte-identity.
+    const monthText = [...container.querySelectorAll('svg text')].find((t) => t.textContent === 'Jul');
+    expect(monthText).toBeTruthy();
+    expect(monthText.getAttribute('font-weight')).toBeNull();
   });
 
   it('keeps each editable lane-name field on its lane in a dense roadmap (no negative foreignObject y)', () => {
@@ -557,8 +584,9 @@ describe('Slide inline editing (editable)', () => {
     // edit field to a negative y, off its lane. The box must adapt to laneH.
     const lanes = Array.from({ length: 20 }, (_, i) => ({ name: `L${i}`, items: [{ t: 0, d: 1, lbl: 'x', state: 'done' }] }));
     const { container } = renderEditable({ id: 'r', layout: 'roadmap', title: 'R', lanes });
+    // every editable label (lanes + months + milestones) must sit at a non-negative y
     const ys = [...container.querySelectorAll('foreignObject')].map((f) => parseFloat(f.getAttribute('y')));
-    expect(ys).toHaveLength(20);
+    expect(ys.length).toBeGreaterThanOrEqual(20);
     expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
   });
 

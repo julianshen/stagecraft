@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { roadmapModel, renamedLanes, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_HEX, ROADMAP_OKLCH } from './roadmapSpec.js';
+import { roadmapModel, renameLane, renameMonth, relabelMilestone, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_HEX, ROADMAP_OKLCH } from './roadmapSpec.js';
 
 describe('roadmapModel — defaults', () => {
   it('returns the demo roadmap (12 months, 4 lanes, TODAY marker) when the slide has no roadmap data', () => {
@@ -89,31 +89,63 @@ describe('roadmap palette', () => {
   });
 });
 
-describe('renamedLanes — inline lane-name edit', () => {
-  it('renames the target lane while preserving the others and their items', () => {
-    const slide = {
-      lanes: [
-        { name: 'Alpha', items: [{ t: 0, d: 2, lbl: 'A1', state: 'done' }] },
-        { name: 'Beta', items: [{ t: 1, d: 1, lbl: 'B1', state: 'planned' }] },
-      ],
-    };
-    const lanes = renamedLanes(slide, 0, 'Alpha 2');
-    expect(lanes.map((l) => l.name)).toEqual(['Alpha 2', 'Beta']);
-    expect(lanes[1]).toEqual(roadmapModel(slide).lanes[1]); // sibling untouched
-    expect(lanes[0].items).toEqual(roadmapModel(slide).lanes[0].items); // items intact
+// All three inline-edit helpers return the FULL materialized { months, lanes,
+// todayIndex } patch (matching RoadmapLanesEditor), so editing one label on a
+// demo roadmap can't flip off the default lanes / months / TODAY marker.
+describe('renameLane — inline lane-name edit', () => {
+  it('renames the target lane and returns the full materialized model', () => {
+    const slide = { lanes: [
+      { name: 'Alpha', items: [{ t: 0, d: 2, lbl: 'A1', state: 'done' }] },
+      { name: 'Beta', items: [{ t: 1, d: 1, lbl: 'B1', state: 'planned' }] },
+    ] };
+    const patch = renameLane(slide, 0, 'Alpha 2');
+    expect(Object.keys(patch).sort()).toEqual(['lanes', 'months', 'todayIndex']);
+    expect(patch.lanes.map((l) => l.name)).toEqual(['Alpha 2', 'Beta']);
+    expect(patch.lanes[1]).toEqual(roadmapModel(slide).lanes[1]); // sibling untouched
   });
 
-  it('materializes the demo roadmap so renaming one lane keeps the other default lanes', () => {
-    // A demo slide has no `lanes` — a naive sparse patch would nuke the other
-    // three default lanes. renamedLanes must materialize all four first.
-    const lanes = renamedLanes({}, 0, 'Core');
-    expect(lanes).toHaveLength(4);
-    expect(lanes[0].name).toBe('Core');
-    expect(lanes.slice(1).map((l) => l.name)).toEqual(['Growth', 'AI', 'Enterprise']);
-    expect(lanes[0].items.length).toBeGreaterThan(0); // renamed lane keeps its items
+  it('preserves the demo TODAY marker and other default lanes (commits the whole model)', () => {
+    // A bare roadmap renders from the fallback (todayIndex 3.5, 4 lanes). A
+    // {lanes}-only patch would set slide.lanes, flip usingDefaultLanes, and drop
+    // the marker — so the patch must carry months + todayIndex too.
+    const patch = renameLane({ layout: 'roadmap' }, 0, 'Core');
+    expect(patch.todayIndex).toBe(3.5);
+    expect(patch.lanes.map((l) => l.name)).toEqual(['Core', 'Growth', 'AI', 'Enterprise']);
+    // and re-deriving from the patched slide keeps the marker (the regression guard)
+    expect(roadmapModel({ layout: 'roadmap', ...patch }).todayIndex).toBe(3.5);
   });
 
-  it('is a no-op rename for an out-of-range index (returns the materialized lanes unchanged)', () => {
-    expect(renamedLanes({}, 99, 'X')).toEqual(roadmapModel({}).lanes);
+  it('is a no-op rename for an out-of-range index', () => {
+    expect(renameLane({}, 99, 'X').lanes).toEqual(roadmapModel({}).lanes);
+  });
+});
+
+describe('renameMonth — inline month-label edit', () => {
+  it('renames the target month on a demo roadmap, keeping the other months, lanes, and TODAY', () => {
+    const patch = renameMonth({ layout: 'roadmap' }, 0, 'Q1');
+    expect(patch.months[0]).toBe('Q1');
+    expect(patch.months.slice(1)).toEqual(roadmapModel({}).months.slice(1)); // others untouched
+    expect(patch.todayIndex).toBe(3.5); // marker survives (full model committed)
+    expect(patch.lanes).toHaveLength(4); // default lanes survive
+  });
+});
+
+describe('relabelMilestone — inline milestone-label edit', () => {
+  it('relabels lanes[li].items[ii].lbl, preserving every other item and lane', () => {
+    const slide = { lanes: [
+      { name: 'A', items: [{ t: 0, d: 2, lbl: 'One', state: 'done' }, { t: 3, d: 1, lbl: 'Two', state: 'planned' }] },
+      { name: 'B', items: [{ t: 1, d: 1, lbl: 'Three', state: 'inflight' }] },
+    ] };
+    const patch = relabelMilestone(slide, 0, 1, 'Two!');
+    expect(patch.lanes[0].items.map((it) => it.lbl)).toEqual(['One', 'Two!']);
+    expect(patch.lanes[1]).toEqual(roadmapModel(slide).lanes[1]); // other lane untouched
+  });
+
+  it('materializes the demo roadmap so relabelling one milestone keeps the defaults + TODAY', () => {
+    const patch = relabelMilestone({ layout: 'roadmap' }, 0, 0, 'Shipped!');
+    expect(patch.lanes[0].items[0].lbl).toBe('Shipped!');
+    expect(patch.lanes[0].items[1].lbl).toBe('Audit v2'); // sibling milestone intact
+    expect(patch.lanes).toHaveLength(4);  // other default lanes survive
+    expect(patch.todayIndex).toBe(3.5);   // marker survives
   });
 });
