@@ -281,7 +281,7 @@ Left nav: General / Appearance / AI & Co-pilot / Export defaults / Shortcuts.
 | **AI & Co-pilot** | 🟢 provider cards (6), API key (show/hide, persisted), "Test connection" (routes through `callLLM`, shows the classified failure reason via `describeLLMError` in an always-mounted `role="status"` region; any settings edit resets the verdict and discards an in-flight test via a sequence token), **Base URL persisted** for the endpoint-configurable providers (Local + Custom, `hasBaseUrl` catalog flag; unset shows the effective default as a placeholder; `callLLM` forwards `settings.baseUrl` *only* for those providers so a stale Local URL can't hijack OpenAI/Anthropic requests; "Reset to defaults" clears it), model picker, **Temperature** + **Max tokens** persisted, per-task **routing** select. **Top-p** persisted and forwarded end-to-end (`settings.topP` → `callLLM` → proxy `top_p`). |
 | **Appearance** | 🟢 theme / accent / density / editor-layout — all bound to `tw`/`setTw`, live + persisted. |
 | **General** | 🔴 autosave and similar toggles are `onChange = () => {}`. |
-| **Export defaults** | 🟡 the modal's NOTES toggle is wired (§13); 🔴 aspect ratio / quality toggles are still no-ops. |
+| **Export defaults** | 🟢 the modal's NOTES toggle + slide RANGE are wired (§13); 🔴 quality / comments stay decorative (no effect on a vector PPTX). |
 | **Shortcuts** | 🔴 reference list, display-only. |
 
 Persistence: `localStorage['stagecraft.ai']`. Reset-to-defaults 🟢.
@@ -393,12 +393,12 @@ The app-owned deck state is wrapped in **`useDeckHistory`** (`src/hooks/useDeckH
 
 🟢 **Series-colour parity** — canvas and export draw each series the same colour: one ordered palette in `chartSpec.js` (`CHART_SERIES_OKLCH` for the SVG canvas, `CHART_SERIES_HEX` — the exact sRGB equivalents — for pptxgenjs). The export uses it directly (no theme-tint) so it mirrors the screen.
 
-**Spec (⚪):** expand roadmap to a real table/shape timeline; honor export-modal range/quality options (notes ✅ — §13).
+**Spec (⚪):** expand roadmap to a real table/shape timeline. (Export-modal range ✅ + notes ✅ — §13; quality is N/A for vector PPTX.)
 
 ---
 
 ## 13. Export modal — `ExportModal.jsx` 🟡
-Format chooser: **PPTX 🟢**; Keynote / PDF / PNG seq / MP4 / Link 🔴 (close only). **NOTES is 🟢 wired** — the Include/Exclude select feeds `exportToPPTX(deck, { includeNotes })`, which attaches each slide's speaker notes (`slide.notes`, else the bundled `SPEAKER_NOTES`, mirroring the presenter) via `slide.addNotes`. Range and quality controls remain 🔴 decorative. Shows estimated size. ⚪ Spec: implement PDF (print/jsPDF), PNG sequence (canvas of each `ScaledSlide`), and pass range/quality into the exporter.
+Format chooser: **PPTX 🟢**; Keynote / PDF / PNG seq / MP4 / Link 🔴 (close only). **NOTES is 🟢 wired** — the Include/Exclude select feeds `exportToPPTX(deck, { includeNotes })`, which attaches each slide's speaker notes (`slide.notes`, else the bundled `SPEAKER_NOTES`, mirroring the presenter) via `slide.addNotes`. 🟢 **RANGE is wired** — From/To inputs (1-indexed over the flattened slide order; `exportToPPTX` and the modal both measure it via `flattenDeck`, single-sourced) commit an inclusive `range` that the exporter slices, sent only when it narrows the deck. QUALITY/COMMENTS stay 🔴 decorative — they're rasterisation / comment-model concepts with no honest effect on a *vector* PPTX (shapes/text are native, charts are text placeholders); they apply once a raster format / comments model exists. Shows estimated size. ⚪ Spec: implement PDF (print/jsPDF), PNG sequence (canvas of each `ScaledSlide`).
 
 ---
 

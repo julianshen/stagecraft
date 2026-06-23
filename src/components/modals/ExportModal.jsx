@@ -2,11 +2,20 @@ import { useState } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, IconButton, FieldRow } from '../ui/Primitives.jsx';
 import { exportToPPTX } from '../../lib/pptxExport.js';
+import { flattenDeck } from '../../lib/deckOrder.js';
 
 export default function ExportModal({ onClose, deck }) {
   const [fmt, setFmt] = useState('pptx');
   const [includeNotes, setIncludeNotes] = useState(true);
   const [exporting, setExporting] = useState(false);
+  // The range is 1-indexed over the FLATTENED slides (the order + count the export
+  // actually emits — single-sourced via flattenDeck so the bounds can't drift).
+  const total = flattenDeck(deck).length;
+  // Empty = "the live bound" (1 / total): an untouched field tracks `total` as it
+  // recomputes, so a deck that grows under an open modal (live MCP/co-pilot edits)
+  // can't be silently truncated by a stale snapshot. Placeholders show the bounds.
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
 
   const opts = [
     { id: 'pptx',  title: 'PowerPoint · .pptx',  sub: 'Editable, preserves type & shapes',    ext: 'PPT' },
@@ -21,7 +30,16 @@ export default function ExportModal({ onClose, deck }) {
     if (fmt === 'pptx') {
       setExporting(true);
       try {
-        await exportToPPTX(deck, { includeNotes });
+        // Parse each field (empty/invalid → the full bound; a typed 0 clamps to 1
+        // rather than falling through), clamp to [1, total], then normalise start≤end;
+        // send a range only when it actually narrows the deck (a full range stays unranged).
+        const bound = (s, full) => { const n = parseInt(s, 10); return Number.isNaN(n) ? full : n; };
+        const lo = Math.max(1, Math.min(total, bound(from, 1)));
+        const hi = Math.max(1, Math.min(total, bound(to, total)));
+        const start = Math.min(lo, hi), end = Math.max(lo, hi);
+        const exportOpts = { includeNotes };
+        if (start > 1 || end < total) exportOpts.range = { from: start, to: end };
+        await exportToPPTX(deck, exportOpts);
       } catch (err) {
         console.error('PPTX export failed:', err);
       } finally {
@@ -56,7 +74,12 @@ export default function ExportModal({ onClose, deck }) {
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 10 }}>Options</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <FieldRow label="RANGE">
-                <div className="input-group"><input value={`All · ${deck?.slides?.length || 0} slides`} readOnly/><Icon name="chevron-down" size={11}/></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input type="number" min={1} max={total || 1} value={from} placeholder="1" aria-label="Range from" onChange={(e) => setFrom(e.target.value)} style={{ width: 52 }}/>
+                  <span style={{ color: 'var(--ink-3)' }}>–</span>
+                  <input type="number" min={1} max={total || 1} value={to} placeholder={String(total)} aria-label="Range to" onChange={(e) => setTo(e.target.value)} style={{ width: 52 }}/>
+                  <span style={{ fontSize: 11, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>of {total}</span>
+                </div>
               </FieldRow>
               <FieldRow label="QUALITY">
                 <div className="input-group"><input value="High" readOnly/><Icon name="chevron-down" size={11}/></div>
