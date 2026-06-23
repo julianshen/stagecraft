@@ -1,8 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
-import { LayoutGrid, LAYOUT_OPTIONS } from './LayoutGrid.jsx';
+import { LayoutGrid, LAYOUT_OPTIONS, LAYOUT_LABELS } from './LayoutGrid.jsx';
 
 describe('LayoutGrid', () => {
+  it('exports LAYOUT_OPTIONS / LAYOUT_LABELS as deeply frozen constants', () => {
+    expect(Object.isFrozen(LAYOUT_OPTIONS)).toBe(true);
+    expect(LAYOUT_OPTIONS.every(Object.isFrozen)).toBe(true); // each option object too
+    expect(Object.isFrozen(LAYOUT_LABELS)).toBe(true);
+  });
+
   it('renders a card per layout and marks the current one active', () => {
     const { getByLabelText, container } = render(<LayoutGrid current="chart" onPick={vi.fn()} />);
     expect(container.querySelectorAll('.layout-opt')).toHaveLength(LAYOUT_OPTIONS.length);

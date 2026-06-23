@@ -1,7 +1,9 @@
 import React from 'react';
 import Icon from '../../ui/Icon.jsx';
 
-export const LAYOUT_OPTIONS = [
+// Deep-frozen (array + each option) like the other shared constant tables
+// (SHAPES, CHART_SERIES_HEX, …) so a consumer can't mutate the shared vocabulary.
+export const LAYOUT_OPTIONS = Object.freeze([
   { id: 'cover', icon: 'frame', label: 'Cover' },
   { id: 'agenda', icon: 'list', label: 'Agenda' },
   { id: 'divider', icon: 'flag', label: 'Section' },
@@ -14,11 +16,11 @@ export const LAYOUT_OPTIONS = [
   { id: 'roadmap', icon: 'timeline', label: 'Roadmap' },
   { id: 'risks', icon: 'flag', label: 'Risks' },
   { id: 'thanks', icon: 'frame', label: 'Closing' },
-];
+].map(Object.freeze));
 
 // id → display label, derived from LAYOUT_OPTIONS so the two can't drift. The toolbar
 // menu's trigger button reads it (`LAYOUT_LABELS[current]`); the grid cards use .label.
-export const LAYOUT_LABELS = Object.fromEntries(LAYOUT_OPTIONS.map(o => [o.id, o.label]));
+export const LAYOUT_LABELS = Object.freeze(Object.fromEntries(LAYOUT_OPTIONS.map(o => [o.id, o.label])));
 
 // The shared per-slide layout picker: a grid of layout cards. Rendered both in the
 // toolbar Layout menu (inside its popover chrome) and the Design inspector panel, so
