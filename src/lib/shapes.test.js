@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SHAPES, shapeDef, isStrokeableShape, isFillableShape, hasVisibleStroke } from './shapes.js';
+import { SHAPES, shapeDef, isStrokeableShape, isFillableShape, hasVisibleStroke, clipPoints } from './shapes.js';
 
 describe('shapeDef', () => {
   it('resolves the menu rectangle type to a rect with a border radius', () => {
@@ -44,11 +44,25 @@ describe('isStrokeableShape', () => {
   it('is true for the box shapes whose CSS border follows their outline (rect/rounded/ellipse)', () => {
     ['shape', 'rounded', 'circle', 'rect', 'ellipse'].forEach((t) => expect(isStrokeableShape(t)).toBe(true));
   });
-  it('is false for clip-path polygons (a CSS border would be clipped away) and the line', () => {
-    ['triangle', 'diamond', 'pentagon', 'hexagon', 'star', 'arrow', 'line'].forEach((t) => expect(isStrokeableShape(t)).toBe(false));
+  it('is true for clip-path polygons too — they stroke via an SVG outline overlay', () => {
+    ['triangle', 'diamond', 'pentagon', 'hexagon', 'star', 'arrow'].forEach((t) => expect(isStrokeableShape(t)).toBe(true));
   });
-  it('is false for non-shapes / unknown types', () => {
-    ['text', 'image', 'nope', 'constructor'].forEach((t) => expect(isStrokeableShape(t)).toBe(false));
+  it('is false for the line (itself a stroke) and non-shapes / unknown types', () => {
+    ['line', 'text', 'image', 'nope', 'constructor'].forEach((t) => expect(isStrokeableShape(t)).toBe(false));
+  });
+});
+
+describe('clipPoints', () => {
+  it('parses a CSS clip-path polygon() string into 0..1 point pairs', () => {
+    expect(clipPoints('polygon(50% 0, 100% 100%, 0 100%)')).toEqual([[0.5, 0], [1, 1], [0, 1]]);
+  });
+  it('handles comma-separated pairs without spaces (e.g. the star)', () => {
+    expect(clipPoints('polygon(50% 0,100% 50%,0 50%)')).toEqual([[0.5, 0], [1, 0.5], [0, 0.5]]);
+  });
+  it('parses the real star clip (10 points, bare-0 coords) to finite 0..1 pairs', () => {
+    const pts = clipPoints(shapeDef('star').clip);
+    expect(pts).toHaveLength(10);
+    expect(pts.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1)).toBe(true);
   });
 });
 
@@ -67,7 +81,7 @@ describe('hasVisibleStroke', () => {
     expect(hasVisibleStroke({ type: 'rect', stroke: '#000', strokeWidth: 2 })).toBe(true);
     expect(hasVisibleStroke({ type: 'rect', stroke: '#000', strokeWidth: 0 })).toBe(false); // 0 width = no outline
     expect(hasVisibleStroke({ type: 'rect', strokeWidth: 2 })).toBe(false);                 // no colour
-    expect(hasVisibleStroke({ type: 'triangle', stroke: '#000', strokeWidth: 2 })).toBe(false); // clip shape
+    expect(hasVisibleStroke({ type: 'triangle', stroke: '#000', strokeWidth: 2 })).toBe(true); // clip polygon strokes via SVG overlay
     expect(hasVisibleStroke(null)).toBe(false);
   });
 });

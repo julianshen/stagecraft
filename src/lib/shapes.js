@@ -39,15 +39,22 @@ export function shapeDef(type) {
   return null;
 }
 
-// Does this shape take a stroke (outline)? Only the box shapes — rect / rounded
-// rect / ellipse — whose visual edge is the element's `border-radius` box, so a
-// CSS `border` follows the outline on the canvas (and `addShape`'s `line` matches
-// on export). A `clip`-path polygon would have its border clipped away, and a
-// `line` is itself a stroke; both are excluded (proper outlines for them need SVG
-// rendering — a follow-up). Non-shapes (text/image) take no stroke.
+// Does this shape take a stroke (outline)? Box shapes (rect / rounded / ellipse)
+// stroke via a CSS `border` that follows their `border-radius` edge; clip-path
+// polygons (triangle/star/…) stroke via an SVG `<polygon>` outline overlay (a CSS
+// border would be clipped away). Either way `addShape`'s `line` matches on export.
+// A `line` is itself a stroke (excluded); non-shapes (text/image) take none.
 export function isStrokeableShape(type) {
   const def = shapeDef(type);
-  return !!def && !def.clip && !def.line;
+  return !!def && !def.line;
+}
+
+// Parse a CSS `clip-path: polygon(x% y%, …)` string into 0..1 point pairs for an
+// SVG `<polygon points>` outline (the stroke overlay on a clip-path shape). The
+// percentages map straight onto a 0..1 viewBox; a bare `0` is 0%.
+export function clipPoints(clip) {
+  const inner = clip.slice(clip.indexOf('(') + 1, clip.lastIndexOf(')'));
+  return inner.split(',').map((pair) => pair.trim().split(/\s+/).map((n) => parseFloat(n) / 100));
 }
 
 // Does this element take a fill background — any shape (box, clip polygon, or
@@ -60,9 +67,9 @@ export function isFillableShape(type) {
   return !!shapeDef(type);
 }
 
-// Does this element have a VISIBLE outline to draw — a strokeable box shape with a
-// colour and a positive width? The single predicate the canvas border and the
-// export line both gate on, so the two can't disagree (canvas == export).
+// Does this element have a VISIBLE outline to draw — a strokeable shape (box
+// border or clip-polygon SVG overlay) with a colour and a positive width? The
+// single predicate the canvas and the export line both gate on (canvas == export).
 export function hasVisibleStroke(el) {
   return !!el && isStrokeableShape(el.type) && !!el.stroke && el.strokeWidth > 0;
 }
