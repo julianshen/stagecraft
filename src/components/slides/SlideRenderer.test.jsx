@@ -564,6 +564,45 @@ describe('Slide inline editing (editable)', () => {
     expect(patch.lanes[0].items[0].lbl).toBe('Mile2');
   });
 
+  it('commits a line-chart category-label edit as a full {chart} model patch', () => {
+    const slide = { id: 'c', layout: 'chart', chartType: 'line', chart: { categories: ['Q1', 'Q2'], series: [{ name: 'S', values: [1, 2] }] } };
+    const { container, onApplyPatch } = renderEditable(slide);
+    editForeign(container, 'Q1', 'Jan');
+    const patch = onApplyPatch.mock.calls[0][0];
+    expect(patch.chart.categories).toEqual(['Jan', 'Q2']);
+    expect(patch.chart.series).toEqual([{ name: 'S', values: [1, 2] }]); // series carried, not dropped
+  });
+
+  it('commits a bar-chart category-label edit (single-series path)', () => {
+    const slide = { id: 'c', layout: 'chart', chartType: 'bar', chart: { categories: ['Q1', 'Q2'], series: [{ name: 'S', values: [1, 2] }] } };
+    const { container, onApplyPatch } = renderEditable(slide);
+    editForeign(container, 'Q2', 'H2');
+    expect(onApplyPatch.mock.calls[0][0].chart.categories).toEqual(['Q1', 'H2']);
+  });
+
+  it('keeps chart category labels as non-editable SVG text when read-only (parity)', () => {
+    const slide = { id: 'c', layout: 'chart', chartType: 'bar', chart: { categories: ['Q1'], series: [{ name: 'S', values: [1] }] } };
+    const { container } = render(<Slide slide={slide} deck={{ title: 'D' }} num={1} total={1} />);
+    expect(container.querySelector('foreignObject')).toBeNull();
+    expect([...container.querySelectorAll('svg text')].some((t) => t.textContent === 'Q1')).toBe(true);
+  });
+
+  it('keeps the single-category edit box on-screen (no negative foreignObject x)', () => {
+    const slide = { id: 'c', layout: 'chart', chartType: 'line', chart: { categories: ['Solo'], series: [{ name: 'S', values: [5] }] } };
+    const { container } = renderEditable(slide);
+    const xs = [...container.querySelectorAll('foreignObject')].map((f) => parseFloat(f.getAttribute('x')));
+    expect(xs.length).toBeGreaterThanOrEqual(1);
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('renders a falsy (0) category label rather than blanking it', () => {
+    const slide = { id: 'c', layout: 'chart', chartType: 'bar', chart: { categories: [0, 'B'], series: [{ name: 'S', values: [1, 2] }] } };
+    const { container } = render(<Slide slide={slide} deck={{ title: 'D' }} num={1} total={1} />);
+    // category labels sit on the bottom axis (y = CH-CP+28 = 528); isolate them from y-axis ticks
+    const catLabels = [...container.querySelectorAll('svg text')].filter((t) => t.getAttribute('y') === '528');
+    expect(catLabels.some((t) => t.textContent === '0')).toBe(true);
+  });
+
   it('keeps roadmap lane names as non-editable SVG text when read-only (parity)', () => {
     const slide = { id: 'r', layout: 'roadmap', title: 'R', lanes: [{ name: 'Platform', items: [] }] };
     const { container } = render(<Slide slide={slide} deck={{ title: 'D' }} num={1} total={1} />);
