@@ -19,6 +19,7 @@ export default function NotesPanel({ slide, onApply }) {
         placeholder="Add speaker notes for this slide…"
         value={resolveNotes(slide)}
         onChange={(e) => onApply?.({ notes: e.target.value })}
+        disabled={!slide}
       />
     </div>
   );

@@ -27,10 +27,17 @@ describe('NotesPanel', () => {
     expect(onApply).toHaveBeenCalledWith({ notes: '' });
   });
 
-  it('is read-only safe with no onApply / no slide — empty value, change does not throw', () => {
+  it('disables the textarea (empty value) when there is no slide to annotate', () => {
     const { getByLabelText } = render(<NotesPanel />);
     const ta = getByLabelText('Speaker notes');
-    expect(ta.value).toBe(''); // resolveNotes(undefined) → '' (no crash, no stale fallback)
-    expect(() => fireEvent.change(ta, { target: { value: 'x' } })).not.toThrow();
+    expect(ta.value).toBe(''); // resolveNotes(undefined) → '' (no stale fallback)
+    expect(ta.disabled).toBe(true); // nothing to edit → not editable (avoids silently-ignored input)
+  });
+
+  it('is editable and safe when a slide is present but onApply is absent', () => {
+    const { getByLabelText } = render(<NotesPanel slide={{ id: 'x', notes: 'hi' }} />);
+    const ta = getByLabelText('Speaker notes');
+    expect(ta.disabled).toBe(false);
+    expect(() => fireEvent.change(ta, { target: { value: 'y' } })).not.toThrow(); // onApply?.() no-op
   });
 });
