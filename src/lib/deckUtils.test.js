@@ -479,6 +479,14 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...base, strokeDash: 'wavy' }] }, 'text')).toEqual({}); // unknown style → reject
   });
 
+  it('accepts a positive lineSpacing and rejects a non-positive one', () => {
+    const t = { id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, content: 'x', fill: '#111' };
+    expect(sanitizeSlidePatch({ elements: [{ ...t, lineSpacing: 1.5 }] }, 'text')).toEqual({ elements: [{ ...t, lineSpacing: 1.5 }] });
+    expect(sanitizeSlidePatch({ elements: [{ ...t, lineSpacing: 0 }] }, 'text')).toEqual({});  // 0 would overlap text
+    expect(sanitizeSlidePatch({ elements: [{ ...t, lineSpacing: -1 }] }, 'text')).toEqual({});
+    expect(sanitizeSlidePatch({ elements: [{ ...t, lineSpacing: Infinity }] }, 'text')).toEqual({}); // non-finite → reject (else <a:spcPct val="Infinity"> corrupts the .pptx)
+  });
+
   it('rejects a non-positive fontSize (export would emit a negative point size)', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: -20 }] }, 'text')).toEqual({});
     expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: 0 }] }, 'text')).toEqual({});

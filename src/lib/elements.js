@@ -186,6 +186,11 @@ export function dashType(dash) {
 // export's dashType fallback (canvas == export for a malformed dash).
 export const borderStyle = (dash) => (dash === 'dashed' || dash === 'dotted' ? dash : 'solid');
 
+// A text element's line-spacing multiplier (default 1.2), clamped positive —
+// single-sourced so the canvas `line-height` and the export `lineSpacingMultiple`
+// agree, and a degenerate 0/negative value falls back rather than overlapping text.
+export const lineSpacingOf = (el) => (Number.isFinite(el.lineSpacing) && el.lineSpacing > 0 ? el.lineSpacing : 1.2);
+
 // Move an element by (dx, dy), snapped to the grid and clamped to the slide.
 export function moveElement(el, dx, dy, { grid = GRID, bounds = { w: SLIDE_W, h: SLIDE_H } } = {}) {
   return {

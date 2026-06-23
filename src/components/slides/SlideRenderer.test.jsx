@@ -157,6 +157,17 @@ describe('ElementsLayer', () => {
     expect(rect.style.border).toContain('solid');   // unknown dash → solid, matching dashType's fallback
   });
 
+  it('applies a text element line spacing to line-height (default 1.2)', () => {
+    render(
+      <ElementsLayer elements={[
+        { id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Spaced', lineSpacing: 1.8 },
+        { id: 'd', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Default' },
+      ]} />,
+    );
+    expect(screen.getByText('Spaced').style.lineHeight).toBe('1.8');
+    expect(screen.getByText('Default').style.lineHeight).toBe('1.2'); // absent → default
+  });
+
   it('applies a dash array to a dashed pen path polyline (none when solid)', () => {
     const dashed = render(
       <ElementsLayer elements={[{ id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#111', strokeWidth: 2, strokeDash: 'dashed' }]} />,

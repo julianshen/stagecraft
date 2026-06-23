@@ -166,7 +166,7 @@ const ELEMENT_FIELD_OK = {
   // The renderer/export ignore it — selecting/moving a member acts on the group,
   // but each element still exports at its own absolute geometry.
   groupId: isStr,
-  fontSize: isPosFinite, rot: isFinite_, opacity: isFinite_,
+  fontSize: isPosFinite, lineSpacing: isPosFinite, rot: isFinite_, opacity: isFinite_,
   bold: isBool, italic: isBool, underline: isBool,
   // align is an enum the renderer maps to flex/textAlign (anything else falls
   // back to left); constrain it so canvas and export agree. fontFamily is
