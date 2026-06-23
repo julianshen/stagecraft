@@ -292,6 +292,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     <Slide
       slide={slide} deck={ctx.deck} sectionName={ctx.sectionName} num={ctx.num} total={ctx.total}
       editable onEditField={(path, value) => applyAIPatch(fieldPatch(slide, path, value), slide.id)}
+      onApplyPatch={(patch) => applyAIPatch(patch, slide.id)}
     />
   );
 

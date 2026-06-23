@@ -63,11 +63,22 @@ export function roadmapModel(slide) {
   return { months, lanes, todayIndex };
 }
 
-// The lanes array for an inline lane-name edit: materialize the model first (so
-// renaming a lane on the demo roadmap — which has no `slide.lanes` — keeps the
-// other lanes and their items rather than collapsing to a single one) and rename
-// lane `li`. An out-of-range index is a no-op. The renderer commits this as a
-// `{ lanes }` patch through the same gate the Data-tab editor uses.
-export function renamedLanes(slide, li, name) {
-  return roadmapModel(slide).lanes.map((lane, i) => (i === li ? { ...lane, name } : lane));
-}
+// Inline-edit patches for the roadmap labels. Each materializes the whole model
+// and returns the FULL { months, lanes, todayIndex } patch (the shape the
+// Data-tab editor commits) — so editing one label on a demo roadmap (which has
+// no slide.lanes/months/todayIndex) can't flip `usingDefaultLanes` and drop the
+// default lanes, months, or TODAY marker. An out-of-range index is a no-op.
+const editRoadmap = (slide, edit) => {
+  const model = roadmapModel(slide);
+  return { ...model, ...edit(model) };
+};
+export const renameLane = (slide, li, name) =>
+  editRoadmap(slide, (m) => ({ lanes: m.lanes.map((l, i) => (i === li ? { ...l, name } : l)) }));
+export const renameMonth = (slide, mi, label) =>
+  editRoadmap(slide, (m) => ({ months: m.months.map((mo, i) => (i === mi ? label : mo)) }));
+export const relabelMilestone = (slide, li, ii, lbl) =>
+  editRoadmap(slide, (m) => ({
+    lanes: m.lanes.map((l, i) => (i === li
+      ? { ...l, items: l.items.map((it, j) => (j === ii ? { ...it, lbl } : it)) }
+      : l)),
+  }));

@@ -2,7 +2,7 @@
 // Caller should wrap in <ScaledSlide> if displaying inside a smaller container.
 import { useId } from 'react';
 import { chartData, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
-import { roadmapModel, renamedLanes, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
+import { roadmapModel, renameLane, renameMonth, relabelMilestone, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
 import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
@@ -273,11 +273,32 @@ export function ChartByType({ type, slide }) {
   return <LineChart categories={d.categories} series={d.series}/>;
 }
 
-// Lane-name typography — shared by the read-only SVG <text> and the editable
-// <foreignObject> HTML so the label can't shift when entering/leaving edit mode.
-const LANE_NAME_FONT = Object.freeze({ fontSize: 20, fontFamily: 'Inter', fontWeight: 600, color: '#222' });
+// Roadmap label typography — each shared by the read-only SVG <text> and the
+// editable <foreignObject> HTML so labels can't shift when entering/leaving edit
+// mode. `fill` is passed separately (SVG uses the `fill` attr, CSS uses `color`).
+const LANE_NAME_FONT = Object.freeze({ fontSize: 20, fontFamily: 'Inter', fontWeight: 600 });
+const MONTH_FONT = Object.freeze({ fontSize: 16, fontFamily: 'JetBrains Mono' });
+const MILESTONE_FONT = Object.freeze({ fontSize: 16, fontFamily: 'Inter', fontWeight: 500 });
 
-export function RoadmapGraphic({ slide, editable = false, onCommitField } = {}) {
+// An SVG roadmap label: plain <text> read-only, an inline-editable HTML field
+// (foreignObject + EditableText) on the canvas. `box` is the edit-mode rectangle
+// (kept non-negative + capped by the caller); read-only/edit share font + fill.
+function EdLabel({ editable, value, tx, ty, box, font, fill, onCommit }) {
+  if (!editable) {
+    return <text x={tx} y={ty} fontSize={font.fontSize} fontFamily={font.fontFamily} fontWeight={font.fontWeight} fill={fill}>{value}</text>;
+  }
+  return (
+    <foreignObject x={box.x} y={box.y} width={box.w} height={box.h}>
+      <EditableText
+        editable as="div" value={value}
+        style={{ ...font, color: fill, margin: 0, padding: 0, lineHeight: `${box.h}px`, whiteSpace: 'nowrap', outline: 'none', cursor: 'text' }}
+        onCommit={onCommit}
+      />
+    </foreignObject>
+  );
+}
+
+export function RoadmapGraphic({ slide, editable = false, onCommitPatch } = {}) {
   const { months, lanes, todayIndex } = roadmapModel(slide);
   // laneH shrinks below its 110 default once there are enough lanes to overflow
   // the fixed 540 viewBox, so a custom roadmap with many lanes isn't clipped
@@ -290,6 +311,7 @@ export function RoadmapGraphic({ slide, editable = false, onCommitField } = {}) 
   // The editable lane-name box is capped to the lane height (so a dense roadmap's
   // short lanes don't get an oversized field at a negative y) and centred in it.
   const nameBoxH = Math.min(30, laneH);
+  const mileBoxH = Math.min(24, laneH); // milestone edit box, capped + centred like the lane name
   const monthW = (W - left - 40) / months.length;
   const stateColor = s => ROADMAP_OKLCH[s] || ROADMAP_OKLCH.planned;
   return (
@@ -297,7 +319,9 @@ export function RoadmapGraphic({ slide, editable = false, onCommitField } = {}) 
       {months.map((m,i)=>(
         <g key={`${m}-${i}`}>
           <line x1={left+i*monthW} x2={left+i*monthW} y1="40" y2={40+lanes.length*laneH} stroke="#eee" strokeWidth="1"/>
-          <text x={left+i*monthW+8} y="32" fontSize="16" fontFamily="JetBrains Mono" fill="#888">{m}</text>
+          <EdLabel editable={editable} value={m} tx={left+i*monthW+8} ty={32}
+            box={{ x: left+i*monthW, y: 14, w: monthW, h: 20 }} font={MONTH_FONT} fill="#888"
+            onCommit={(v) => onCommitPatch?.(renameMonth(slide, i, v))} />
         </g>
       ))}
       {todayIndex != null && (
@@ -308,20 +332,9 @@ export function RoadmapGraphic({ slide, editable = false, onCommitField } = {}) 
       )}
       {lanes.map((lane, li) => (
         <g key={li} transform={`translate(0, ${40 + li*laneH})`}>
-          {editable ? (
-            // On the editing canvas the lane name is an inline-editable HTML field
-            // (foreignObject) committing a materialized {lanes} patch; read-only
-            // surfaces keep the plain SVG <text> below, so they stay pixel-identical.
-            <foreignObject x="30" y={(laneH - nameBoxH) / 2} width={left - 50} height={nameBoxH}>
-              <EditableText
-                editable as="div" value={lane.name}
-                style={{ ...LANE_NAME_FONT, margin: 0, padding: 0, lineHeight: `${nameBoxH}px`, whiteSpace: 'nowrap', outline: 'none', cursor: 'text' }}
-                onCommit={(v) => onCommitField?.(['lanes'], renamedLanes(slide, li, v))}
-              />
-            </foreignObject>
-          ) : (
-            <text x="30" y={laneH/2+6} fontSize={LANE_NAME_FONT.fontSize} fontFamily={LANE_NAME_FONT.fontFamily} fontWeight={LANE_NAME_FONT.fontWeight} fill={LANE_NAME_FONT.color}>{lane.name}</text>
-          )}
+          <EdLabel editable={editable} value={lane.name} tx={30} ty={laneH/2+6}
+            box={{ x: 30, y: (laneH - nameBoxH) / 2, w: left - 50, h: nameBoxH }} font={LANE_NAME_FONT} fill="#222"
+            onCommit={(v) => onCommitPatch?.(renameLane(slide, li, v))} />
           <line x1={left} x2={W-40} y1={laneH-1} y2={laneH-1} stroke="#eee"/>
           {lane.items.map((it, i) => (
             <g key={i}>
@@ -332,10 +345,10 @@ export function RoadmapGraphic({ slide, editable = false, onCommitField } = {}) 
                 fill={stateColor(it.state)}
                 opacity={it.state === 'planned' ? 0.5 : 1}
               />
-              <text x={left + it.t*monthW + 12} y={laneH/2 + 6} fontSize="16"
-                    fontFamily="Inter" fontWeight="500" fill={it.state === 'planned' ? '#555' : 'white'}>
-                {it.lbl}
-              </text>
+              <EdLabel editable={editable} value={it.lbl} tx={left + it.t*monthW + 12} ty={laneH/2 + 6}
+                box={{ x: left + it.t*monthW + 4, y: (laneH - mileBoxH) / 2, w: Math.max(40, it.d*monthW - 8), h: mileBoxH }}
+                font={MILESTONE_FONT} fill={it.state === 'planned' ? '#555' : 'white'}
+                onCommit={(v) => onCommitPatch?.(relabelMilestone(slide, li, i, v))} />
             </g>
           ))}
         </g>
@@ -449,7 +462,7 @@ export function Slide(props) {
   );
 }
 
-function SlideContent({ slide, deck, sectionName, num, total, editable = false, onEditField }) {
+function SlideContent({ slide, deck, sectionName, num, total, editable = false, onEditField, onApplyPatch }) {
   const s = { ...slide, sectionName, num, total };
   // Inline-edit helper. Read-only (editable=false) renders the plain tag, so the
   // shared renderer (thumbnails, sorter, presenter) is byte-identical. On the
@@ -460,6 +473,14 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
   // (an empty applied-keys array), so EditableText can revert the field.
   const commit = (path, v) => {
     const applied = onEditField?.(path, v);
+    return !Array.isArray(applied) || applied.length > 0;
+  };
+  // Commit a full multi-field patch (e.g. the roadmap's materialized
+  // { months, lanes, todayIndex }) — fieldPatch can only build a single-key
+  // patch, so SVG-label edits route through this instead of `commit`. Same
+  // reject-on-empty-applied contract for EditableText's revert.
+  const commitPatch = (patch) => {
+    const applied = onApplyPatch?.(patch);
     return !Array.isArray(applied) || applied.length > 0;
   };
   // Each field carries any per-field formatting (fmt) merged over its template
@@ -669,7 +690,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
           <div style={{ position:'absolute', top:140, left:80, right:80 }}>
             {E(['eyebrow'], slide.eyebrow || 'Product', { as: 'div', className: 'slide-eyebrow' })}
             {E(['title'], slide.title, { as: 'h1', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px' } })}
-            <RoadmapGraphic slide={slide} editable={editable} onCommitField={commit}/>
+            <RoadmapGraphic slide={slide} editable={editable} onCommitPatch={commitPatch}/>
             <div style={{ display:'flex', gap:28, marginTop:24, fontFamily:'var(--f-mono)', fontSize:18 }}>
               {ROADMAP_STATES.map(st => (
                 <span key={st} style={{ display:'flex', alignItems:'center', gap:10 }}>
