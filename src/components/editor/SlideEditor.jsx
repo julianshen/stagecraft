@@ -17,7 +17,8 @@ import ShapeMenu, { SHAPE_TOOLS } from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
 import TableSizePicker from './menus/TableSizePicker.jsx';
 import ChartTypePicker from './menus/ChartTypePicker.jsx';
-import LayoutMenu, { LAYOUT_OPTIONS } from './menus/LayoutMenu.jsx';
+import LayoutMenu from './menus/LayoutMenu.jsx';
+import { LAYOUT_OPTIONS } from './menus/LayoutGrid.jsx';
 import ThemeMenu, { THEME_OPTIONS } from './menus/ThemeMenu.jsx';
 import ComponentMenu from './menus/ComponentMenu.jsx';
 import InspectorPane from './inspector/InspectorPane.jsx';
@@ -401,6 +402,7 @@ export default function SlideEditor(props) {
             onApplyPatch={applyPatchToCurrent}
             deck={deck}
             onChangeTheme={callbacks.onChangeTheme}
+            onChangeLayout={callbacks.onChangeLayout}
             onAddComponent={callbacks.onAddComponent}
           />
         )}
@@ -416,6 +418,7 @@ export default function SlideEditor(props) {
             onApplyPatch={applyPatchToCurrent}
             deck={deck}
             onChangeTheme={callbacks.onChangeTheme}
+            onChangeLayout={callbacks.onChangeLayout}
             onAddComponent={callbacks.onAddComponent}
           />
         )}

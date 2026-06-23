@@ -1,6 +1,6 @@
 import React from 'react';
-import Icon from '../../ui/Icon.jsx';
 import { THEME_OPTIONS, accentColor, accentLabel } from '../menus/ThemeMenu.jsx';
+import { LayoutGrid } from '../menus/LayoutGrid.jsx';
 
 // Insertable components → createComponentSlide ids (via onAddComponent).
 const COMPONENTS = [
@@ -8,7 +8,7 @@ const COMPONENTS = [
   { label: 'List', id: 'list' }, { label: 'Risks', id: 'risks' }, { label: 'Roadmap', id: 'roadmap' }, { label: 'Quote', id: 'quote' },
 ];
 
-export default function DesignPanel({ deck, onChangeTheme, onAddComponent }) {
+export default function DesignPanel({ deck, current, onChangeLayout, onChangeTheme, onAddComponent }) {
   const theme = deck?.theme;
   // The accent token mirrors the live deck theme (same source as the swatch
   // grid above), so the Tokens readout can't drift from the chosen accent.
@@ -17,17 +17,12 @@ export default function DesignPanel({ deck, onChangeTheme, onAddComponent }) {
   const accentVal = accentLabel(active);
   return (
     <>
-      {/* Layout style presets — display-only (these are abstract layout shapes,
-          not the per-slide layouts, which the toolbar Layout menu changes). */}
+      {/* Per-slide layout picker — a second entry point to the toolbar Layout menu,
+          rendered from the shared LayoutGrid so the two pickers can't drift. The
+          active card mirrors the current slide's layout; a pick swaps it. */}
       <div className="pane-section">
         <h4>Layout</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-          {['frame', 'columns', 'rows', 'template', 'layers', 'list', 'outline', 'grid'].map((l, i) => (
-            <div key={l} title={l} style={{ aspectRatio: '4/3', background: i === 0 ? 'var(--accent-wash)' : 'var(--bg)', border: '1px solid var(--line)', borderRadius: 4, color: i === 0 ? 'var(--accent)' : 'var(--ink-3)', display: 'grid', placeItems: 'center' }}>
-              <Icon name={l} size={14} />
-            </div>
-          ))}
-        </div>
+        <LayoutGrid current={current} onPick={onChangeLayout} />
       </div>
       <div className="pane-section">
         <h4>Theme</h4>

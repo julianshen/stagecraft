@@ -46,6 +46,7 @@ export default defineConfig({
         'src/components/slides/SlideRenderer.jsx',
         'src/components/editor/inspector/DataPanel.jsx',
         'src/components/editor/inspector/DesignPanel.jsx',
+        'src/components/editor/menus/LayoutGrid.jsx',
         'src/components/editor/inspector/PropsPanel.jsx',
         'src/components/editor/inspector/InspectorBody.jsx',
         'src/components/editor/inspector/NumberCell.jsx',

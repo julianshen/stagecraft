@@ -3,6 +3,19 @@ import { render, fireEvent } from '@testing-library/react';
 import DesignPanel from './DesignPanel.jsx';
 
 describe('DesignPanel', () => {
+  it('renders the real slide layouts and marks the current slide\'s layout active', () => {
+    const { getByLabelText } = render(<DesignPanel deck={{ theme: 'indigo' }} current="chart" onChangeLayout={vi.fn()} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    expect(getByLabelText('Chart layout').className).toContain('on');     // current layout highlighted
+    expect(getByLabelText('Cover layout').className).not.toContain('on'); // others are not
+  });
+
+  it('swaps the slide layout when a layout card is clicked', () => {
+    const onChangeLayout = vi.fn();
+    const { getByLabelText } = render(<DesignPanel deck={{ theme: 'slate' }} current="cover" onChangeLayout={onChangeLayout} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    fireEvent.click(getByLabelText('Table layout'));
+    expect(onChangeLayout).toHaveBeenCalledWith('table');
+  });
+
   it('marks the deck\'s current theme swatch active and applies another on click', () => {
     const onChangeTheme = vi.fn();
     const { getByLabelText } = render(<DesignPanel deck={{ theme: 'indigo' }} onChangeTheme={onChangeTheme} onAddComponent={vi.fn()} />);
