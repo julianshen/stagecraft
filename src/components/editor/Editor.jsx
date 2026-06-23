@@ -3,7 +3,7 @@ import SlideEditor from './SlideEditor.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch } from '../../lib/deckUtils.js';
-import { createElement, updateSlideElements, alignElements, distributeElements, reorderElement, duplicateElements, cloneElements, moveElement, expandToGroups, groupElements, ungroupElements, GRID } from '../../lib/elements.js';
+import { createElement, updateSlideElements, alignElements, distributeElements, autoArrangeElements, reorderElement, duplicateElements, cloneElements, moveElement, expandToGroups, groupElements, ungroupElements, GRID } from '../../lib/elements.js';
 import { moveSlide, duplicateSlide, appendSlide } from '../../lib/deckOrder.js';
 import { fieldPatch, prepareAIPatch, applyPreparedPatch } from '../../lib/slideEdit.js';
 
@@ -240,31 +240,38 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     setSelElIds(newIds);
     clipboardRef.current = clip.map(c => ({ ...c, x: c.x + GRID * 2, y: c.y + GRID * 2 }));
   }
-  // Align the current multi-selection along an edge (no-op for <2 selected).
-  function alignSelected(edge) {
-    if (selElIds.length < 2) return;
+  // Run a pure layout op on the current multi-selection and commit it: filter to
+  // the live selected elements, bail if fewer than `minCount` remain, then map the
+  // op's output back into slide.elements by id (untouched elements pass through).
+  // Shared by align / distribute / auto-arrange — all guard on live elements, so a
+  // stale id can't push a no-op commit (and a vanished element can't be arranged).
+  function transformSelection(minCount, op) {
     const ids = new Set(selElIds);
+    const sel = slideElements.filter(e => ids.has(e.id));
+    if (sel.length < minCount) return;
     onDeckChange(prev => updateSlideElements(prev, curId, els => {
-      const aligned = alignElements(els.filter(e => ids.has(e.id)), edge);
-      const byId = new Map(aligned.map(e => [e.id, e]));
+      const byId = new Map(op(els.filter(e => ids.has(e.id))).map(e => [e.id, e]));
       return els.map(e => byId.get(e.id) || e);
     }));
   }
-  // Evenly distribute the multi-selection (no-op for <3). The axis is picked
-  // from the selection's bounding box: a wider-than-tall spread distributes
+  // Align the multi-selection to a shared edge (no-op for <2 selected).
+  function alignSelected(edge) {
+    transformSelection(2, els => alignElements(els, edge));
+  }
+  // Evenly distribute the multi-selection (no-op for <3). The axis is picked from
+  // the selection's bounding box: a wider-than-tall spread distributes
   // horizontally, otherwise vertically.
   function distributeSelected() {
-    const ids = new Set(selElIds);
-    const sel = slideElements.filter(e => ids.has(e.id));
-    if (sel.length < 3) return; // guard on live elements, not (possibly stale) ids
-    const spanX = Math.max(...sel.map(e => e.x + e.w)) - Math.min(...sel.map(e => e.x));
-    const spanY = Math.max(...sel.map(e => e.y + e.h)) - Math.min(...sel.map(e => e.y));
-    const axis = spanX >= spanY ? 'h' : 'v';
-    onDeckChange(prev => updateSlideElements(prev, curId, els => {
-      const distributed = distributeElements(els.filter(e => ids.has(e.id)), axis);
-      const byId = new Map(distributed.map(e => [e.id, e]));
-      return els.map(e => byId.get(e.id) || e);
-    }));
+    transformSelection(3, (els) => {
+      const spanX = Math.max(...els.map(e => e.x + e.w)) - Math.min(...els.map(e => e.x));
+      const spanY = Math.max(...els.map(e => e.y + e.h)) - Math.min(...els.map(e => e.y));
+      return distributeElements(els, spanX >= spanY ? 'h' : 'v');
+    });
+  }
+  // Tidy the multi-selection into a grid (no-op for <2). The layout math lives in
+  // autoArrangeElements; positions derive from the selection's own centroid.
+  function autoArrangeSelected() {
+    transformSelection(2, autoArrangeElements);
   }
   // Z-order the single selected element ('front'|'back'); paint order = array order.
   function arrangeElement(op) {
@@ -312,6 +319,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onDeleteElements: deleteSelectedElements,
         onAlignElements: alignSelected,
         onDistributeElements: distributeSelected,
+        onAutoArrange: autoArrangeSelected,
         onArrangeElement: arrangeElement,
         onDuplicateElements: duplicateSelectedElements,
         onGroupElements: groupSelectedElements,

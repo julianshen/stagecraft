@@ -206,7 +206,7 @@ export default function SlideEditor(props) {
   const curIdx = flat.findIndex(f => f.id === curId);
   const cur = flat[Math.max(0, curIdx)];
 
-  // Arrange ops act on a multi-selection: align needs 2+, distribute 3+.
+  // Arrange ops act on a multi-selection: align + auto-arrange need 2+, distribute 3+.
   const selCount = props.selectedElementCount || 0;
   const canAlign = selCount >= 2;
   const canDistribute = selCount >= 3;
@@ -287,7 +287,7 @@ export default function SlideEditor(props) {
         </div>
 
         <div className="group">
-          <IconButton name="magic" title="Auto-arrange"/>
+          <IconButton name="magic" title="Auto-arrange" disabled={!canAlign} onClick={() => callbacks.onAutoArrange && callbacks.onAutoArrange()}/>
           <IconButton name="timeline" active={showTimeline} onClick={()=>setShowTimeline(v=>!v)} title="Animation timeline"/>
           <IconButton name="history" title="Version history"/>
         </div>

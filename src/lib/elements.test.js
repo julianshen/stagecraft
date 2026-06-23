@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, pathFromStroke, dashArray, dashType, borderStyle, STROKE_DASHES, lineSpacingOf, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
+import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, autoArrangeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, pathFromStroke, dashArray, dashType, borderStyle, STROKE_DASHES, lineSpacingOf, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -567,6 +567,80 @@ describe('alignElements', () => {
     const v = alignElements(e, 'vmiddle');
     expect(h.every(el => Number.isInteger(el.x))).toBe(true);
     expect(v.every(el => Number.isInteger(el.y))).toBe(true);
+  });
+});
+
+describe('autoArrangeElements', () => {
+  const byId = (arr) => Object.fromEntries(arr.map((e) => [e.id, e]));
+
+  it('returns the input unchanged for fewer than two elements', () => {
+    const one = [{ id: 'a', x: 0, y: 0, w: 10, h: 10 }];
+    expect(autoArrangeElements(one)).toBe(one);
+    expect(autoArrangeElements([])).toEqual([]);
+  });
+
+  it('packs two equal elements into one centred row with a GRID*2 gap', () => {
+    const els = [
+      { id: 'a', x: 0, y: 0, w: 100, h: 100 },
+      { id: 'b', x: 300, y: 0, w: 100, h: 100 },
+    ]; // bbox 0..400 × 0..100, centroid (200, 50); block 216×100 → x0 = 200-108 = 92
+    const r = byId(autoArrangeElements(els));
+    expect(r.a).toMatchObject({ x: 92, y: 0 });
+    expect(r.b).toMatchObject({ x: 208, y: 0 });
+    expect(r.b.x - (r.a.x + r.a.w)).toBe(GRID * 2); // 16px gap
+  });
+
+  it('lays four elements into a 2x2 grid centred on the selection', () => {
+    const els = [
+      { id: 'a', x: 0, y: 0, w: 100, h: 100 },
+      { id: 'b', x: 400, y: 0, w: 100, h: 100 },
+      { id: 'c', x: 0, y: 400, w: 100, h: 100 },
+      { id: 'd', x: 400, y: 400, w: 100, h: 100 },
+    ]; // centroid (250,250); block 216×216 → origin (142,142)
+    const r = byId(autoArrangeElements(els));
+    expect(r.a).toMatchObject({ x: 142, y: 142 });
+    expect(r.b).toMatchObject({ x: 258, y: 142 });
+    expect(r.c).toMatchObject({ x: 142, y: 258 });
+    expect(r.d).toMatchObject({ x: 258, y: 258 });
+  });
+
+  it('reads positions into the grid by (y, x), independent of array order', () => {
+    const a = { id: 'a', x: 0, y: 0, w: 100, h: 100 };
+    const b = { id: 'b', x: 300, y: 0, w: 100, h: 100 };
+    const r1 = byId(autoArrangeElements([a, b]));
+    const r2 = byId(autoArrangeElements([b, a]));
+    expect(r1.a).toEqual(r2.a);
+    expect(r1.b).toEqual(r2.b);
+  });
+
+  it('uses uniform max-size cells and centres each element within its cell', () => {
+    const els = [
+      { id: 'a', x: 0, y: 0, w: 100, h: 100 },
+      { id: 'b', x: 300, y: 0, w: 200, h: 60 },
+    ]; // cellW=200, cellH=100; bbox 0..500 × 0..100, centroid (250,50); block 416×100 → x0=42
+    const r = byId(autoArrangeElements(els));
+    expect(r.a).toMatchObject({ x: 92, y: 0 });   // 42 + (200-100)/2 centred in wide cell
+    expect(r.b).toMatchObject({ x: 258, y: 20 });  // 0 + (100-60)/2 centred in tall cell
+  });
+
+  it('only touches x/y, preserving every other element field', () => {
+    const els = [
+      { id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 100, rot: 30, fill: '#abc' },
+      { id: 'b', type: 'text', x: 300, y: 0, w: 100, h: 100, content: 'hi' },
+    ];
+    const r = autoArrangeElements(els);
+    expect(r[0]).toMatchObject({ type: 'rect', w: 100, h: 100, rot: 30, fill: '#abc' });
+    expect(r[1]).toMatchObject({ type: 'text', w: 100, h: 100, content: 'hi' });
+  });
+
+  it('keeps the grid on the slide (origin never negative)', () => {
+    const els = [
+      { id: 'a', x: 0, y: 0, w: 100, h: 100 },
+      { id: 'b', x: 0, y: 0, w: 100, h: 100 },
+    ]; // centroid (50,50); a centred 216-wide block would start at -58 → clamp to 0
+    const r = autoArrangeElements(els);
+    expect(Math.min(...r.map((e) => e.x))).toBeGreaterThanOrEqual(0);
+    expect(Math.min(...r.map((e) => e.y))).toBeGreaterThanOrEqual(0);
   });
 });
 

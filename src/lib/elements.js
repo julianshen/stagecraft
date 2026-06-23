@@ -257,6 +257,42 @@ export function distributeElements(els, axis) {
   return els.map((e) => ({ ...e, [pos]: at.get(e.id) }));
 }
 
+// Tidy a multi-selection into a compact grid centred on its current centroid:
+// reading order (top→bottom, left→right) flows into a near-square grid
+// (ceil(sqrt(n)) columns) of uniform cells sized to the largest element, with a
+// GRID*2 gap, each element centred in its cell. Unlike align (collapses one
+// edge) or distribute (one axis), it lays out BOTH axes at once. The block
+// origin is clamped to the slide's top-left (a selection too large to fit still
+// overflows the right/bottom — there's no tidy grid for that). Returns the input
+// unchanged for fewer than two elements; only x/y change.
+export function autoArrangeElements(els, { gap = GRID * 2, bounds = { w: SLIDE_W, h: SLIDE_H } } = {}) {
+  if (!els || els.length < 2) return els;
+  const n = els.length;
+  const cols = Math.ceil(Math.sqrt(n));
+  const rows = Math.ceil(n / cols);
+  const cellW = Math.max(...els.map((e) => e.w));
+  const cellH = Math.max(...els.map((e) => e.h));
+  const blockW = cols * cellW + (cols - 1) * gap;
+  const blockH = rows * cellH + (rows - 1) * gap;
+  const b = selectionBounds(els);
+  // Centre the block on the selection's centroid, then clamp the origin so the
+  // grid never starts off the slide's left/top edge.
+  const x0 = clamp(Math.round(b.cx - blockW / 2), 0, Math.max(0, bounds.w - blockW));
+  const y0 = clamp(Math.round(b.cy - blockH / 2), 0, Math.max(0, bounds.h - blockH));
+  // Sort a copy into reading order so the input array order can't sway the layout.
+  const sorted = [...els].sort((p, q) => (p.y - q.y) || (p.x - q.x));
+  const at = new Map();
+  sorted.forEach((e, i) => {
+    const cellX = x0 + (i % cols) * (cellW + gap);
+    const cellY = y0 + Math.floor(i / cols) * (cellH + gap);
+    at.set(e.id, {
+      x: Math.round(cellX + (cellW - e.w) / 2),
+      y: Math.round(cellY + (cellH - e.h) / 2),
+    });
+  });
+  return els.map((e) => ({ ...e, ...at.get(e.id) }));
+}
+
 // Ids of elements that overlap the marquee rectangle defined by two corners
 // (any drag direction). Strict overlap — edge-only contact does not select.
 export function elementsInMarquee(els, x1, y1, x2, y2) {
