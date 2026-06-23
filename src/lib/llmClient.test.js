@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { callLLM, generateSlide, rewriteText, suggestImprovements, editSlide, suggestSlideOrder, LLMError, describeLLMError } from './llmClient.js';
+import { SHAPES } from './shapes.js';
 import { stubLocalStorage } from '../test/localStorage.js';
 
 function res(body, { ok = true, status = 200 } = {}) {
@@ -406,5 +407,31 @@ describe('describeLLMError', () => {
     expect(msg).toMatch(/model claude-haiku-3.5 not found/);
     // and still falls back to canned copy when there is no detail
     expect(describeLLMError(new LLMError('provider', ''))).toMatch(/provider returned an error/i);
+  });
+});
+
+describe('editSlide prompt — element vocabulary (Co-pilot authoring)', () => {
+  const promptOf = async () => {
+    fetchMock.mockResolvedValue(res({ text: '{}' }));
+    await editSlide({ id: 's', layout: 'text' }, 'add a card');
+    return JSON.parse(fetchMock.mock.calls[0][1].body).system;
+  };
+
+  it('exposes the styling fields the gate accepts, so the Co-pilot can author them', async () => {
+    // A hand-maintained regression guard (the field list needs prose semantics —
+    // ranges/enums/pairing — the gate can't supply, so it's NOT gate-derived like
+    // the shape test below): a new author-facing ELEMENT_FIELD_OK field must be
+    // added to the editSlide prose AND this list by hand.
+    const sys = await promptOf();
+    for (const f of ['stroke', 'strokeWidth', 'strokeDash', 'gradient', 'shadow', 'opacity', 'rot', 'lineSpacing']) {
+      expect(sys, `prompt should describe "${f}"`).toContain(f);
+    }
+  });
+
+  it('lists every SHAPES registry type (single-sourced — no drift)', async () => {
+    const sys = await promptOf();
+    for (const id of Object.keys(SHAPES)) {
+      expect(sys, `prompt should list shape "${id}"`).toContain(`"${id}"`);
+    }
   });
 });
