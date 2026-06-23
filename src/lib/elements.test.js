@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, pathFromStroke, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
+import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, pathFromStroke, dashArray, dashType, borderStyle, STROKE_DASHES, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -740,6 +740,35 @@ describe('pathFromStroke', () => {
     expect(res).toMatchObject({ x: 0, y: 0, w: 199999, h: 399998 });
     expect(res.points[0]).toEqual([0, 0]);
     expect(res.points[199999]).toEqual([1, 1]); // last point maps to the far corner
+  });
+});
+
+describe('stroke dash', () => {
+  it('lists the dash options solid/dashed/dotted for the inspector (frozen — shared const)', () => {
+    expect(STROKE_DASHES).toEqual(['solid', 'dashed', 'dotted']);
+    expect(Object.isFrozen(STROKE_DASHES)).toBe(true);
+  });
+  it('maps a dash style to an SVG dash array scaled by the stroke width (null for solid)', () => {
+    expect(dashArray('solid', 2)).toBeNull();
+    expect(dashArray(undefined, 2)).toBeNull();
+    expect(dashArray('dashed', 2)).toBe('6 4');  // 3w 2w
+    expect(dashArray('dotted', 3)).toBe('0 6');  // round-cap dots, 2w apart
+  });
+  it('maps a dash style to a pptxgen line dashType (undefined for solid)', () => {
+    expect(dashType('solid')).toBeUndefined();
+    expect(dashType(undefined)).toBeUndefined();
+    expect(dashType('dashed')).toBe('dash');
+    expect(dashType('dotted')).toBe('sysDot');
+  });
+  it('clamps the CSS border-style to a known keyword (unknown → solid)', () => {
+    // A bad border-style invalidates the whole `border` shorthand (the outline
+    // vanishes), so an unknown dash (a gate-bypassing write) degrades to solid —
+    // matching the export's dashType fallback.
+    expect(borderStyle('dashed')).toBe('dashed');
+    expect(borderStyle('dotted')).toBe('dotted');
+    expect(borderStyle('solid')).toBe('solid');
+    expect(borderStyle(undefined)).toBe('solid');
+    expect(borderStyle('wavy')).toBe('solid');
   });
 });
 

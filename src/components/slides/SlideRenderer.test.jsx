@@ -132,6 +132,42 @@ describe('ElementsLayer', () => {
     expect(triangle.style.border).toBe('');                   // a clip-path border would be clipped away — not applied
   });
 
+  it('applies the stroke dash style to a box-shape border (solid by default)', () => {
+    const { container } = render(
+      <ElementsLayer
+        elements={[
+          { id: 'd', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff', stroke: '#112233', strokeWidth: 4, strokeDash: 'dashed' },
+          { id: 's', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff', stroke: '#112233', strokeWidth: 4 },
+        ]}
+      />
+    );
+    const boxes = [...container.querySelectorAll('div > div')];
+    expect(boxes.find(b => b.style.border.includes('dashed'))).toBeTruthy(); // strokeDash → dashed border-style
+    expect(boxes.find(b => b.style.border.includes('solid'))).toBeTruthy();  // absent → solid (default)
+  });
+
+  it('clamps a malformed strokeDash to a solid border (no vanished outline, parity with the export)', () => {
+    // A gate-bypassing write (PUT /api/deck / manual) could set an unknown dash;
+    // an invalid CSS border-style would drop the entire `border` shorthand.
+    const { container } = render(
+      <ElementsLayer elements={[{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff', stroke: '#112233', strokeWidth: 4, strokeDash: 'wavy' }]} />,
+    );
+    const rect = [...container.querySelectorAll('div > div')].find(b => b.style.border.includes('4px'));
+    expect(rect).toBeTruthy();                      // the outline survives (shorthand not invalidated)
+    expect(rect.style.border).toContain('solid');   // unknown dash → solid, matching dashType's fallback
+  });
+
+  it('applies a dash array to a dashed pen path polyline (none when solid)', () => {
+    const dashed = render(
+      <ElementsLayer elements={[{ id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#111', strokeWidth: 2, strokeDash: 'dashed' }]} />,
+    );
+    expect(dashed.container.querySelector('polyline').getAttribute('stroke-dasharray')).toBe('6 4'); // dashArray('dashed', 2)
+    const solid = render(
+      <ElementsLayer elements={[{ id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#111', strokeWidth: 2 }]} />,
+    );
+    expect(solid.container.querySelector('polyline').getAttribute('stroke-dasharray')).toBeNull(); // solid → no dasharray
+  });
+
   it('applies a drop-shadow filter to any element with a shadow — including clip shapes (filter follows the clip)', () => {
     const shadow = { color: '#112233', blur: 16, x: 4, y: 8 };
     const { container } = render(

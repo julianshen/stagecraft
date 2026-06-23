@@ -471,6 +471,14 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [text] }, 'text')).toEqual({ elements: [text] }); // text fixture has content
   });
 
+  it('accepts a known strokeDash (solid/dashed/dotted) and rejects an unknown one', () => {
+    const base = { id: 's', type: 'rect', x: 0, y: 0, w: 50, h: 50, fill: '#abc', stroke: '#000', strokeWidth: 2 };
+    for (const d of ['solid', 'dashed', 'dotted']) {
+      expect(sanitizeSlidePatch({ elements: [{ ...base, strokeDash: d }] }, 'text')).toEqual({ elements: [{ ...base, strokeDash: d }] });
+    }
+    expect(sanitizeSlidePatch({ elements: [{ ...base, strokeDash: 'wavy' }] }, 'text')).toEqual({}); // unknown style → reject
+  });
+
   it('rejects a non-positive fontSize (export would emit a negative point size)', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: -20 }] }, 'text')).toEqual({});
     expect(sanitizeSlidePatch({ elements: [{ ...text, fontSize: 0 }] }, 'text')).toEqual({});

@@ -7,7 +7,7 @@ import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
 import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
 import { shapeDef, hasVisibleStroke } from '../../lib/shapes.js';
-import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint } from '../../lib/elements.js';
+import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider
 // fallbacks). This is the memo contract for thumbnail re-rendering
@@ -376,6 +376,7 @@ function ElementView({ el }) {
     return (
       <svg style={{ ...base, overflow: 'visible' }} viewBox="0 0 1 1" preserveAspectRatio="none">
         <polyline points={pts} fill="none" stroke={el.stroke || 'var(--ink, #15171C)'} strokeWidth={el.strokeWidth ?? 2}
+          strokeDasharray={dashArray(el.strokeDash, el.strokeWidth ?? 2) || undefined}
           vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
       </svg>
     );
@@ -397,7 +398,7 @@ function ElementView({ el }) {
   // box-sizing keeps the element's w/h footprint constant. Clip shapes are
   // excluded (a border would be clipped away) — see isStrokeableShape.
   const stroke = hasVisibleStroke(el)
-    ? { border: `${el.strokeWidth}px solid ${el.stroke}`, boxSizing: 'border-box' }
+    ? { border: `${el.strokeWidth}px ${borderStyle(el.strokeDash)} ${el.stroke}`, boxSizing: 'border-box' }
     : null;
   return <div style={{ ...base, ...fill, ...stroke, borderRadius: def?.round ? '50%' : (def?.radius ?? 8) }} />; // rect / unknown → 8
 }
