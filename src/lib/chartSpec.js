@@ -48,6 +48,18 @@ export function chartData(slide) {
   return { categories, series };
 }
 
+// Inline-edit patch for a chart category label: materialize the whole model
+// (so a data-less chart keeps its default series — a sparse {chart:{categories}}
+// would replace slide.chart and drop them) and rename category `ci`. Out-of-range
+// is a no-op. Committed as a full {chart:{categories,series}} patch through the
+// same gate the Data-tab editor uses. (See the roadmap renameLane/etc. analogue.)
+const editChart = (slide, edit) => {
+  const d = chartData(slide);
+  return { chart: { ...d, ...edit(d) } };
+};
+export const renameCategory = (slide, ci, label) =>
+  editChart(slide, (d) => ({ categories: d.categories.map((c, i) => (i === ci ? label : c)) }));
+
 export function chartSpec(slide) {
   const m = TYPE_MAP[slide?.chartType] || TYPE_MAP.line; // renderer defaults unknown/missing to line
   const { categories, series } = chartData(slide);

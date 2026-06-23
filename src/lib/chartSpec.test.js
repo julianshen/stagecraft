@@ -1,6 +1,33 @@
 import { describe, it, expect } from 'vitest';
-import { chartSpec, chartData, CHART_SERIES_OKLCH, CHART_SERIES_HEX } from './chartSpec.js';
+import { chartSpec, chartData, renameCategory, CHART_SERIES_OKLCH, CHART_SERIES_HEX } from './chartSpec.js';
 import { oklchToHex } from '../test/oklchToHex.js';
+
+describe('renameCategory — inline chart category-label edit', () => {
+  it('renames the target category and returns the full {chart:{categories,series}} model', () => {
+    const slide = { chart: { categories: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] } };
+    const patch = renameCategory(slide, 0, 'A2');
+    expect(patch.chart.categories).toEqual(['A2', 'B']);
+    expect(patch.chart.series).toEqual([{ name: 'S', values: [1, 2] }]); // series carried, not dropped
+  });
+
+  it('materializes a data-less chart so renaming one category keeps the default series', () => {
+    // No slide.chart → chartData falls back to DEFAULT_CATEGORIES + DEFAULT_SERIES.
+    // A sparse {chart:{categories}} commit would drop the default series; the full
+    // model must carry them.
+    const patch = renameCategory({}, 0, 'Jan');
+    expect(patch.chart.categories).toEqual(['Jan', 'Q2', 'Q3', 'Q4']);
+    // the default series is materialized + carried (not dropped), aligned to the
+    // categories — assert the shape, not the exact DEFAULT_SERIES numbers.
+    expect(patch.chart.series).toHaveLength(1);
+    expect(typeof patch.chart.series[0].name).toBe('string');
+    expect(patch.chart.series[0].values).toHaveLength(4);
+  });
+
+  it('is a no-op rename for an out-of-range index', () => {
+    const slide = { chart: { categories: ['A'], series: [{ name: 'S', values: [1] }] } };
+    expect(renameCategory(slide, 9, 'X').chart.categories).toEqual(['A']);
+  });
+});
 
 describe('chart series palette', () => {
   it('is one ordered palette in two render targets (oklch canvas + hex export), aligned by index', () => {

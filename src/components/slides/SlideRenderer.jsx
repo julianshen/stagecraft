@@ -1,7 +1,7 @@
 // Renders one slide from the sample deck in 1920×1080 coordinates.
 // Caller should wrap in <ScaledSlide> if displaying inside a smaller container.
 import { useId } from 'react';
-import { chartData, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
+import { chartData, renameCategory, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
 import { roadmapModel, renameLane, renameMonth, relabelMilestone, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
@@ -100,7 +100,7 @@ function ChartGrid({ top }) {
   );
 }
 
-export function LineChart({ categories, series } = {}) {
+export function LineChart({ categories, series, editable = false, onRenameCat } = {}) {
   const gid = 'lg' + useId().replace(/:/g, ''); // unique per instance — multiple charts share a DOM (thumbs + canvas)
   const ser = toSeries(series);
   const labels = categories && categories.length ? categories : FB_CATS;
@@ -108,6 +108,7 @@ export function LineChart({ categories, series } = {}) {
   const multi = ser.length > 1;
   const top = seriesTop(ser);
   const x = xScale(labels.length);
+  const catW = labels.length > 1 ? x(1) - x(0) : 2 * P; // category slot; a single label gets a compact box so it can't centre off-screen
   const y = yScale(top);
   const toPath = arr => arr.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(v)}`).join(' ');
   // Area fill + value badge are single-series-only decorations; skip the work when multi.
@@ -123,7 +124,7 @@ export function LineChart({ categories, series } = {}) {
       </defs>
       <ChartGrid top={top} />
       {labels.map((l, i) => (
-        <text key={i} x={x(i)} y={H - P + 28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{l}</text>
+        <CategoryLabel key={i} cx={x(i)} w={catW} value={l} i={i} editable={editable} onRenameCat={onRenameCat} />
       ))}
       {!multi && <path d={area} fill={`url(#${gid})`} />}
       {ser.map((s, si) => (
@@ -145,7 +146,7 @@ export function LineChart({ categories, series } = {}) {
   );
 }
 
-export function BarChart({ categories, series } = {}) {
+export function BarChart({ categories, series, editable = false, onRenameCat } = {}) {
   const ser = toSeries(series);
   const labels = categories && categories.length ? categories : FB_CATS;
   const W = CW, H = CH, P = CP;
@@ -162,7 +163,7 @@ export function BarChart({ categories, series } = {}) {
               <rect data-bar="" x={P + i * slot + slot * 0.18} y={y(v)} width={slot * 0.64} height={Math.max(0, H - P - y(v))} rx="6"
                 fill={i === ser[0].values.length - 1 ? C_ACCENT : 'oklch(0.78 0.07 265)'}/>
               <text x={P + i * slot + slot * 0.5} y={y(v) - 16} fontSize="20" fontFamily="JetBrains Mono" fontWeight="600" fill="#222" textAnchor="middle">{v}</text>
-              <text x={P + i * slot + slot * 0.5} y={H - P + 28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{labels[i] || ''}</text>
+              <CategoryLabel cx={P + i * slot + slot * 0.5} w={slot} value={labels[i] ?? ''} i={i} editable={editable} onRenameCat={onRenameCat} />
             </g>
           ))
         : labels.map((l, i) => {
@@ -172,7 +173,7 @@ export function BarChart({ categories, series } = {}) {
                 {ser.map((s, si) => (
                   <rect data-bar="" key={si} x={gx + slot * 0.15 + si * bw} y={y(s.values[i])} width={bw * 0.9} height={Math.max(0, H - P - y(s.values[i]))} rx="4" fill={colorAt(si)}/>
                 ))}
-                <text x={gx + slot * 0.5} y={H - P + 28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{l}</text>
+                <CategoryLabel cx={gx + slot * 0.5} w={slot} value={l} i={i} editable={editable} onRenameCat={onRenameCat} />
               </g>
             );
           })}
@@ -181,7 +182,7 @@ export function BarChart({ categories, series } = {}) {
   );
 }
 
-export function AreaChart({ categories, series } = {}) {
+export function AreaChart({ categories, series, editable = false, onRenameCat } = {}) {
   const gid = 'ag' + useId().replace(/:/g, ''); // unique per instance (see LineChart)
   const ser = toSeries(series);
   const labels = categories && categories.length ? categories : FB_CATS;
@@ -189,6 +190,7 @@ export function AreaChart({ categories, series } = {}) {
   const multi = ser.length > 1;
   const top = seriesTop(ser);
   const x = xScale(labels.length);
+  const catW = labels.length > 1 ? x(1) - x(0) : 2 * P; // category slot; a single label gets a compact box so it can't centre off-screen
   const y = yScale(top);
   const line = arr => arr.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(v)}`).join(' ');
   const area = arr => 'M' + arr.map((v, i) => `${x(i)},${y(v)}`).join('L') + `L${x(arr.length - 1)},${H - P}L${x(0)},${H - P}Z`;
@@ -202,7 +204,7 @@ export function AreaChart({ categories, series } = {}) {
       </defs>
       <ChartGrid top={top} />
       {labels.map((l, i) => (
-        <text key={i} x={x(i)} y={H - P + 28} fontSize="18" fontFamily="JetBrains Mono" fill="#888" textAnchor="middle">{l}</text>
+        <CategoryLabel key={i} cx={x(i)} w={catW} value={l} i={i} editable={editable} onRenameCat={onRenameCat} />
       ))}
       {ser.map((s, si) => (
         // Single series keeps the accent gradient fill + dots; multiple series
@@ -264,13 +266,17 @@ export function DonutChart({ categories, values } = {}) {
 // Dispatch by chart type, always feeding each chart the slide's data through the
 // shared chartData helper — the same source the PPTX export uses — so a data-less
 // chart shows the identical default on canvas and in the export.
-export function ChartByType({ type, slide }) {
+export function ChartByType({ type, slide, editable = false, onCommitPatch }) {
   const d = chartData(slide);
+  // On the canvas, an x-axis category label commits the full materialized {chart}
+  // model (renameCategory) so a data-less chart keeps its default series.
+  const onRenameCat = editable ? (i, v) => onCommitPatch?.(renameCategory(slide, i, v)) : undefined;
+  const cat = { categories: d.categories, editable, onRenameCat };
   // line/bar/area render every series; a donut composes a single series over its categories.
-  if (type === 'bar') return <BarChart categories={d.categories} series={d.series}/>;
-  if (type === 'area') return <AreaChart categories={d.categories} series={d.series}/>;
-  if (type === 'donut' || type === 'pie') return <DonutChart categories={d.categories} values={d.series[0]?.values}/>;
-  return <LineChart categories={d.categories} series={d.series}/>;
+  if (type === 'bar') return <BarChart {...cat} series={d.series}/>;
+  if (type === 'area') return <AreaChart {...cat} series={d.series}/>;
+  if (type === 'donut' || type === 'pie') return <DonutChart categories={d.categories} values={d.series[0]?.values}/>; // donut legend labels: inline-edit is a follow-up
+  return <LineChart {...cat} series={d.series}/>;
 }
 
 // Roadmap label typography — each shared by the read-only SVG <text> and the
@@ -283,18 +289,32 @@ const MILESTONE_FONT = Object.freeze({ fontSize: 16, fontFamily: 'Inter', fontWe
 // An SVG roadmap label: plain <text> read-only, an inline-editable HTML field
 // (foreignObject + EditableText) on the canvas. `box` is the edit-mode rectangle
 // (kept non-negative + capped by the caller); read-only/edit share font + fill.
-function EdLabel({ editable, value, tx, ty, box, font, fill, onCommit }) {
+function EdLabel({ editable, value, tx, ty, box, font, fill, align, onCommit }) {
+  const mid = align === 'middle';
   if (!editable) {
-    return <text x={tx} y={ty} fontSize={font.fontSize} fontFamily={font.fontFamily} fontWeight={font.fontWeight} fill={fill}>{value}</text>;
+    return <text x={tx} y={ty} textAnchor={mid ? 'middle' : undefined} fontSize={font.fontSize} fontFamily={font.fontFamily} fontWeight={font.fontWeight} fill={fill}>{value}</text>;
   }
   return (
     <foreignObject x={box.x} y={box.y} width={box.w} height={box.h}>
       <EditableText
         editable as="div" value={value}
-        style={{ ...font, color: fill, margin: 0, padding: 0, lineHeight: `${box.h}px`, whiteSpace: 'nowrap', outline: 'none', cursor: 'text' }}
+        style={{ ...font, color: fill, margin: 0, padding: 0, lineHeight: `${box.h}px`, whiteSpace: 'nowrap', textAlign: mid ? 'center' : undefined, outline: 'none', cursor: 'text' }}
         onCommit={onCommit}
       />
     </foreignObject>
+  );
+}
+
+// Category-axis label typography (line/bar/area), and the centred edit box for one.
+const CAT_FONT = Object.freeze({ fontSize: 18, fontFamily: 'JetBrains Mono' });
+const catBox = (cx, w) => ({ x: cx - w / 2, y: CH - CP + 12, w, h: 24 });
+
+// A chart x-axis category label — an EdLabel fixed to the category typography,
+// bottom-axis baseline, and centred edit box; varies only by centre-x + slot width.
+function CategoryLabel({ cx, w, value, i, editable, onRenameCat }) {
+  return (
+    <EdLabel editable={editable} value={value} tx={cx} ty={CH - CP + 28} align="middle"
+      box={catBox(cx, w)} font={CAT_FONT} fill="#888" onCommit={(v) => onRenameCat?.(i, v)} />
   );
 }
 
@@ -610,7 +630,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
             {E(['title'], slide.title, { as: 'h1', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 8px' } })}
             {E(['sub'], slide.sub || `${typeLabel} chart`, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:22, color:'#888', marginBottom:40 } })}
             <div style={{ background:'white', border:'1px solid #eee', borderRadius:10, padding:30 }}>
-              <ChartByType type={chartType} slide={slide}/>
+              <ChartByType type={chartType} slide={slide} editable={editable} onCommitPatch={commitPatch}/>
             </div>
           </div>
         </div>
