@@ -2158,7 +2158,21 @@ input.range::-moz-range-thumb {
   color: var(--ink);
 }
 
-.cell-input:focus {
+/* Shared multi-line text field for inspector panels (Notes, the Properties
+   Content field). `font` is inherited via the global input/textarea reset. */
+.inspector-textarea {
+  width: 100%;
+  resize: vertical;
+  font-size: 12px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+}
+/* Shared focus ring across the inspector's single-line cells and textareas. */
+.cell-input:focus,
+.inspector-textarea:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-wash);

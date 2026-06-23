@@ -223,6 +223,10 @@ function fieldOk(key, value, layout) {
   // elements overlay any layout; the whole array is replaced, so reject it
   // entirely if any entry isn't renderable (an empty array clears the overlay).
   if (key === 'elements') return Array.isArray(value) && value.every(isValidElement);
+  // `notes` is speaker-notes text; resolveNotes only honours a string (any other
+  // primitive silently falls back to the bundled note), so reject non-strings to
+  // keep the gate aligned with the renderer rather than persisting an inert value.
+  if (key === 'notes') return typeof value === 'string';
   return isPrimitive(value);
 }
 

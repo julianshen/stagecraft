@@ -273,6 +273,13 @@ describe('sanitizeSlidePatch', () => {
     expect(sanitizeSlidePatch('nope')).toEqual({});
     expect(sanitizeSlidePatch({ title: { text: 'Q' } })).toEqual({});
   });
+
+  it('keeps a string `notes` but drops a non-string one (resolveNotes only honours strings)', () => {
+    expect(sanitizeSlidePatch({ notes: 'Talk track.' })).toEqual({ notes: 'Talk track.' });
+    expect(sanitizeSlidePatch({ notes: '' })).toEqual({ notes: '' }); // intentional "no notes"
+    expect(sanitizeSlidePatch({ notes: 123 })).toEqual({});           // would persist but never render
+    expect(sanitizeSlidePatch({ notes: null })).toEqual({});
+  });
 });
 
 
