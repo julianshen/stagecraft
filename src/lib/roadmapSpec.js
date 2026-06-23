@@ -62,3 +62,12 @@ export function roadmapModel(slide) {
     : (usingDefaultLanes ? clamp(DEFAULT_TODAY, 0, span) : null);
   return { months, lanes, todayIndex };
 }
+
+// The lanes array for an inline lane-name edit: materialize the model first (so
+// renaming a lane on the demo roadmap — which has no `slide.lanes` — keeps the
+// other lanes and their items rather than collapsing to a single one) and rename
+// lane `li`. An out-of-range index is a no-op. The renderer commits this as a
+// `{ lanes }` patch through the same gate the Data-tab editor uses.
+export function renamedLanes(slide, li, name) {
+  return roadmapModel(slide).lanes.map((lane, i) => (i === li ? { ...lane, name } : lane));
+}

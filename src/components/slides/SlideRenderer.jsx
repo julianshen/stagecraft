@@ -2,7 +2,7 @@
 // Caller should wrap in <ScaledSlide> if displaying inside a smaller container.
 import { useId } from 'react';
 import { chartData, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
-import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
+import { roadmapModel, renamedLanes, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
 import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
@@ -273,7 +273,11 @@ export function ChartByType({ type, slide }) {
   return <LineChart categories={d.categories} series={d.series}/>;
 }
 
-export function RoadmapGraphic({ slide } = {}) {
+// Lane-name typography — shared by the read-only SVG <text> and the editable
+// <foreignObject> HTML so the label can't shift when entering/leaving edit mode.
+const LANE_NAME_FONT = Object.freeze({ fontSize: 20, fontFamily: 'Inter', fontWeight: 600, color: '#222' });
+
+export function RoadmapGraphic({ slide, editable = false, onCommitField } = {}) {
   const { months, lanes, todayIndex } = roadmapModel(slide);
   // laneH shrinks below its 110 default once there are enough lanes to overflow
   // the fixed 540 viewBox, so a custom roadmap with many lanes isn't clipped
@@ -283,6 +287,9 @@ export function RoadmapGraphic({ slide } = {}) {
   // Bar height scales with laneH (like the PPTX path) so dense roadmaps don't
   // overlap rows; ≤4 lanes keep the original 36 → the demo is unchanged.
   const barHt = Math.min(36, laneH * 0.5);
+  // The editable lane-name box is capped to the lane height (so a dense roadmap's
+  // short lanes don't get an oversized field at a negative y) and centred in it.
+  const nameBoxH = Math.min(30, laneH);
   const monthW = (W - left - 40) / months.length;
   const stateColor = s => ROADMAP_OKLCH[s] || ROADMAP_OKLCH.planned;
   return (
@@ -301,7 +308,20 @@ export function RoadmapGraphic({ slide } = {}) {
       )}
       {lanes.map((lane, li) => (
         <g key={li} transform={`translate(0, ${40 + li*laneH})`}>
-          <text x="30" y={laneH/2+6} fontSize="20" fontFamily="Inter" fontWeight="600" fill="#222">{lane.name}</text>
+          {editable ? (
+            // On the editing canvas the lane name is an inline-editable HTML field
+            // (foreignObject) committing a materialized {lanes} patch; read-only
+            // surfaces keep the plain SVG <text> below, so they stay pixel-identical.
+            <foreignObject x="30" y={(laneH - nameBoxH) / 2} width={left - 50} height={nameBoxH}>
+              <EditableText
+                editable as="div" value={lane.name}
+                style={{ ...LANE_NAME_FONT, margin: 0, padding: 0, lineHeight: `${nameBoxH}px`, whiteSpace: 'nowrap', outline: 'none', cursor: 'text' }}
+                onCommit={(v) => onCommitField?.(['lanes'], renamedLanes(slide, li, v))}
+              />
+            </foreignObject>
+          ) : (
+            <text x="30" y={laneH/2+6} fontSize={LANE_NAME_FONT.fontSize} fontFamily={LANE_NAME_FONT.fontFamily} fontWeight={LANE_NAME_FONT.fontWeight} fill={LANE_NAME_FONT.color}>{lane.name}</text>
+          )}
           <line x1={left} x2={W-40} y1={laneH-1} y2={laneH-1} stroke="#eee"/>
           {lane.items.map((it, i) => (
             <g key={i}>
@@ -649,7 +669,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
           <div style={{ position:'absolute', top:140, left:80, right:80 }}>
             {E(['eyebrow'], slide.eyebrow || 'Product', { as: 'div', className: 'slide-eyebrow' })}
             {E(['title'], slide.title, { as: 'h1', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px' } })}
-            <RoadmapGraphic slide={slide}/>
+            <RoadmapGraphic slide={slide} editable={editable} onCommitField={commit}/>
             <div style={{ display:'flex', gap:28, marginTop:24, fontFamily:'var(--f-mono)', fontSize:18 }}>
               {ROADMAP_STATES.map(st => (
                 <span key={st} style={{ display:'flex', alignItems:'center', gap:10 }}>
