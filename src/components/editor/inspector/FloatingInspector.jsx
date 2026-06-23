@@ -1,7 +1,7 @@
 import React from 'react';
 import InspectorBody from './InspectorBody.jsx';
 
-const LABELS = { design: 'Design', props: 'Props', data: 'Data', anim: 'Anim' };
+const LABELS = Object.freeze({ design: 'Design', props: 'Props', data: 'Data', notes: 'Notes', anim: 'Anim' });
 
 export default function FloatingInspector(props) {
   return (

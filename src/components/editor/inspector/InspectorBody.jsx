@@ -3,6 +3,7 @@ import DesignPanel from './DesignPanel.jsx';
 import PropsPanel from './PropsPanel.jsx';
 import AnimPanel from './AnimPanel.jsx';
 import DataPanel from './DataPanel.jsx';
+import NotesPanel from './NotesPanel.jsx';
 
 // The tab strip + panel switch shared by the docked (InspectorPane) and
 // floating (FloatingInspector) shells. `labels` supplies the per-shell button
@@ -22,6 +23,7 @@ export default function InspectorBody({ labels, tab, setTab, selection, setSelec
         {tab === 'design' && <DesignPanel deck={deck} current={slide?.layout} onChangeLayout={onChangeLayout} onChangeTheme={onChangeTheme} onAddComponent={onAddComponent} />}
         {tab === 'props' && <PropsPanel selected={selection} setSelected={setSelection} count={count} />}
         {tab === 'data' && <DataPanel slide={slide} onApply={onApplyPatch} />}
+        {tab === 'notes' && <NotesPanel slide={slide} onApply={onApplyPatch} />}
         {tab === 'anim' && <AnimPanel />}
         {extras}
       </div>

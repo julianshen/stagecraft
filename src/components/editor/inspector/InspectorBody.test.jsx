@@ -25,4 +25,16 @@ describe('InspectorBody', () => {
     );
     expect(getByLabelText('Cover layout').className).not.toContain('on'); // nothing active, no crash
   });
+
+  it('routes the notes tab to a NotesPanel bound to the slide', () => {
+    const onApplyPatch = vi.fn();
+    const { getByLabelText } = render(
+      <InspectorBody labels={{ design: 'Design', notes: 'Notes' }} tab="notes" setTab={vi.fn()}
+        slide={{ id: 'x', notes: 'Hello' }} onApplyPatch={onApplyPatch} />
+    );
+    const ta = getByLabelText('Speaker notes');
+    expect(ta.value).toBe('Hello');
+    fireEvent.change(ta, { target: { value: 'Bye' } });
+    expect(onApplyPatch).toHaveBeenCalledWith({ notes: 'Bye' });
+  });
 });

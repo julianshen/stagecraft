@@ -45,11 +45,10 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
         <div className="pane-section">
           <h4>Content</h4>
           <textarea
-            className="props-content"
+            className="inspector-textarea"
             rows={3}
             value={selected.content ?? ''}
             onChange={e => setSelected({ ...selected, content: e.target.value })}
-            style={{ width: '100%', resize: 'vertical', font: 'inherit', fontSize: 12, padding: 6, borderRadius: 6, border: '1px solid var(--line)', background: 'var(--bg)', color: 'var(--ink)' }}
           />
         </div>
       )}
