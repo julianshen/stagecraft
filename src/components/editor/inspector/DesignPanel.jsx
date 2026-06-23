@@ -1,6 +1,6 @@
 import React from 'react';
 import Icon from '../../ui/Icon.jsx';
-import { THEME_OPTIONS } from '../menus/ThemeMenu.jsx';
+import { THEME_OPTIONS, accentColor, accentLabel } from '../menus/ThemeMenu.jsx';
 
 // Insertable components → createComponentSlide ids (via onAddComponent).
 const COMPONENTS = [
@@ -10,6 +10,11 @@ const COMPONENTS = [
 
 export default function DesignPanel({ deck, onChangeTheme, onAddComponent }) {
   const theme = deck?.theme;
+  // The accent token mirrors the live deck theme (same source as the swatch
+  // grid above), so the Tokens readout can't drift from the chosen accent.
+  const active = THEME_OPTIONS.find(o => o.id === theme) || THEME_OPTIONS[0];
+  const accentCss = accentColor(active);
+  const accentVal = accentLabel(active);
   return (
     <>
       {/* Layout style presets — display-only (these are abstract layout shapes,
@@ -34,7 +39,7 @@ export default function DesignPanel({ deck, onChangeTheme, onAddComponent }) {
               className={`swatch ${theme === o.id ? 'active' : ''}`}
               title={o.label}
               aria-label={`${o.id} theme`}
-              style={{ background: `oklch(0.62 ${o.chroma} ${o.hue})`, padding: 0, appearance: 'none', WebkitAppearance: 'none' }}
+              style={{ background: accentColor(o), padding: 0, appearance: 'none', WebkitAppearance: 'none' }}
               onClick={() => onChangeTheme?.(o.id)}
             />
           ))}
@@ -43,7 +48,7 @@ export default function DesignPanel({ deck, onChangeTheme, onAddComponent }) {
       <div className="pane-section">
         <h4>Tokens</h4>
         <div className="tokens-row"><div className="swatch-s" style={{ background: 'oklch(0.22 0.01 85)' }} /><div className="name">ink</div><div className="val">#15171c</div></div>
-        <div className="tokens-row"><div className="swatch-s" style={{ background: 'oklch(0.62 0.17 265)' }} /><div className="name">accent</div><div className="val">oklch(.62/.17/265)</div></div>
+        <div className="tokens-row"><div className="swatch-s" style={{ background: accentCss }} /><div className="name">accent</div><div className="val">{accentVal}</div></div>
         <div className="tokens-row"><div className="swatch-s" style={{ background: 'var(--ink)', color: 'white', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600 }}>Aa</div><div className="name">H1 / Inter 600</div><div className="val">96 / -3%</div></div>
       </div>
       <div className="pane-section">

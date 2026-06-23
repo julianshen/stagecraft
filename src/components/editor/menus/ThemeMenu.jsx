@@ -12,6 +12,17 @@ export const THEME_OPTIONS = [
   { id: 'slate', label: 'Slate', hue: 260, chroma: 0.04 },
 ];
 
+// The accent a deck theme renders as — single-sourced so every swatch (this
+// menu, the Design panel's grid, and its accent token) stays identical.
+// Lightness is fixed at 0.62; each theme varies only chroma + hue.
+export const accentColor = (o) => `oklch(0.62 ${o.chroma} ${o.hue})`;
+
+// The same accent as a compact readout for the Design panel's Tokens row, e.g.
+// "oklch(.62/.13/155)". The leading zero is dropped only when a decimal follows
+// (`/^0(?=\.)/`), so a whole-number chroma like 0 stays "0" instead of
+// collapsing to an empty "//" component.
+export const accentLabel = (o) => `oklch(.62/${String(o.chroma).replace(/^0(?=\.)/, '')}/${o.hue})`;
+
 export default function ThemeMenu({ current, onPick }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -31,7 +42,7 @@ export default function ThemeMenu({ current, onPick }) {
           <div className="tsp-label" style={{ textAlign: 'left', marginBottom: 6 }}>Deck theme</div>
           {THEME_OPTIONS.map(o => (
             <button key={o.id} className={`theme-opt${current === o.id ? ' on' : ''}`} onClick={() => { onPick && onPick(o.id); setOpen(false); }}>
-              <span className="theme-sw" style={{ background: `oklch(0.62 ${o.chroma} ${o.hue})` }} />
+              <span className="theme-sw" style={{ background: accentColor(o) }} />
               <span className="theme-name">{o.label}</span>
               {current === o.id && <Icon name="check" size={13} style={{ marginLeft: 'auto', color: 'var(--accent)' }} />}
             </button>
