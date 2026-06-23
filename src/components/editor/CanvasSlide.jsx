@@ -524,6 +524,7 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     // rect is stable for the gesture — cache it once (no per-move layout read).
     const rect = frame.getBoundingClientRect();
     const startX = e.clientX, startY = e.clientY;
+    const additive = !!e.shiftKey; // hold Shift to ADD the sweep to the current selection
     const start = toSlide(rect, startX, startY);
     // Sweep past a screen-pixel threshold (zoom-independent), not a jittery click.
     const swept = (cx, cy) => Math.abs(cx - startX) > 3 || Math.abs(cy - startY) > 3;
@@ -543,11 +544,13 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       setMarquee(null);
       // The release position is authoritative — a fast flick may deliver no
       // pointermove at the release point. A real sweep selects the overlapped
-      // (live) elements; a bare click deselects.
+      // (live) elements (Shift adds them to the current selection; a plain sweep
+      // replaces it); a bare click deselects, but a Shift-click keeps the selection.
       if (swept(ev.clientX, ev.clientY)) {
         const p = toSlide(rect, ev.clientX, ev.clientY);
-        onMarqueeSelect?.(elementsInMarquee(baseElementsRef.current, start.x, start.y, p.x, p.y));
-      } else {
+        const hit = elementsInMarquee(baseElementsRef.current, start.x, start.y, p.x, p.y);
+        onMarqueeSelect?.(additive ? [...new Set([...selectedIds, ...hit])] : hit);
+      } else if (!additive) {
         onSelectElement?.(null);
       }
     }
