@@ -21,6 +21,20 @@ describe('DesignPanel', () => {
     expect(onAddComponent).toHaveBeenCalledWith('roadmap');
   });
 
+  it('shows the active deck theme\'s accent in the Tokens section, not a hardcoded one', () => {
+    const { getByText, queryByText } = render(<DesignPanel deck={{ theme: 'emerald' }} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    // emerald = chroma 0.13, hue 155 — the token must follow the deck theme
+    expect(getByText('oklch(.62/.13/155)')).toBeInTheDocument();
+    // …and the old hardcoded indigo accent must be gone for a non-indigo deck
+    expect(queryByText('oklch(.62/.17/265)')).toBeNull();
+  });
+
+  it('falls back to the first theme\'s accent when the deck has no theme', () => {
+    const { getByText } = render(<DesignPanel deck={{}} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    // THEME_OPTIONS[0] is indigo (chroma 0.17, hue 265)
+    expect(getByText('oklch(.62/.17/265)')).toBeInTheDocument();
+  });
+
   it('renders without callbacks (read-only safe)', () => {
     expect(() => render(<DesignPanel deck={{}} />)).not.toThrow();
   });
