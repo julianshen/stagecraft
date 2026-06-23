@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { roadmapModel, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_HEX, ROADMAP_OKLCH } from './roadmapSpec.js';
+import { roadmapModel, renamedLanes, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_HEX, ROADMAP_OKLCH } from './roadmapSpec.js';
 
 describe('roadmapModel — defaults', () => {
   it('returns the demo roadmap (12 months, 4 lanes, TODAY marker) when the slide has no roadmap data', () => {
@@ -86,5 +86,34 @@ describe('roadmap palette', () => {
       expect(ROADMAP_HEX[s]).toMatch(/^[0-9A-F]{6}$/i);
       expect(typeof ROADMAP_OKLCH[s]).toBe('string');
     });
+  });
+});
+
+describe('renamedLanes — inline lane-name edit', () => {
+  it('renames the target lane while preserving the others and their items', () => {
+    const slide = {
+      lanes: [
+        { name: 'Alpha', items: [{ t: 0, d: 2, lbl: 'A1', state: 'done' }] },
+        { name: 'Beta', items: [{ t: 1, d: 1, lbl: 'B1', state: 'planned' }] },
+      ],
+    };
+    const lanes = renamedLanes(slide, 0, 'Alpha 2');
+    expect(lanes.map((l) => l.name)).toEqual(['Alpha 2', 'Beta']);
+    expect(lanes[1]).toEqual(roadmapModel(slide).lanes[1]); // sibling untouched
+    expect(lanes[0].items).toEqual(roadmapModel(slide).lanes[0].items); // items intact
+  });
+
+  it('materializes the demo roadmap so renaming one lane keeps the other default lanes', () => {
+    // A demo slide has no `lanes` — a naive sparse patch would nuke the other
+    // three default lanes. renamedLanes must materialize all four first.
+    const lanes = renamedLanes({}, 0, 'Core');
+    expect(lanes).toHaveLength(4);
+    expect(lanes[0].name).toBe('Core');
+    expect(lanes.slice(1).map((l) => l.name)).toEqual(['Growth', 'AI', 'Enterprise']);
+    expect(lanes[0].items.length).toBeGreaterThan(0); // renamed lane keeps its items
+  });
+
+  it('is a no-op rename for an out-of-range index (returns the materialized lanes unchanged)', () => {
+    expect(renamedLanes({}, 99, 'X')).toEqual(roadmapModel({}).lanes);
   });
 });

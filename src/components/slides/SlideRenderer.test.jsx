@@ -524,6 +524,44 @@ describe('Slide inline editing (editable)', () => {
     expect(onEditField).toHaveBeenCalledWith(['items', 1, 't'], 'Two!');
   });
 
+  it('commits a roadmap lane-name edit as a materialized {lanes} patch (siblings preserved)', () => {
+    const slide = { id: 'r', layout: 'roadmap', title: 'R', lanes: [
+      { name: 'Platform', items: [{ t: 0, d: 2, lbl: 'X', state: 'done' }] },
+      { name: 'Growth', items: [{ t: 1, d: 1, lbl: 'Y', state: 'planned' }] },
+    ] };
+    const { container, onEditField } = renderEditable(slide);
+    // Scope to the foreignObject so an unrelated editable field (title/eyebrow)
+    // sharing the text can't be picked instead.
+    const lane = [...container.querySelectorAll('foreignObject [contenteditable="true"]')].find((n) => n.textContent === 'Platform');
+    expect(lane).toBeTruthy();
+    lane.textContent = 'Core';
+    fireEvent.blur(lane);
+    const call = onEditField.mock.calls.find((c) => c[0][0] === 'lanes');
+    expect(call).toBeTruthy();
+    expect(call[0]).toEqual(['lanes']);                       // a whole-array {lanes} patch…
+    expect(call[1].map((l) => l.name)).toEqual(['Core', 'Growth']); // …with the sibling preserved
+  });
+
+  it('keeps roadmap lane names as non-editable SVG text when read-only (parity)', () => {
+    const slide = { id: 'r', layout: 'roadmap', title: 'R', lanes: [{ name: 'Platform', items: [] }] };
+    const { container } = render(<Slide slide={slide} deck={{ title: 'D' }} num={1} total={1} />);
+    expect(container.querySelector('[contenteditable]')).toBeNull(); // nothing editable off-canvas
+    // the lane name is specifically a plain SVG <text>, not a foreignObject field
+    const laneText = [...container.querySelectorAll('svg text')].find((t) => t.textContent === 'Platform');
+    expect(laneText).toBeTruthy();
+    expect(container.querySelector('foreignObject')).toBeNull();
+  });
+
+  it('keeps each editable lane-name field on its lane in a dense roadmap (no negative foreignObject y)', () => {
+    // laneH shrinks below 32 past ~14 lanes; a fixed -16 offset would push the
+    // edit field to a negative y, off its lane. The box must adapt to laneH.
+    const lanes = Array.from({ length: 20 }, (_, i) => ({ name: `L${i}`, items: [{ t: 0, d: 1, lbl: 'x', state: 'done' }] }));
+    const { container } = renderEditable({ id: 'r', layout: 'roadmap', title: 'R', lanes });
+    const ys = [...container.querySelectorAll('foreignObject')].map((f) => parseFloat(f.getAttribute('y')));
+    expect(ys).toHaveLength(20);
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
+  });
+
   // One representative edit path per remaining layout — proves each hand-wired
   // E([...path]) emits the right semantic coordinates (catches a path typo in a
   // layout the focused tests above don't exercise).
