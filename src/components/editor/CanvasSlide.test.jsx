@@ -332,6 +332,59 @@ describe('CanvasSlide drag', () => {
     expect(onMarqueeSelect).toHaveBeenCalledWith(['a']);
   });
 
+  it('shift-marquee adds the swept elements to the current selection (does not replace)', () => {
+    const onMarqueeSelect = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['b']} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} onMarqueeSelect={onMarqueeSelect} />,
+    );
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 0, clientY: 0, shiftKey: true });
+    fire(window, 'pointermove', { clientX: 400, clientY: 250 }); // sweeps 'a', not 'b'
+    fire(window, 'pointerup', { clientX: 400, clientY: 250 });
+    expect(onMarqueeSelect).toHaveBeenCalledWith(['b', 'a']); // current 'b' + swept 'a'
+  });
+
+  it('plain marquee (no shift) replaces the current selection', () => {
+    const onMarqueeSelect = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['b']} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} onMarqueeSelect={onMarqueeSelect} />,
+    );
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 0, clientY: 0 }); // no shift
+    fire(window, 'pointermove', { clientX: 400, clientY: 250 });
+    fire(window, 'pointerup', { clientX: 400, clientY: 250 });
+    expect(onMarqueeSelect).toHaveBeenCalledWith(['a']); // replaces 'b'
+  });
+
+  it('treats a null selectedIds as empty on a shift-marquee (defensive, no crash)', () => {
+    const onMarqueeSelect = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={null} onSelectElement={vi.fn()} onUpdateElements={vi.fn()} onMarqueeSelect={onMarqueeSelect} />,
+    );
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 0, clientY: 0, shiftKey: true });
+    fire(window, 'pointermove', { clientX: 400, clientY: 250 });
+    fire(window, 'pointerup', { clientX: 400, clientY: 250 });
+    expect(onMarqueeSelect).toHaveBeenCalledWith(['a']); // null → treated as empty, so just the swept
+  });
+
+  it('shift-clicking empty canvas (no sweep) keeps the selection — does not deselect', () => {
+    const onSelectElement = vi.fn();
+    const onMarqueeSelect = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+        selectedIds={['a']} onSelectElement={onSelectElement} onUpdateElements={vi.fn()} onMarqueeSelect={onMarqueeSelect} />,
+    );
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 0, clientY: 0, shiftKey: true });
+    fire(window, 'pointerup', { clientX: 0, clientY: 0 }); // no sweep → a shift-click
+    expect(onSelectElement).not.toHaveBeenCalled(); // selection preserved (a bare click would deselect)
+    expect(onMarqueeSelect).not.toHaveBeenCalled();
+  });
+
   it('uses the pointerup position when a fast flick delivers no qualifying pointermove', () => {
     const onMarqueeSelect = vi.fn();
     const { container } = render(
