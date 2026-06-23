@@ -146,8 +146,9 @@ const isGradient = (v) => isPlainObject(v)
 // these keys are scattered across the renderer's style object and the exporter's
 // options, so there's no registry to derive from — keep this in sync with the
 // fields `ElementView` (SlideRenderer.jsx) reads, `addElements` (pptxExport.js)
-// exports, and `clampElement` (elements.js) normalizes. A field missing here is
-// silently stripped from AI patches (manual edits bypass this gate). `fill` is
+// exports, and `clampElement` (elements.js) normalizes. A new author-facing field
+// also belongs in the `editSlide` prompt (llmClient.js) so the Co-pilot can author
+// it. A field missing here is silently stripped from AI patches (manual edits bypass this gate). `fill` is
 // gated to a hex (renders identically on canvas + export) and `src` to a data
 // URL (no remote fetch) — a plausible-but-unsafe string would otherwise persist.
 const ELEMENT_FIELD_OK = {

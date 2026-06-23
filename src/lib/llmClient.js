@@ -6,6 +6,7 @@
 // from here and is itself loaded at Vite config time.
 
 import { flattenDeck } from './deckOrder.js';
+import { SHAPES } from './shapes.js';
 
 /**
  * A classified LLM failure — `reason` keys into LLM_ERROR_MESSAGES below.
@@ -168,6 +169,8 @@ Context deck title: ${context.deckTitle || 'Untitled'}`;
  * return usable JSON. Never includes an `id` — the slide's id is immutable.
  */
 export async function editSlide(slide, instruction) {
+  // Single-sourced from the SHAPES registry so the prompt can't drift from the gate.
+  const shapeList = Object.keys(SHAPES).map((s) => `"${s}"`).join(', ');
   const system = `You edit a single slide for a presentation app called Stagecraft.
 Given the current slide JSON and an instruction, respond with ONLY a JSON object
 containing the fields to change (a partial "patch") — no markdown, no prose, no
@@ -177,16 +180,18 @@ text, roadmap, risks, list, thanks. Do not include an "id".
 
 To add or change free-form overlay graphics, set "elements": an array of objects
 placed in a 1920x1080 canvas (origin top-left). Every element needs "type",
-numeric "x","y","w","h", and a hex "fill" (e.g. "#1a1a2e" — the text colour for
-text). Types: "text" (with "content", optional "fontSize","bold","italic",
-"underline","align" left|center|right,"fontFamily"), "line", and shapes
-"shape","rounded","circle","triangle","diamond","pentagon","hexagon","star",
-"arrow". Setting "elements" REPLACES the text/shape/line overlay, so include
-every text/shape/line element you want to keep; omit "elements" to leave the
-overlay unchanged. Do NOT list "image" elements — any existing images on the
-slide are preserved automatically.`;
-  // The shape-type list above mirrors the SHAPES registry (lib/shapes.js); a new
-  // shape there should be added here too so the Co-pilot can author it.
+numeric "x","y","w","h", and a hex "fill" (e.g. "#1a1a2e" — for text this is the
+text colour). Types: "text" (with "content", optional "fontSize", "lineSpacing"
+(a line-height multiplier, e.g. 1.5), "bold","italic","underline","align"
+left|center|right,"fontFamily"), and shapes/lines ${shapeList}.
+Any element may also set: "stroke" (a hex outline colour) with "strokeWidth" (px)
+and optional "strokeDash" ("dashed" or "dotted"); "gradient" ({"from","to" hex,
+"angle" in degrees}) which overrides "fill" on the canvas (still set "fill" — it
+stays required, and is the export's fallback); "shadow" ({"color" hex, "blur","x","y"});
+"opacity" (0-100); and "rot" (rotation in degrees). Setting "elements" REPLACES the
+text/shape/line overlay, so include every text/shape/line element you want to keep;
+omit "elements" to leave the overlay unchanged. Do NOT list "image" elements — any
+existing images on the slide are preserved automatically.`;
 
   const messages = [
     { role: 'user', content: `Current slide:\n${JSON.stringify(slide)}\n\nInstruction: ${instruction}\n\nPatch (JSON only):` },
