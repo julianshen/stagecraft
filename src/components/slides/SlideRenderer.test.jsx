@@ -603,6 +603,29 @@ describe('Slide inline editing (editable)', () => {
     expect(catLabels.some((t) => t.textContent === '0')).toBe(true);
   });
 
+  it('commits a chart series-name edit (multi-series legend) as a full {chart} patch', () => {
+    const slide = { id: 'c', layout: 'chart', chartType: 'line', chart: { categories: ['Q1', 'Q2'], series: [{ name: 'Alpha', values: [1, 2] }, { name: 'Beta', values: [3, 4] }] } };
+    const { container, onApplyPatch } = renderEditable(slide);
+    editForeign(container, 'Alpha', 'A2');
+    const patch = onApplyPatch.mock.calls[0][0];
+    expect(patch.chart.series.map((s) => s.name)).toEqual(['A2', 'Beta']);
+    expect(patch.chart.categories).toEqual(['Q1', 'Q2']); // categories carried, not dropped
+  });
+
+  it('commits a donut legend label edit (a category) as a full {chart} patch', () => {
+    const slide = { id: 'c', layout: 'chart', chartType: 'donut', chart: { categories: ['Slice1', 'Slice2'], series: [{ name: 'S', values: [10, 20] }] } };
+    const { container, onApplyPatch } = renderEditable(slide);
+    editForeign(container, 'Slice1', 'First');
+    expect(onApplyPatch.mock.calls[0][0].chart.categories).toEqual(['First', 'Slice2']);
+  });
+
+  it('keeps chart legend labels as non-editable SVG text when read-only (parity)', () => {
+    const slide = { id: 'c', layout: 'chart', chartType: 'donut', chart: { categories: ['Slice1'], series: [{ name: 'S', values: [10] }] } };
+    const { container } = render(<Slide slide={slide} deck={{ title: 'D' }} num={1} total={1} />);
+    expect(container.querySelector('foreignObject')).toBeNull();
+    expect([...container.querySelectorAll('svg text')].some((t) => t.textContent === 'Slice1')).toBe(true);
+  });
+
   it('keeps roadmap lane names as non-editable SVG text when read-only (parity)', () => {
     const slide = { id: 'r', layout: 'roadmap', title: 'R', lanes: [{ name: 'Platform', items: [] }] };
     const { container } = render(<Slide slide={slide} deck={{ title: 'D' }} num={1} total={1} />);

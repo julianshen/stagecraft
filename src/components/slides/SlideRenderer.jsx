@@ -1,7 +1,7 @@
 // Renders one slide from the sample deck in 1920×1080 coordinates.
 // Caller should wrap in <ScaledSlide> if displaying inside a smaller container.
 import { useId } from 'react';
-import { chartData, renameCategory, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
+import { chartData, renameCategory, renameSeries, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
 import { roadmapModel, renameLane, renameMonth, relabelMilestone, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
@@ -71,14 +71,16 @@ const toSeries = (series) => (series && series.length ? series : [{ name: 'Serie
 
 // Horizontal swatch legend, drawn in the chart's top margin for >1 series.
 // Spacing shrinks as series grow so it doesn't run past the 1600-wide viewBox.
-function ChartLegend({ series, y = 26 }) {
+function ChartLegend({ series, y = 26, editable = false, onRenameSeries }) {
   const gap = Math.min(280, (CW - 120) / series.length);
   return (
     <g>
       {series.map((s, i) => (
         <g key={i} transform={`translate(${CP + i * gap}, ${y})`}>
           <rect data-legend="" x="0" y="-16" width="22" height="22" rx="4" fill={colorAt(i)} />
-          <text x="30" y="2" fontSize="20" fontFamily="Inter" fontWeight="600" fill="#222">{s.name}</text>
+          <EdLabel editable={editable} value={s.name} tx={30} ty={2}
+            box={{ x: 30, y: -16, w: Math.max(40, gap - 44), h: 24 }} font={LEGEND_FONT} fill="#222"
+            onCommit={(v) => onRenameSeries?.(i, v)} />
         </g>
       ))}
     </g>
@@ -100,7 +102,7 @@ function ChartGrid({ top }) {
   );
 }
 
-export function LineChart({ categories, series, editable = false, onRenameCat } = {}) {
+export function LineChart({ categories, series, editable = false, onRenameCat, onRenameSeries } = {}) {
   const gid = 'lg' + useId().replace(/:/g, ''); // unique per instance — multiple charts share a DOM (thumbs + canvas)
   const ser = toSeries(series);
   const labels = categories && categories.length ? categories : FB_CATS;
@@ -141,12 +143,12 @@ export function LineChart({ categories, series, editable = false, onRenameCat } 
           <text x="46" y="1" fill="white" fontSize="18" fontFamily="JetBrains Mono" fontWeight="600" textAnchor="middle">{first[first.length - 1]}</text>
         </g>
       )}
-      {multi && <ChartLegend series={ser} />}
+      {multi && <ChartLegend series={ser} editable={editable} onRenameSeries={onRenameSeries} />}
     </svg>
   );
 }
 
-export function BarChart({ categories, series, editable = false, onRenameCat } = {}) {
+export function BarChart({ categories, series, editable = false, onRenameCat, onRenameSeries } = {}) {
   const ser = toSeries(series);
   const labels = categories && categories.length ? categories : FB_CATS;
   const W = CW, H = CH, P = CP;
@@ -177,12 +179,12 @@ export function BarChart({ categories, series, editable = false, onRenameCat } =
               </g>
             );
           })}
-      {multi && <ChartLegend series={ser} />}
+      {multi && <ChartLegend series={ser} editable={editable} onRenameSeries={onRenameSeries} />}
     </svg>
   );
 }
 
-export function AreaChart({ categories, series, editable = false, onRenameCat } = {}) {
+export function AreaChart({ categories, series, editable = false, onRenameCat, onRenameSeries } = {}) {
   const gid = 'ag' + useId().replace(/:/g, ''); // unique per instance (see LineChart)
   const ser = toSeries(series);
   const labels = categories && categories.length ? categories : FB_CATS;
@@ -215,12 +217,12 @@ export function AreaChart({ categories, series, editable = false, onRenameCat } 
           {!multi && s.values.map((v, i) => (<circle key={i} cx={x(i)} cy={y(v)} r="5" fill="white" stroke={C_ACCENT} strokeWidth="2.5"/>))}
         </g>
       ))}
-      {multi && <ChartLegend series={ser} />}
+      {multi && <ChartLegend series={ser} editable={editable} onRenameSeries={onRenameSeries} />}
     </svg>
   );
 }
 
-export function DonutChart({ categories, values } = {}) {
+export function DonutChart({ categories, values, editable = false, onRenameCat } = {}) {
   const vals = values && values.length ? values : FB_VALS;
   const labels = categories && categories.length ? categories : FB_CATS;
   const sum = vals.reduce((a, b) => a + b, 0);
@@ -254,7 +256,8 @@ export function DonutChart({ categories, values } = {}) {
           // Spacing shrinks as slices grow so the legend doesn't overflow the SVG.
           <g key={i} transform={`translate(0, ${i * Math.min(72, 420 / vals.length)})`}>
             <rect x="0" y="0" width="26" height="26" rx="5" fill={C_SLICES[i % C_SLICES.length]}/>
-            <text x="40" y="20" fontSize="26" fontFamily="Inter" fontWeight="600" fill="#222">{labels[i] || `Series ${i + 1}`}</text>
+            <EdLabel editable={editable} value={labels[i] || `Series ${i + 1}`} tx={40} ty={20}
+              box={{ x: 40, y: 0, w: 380, h: 30 }} font={DONUT_FONT} fill="#222" onCommit={(v) => onRenameCat?.(i, v)} />
             <text x="440" y="20" fontSize="26" fontFamily="JetBrains Mono" fill="#888" textAnchor="end">{Math.round((v / total) * 100)}%</text>
           </g>
         ))}
@@ -271,18 +274,23 @@ export function ChartByType({ type, slide, editable = false, onCommitPatch }) {
   // On the canvas, an x-axis category label commits the full materialized {chart}
   // model (renameCategory) so a data-less chart keeps its default series.
   const onRenameCat = editable ? (i, v) => onCommitPatch?.(renameCategory(slide, i, v)) : undefined;
-  const cat = { categories: d.categories, editable, onRenameCat };
+  const onRenameSeries = editable ? (i, v) => onCommitPatch?.(renameSeries(slide, i, v)) : undefined;
+  const cat = { categories: d.categories, editable, onRenameCat, onRenameSeries };
   // line/bar/area render every series; a donut composes a single series over its categories.
   if (type === 'bar') return <BarChart {...cat} series={d.series}/>;
   if (type === 'area') return <AreaChart {...cat} series={d.series}/>;
-  if (type === 'donut' || type === 'pie') return <DonutChart categories={d.categories} values={d.series[0]?.values}/>; // donut legend labels: inline-edit is a follow-up
+  // donut's legend labels ARE the categories → renameCategory (no multi-series legend).
+  if (type === 'donut' || type === 'pie') return <DonutChart categories={d.categories} values={d.series[0]?.values} editable={editable} onRenameCat={onRenameCat}/>;
   return <LineChart {...cat} series={d.series}/>;
 }
 
 // Roadmap label typography — each shared by the read-only SVG <text> and the
 // editable <foreignObject> HTML so labels can't shift when entering/leaving edit
 // mode. `fill` is passed separately (SVG uses the `fill` attr, CSS uses `color`).
-const LANE_NAME_FONT = Object.freeze({ fontSize: 20, fontFamily: 'Inter', fontWeight: 600 });
+const boldInter = (fontSize) => Object.freeze({ fontSize, fontFamily: 'Inter', fontWeight: 600 });
+const LANE_NAME_FONT = boldInter(20);
+const LEGEND_FONT = boldInter(20);  // multi-series legend names (line/bar/area)
+const DONUT_FONT = boldInter(26);   // donut slice legend labels
 const MONTH_FONT = Object.freeze({ fontSize: 16, fontFamily: 'JetBrains Mono' });
 const MILESTONE_FONT = Object.freeze({ fontSize: 16, fontFamily: 'Inter', fontWeight: 500 });
 

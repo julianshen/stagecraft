@@ -59,6 +59,8 @@ const editChart = (slide, edit) => {
 };
 export const renameCategory = (slide, ci, label) =>
   editChart(slide, (d) => ({ categories: d.categories.map((c, i) => (i === ci ? label : c)) }));
+export const renameSeries = (slide, si, name) =>
+  editChart(slide, (d) => ({ series: d.series.map((s, i) => (i === si ? { ...s, name } : s)) }));
 
 export function chartSpec(slide) {
   const m = TYPE_MAP[slide?.chartType] || TYPE_MAP.line; // renderer defaults unknown/missing to line
