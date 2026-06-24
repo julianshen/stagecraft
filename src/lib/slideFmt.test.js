@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fmtKey, fmtStyle, isFormattablePath, isFormattableKey, remapCollectionFmt, remapTableFmt } from './slideFmt.js';
+import { fmtKey, fmtStyle, isFormattablePath, isFormattableKey, remapCollectionFmt, remapTableFmt, isFmtRecord } from './slideFmt.js';
 
 // The formattable vocabulary, validated as both a render path (array, indices
 // are numbers — used by the renderer's E()) and a stored key (string, indices
@@ -51,6 +51,21 @@ describe('isFormattablePath / isFormattableKey', () => {
     for (const proto of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
       both([proto, 0, 't'], `${proto}.0.t`, false);
     }
+  });
+});
+
+describe('isFmtRecord', () => {
+  it('accepts a valid record (bold/italic/underline/colour + positive fontSize)', () => {
+    expect(isFmtRecord({ bold: true, italic: false, underline: true, fontSize: 32, color: '#08f' })).toBe(true);
+  });
+  it('rejects a non-positive fontSize — ≤0 renders invisibly on the canvas and breaks the export (negative/zero pt)', () => {
+    expect(isFmtRecord({ fontSize: 0 })).toBe(false);
+    expect(isFmtRecord({ fontSize: -12 })).toBe(false);
+    expect(isFmtRecord({ fontSize: NaN })).toBe(false);
+  });
+  it('rejects an unknown key or a mistyped value', () => {
+    expect(isFmtRecord({ weight: 700 })).toBe(false);
+    expect(isFmtRecord({ bold: 'yes' })).toBe(false);
   });
 });
 

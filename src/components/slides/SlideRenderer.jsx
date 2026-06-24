@@ -6,6 +6,7 @@ import { roadmapModel, renameLane, renameMonth, relabelMilestone, ROADMAP_STATES
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
 import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
+import { CANVAS_BASELINE_PX } from '../../lib/fontBaselines.js';
 import { shapeDef, hasVisibleStroke, clipPoints } from '../../lib/shapes.js';
 import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf } from '../../lib/elements.js';
 
@@ -728,8 +729,8 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:200, left:80, right:80, maxWidth:1500 }}>
             <div className="slide-eyebrow">{sectionName}</div>
-            {E(['title'], slide.title, { as: 'h1', style: { fontSize:84, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px', lineHeight:1 } })}
-            {E(['body'], slide.body, { as: 'p', style: { fontSize:32, lineHeight:1.5, color:'#333' } })}
+            {E(['title'], slide.title, { as: 'h1', style: { fontSize:CANVAS_BASELINE_PX.text.title, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px', lineHeight:1 } })}
+            {E(['body'], slide.body, { as: 'p', style: { fontSize:CANVAS_BASELINE_PX.text.body, lineHeight:1.5, color:'#333' } })}
           </div>
         </div>
       );

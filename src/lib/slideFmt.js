@@ -80,7 +80,7 @@ const FMT_PROP_OK = {
   bold: (v) => typeof v === 'boolean',
   italic: (v) => typeof v === 'boolean',
   underline: (v) => typeof v === 'boolean',
-  fontSize: (v) => Number.isFinite(v),
+  fontSize: (v) => Number.isFinite(v) && v > 0, // positive: ≤0 renders invisibly on the canvas and breaks the export (negative/zero pt), like element fontSize
   color: (v) => typeof v === 'string',
 };
 export function isFmtRecord(e) {

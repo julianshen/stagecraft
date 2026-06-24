@@ -29,6 +29,7 @@ export default defineConfig({
         'src/lib/slideEdit.js',
         'src/lib/align.js',
         'src/lib/slideFmt.js',
+        'src/lib/fontBaselines.js',
         'src/lib/color.js',
         'src/lib/domEvents.js',
         'src/lib/shapes.js',
