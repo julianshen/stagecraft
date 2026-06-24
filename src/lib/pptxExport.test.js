@@ -171,6 +171,31 @@ describe('exportToPPTX — font-size parity (agenda / list items, index-keyed)',
   });
 });
 
+describe('exportToPPTX — font-size parity (remaining layout titles)', () => {
+  // The final tranche of title parity: every remaining layout's title scales by
+  // its own canvas↔export ratio (basePx 72 for the body layouts, 220 for thanks).
+  // The title is emitted before any data loop, so a title-only slide suffices.
+  const CASES = [
+    { layout: 'kpi', basePt: 20 },
+    { layout: 'chart', basePt: 20 },
+    { layout: 'split', basePt: 26 },
+    { layout: 'table', basePt: 20 },
+    { layout: 'risks', basePt: 22 },
+    { layout: 'roadmap', basePt: 22 },
+    { layout: 'thanks', basePt: 52 },
+  ];
+  CASES.forEach(({ layout, basePt }) => {
+    it(`scales the ${layout} title by its canvas ratio`, async () => {
+      const base = { id: 'x', layout, title: 'TT' };
+      await exportToPPTX(deckWith(base));
+      expect(optsOf(last(), 'TT').fontSize).toBe(basePt);            // unformatted → pt baseline
+      const px = CANVAS_BASELINE_PX[layout].title;
+      await exportToPPTX(deckWith({ ...base, fmt: { title: { fontSize: px * 2 } } }));
+      expect(optsOf(last(), 'TT').fontSize).toBe(basePt * 2);        // canvas 2× → export 2×
+    });
+  });
+});
+
 describe('exportToPPTX — thanks / generic / split / cover-subtitle builders', () => {
   it('exports a thanks slide (title + subtitle), and its default title when none is given', async () => {
     await exportToPPTX(deckWith({ id: 't', layout: 'thanks', title: 'Thanks!', subtitle: 'Questions?' }));
@@ -697,10 +722,13 @@ describe('per-field / per-item formatting (slide.fmt)', () => {
     expect(o.bold).toBe(true);   // other fmt axes still apply
   });
 
-  it('does NOT scale fmt.fontSize for a layout that has not opted in (kpi title), other axes still applying', async () => {
-    await exportToPPTX(deckWith({ id: 'k', layout: 'kpi', title: 'Metrics', kpis: [], fmt: { title: { fontSize: 300, italic: true } } }));
-    const o = optsOf(last(), 'Metrics');
-    expect(o.fontSize).toBe(20);   // kpi title baseline unchanged (no basePx) — parity is wired per-layout
+  it('does NOT scale fmt.fontSize for a field that has not opted in (cover subtitle), other axes still applying', async () => {
+    // Every layout TITLE is now wired; the cover subtitle stays un-wired by design
+    // (its canvas size is inherited, not per-field), so it's a stable witness that
+    // a no-basePx field keeps its pt baseline while other fmt axes still apply.
+    await exportToPPTX(deckWith({ id: 'c', layout: 'cover', title: 'C', subtitle: 'Sub', fmt: { subtitle: { fontSize: 300, italic: true } } }));
+    const o = optsOf(last(), 'Sub');
+    expect(o.fontSize).toBe(16);   // cover subtitle baseline unchanged (no basePx)
     expect(o.italic).toBe(true);   // other fmt axes still apply
   });
 });

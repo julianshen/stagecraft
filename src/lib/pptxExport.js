@@ -257,7 +257,7 @@ function addKpiSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
-    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, basePx: CANVAS_BASELINE_PX.kpi.title, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const kpis = slide.kpis || [];
   const cols = 3;
@@ -318,7 +318,7 @@ function addTableSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
-    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, basePx: CANVAS_BASELINE_PX.table.title, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const cols = slide.columns || [];
   const rows = slide.rows || [];
@@ -340,7 +340,7 @@ function addChartSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Chart', {
-    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, basePx: CANVAS_BASELINE_PX.chart.title, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const { type, barDir, data } = chartSpec(slide);
   sld.addChart(type, data, {
@@ -362,7 +362,7 @@ function addSplitSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
-    x: 0.5, y: 0.4, w: 5.5, h: 0.8, fontSize: 26, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.4, w: 5.5, h: 0.8, fontSize: 26, basePx: CANVAS_BASELINE_PX.split.title, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   if (slide.body) {
     fmtText(sld, slide, 'body', slide.body, {
@@ -385,7 +385,7 @@ function addRisksSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
-    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, basePx: CANVAS_BASELINE_PX.risks.title, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   // Iterate the raw array with its true index `i` (so a fmt key like `items.2.t`
   // matches the renderer, which keys per-item fmt by the original index), but
@@ -421,7 +421,7 @@ function addRoadmapSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Roadmap', {
-    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, basePx: CANVAS_BASELINE_PX.roadmap.title, bold: true, color: tc.ink, fontFace: 'Inter',
   });
 
   const { months, lanes, todayIndex } = roadmapModel(slide);
@@ -482,7 +482,7 @@ function addThanksSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Thank you', {
-    x: 0.5, y: 2.2, w: 9, h: 1.2, fontSize: 52, bold: true, color: tc.ink, align: 'center', fontFace: 'Inter',
+    x: 0.5, y: 2.2, w: 9, h: 1.2, fontSize: 52, basePx: CANVAS_BASELINE_PX.thanks.title, bold: true, color: tc.ink, align: 'center', fontFace: 'Inter',
   });
   if (slide.subtitle) {
     fmtText(sld, slide, 'subtitle', slide.subtitle, {

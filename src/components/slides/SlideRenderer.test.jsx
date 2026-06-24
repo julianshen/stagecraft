@@ -318,6 +318,21 @@ describe('Slide — font-size baselines (single-sourced with the export basePx)'
     const { container: ls } = render(<Slide slide={{ id: 'l', layout: 'list', title: 'Items' }} deck={{ title: 'Demo' }} num={1} total={1} />);
     expect(ls.querySelector('h1').style.fontSize).toBe(`${CANVAS_BASELINE_PX.list.title}px`); // 84px
   });
+
+  it('sizes the remaining layout titles (kpi/chart/split/table/risks/roadmap/thanks) from the shared CANVAS_BASELINE_PX', () => {
+    // thanks' title <span> inherits its wrapping <h1>, so the h1 carries the size for all 7.
+    for (const layout of ['kpi', 'chart', 'split', 'table', 'risks', 'roadmap', 'thanks']) {
+      const { container } = render(<Slide slide={{ id: layout, layout, title: 'T' }} deck={{ title: 'Demo' }} num={1} total={1} />);
+      expect(container.querySelector('h1').style.fontSize).toBe(`${CANVAS_BASELINE_PX[layout].title}px`);
+    }
+  });
+
+  it('resizes the thanks title <span> when fmt.fontSize is set, overriding the inherited <h1> baseline', () => {
+    // The export scales thanks by basePx 220; canvas↔export parity needs the span
+    // to actually resize on the canvas (unformatted it merely inherits the h1's 220).
+    render(<Slide slide={{ id: 't', layout: 'thanks', title: 'Goodbye', fmt: { title: { fontSize: CANVAS_BASELINE_PX.thanks.title * 2 } } }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(screen.getByText('Goodbye').style.fontSize).toBe(`${CANVAS_BASELINE_PX.thanks.title * 2}px`); // 440px — 2× the inherited 220, matching the export's 2×
+  });
 });
 
 describe('Slide per-field formatting (fmt)', () => {
