@@ -33,6 +33,7 @@ vi.mock('pptxgenjs', () => {
 });
 
 import { exportToPPTX } from './pptxExport.js';
+import { CANVAS_BASELINE_PX } from './fontBaselines.js';
 import { CHART_SERIES_HEX } from './chartSpec.js';
 import { SEVERITY_HEX } from './riskSpec.js';
 import { SPEAKER_NOTES } from '../data/deck.js';
@@ -44,8 +45,45 @@ const deckOf = (roadmap) => ({
 });
 const last = () => rec.slides[rec.slides.length - 1];
 const textsOf = (s) => s.texts.map((x) => String(x.t));
+const optsOf = (s, text) => s.texts.find((x) => String(x.t) === text)?.o;
 
 beforeEach(() => { rec.slides.length = 0; });
+
+describe('exportToPPTX — font-size parity (text layout)', () => {
+  // Canvas defaults (SlideRenderer text layout): title 84px, body 32px.
+  // Export pt baselines (addTextSlide): title 26pt, body 15pt.
+  const textDeck = (fmt) => ({
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's', name: 'S', slides: ['t'] }],
+    slides: [{ id: 't', layout: 'text', title: 'Heading', body: 'Body copy', ...(fmt ? { fmt } : {}) }],
+  });
+
+  it('exports the title/body at their pt baselines when unformatted', async () => {
+    await exportToPPTX(textDeck());
+    expect(optsOf(last(), 'Heading').fontSize).toBe(26);
+    expect(optsOf(last(), 'Body copy').fontSize).toBe(15);
+  });
+
+  it('scales the exported title pt by the canvas font-size ratio (fmt.fontSize ÷ baseline px)', async () => {
+    await exportToPPTX(textDeck({ title: { fontSize: CANVAS_BASELINE_PX.text.title * 2 } })); // 2× the canvas baseline
+    expect(optsOf(last(), 'Heading').fontSize).toBe(52);        // export baseline 26pt × 2
+  });
+
+  it('scales the exported body pt by its own canvas ratio', async () => {
+    await exportToPPTX(textDeck({ body: { fontSize: CANVAS_BASELINE_PX.text.body / 2 } })); // 0.5× the canvas baseline
+    expect(optsOf(last(), 'Body copy').fontSize).toBe(7.5);     // export baseline 15pt × 0.5
+  });
+
+  it('floors a malformed (gate-bypassing) fmt.fontSize back to the pt baseline', async () => {
+    // ≤0 / non-finite is now gate-rejected (isFmtRecord), but a server/MCP write can
+    // bypass the deck gate — the export defends by keeping the baseline rather than
+    // emitting a 0 / NaN / Infinity pt size.
+    await exportToPPTX(textDeck({ title: { fontSize: 0 } }));
+    expect(optsOf(last(), 'Heading').fontSize).toBe(26);
+    await exportToPPTX(textDeck({ title: { fontSize: Infinity } }));
+    expect(optsOf(last(), 'Heading').fontSize).toBe(26);
+  });
+});
 
 describe('exportToPPTX — slide range', () => {
   const deck3 = {
@@ -468,7 +506,6 @@ describe('per-field / per-item formatting (slide.fmt)', () => {
     sections: [{ id: 's1', name: 'X', slides: [slide.id] }],
     slides: [slide],
   });
-  const optsOf = (s, text) => s.texts.find((x) => String(x.t) === text)?.o;
 
   it('maps bold + colour onto a field that has neither by default (text body)', async () => {
     await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Body', fmt: { body: { bold: true, color: '#ff0000' } } }));
@@ -546,10 +583,17 @@ describe('per-field / per-item formatting (slide.fmt)', () => {
     expect(o.fontSize).toBe(15);      // base unchanged, no crash
   });
 
-  it('does NOT apply fmt.fontSize — the export keeps its hand-tuned pt scale (B/I/U/colour still apply)', async () => {
-    await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Big', fmt: { body: { fontSize: 300, bold: true } } }));
+  it('scales fmt.fontSize into the export for an opted-in field (text body), other axes still applying', async () => {
+    await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Big', fmt: { body: { fontSize: CANVAS_BASELINE_PX.text.body * 2, bold: true } } }));
     const o = optsOf(last(), 'Big');
-    expect(o.fontSize).toBe(15); // base body size unchanged — NOT PT(300)
-    expect(o.bold).toBe(true);   // other axes still apply
+    expect(o.fontSize).toBe(30); // 15pt baseline × 2 (canvas 2× → export 2×)
+    expect(o.bold).toBe(true);   // other fmt axes still apply
+  });
+
+  it('does NOT scale fmt.fontSize for a layout that has not opted in (agenda title), other axes still applying', async () => {
+    await exportToPPTX(deckWith({ id: 'a', layout: 'agenda', title: 'Plan', items: [], fmt: { title: { fontSize: 300, italic: true } } }));
+    const o = optsOf(last(), 'Plan');
+    expect(o.fontSize).toBe(22);   // agenda title baseline unchanged (no basePx) — parity is wired per-layout
+    expect(o.italic).toBe(true);   // other fmt axes still apply
   });
 });

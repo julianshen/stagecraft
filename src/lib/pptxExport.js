@@ -4,6 +4,7 @@ import { SEVERITY_HEX } from './riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roadmapSpec.js';
 import { resolveNotes } from '../data/deck.js';
 import { flattenDeck } from './deckOrder.js';
+import { CANVAS_BASELINE_PX } from './fontBaselines.js';
 import { toHex, isHexColor, mixHex } from './color.js';
 import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType, lineSpacingOf } from './elements.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
@@ -57,9 +58,10 @@ const pxHex = (fill) => toHex(fill).slice(1).toUpperCase();
 // 'title', 'items.0.t', 'rows.1.4', …). Map a fmt record to pptx text-option
 // overrides: bold/italic/underline/colour translate 1:1, and only set props
 // override (so un-setting returns the field to its template baseline, matching
-// the canvas). `fontSize` is intentionally NOT applied — fmt.fontSize is an
-// absolute canvas-px size, but the layout builders use a hand-tuned pt scale
-// (not PT(px)), so applying it would mis-scale against the unformatted base.
+// the canvas). `fontSize` is NOT applied here — fmt.fontSize is an absolute
+// canvas-px size while the builders use a hand-tuned pt scale (not PT(px)), so it
+// can't translate 1:1. Instead `fmtText` scales the builder's pt baseline by the
+// canvas ratio for fields that opt in via `basePx` (see CANVAS_BASELINE_PX).
 // Keep the prop set in sync with the canvas equivalent `fmtStyle` (slideFmt.js)
 // and the `FMT_PROP_OK` gate (deckUtils.js) if a new formatting prop is added.
 function fmtOpts(fmt) {
@@ -84,8 +86,22 @@ function fmtOpts(fmt) {
 // table-cell builder, so the fmt-map lookup lives in one place.
 const fmtFor = (slide, key) => fmtOpts(slide.fmt?.[key]);
 // addText with the slide.fmt[key] override (if any) merged over the base options.
+// When the builder supplies `basePx` (the field's canvas default font size), an
+// authored `fmt.fontSize` (absolute canvas px) scales the hand-tuned pt baseline
+// by fmt.fontSize ÷ basePx — so a field resized on the canvas exports at the same
+// proportion. `basePx` is stripped (it isn't a pptx option); fields with no basePx
+// keep their pt baseline (parity is wired per-layout).
 function fmtText(sld, slide, key, value, opts) {
-  sld.addText(value, { ...opts, ...fmtFor(slide, key) });
+  const { basePx, ...base } = opts;
+  const fmt = slide.fmt?.[key]; // the fmt record, read once (B/I/U/colour + fontSize)
+  const o = { ...base, ...fmtOpts(fmt) };
+  // All operands must be finite + positive: a builder that opts in must pass a
+  // positive basePx + pt baseline, and a malformed (gate-bypassing) fmt.fontSize
+  // falls back to the baseline rather than emitting a NaN/Infinity pt size.
+  if (basePx > 0 && Number.isFinite(base.fontSize) && Number.isFinite(fmt?.fontSize) && fmt.fontSize > 0) {
+    o.fontSize = +(base.fontSize * (fmt.fontSize / basePx)).toFixed(2);
+  }
+  sld.addText(value, o);
 }
 
 function elementGeo(el) {
@@ -272,12 +288,12 @@ function addTextSlide(pptx, slide, tc) {
   sld.background = { color: tc.bg };
   if (slide.title) {
     fmtText(sld, slide, 'title', slide.title, {
-      x: 0.5, y: 0.4, w: 9, h: 0.7, fontSize: 26, bold: true, color: tc.ink, fontFace: 'Inter',
+      x: 0.5, y: 0.4, w: 9, h: 0.7, fontSize: 26, basePx: CANVAS_BASELINE_PX.text.title, bold: true, color: tc.ink, fontFace: 'Inter',
     });
   }
   if (slide.body) {
     fmtText(sld, slide, 'body', slide.body, {
-      x: 0.5, y: 1.3, w: 9, h: 4, fontSize: 15, color: 'CCCCCC', fontFace: 'Inter', valign: 'top',
+      x: 0.5, y: 1.3, w: 9, h: 4, fontSize: 15, basePx: CANVAS_BASELINE_PX.text.body, color: 'CCCCCC', fontFace: 'Inter', valign: 'top',
       wrap: true,
     });
   }
