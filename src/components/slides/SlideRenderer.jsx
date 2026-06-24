@@ -586,7 +586,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:200, left:80, right:80 }}>
             {E(['eyebrow'], slide.eyebrow || 'Agenda · 4 parts', { as: 'div', className: 'slide-eyebrow' })}
-            {E(['title'], slide.title || "What we'll cover", { as: 'h1', style: { fontSize:96, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 80px', lineHeight:1 } })}
+            {E(['title'], slide.title || "What we'll cover", { as: 'h1', style: { fontSize:CANVAS_BASELINE_PX.agenda.title, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 80px', lineHeight:1 } })}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'40px 80px', maxWidth:1700 }}>
               {(Array.isArray(slide.items) ? slide.items : []).map((it, i) => it && (
                 // Map the ORIGINAL array (not filtered) so `i` is the true index
@@ -783,7 +783,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
           <SlideChrome slide={s} deck={deck}/>
           <div style={{ position:'absolute', top:160, left:80, right:80 }}>
             {E(['eyebrow'], slide.eyebrow || 'Outlook', { as: 'div', className: 'slide-eyebrow' })}
-            {E(['title'], slide.title, { as: 'h1', style: { fontSize:84, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 70px' } })}
+            {E(['title'], slide.title, { as: 'h1', style: { fontSize:CANVAS_BASELINE_PX.list.title, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 70px' } })}
             <div style={{ display:'flex', flexDirection:'column', gap:28, maxWidth:1500 }}>
               {(Array.isArray(slide.items) ? slide.items : []).map((it,i)=> it != null && (
                 <div key={i} style={{ display:'grid', gridTemplateColumns:'100px 1fr', gap:28, alignItems:'baseline', borderBottom:'1px solid #eee', paddingBottom:28 }}>
