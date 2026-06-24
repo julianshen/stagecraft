@@ -284,14 +284,22 @@ describe('Slide with elements', () => {
   });
 });
 
-describe('Slide text layout — font-size baselines', () => {
-  it('sizes the title/body from the shared CANVAS_BASELINE_PX (single-sourced with the export basePx)', () => {
+describe('Slide — font-size baselines (single-sourced with the export basePx)', () => {
+  it('sizes the text layout title/body from the shared CANVAS_BASELINE_PX', () => {
     const slide = { id: 'a', layout: 'text', title: 'Heading', body: 'Body copy' };
     const { container } = render(<Slide slide={slide} deck={{ title: 'Demo' }} sectionName="Intro" num={1} total={1} />);
     const h1 = container.querySelector('h1');
     const body = [...container.querySelectorAll('p')].find((el) => el.textContent === 'Body copy');
     expect(h1.style.fontSize).toBe(`${CANVAS_BASELINE_PX.text.title}px`); // 84px
     expect(body.style.fontSize).toBe(`${CANVAS_BASELINE_PX.text.body}px`); // 32px
+  });
+
+  it('sizes the cover + divider titles from the shared CANVAS_BASELINE_PX', () => {
+    const { container: cov } = render(<Slide slide={{ id: 'c', layout: 'cover', title: 'Hero' }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(cov.querySelector('h1').style.fontSize).toBe(`${CANVAS_BASELINE_PX.cover.title}px`); // 140px
+    const { container: div } = render(<Slide slide={{ id: 'd', layout: 'divider', title: 'Part One', chapter: '1' }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    const dTitle = [...div.querySelectorAll('div')].find((el) => el.textContent === 'Part One');
+    expect(dTitle.style.fontSize).toBe(`${CANVAS_BASELINE_PX.divider.title}px`); // 140px
   });
 });
 

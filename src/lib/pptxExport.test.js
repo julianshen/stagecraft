@@ -85,6 +85,34 @@ describe('exportToPPTX — font-size parity (text layout)', () => {
   });
 });
 
+describe('exportToPPTX — font-size parity (cover + divider headings)', () => {
+  // Canvas title baselines: cover 140px, divider 140px. Export pt: cover 44, divider 36.
+  const coverDeck = (fmt) => ({
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's', name: 'S', slides: ['c'] }],
+    slides: [{ id: 'c', layout: 'cover', title: 'Hero', ...(fmt ? { fmt } : {}) }],
+  });
+  const dividerDeck = (fmt) => ({
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's', name: 'S', slides: ['d'] }],
+    slides: [{ id: 'd', layout: 'divider', title: 'Part One', chapter: '1', ...(fmt ? { fmt } : {}) }],
+  });
+
+  it('exports the cover title at its pt baseline, scaling it by the canvas ratio', async () => {
+    await exportToPPTX(coverDeck());
+    expect(optsOf(last(), 'Hero').fontSize).toBe(44);
+    await exportToPPTX(coverDeck({ title: { fontSize: CANVAS_BASELINE_PX.cover.title * 2 } }));
+    expect(optsOf(last(), 'Hero').fontSize).toBe(88); // 44 × 2
+  });
+
+  it('exports the divider title at its pt baseline, scaling it by the canvas ratio', async () => {
+    await exportToPPTX(dividerDeck());
+    expect(optsOf(last(), 'Part One').fontSize).toBe(36);
+    await exportToPPTX(dividerDeck({ title: { fontSize: CANVAS_BASELINE_PX.divider.title / 2 } }));
+    expect(optsOf(last(), 'Part One').fontSize).toBe(18); // 36 × 0.5
+  });
+});
+
 describe('exportToPPTX — slide range', () => {
   const deck3 = {
     title: 'D', theme: 'indigo',

@@ -570,7 +570,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
           </div>
           <div style={{ position:'absolute', left:80, bottom:160 }}>
             {slide.eyebrow && E(['eyebrow'], slide.eyebrow, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.6, marginBottom:28 } })}
-            {E(['title'], slide.title || deck?.title || 'Untitled', { as: 'h1', style: { fontSize:140, fontWeight:600, lineHeight:0.95, letterSpacing:'-0.04em', margin:0, maxWidth:1500 } })}
+            {E(['title'], slide.title || deck?.title || 'Untitled', { as: 'h1', style: { fontSize:CANVAS_BASELINE_PX.cover.title, fontWeight:600, lineHeight:0.95, letterSpacing:'-0.04em', margin:0, maxWidth:1500 } })}
           </div>
           <div style={{ position:'absolute', left:80, bottom:80, display:'flex', gap:40, fontFamily:'var(--f-mono)', fontSize:18, opacity:0.55 }}>
             {E(['subtitle'], slide.subtitle || deck?.subtitle || deck?.author || '', { as: 'span' })}
@@ -613,7 +613,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
           </div>
           <div style={{ position:'absolute', left:80, top:'50%', transform:'translateY(-50%)' }}>
             <div style={{ fontFamily:'var(--f-mono)', fontSize:240, fontWeight:400, opacity:0.15, letterSpacing:'-0.04em', lineHeight:0.8 }}>{slide.chapter}</div>
-            {E(['title'], slide.title, { as: 'div', style: { fontSize:140, fontWeight:600, letterSpacing:'-0.04em', marginTop:-60 } })}
+            {E(['title'], slide.title, { as: 'div', style: { fontSize:CANVAS_BASELINE_PX.divider.title, fontWeight:600, letterSpacing:'-0.04em', marginTop:-60 } })}
           </div>
           <div style={{ position:'absolute', right:80, bottom:80, fontFamily:'var(--f-mono)', fontSize:16, opacity:0.5, textAlign:'right' }}>
             <div>{String(num).padStart(2,'0')} / {String(total).padStart(2,'0')}</div>
