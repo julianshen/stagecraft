@@ -12,4 +12,14 @@ export const CANVAS_BASELINE_PX = Object.freeze({
   // row); the export reads the per-index fmt (items.0.t …) against it.
   agenda: Object.freeze({ title: 96, 'items.n': 36, 'items.t': 38, 'items.d': 22 }),
   list: Object.freeze({ title: 84, items: 38 }),
+  // The remaining layouts' titles all render at 72px on the canvas — except thanks,
+  // whose title <span> inherits its 220px wrapping <h1>. Each builder's export pt
+  // baseline differs, so the canvas↔export ratio still carries per-layout.
+  kpi: Object.freeze({ title: 72 }),
+  chart: Object.freeze({ title: 72 }),
+  split: Object.freeze({ title: 72 }),
+  table: Object.freeze({ title: 72 }),
+  risks: Object.freeze({ title: 72 }),
+  roadmap: Object.freeze({ title: 72 }),
+  thanks: Object.freeze({ title: 220 }),
 });
