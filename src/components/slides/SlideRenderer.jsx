@@ -593,10 +593,10 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
                 // an edit writes back to; falsy items render as nothing. Keyed by
                 // index (stable): editing it.n must not remount the row.
                 <div key={i} style={{ display:'grid', gridTemplateColumns:'80px 1fr', gap:20, paddingBottom:24, borderBottom:'1px solid #eee' }}>
-                  {E(['items', i, 'n'], it.n, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:36, color:'oklch(0.62 0.17 265)', fontWeight:500 } })}
+                  {E(['items', i, 'n'], it.n, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:CANVAS_BASELINE_PX.agenda['items.n'], color:'oklch(0.62 0.17 265)', fontWeight:500 } })}
                   <div>
-                    {E(['items', i, 't'], it.t, { as: 'div', style: { fontSize:38, fontWeight:600, letterSpacing:'-0.01em', marginBottom:8 } })}
-                    {E(['items', i, 'd'], it.d, { as: 'div', style: { fontSize:22, color:'#666', lineHeight:1.3 } })}
+                    {E(['items', i, 't'], it.t, { as: 'div', style: { fontSize:CANVAS_BASELINE_PX.agenda['items.t'], fontWeight:600, letterSpacing:'-0.01em', marginBottom:8 } })}
+                    {E(['items', i, 'd'], it.d, { as: 'div', style: { fontSize:CANVAS_BASELINE_PX.agenda['items.d'], color:'#666', lineHeight:1.3 } })}
                   </div>
                 </div>
               ))}
@@ -788,7 +788,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
               {(Array.isArray(slide.items) ? slide.items : []).map((it,i)=> it != null && (
                 <div key={i} style={{ display:'grid', gridTemplateColumns:'100px 1fr', gap:28, alignItems:'baseline', borderBottom:'1px solid #eee', paddingBottom:28 }}>
                   <div style={{ fontFamily:'var(--f-mono)', fontSize:28, color:'oklch(0.62 0.17 265)', fontWeight:500 }}>{String(i+1).padStart(2,'0')}</div>
-                  {E(['items', i], typeof it === 'object' && it !== null ? '' : it, { as: 'div', style: { fontSize:38, fontWeight:500, letterSpacing:'-0.01em' } })}
+                  {E(['items', i], typeof it === 'object' && it !== null ? '' : it, { as: 'div', style: { fontSize:CANVAS_BASELINE_PX.list.items, fontWeight:500, letterSpacing:'-0.01em' } })}
                 </div>
               ))}
             </div>

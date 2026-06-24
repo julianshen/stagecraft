@@ -227,9 +227,9 @@ function addAgendaSlide(pptx, slide, tc) {
     if (!it) return; // null item — skip like the canvas, keep `i` the true fmt index
     const y = 1.3 + row * 0.9;
     row += 1;
-    fmtText(sld, slide, `items.${i}.n`, it.n, { x: 0.5, y, w: 0.5, h: 0.4, fontSize: 12, color: tc.accent, fontFace: 'Courier New' });
-    fmtText(sld, slide, `items.${i}.t`, it.t, { x: 1.1, y, w: 5, h: 0.4, fontSize: 15, bold: true, color: tc.ink, fontFace: 'Inter' });
-    fmtText(sld, slide, `items.${i}.d`, it.d, { x: 1.1, y: y + 0.38, w: 7, h: 0.35, fontSize: 11, color: 'AAAAAA', fontFace: 'Inter' });
+    fmtText(sld, slide, `items.${i}.n`, it.n, { x: 0.5, y, w: 0.5, h: 0.4, fontSize: 12, basePx: CANVAS_BASELINE_PX.agenda['items.n'], color: tc.accent, fontFace: 'Courier New' });
+    fmtText(sld, slide, `items.${i}.t`, it.t, { x: 1.1, y, w: 5, h: 0.4, fontSize: 15, basePx: CANVAS_BASELINE_PX.agenda['items.t'], bold: true, color: tc.ink, fontFace: 'Inter' });
+    fmtText(sld, slide, `items.${i}.d`, it.d, { x: 1.1, y: y + 0.38, w: 7, h: 0.35, fontSize: 11, basePx: CANVAS_BASELINE_PX.agenda['items.d'], color: 'AAAAAA', fontFace: 'Inter' });
   });
   return sld;
 }
@@ -307,7 +307,7 @@ function addListSlide(pptx, slide, tc) {
     if (item == null) return; // nullish bullet — skip like the canvas (no "• null"), keep `i` the true index
     fmtText(sld, slide, `items.${i}`, `• ${item}`, {
       x: 0.7, y: 1.2 + row * 0.65, w: 8.5, h: 0.55,
-      fontSize: 14, color: 'DDDDDD', fontFace: 'Inter',
+      fontSize: 14, basePx: CANVAS_BASELINE_PX.list.items, color: 'DDDDDD', fontFace: 'Inter',
     });
     row += 1;
   });

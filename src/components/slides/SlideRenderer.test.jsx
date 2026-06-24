@@ -301,6 +301,16 @@ describe('Slide — font-size baselines (single-sourced with the export basePx)'
     const dTitle = [...div.querySelectorAll('div')].find((el) => el.textContent === 'Part One');
     expect(dTitle.style.fontSize).toBe(`${CANVAS_BASELINE_PX.divider.title}px`); // 140px
   });
+
+  it('sizes the agenda + list item fields from the shared CANVAS_BASELINE_PX', () => {
+    const find = (c, txt) => [...c.querySelectorAll('div')].find((el) => el.textContent === txt);
+    const { container: ag } = render(<Slide slide={{ id: 'a', layout: 'agenda', title: 'Plan', items: [{ n: '07', t: 'First', d: 'Details' }] }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(find(ag, '07').style.fontSize).toBe(`${CANVAS_BASELINE_PX.agenda['items.n']}px`);   // 36px
+    expect(find(ag, 'First').style.fontSize).toBe(`${CANVAS_BASELINE_PX.agenda['items.t']}px`); // 38px
+    expect(find(ag, 'Details').style.fontSize).toBe(`${CANVAS_BASELINE_PX.agenda['items.d']}px`); // 22px
+    const { container: ls } = render(<Slide slide={{ id: 'l', layout: 'list', title: 'Items', items: ['Alpha'] }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(find(ls, 'Alpha').style.fontSize).toBe(`${CANVAS_BASELINE_PX.list.items}px`); // 38px
+  });
 });
 
 describe('Slide per-field formatting (fmt)', () => {

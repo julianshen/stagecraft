@@ -120,6 +120,46 @@ describe('exportToPPTX — font-size parity (cover + divider headings)', () => {
   });
 });
 
+describe('exportToPPTX — font-size parity (agenda / list items, index-keyed)', () => {
+  // Canvas px: agenda items.n 36 / items.t 38 / items.d 22; list items 38.
+  // Export pt: agenda items.n 12 / items.t 15 / items.d 11; list items 14.
+  const agendaItem = (fmt) => deckWith({ id: 'a', layout: 'agenda', title: 'Plan', items: [{ n: '01', t: 'First', d: 'Details' }], ...(fmt ? { fmt } : {}) });
+  const listDeck = (fmt) => deckWith({ id: 'l', layout: 'list', title: 'Items', items: ['Alpha', 'Beta'], ...(fmt ? { fmt } : {}) });
+
+  it('exports the agenda item fields at their pt baselines when unformatted', async () => {
+    await exportToPPTX(agendaItem());
+    expect(optsOf(last(), 'First').fontSize).toBe(15);   // items.t
+    expect(optsOf(last(), '01').fontSize).toBe(12);      // items.n
+    expect(optsOf(last(), 'Details').fontSize).toBe(11); // items.d
+  });
+
+  it('scales each agenda item field by its own per-field-type canvas ratio (per-index fmt key)', async () => {
+    await exportToPPTX(agendaItem({ 'items.0.t': { fontSize: CANVAS_BASELINE_PX.agenda['items.t'] * 2 } }));
+    expect(optsOf(last(), 'First').fontSize).toBe(30);   // 15 × 2
+    await exportToPPTX(agendaItem({ 'items.0.n': { fontSize: CANVAS_BASELINE_PX.agenda['items.n'] / 2 } }));
+    expect(optsOf(last(), '01').fontSize).toBe(6);       // 12 × 0.5
+    await exportToPPTX(agendaItem({ 'items.0.d': { fontSize: CANVAS_BASELINE_PX.agenda['items.d'] * 2 } }));
+    expect(optsOf(last(), 'Details').fontSize).toBe(22); // 11 × 2
+  });
+
+  it('scales a non-first item independently via its own per-index fmt key', async () => {
+    await exportToPPTX(deckWith({
+      id: 'a', layout: 'agenda', title: 'Plan',
+      items: [{ n: '01', t: 'First', d: 'd1' }, { n: '02', t: 'Second', d: 'd2' }],
+      fmt: { 'items.1.t': { fontSize: CANVAS_BASELINE_PX.agenda['items.t'] * 2 } }, // resize ONLY the 2nd row's title
+    }));
+    expect(optsOf(last(), 'Second').fontSize).toBe(30); // items.1.t → 15 × 2
+    expect(optsOf(last(), 'First').fontSize).toBe(15);  // items.0.t untouched (baseline)
+  });
+
+  it('exports list items at the pt baseline, scaling by the canvas ratio', async () => {
+    await exportToPPTX(listDeck());
+    expect(optsOf(last(), '• Alpha').fontSize).toBe(14);
+    await exportToPPTX(listDeck({ 'items.0': { fontSize: CANVAS_BASELINE_PX.list.items * 2 } }));
+    expect(optsOf(last(), '• Alpha').fontSize).toBe(28); // 14 × 2
+  });
+});
+
 describe('exportToPPTX — thanks / generic / split / cover-subtitle builders', () => {
   it('exports a thanks slide (title + subtitle), and its default title when none is given', async () => {
     await exportToPPTX(deckWith({ id: 't', layout: 'thanks', title: 'Thanks!', subtitle: 'Questions?' }));
