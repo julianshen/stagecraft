@@ -7,8 +7,8 @@ describe('CANVAS_BASELINE_PX', () => {
     expect(CANVAS_BASELINE_PX.divider.title).toBe(140);
     expect(CANVAS_BASELINE_PX.text.title).toBe(84);
     expect(CANVAS_BASELINE_PX.text.body).toBe(32);
-    expect(CANVAS_BASELINE_PX.agenda).toEqual({ 'items.n': 36, 'items.t': 38, 'items.d': 22 });
-    expect(CANVAS_BASELINE_PX.list.items).toBe(38);
+    expect(CANVAS_BASELINE_PX.agenda).toEqual({ title: 96, 'items.n': 36, 'items.t': 38, 'items.d': 22 });
+    expect(CANVAS_BASELINE_PX.list).toEqual({ title: 84, items: 38 });
   });
 
   it('is deeply frozen — it is shared between the renderer and the export, so no consumer may mutate it', () => {

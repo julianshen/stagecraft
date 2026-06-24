@@ -311,6 +311,13 @@ describe('Slide — font-size baselines (single-sourced with the export basePx)'
     const { container: ls } = render(<Slide slide={{ id: 'l', layout: 'list', title: 'Items', items: ['Alpha'] }} deck={{ title: 'Demo' }} num={1} total={1} />);
     expect(find(ls, 'Alpha').style.fontSize).toBe(`${CANVAS_BASELINE_PX.list.items}px`); // 38px
   });
+
+  it('sizes the agenda + list titles from the shared CANVAS_BASELINE_PX', () => {
+    const { container: ag } = render(<Slide slide={{ id: 'a', layout: 'agenda', title: 'Plan' }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(ag.querySelector('h1').style.fontSize).toBe(`${CANVAS_BASELINE_PX.agenda.title}px`); // 96px
+    const { container: ls } = render(<Slide slide={{ id: 'l', layout: 'list', title: 'Items' }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(ls.querySelector('h1').style.fontSize).toBe(`${CANVAS_BASELINE_PX.list.title}px`); // 84px
+  });
 });
 
 describe('Slide per-field formatting (fmt)', () => {

@@ -219,7 +219,7 @@ function addAgendaSlide(pptx, slide, tc) {
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Agenda', {
     x: 0.5, y: 0.4, w: 9, h: 0.6,
-    fontSize: 22, bold: true, color: tc.ink, fontFace: 'Inter',
+    fontSize: 22, basePx: CANVAS_BASELINE_PX.agenda.title, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const items = slide.items || [];
   let row = 0; // gap-free layout position; `i` stays the true index for the fmt key
@@ -299,7 +299,7 @@ function addListSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
-    x: 0.5, y: 0.3, w: 9, h: 0.6, fontSize: 24, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.3, w: 9, h: 0.6, fontSize: 24, basePx: CANVAS_BASELINE_PX.list.title, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const items = slide.items || [];
   let row = 0; // gap-free position; `i` stays the true index for the fmt key

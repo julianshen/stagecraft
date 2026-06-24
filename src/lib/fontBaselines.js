@@ -10,6 +10,6 @@ export const CANVAS_BASELINE_PX = Object.freeze({
   text: Object.freeze({ title: 84, body: 32 }),
   // Per-item fields are keyed by field-TYPE (the baseline is the same for every
   // row); the export reads the per-index fmt (items.0.t …) against it.
-  agenda: Object.freeze({ 'items.n': 36, 'items.t': 38, 'items.d': 22 }),
-  list: Object.freeze({ items: 38 }),
+  agenda: Object.freeze({ title: 96, 'items.n': 36, 'items.t': 38, 'items.d': 22 }),
+  list: Object.freeze({ title: 84, items: 38 }),
 });

@@ -158,6 +158,17 @@ describe('exportToPPTX — font-size parity (agenda / list items, index-keyed)',
     await exportToPPTX(listDeck({ 'items.0': { fontSize: CANVAS_BASELINE_PX.list.items * 2 } }));
     expect(optsOf(last(), '• Alpha').fontSize).toBe(28); // 14 × 2
   });
+
+  it('scales the agenda + list titles by their canvas ratios (closing the items-only gap)', async () => {
+    await exportToPPTX(agendaItem());
+    expect(optsOf(last(), 'Plan').fontSize).toBe(22);  // agenda title baseline
+    await exportToPPTX(agendaItem({ title: { fontSize: CANVAS_BASELINE_PX.agenda.title * 2 } }));
+    expect(optsOf(last(), 'Plan').fontSize).toBe(44);  // 22 × 2
+    await exportToPPTX(listDeck());
+    expect(optsOf(last(), 'Items').fontSize).toBe(24); // list title baseline
+    await exportToPPTX(listDeck({ title: { fontSize: CANVAS_BASELINE_PX.list.title / 2 } }));
+    expect(optsOf(last(), 'Items').fontSize).toBe(12); // 24 × 0.5
+  });
 });
 
 describe('exportToPPTX — thanks / generic / split / cover-subtitle builders', () => {
@@ -686,10 +697,10 @@ describe('per-field / per-item formatting (slide.fmt)', () => {
     expect(o.bold).toBe(true);   // other fmt axes still apply
   });
 
-  it('does NOT scale fmt.fontSize for a layout that has not opted in (agenda title), other axes still applying', async () => {
-    await exportToPPTX(deckWith({ id: 'a', layout: 'agenda', title: 'Plan', items: [], fmt: { title: { fontSize: 300, italic: true } } }));
-    const o = optsOf(last(), 'Plan');
-    expect(o.fontSize).toBe(22);   // agenda title baseline unchanged (no basePx) — parity is wired per-layout
+  it('does NOT scale fmt.fontSize for a layout that has not opted in (kpi title), other axes still applying', async () => {
+    await exportToPPTX(deckWith({ id: 'k', layout: 'kpi', title: 'Metrics', kpis: [], fmt: { title: { fontSize: 300, italic: true } } }));
+    const o = optsOf(last(), 'Metrics');
+    expect(o.fontSize).toBe(20);   // kpi title baseline unchanged (no basePx) — parity is wired per-layout
     expect(o.italic).toBe(true);   // other fmt axes still apply
   });
 });
