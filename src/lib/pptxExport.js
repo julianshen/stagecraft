@@ -23,13 +23,6 @@ function themeColors(theme) {
   return THEME_COLORS[theme] || THEME_COLORS.indigo;
 }
 
-function hexToRgb(hex) {
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
-  return { r, g, b };
-}
-
 // ---- free-form elements overlay (slide.elements) ----
 // The slide is authored in an `SLIDE_W`-wide px space; LAYOUT_16x9 is 10 in
 // wide, so both axes scale by the same px/in (derive it from SLIDE_W rather than

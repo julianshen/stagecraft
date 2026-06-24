@@ -46,6 +46,13 @@ const deckOf = (roadmap) => ({
 const last = () => rec.slides[rec.slides.length - 1];
 const textsOf = (s) => s.texts.map((x) => String(x.t));
 const optsOf = (s, text) => s.texts.find((x) => String(x.t) === text)?.o;
+// A deck wrapping a single slide (section id/name are arbitrary — tests assert
+// on the slide's export, not the section).
+const deckWith = (slide) => ({
+  title: 'D', theme: 'indigo',
+  sections: [{ id: 's1', name: 'X', slides: [slide.id] }],
+  slides: [slide],
+});
 
 beforeEach(() => { rec.slides.length = 0; });
 
@@ -110,6 +117,32 @@ describe('exportToPPTX — font-size parity (cover + divider headings)', () => {
     expect(optsOf(last(), 'Part One').fontSize).toBe(36);
     await exportToPPTX(dividerDeck({ title: { fontSize: CANVAS_BASELINE_PX.divider.title / 2 } }));
     expect(optsOf(last(), 'Part One').fontSize).toBe(18); // 36 × 0.5
+  });
+});
+
+describe('exportToPPTX — thanks / generic / split / cover-subtitle builders', () => {
+  it('exports a thanks slide (title + subtitle), and its default title when none is given', async () => {
+    await exportToPPTX(deckWith({ id: 't', layout: 'thanks', title: 'Thanks!', subtitle: 'Questions?' }));
+    expect(textsOf(last())).toEqual(expect.arrayContaining(['Thanks!', 'Questions?']));
+    await exportToPPTX(deckWith({ id: 't2', layout: 'thanks' }));
+    expect(textsOf(last())).toContain('Thank you'); // `slide.title || 'Thank you'`
+  });
+
+  it('exports an unknown layout via the generic builder (title + body, and the subtitle fallback)', async () => {
+    await exportToPPTX(deckWith({ id: 'g', layout: 'mystery', title: 'Custom', body: 'Freeform body' }));
+    expect(textsOf(last())).toEqual(expect.arrayContaining(['Custom', 'Freeform body']));
+    await exportToPPTX(deckWith({ id: 'g2', layout: 'mystery', subtitle: 'Sub only' })); // no body → subtitle path; no title → layout name
+    expect(textsOf(last())).toEqual(expect.arrayContaining(['mystery', 'Sub only']));
+  });
+
+  it('exports the cover subtitle when present', async () => {
+    await exportToPPTX(deckWith({ id: 'c', layout: 'cover', title: 'Hero', subtitle: 'A subtitle' }));
+    expect(textsOf(last())).toContain('A subtitle');
+  });
+
+  it('exports the split body when present', async () => {
+    await exportToPPTX(deckWith({ id: 'sp', layout: 'split', title: 'Split', body: 'Left body' }));
+    expect(textsOf(last())).toContain('Left body');
   });
 });
 
@@ -529,11 +562,6 @@ describe('exportToPPTX — free-form elements overlay', () => {
 });
 
 describe('per-field / per-item formatting (slide.fmt)', () => {
-  const deckWith = (slide) => ({
-    title: 'D', theme: 'indigo',
-    sections: [{ id: 's1', name: 'X', slides: [slide.id] }],
-    slides: [slide],
-  });
 
   it('maps bold + colour onto a field that has neither by default (text body)', async () => {
     await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Body', fmt: { body: { bold: true, color: '#ff0000' } } }));
