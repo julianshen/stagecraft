@@ -5,5 +5,7 @@
 // (the two surfaces are independently laid out, so a ratio, not absolute px, is
 // what carries across). Extend per layout/field as parity is wired (text first).
 export const CANVAS_BASELINE_PX = Object.freeze({
+  cover: Object.freeze({ title: 140 }),
+  divider: Object.freeze({ title: 140 }),
   text: Object.freeze({ title: 84, body: 32 }),
 });

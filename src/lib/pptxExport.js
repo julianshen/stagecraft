@@ -208,7 +208,7 @@ function addCoverSlide(pptx, slide, tc) {
   sld.background = { color: slide.bg === 'accent' ? tc.accent : tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Untitled', {
     x: 0.5, y: 2.5, w: 9, h: 1.2,
-    fontSize: 44, bold: true, color: tc.ink,
+    fontSize: 44, basePx: CANVAS_BASELINE_PX.cover.title, bold: true, color: tc.ink,
     fontFace: 'Inter', align: 'left',
   });
   if (slide.subtitle) {
@@ -245,6 +245,8 @@ function addDividerSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: slide.bg === 'accent' ? tc.accent : tc.bg };
   if (slide.chapter) {
+    // Decorative chapter numeral — a raw addText (not a fmt field), so no fmt/size
+    // parity applies; only the divider title (below) opts into fontSize scaling.
     sld.addText(slide.chapter, {
       x: 0.5, y: 2.0, w: 2, h: 0.6,
       fontSize: 48, bold: true, color: slide.bg === 'accent' ? tc.bg : tc.accent,
@@ -253,7 +255,7 @@ function addDividerSlide(pptx, slide, tc) {
   }
   fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 3.0, w: 9, h: 0.8,
-    fontSize: 36, bold: true, color: tc.ink, fontFace: 'Inter',
+    fontSize: 36, basePx: CANVAS_BASELINE_PX.divider.title, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   return sld;
 }
