@@ -5,7 +5,7 @@
 // (the two surfaces are independently laid out, so a ratio, not absolute px, is
 // what carries across). Extend per layout/field as parity is wired (text first).
 export const CANVAS_BASELINE_PX = Object.freeze({
-  cover: Object.freeze({ title: 140 }),
+  cover: Object.freeze({ title: 140, subtitle: 18 }),
   divider: Object.freeze({ title: 140 }),
   text: Object.freeze({ title: 84, body: 32 }),
   // Per-item fields are keyed by field-TYPE (the baseline is the same for every
@@ -20,7 +20,12 @@ export const CANVAS_BASELINE_PX = Object.freeze({
   kpi: Object.freeze({ title: 72, 'kpis.val': 68, 'kpis.label': 16, 'kpis.delta': 14 }),
   chart: Object.freeze({ title: 72 }),
   split: Object.freeze({ title: 72, body: 28, 'stats.val': 72, 'stats.lbl': 20 }),
-  table: Object.freeze({ title: 72 }),
+  // Table cells are keyed by field-TYPE too: `columns` (the header row) and `rows`
+  // (every body cell shares this baseline). The export reads the per-cell fmt
+  // (columns.C / rows.R.C) against it. (The 6-col "segments" template renders its
+  // last column as an 18px pill, not 26px — a documented minor approximation: a
+  // resized font in that one column scales off the 26px body baseline.)
+  table: Object.freeze({ title: 72, columns: 18, rows: 26 }),
   risks: Object.freeze({ title: 72, 'items.t': 36, 'items.d': 24 }),
   roadmap: Object.freeze({ title: 72 }),
   thanks: Object.freeze({ title: 220, subtitle: 32 }),

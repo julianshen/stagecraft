@@ -4,14 +4,17 @@ import { CANVAS_BASELINE_PX } from './fontBaselines.js';
 describe('CANVAS_BASELINE_PX', () => {
   it('exposes the per-layout heading/body/item canvas baselines', () => {
     expect(CANVAS_BASELINE_PX.cover.title).toBe(140);
+    expect(CANVAS_BASELINE_PX.cover.subtitle).toBe(18);
     expect(CANVAS_BASELINE_PX.divider.title).toBe(140);
     expect(CANVAS_BASELINE_PX.text.title).toBe(84);
     expect(CANVAS_BASELINE_PX.text.body).toBe(32);
     expect(CANVAS_BASELINE_PX.agenda).toEqual({ title: 96, 'items.n': 36, 'items.t': 38, 'items.d': 22 });
     expect(CANVAS_BASELINE_PX.list).toEqual({ title: 84, items: 38 });
-    for (const layout of ['chart', 'table', 'roadmap']) {
+    for (const layout of ['chart', 'roadmap']) {
       expect(CANVAS_BASELINE_PX[layout]).toEqual({ title: 72 });
     }
+    // table also carries its header (columns) + body-cell (rows) baselines.
+    expect(CANVAS_BASELINE_PX.table).toEqual({ title: 72, columns: 18, rows: 26 });
     // kpi/split/risks also carry their per-item data fields (keyed by field-type).
     expect(CANVAS_BASELINE_PX.kpi).toEqual({ title: 72, 'kpis.val': 68, 'kpis.label': 16, 'kpis.delta': 14 });
     expect(CANVAS_BASELINE_PX.split).toEqual({ title: 72, body: 28, 'stats.val': 72, 'stats.lbl': 20 });

@@ -572,7 +572,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
             {slide.eyebrow && E(['eyebrow'], slide.eyebrow, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.6, marginBottom:28 } })}
             {E(['title'], slide.title || deck?.title || 'Untitled', { as: 'h1', style: { fontSize:CANVAS_BASELINE_PX.cover.title, fontWeight:600, lineHeight:0.95, letterSpacing:'-0.04em', margin:0, maxWidth:1500 } })}
           </div>
-          <div style={{ position:'absolute', left:80, bottom:80, display:'flex', gap:40, fontFamily:'var(--f-mono)', fontSize:18, opacity:0.55 }}>
+          <div style={{ position:'absolute', left:80, bottom:80, display:'flex', gap:40, fontFamily:'var(--f-mono)', fontSize:CANVAS_BASELINE_PX.cover.subtitle, opacity:0.55 }}>
             {E(['subtitle'], slide.subtitle || deck?.subtitle || deck?.author || '', { as: 'span' })}
           </div>
           <div style={{ position:'absolute', right:100, top:'50%', transform:'translateY(-50%)', width:340, height:340, border:'2px solid rgba(255,255,255,0.15)', borderRadius:'50%' }}/>
@@ -700,11 +700,11 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
             {E(['eyebrow'], slide.eyebrow || 'Segments', { as: 'div', className: 'slide-eyebrow' })}
             {E(['title'], slide.title, { as: 'h1', style: { fontSize:CANVAS_BASELINE_PX.table.title, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 50px' } })}
             <div style={{ border:'1px solid #eee', borderRadius:12, overflow:'hidden', background:'white' }}>
-              <div style={{ display:'grid', gridTemplateColumns:gridCols, padding:'22px 30px', background:'oklch(0.97 0.01 85)', fontFamily:'var(--f-mono)', fontSize:18, color:'#666', letterSpacing:'0.05em', textTransform:'uppercase', borderBottom:'1px solid #eee' }}>
+              <div style={{ display:'grid', gridTemplateColumns:gridCols, padding:'22px 30px', background:'oklch(0.97 0.01 85)', fontFamily:'var(--f-mono)', fontSize:CANVAS_BASELINE_PX.table.columns, color:'#666', letterSpacing:'0.05em', textTransform:'uppercase', borderBottom:'1px solid #eee' }}>
                 {cols.map((c,ci) => <div key={ci}>{E(['columns', ci], c)}</div>)}
               </div>
               {rows.map((r,i)=>(
-                <div key={i} style={{ display:'grid', gridTemplateColumns:gridCols, padding:'28px 30px', fontSize:26, borderBottom: i < rows.length - 1 ? '1px solid #eee' : 'none', alignItems:'center' }}>
+                <div key={i} style={{ display:'grid', gridTemplateColumns:gridCols, padding:'28px 30px', fontSize:CANVAS_BASELINE_PX.table.rows, borderBottom: i < rows.length - 1 ? '1px solid #eee' : 'none', alignItems:'center' }}>
                   {r.map((cell, ci) => (
                     <div key={ci} style={{
                       fontWeight: ci === 0 ? 600 : 400,
