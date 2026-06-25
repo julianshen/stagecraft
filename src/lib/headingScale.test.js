@@ -35,6 +35,14 @@ describe('resolveHeadingScale', () => {
   });
 });
 
+describe('HEADING_SCALES / HEADING_SCALE_RANGE immutability', () => {
+  it('are frozen (like the other shared constant tables) so no consumer can mutate them', () => {
+    expect(Object.isFrozen(HEADING_SCALES)).toBe(true);
+    expect(Object.isFrozen(HEADING_SCALE_RANGE)).toBe(true);
+    HEADING_SCALES.forEach((s) => expect(Object.isFrozen(s)).toBe(true));
+  });
+});
+
 describe('headingPx', () => {
   it('returns the layout title baseline scaled by the deck heading scale, rounded', () => {
     expect(headingPx('agenda', { headingScale: 1.5 })).toBe(Math.round(CANVAS_BASELINE_PX.agenda.title * 1.5)); // 144

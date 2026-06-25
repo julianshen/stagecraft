@@ -61,6 +61,10 @@ export default function DesignPanel({ deck, current, onChangeLayout, onChangeThe
           <div className="input-group" style={{ marginLeft: 'auto', minWidth: 96 }}>
             <select aria-label="Heading scale" value={String(scale)} onChange={(e) => onChangeHeadingScale?.(Number(e.target.value))}>
               {HEADING_SCALES.map((s) => <option key={s.value} value={s.value}>{s.label} ({s.value}×)</option>)}
+              {/* A gate-bypassing write can set an in-range non-preset scale; surface it
+                  so the control reflects what the slide actually renders (resolveHeadingScale
+                  clamps a range, not a preset set) rather than snapping to a preset. */}
+              {!HEADING_SCALES.some((s) => s.value === scale) && <option value={String(scale)}>Custom ({scale}×)</option>}
             </select>
           </div>
         </div>

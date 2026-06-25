@@ -11,11 +11,13 @@ import { headingPx } from '../../lib/headingScale.js';
 import { shapeDef, hasVisibleStroke, clipPoints } from '../../lib/shapes.js';
 import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf } from '../../lib/elements.js';
 
-// The deck fields the slide render tree reads (chrome + cover/divider
-// fallbacks). This is the memo contract for thumbnail re-rendering
-// (ThumbsPane) — a new deck-level read must be added here or thumbs go stale.
-// Frozen: it's shared across every thumb comparison; no consumer may mutate it.
-export const DECK_CHROME_FIELDS = Object.freeze(['title', 'author', 'subtitle']);
+// The deck fields the slide render tree reads (chrome + cover/divider fallbacks,
+// plus `headingScale`, which sizes every title via headingPx). This is the memo
+// contract for thumbnail re-rendering (ThumbsPane) — a new deck-level read must be
+// added here or thumbs go stale (headingScale was: changing it left the rail's H1
+// sizes stale until an unrelated edit). Frozen: shared across every thumb
+// comparison; no consumer may mutate it.
+export const DECK_CHROME_FIELDS = Object.freeze(['title', 'author', 'subtitle', 'headingScale']);
 
 export function SlideChrome({ slide, deck }) {
   return (

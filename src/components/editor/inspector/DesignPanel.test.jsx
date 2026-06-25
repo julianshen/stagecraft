@@ -69,6 +69,14 @@ describe('DesignPanel', () => {
     expect(getByText(new RegExp(`${headingPx('agenda', { headingScale: 1.5 })}px`))).toBeInTheDocument();
   });
 
+  it('reflects a custom (non-preset) in-range heading scale via a fallback option', () => {
+    // A gate-bypassing deck write (PUT/MCP) could set an in-range non-preset scale;
+    // resolveHeadingScale honours it (it clamps a range, not a preset set), so the
+    // canvas/export render it — the control must reflect it, not snap to a preset.
+    const { getByLabelText } = render(<DesignPanel deck={{ theme: 'indigo', headingScale: 1.1 }} current="cover" onChangeHeadingScale={vi.fn()} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    expect(getByLabelText('Heading scale').value).toBe('1.1');
+  });
+
   it('shows the real canvas slide ink in the Tokens section, not the old mock value', () => {
     const { getByText, queryByText } = render(<DesignPanel deck={{ theme: 'indigo' }} current="cover" onChangeHeadingScale={vi.fn()} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
     expect(getByText('#0a0a0b')).toBeInTheDocument(); // matches the .slide canvas ink

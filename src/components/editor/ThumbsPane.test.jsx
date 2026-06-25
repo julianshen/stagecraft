@@ -121,6 +121,13 @@ describe('ThumbsPane memoization', () => {
     expect(renderSlide).toHaveBeenCalledTimes(3);
   });
 
+  it('re-renders every thumb on a heading-scale change — the renderer reads deck.headingScale for title size', () => {
+    const { rerender, renderSlide, props } = renderMemoPane();
+    renderSlide.mockClear();
+    rerender(<ThumbsPane {...props} deckCtx={{ deck: { ...memoDeck, headingScale: 1.3 } }} />);
+    expect(renderSlide).toHaveBeenCalledTimes(3); // every title resizes, so no thumb stays stale
+  });
+
   it('does NOT re-render thumbs on a theme change — the renderer reads no deck.theme', () => {
     const { rerender, renderSlide, props } = renderMemoPane();
     renderSlide.mockClear();
