@@ -64,9 +64,17 @@ describe('DesignPanel', () => {
   });
 
   it('shows the live current-slide title size under the scale (not a hardcoded 96)', () => {
-    const { getByText } = render(<DesignPanel deck={{ theme: 'indigo', headingScale: 1.5 }} current="agenda" onChangeHeadingScale={vi.fn()} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    const { getByText } = render(<DesignPanel deck={{ theme: 'indigo', headingScale: 1.5 }} current="agenda" slide={{ id: 'a', layout: 'agenda' }} onChangeHeadingScale={vi.fn()} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
     // agenda title 96 × 1.5 = 144, single-sourced via headingPx (the size the slide renders)
     expect(getByText(new RegExp(`${headingPx('agenda', { headingScale: 1.5 })}px`))).toBeInTheDocument();
+  });
+
+  it('reflects a per-title fmt.fontSize override in the H1 readout, not just the scale baseline', () => {
+    // A resized title renders at its absolute px (overriding the scale); the readout
+    // must show that, or it misleads — per the "honest readouts" intent.
+    const slide = { id: 'a', layout: 'agenda', fmt: { title: { fontSize: 210 } } };
+    const { getByText } = render(<DesignPanel deck={{ theme: 'indigo', headingScale: 1.5 }} current="agenda" slide={slide} onChangeHeadingScale={vi.fn()} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    expect(getByText(/210px/)).toBeInTheDocument(); // override wins over 96×1.5=144
   });
 
   it('reflects a custom (non-preset) in-range heading scale via a fallback option', () => {

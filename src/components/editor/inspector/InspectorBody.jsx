@@ -20,7 +20,7 @@ export default function InspectorBody({ labels, tab, setTab, selection, setSelec
         ))}
       </div>
       <div className="inspector-body">
-        {tab === 'design' && <DesignPanel deck={deck} current={slide?.layout} onChangeLayout={onChangeLayout} onChangeTheme={onChangeTheme} onAddComponent={onAddComponent} onChangeHeadingScale={onChangeHeadingScale} />}
+        {tab === 'design' && <DesignPanel deck={deck} current={slide?.layout} slide={slide} onChangeLayout={onChangeLayout} onChangeTheme={onChangeTheme} onAddComponent={onAddComponent} onChangeHeadingScale={onChangeHeadingScale} />}
         {tab === 'props' && <PropsPanel selected={selection} setSelected={setSelection} count={count} />}
         {tab === 'data' && <DataPanel slide={slide} onApply={onApplyPatch} />}
         {tab === 'notes' && <NotesPanel slide={slide} onApply={onApplyPatch} />}

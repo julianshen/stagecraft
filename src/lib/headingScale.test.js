@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { HEADING_SCALES, HEADING_SCALE_RANGE, resolveHeadingScale, headingPx } from './headingScale.js';
+import { HEADING_SCALES, HEADING_SCALE_RANGE, resolveHeadingScale, headingPx, effectiveTitlePx } from './headingScale.js';
 import { CANVAS_BASELINE_PX } from './fontBaselines.js';
 
 describe('resolveHeadingScale', () => {
@@ -59,5 +59,19 @@ describe('headingPx', () => {
 
   it('clamps a malformed heading scale via resolveHeadingScale', () => {
     expect(headingPx('cover', { headingScale: 99 })).toBe(Math.round(CANVAS_BASELINE_PX.cover.title * HEADING_SCALE_RANGE.max));
+  });
+});
+
+describe('effectiveTitlePx', () => {
+  it('returns the heading-scaled title px when the title is not individually resized', () => {
+    expect(effectiveTitlePx({ layout: 'agenda' }, { headingScale: 1.5 })).toBe(headingPx('agenda', { headingScale: 1.5 })); // 144
+  });
+
+  it('returns the absolute per-title fmt.fontSize override (what the renderer draws) over the scale', () => {
+    expect(effectiveTitlePx({ layout: 'agenda', fmt: { title: { fontSize: 200 } } }, { headingScale: 1.5 })).toBe(200);
+  });
+
+  it('ignores a malformed override and falls back to the scaled baseline', () => {
+    expect(effectiveTitlePx({ layout: 'cover', fmt: { title: { fontSize: 0 } } }, {})).toBe(headingPx('cover', {})); // 140
   });
 });

@@ -1,7 +1,7 @@
 import React from 'react';
 import { THEME_OPTIONS, accentColor, accentLabel } from '../menus/ThemeMenu.jsx';
 import { LayoutGrid } from '../menus/LayoutGrid.jsx';
-import { HEADING_SCALES, resolveHeadingScale, headingPx } from '../../../lib/headingScale.js';
+import { HEADING_SCALES, resolveHeadingScale, effectiveTitlePx } from '../../../lib/headingScale.js';
 
 // Insertable components → createComponentSlide ids (via onAddComponent).
 const COMPONENTS = [
@@ -13,7 +13,7 @@ const COMPONENTS = [
 // is a separate reconciliation), so the row is an honest readout of what renders.
 const SLIDE_INK = '#0a0a0b';
 
-export default function DesignPanel({ deck, current, onChangeLayout, onChangeTheme, onAddComponent, onChangeHeadingScale }) {
+export default function DesignPanel({ deck, current, slide, onChangeLayout, onChangeTheme, onAddComponent, onChangeHeadingScale }) {
   const theme = deck?.theme;
   // The accent token mirrors the live deck theme (same source as the swatch
   // grid above), so the Tokens readout can't drift from the chosen accent.
@@ -57,7 +57,7 @@ export default function DesignPanel({ deck, current, onChangeLayout, onChangeThe
             current slide's resulting title px — the size the canvas/export render. */}
         <div className="tokens-row">
           <div className="swatch-s" style={{ background: 'var(--ink)', color: 'white', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600 }}>Aa</div>
-          <div className="name">H1 · {headingPx(current, deck)}px</div>
+          <div className="name">H1 · {effectiveTitlePx(slide, deck)}px</div>
           <div className="input-group" style={{ marginLeft: 'auto', minWidth: 96 }}>
             <select aria-label="Heading scale" value={String(scale)} onChange={(e) => onChangeHeadingScale?.(Number(e.target.value))}>
               {HEADING_SCALES.map((s) => <option key={s.value} value={s.value}>{s.label} ({s.value}×)</option>)}

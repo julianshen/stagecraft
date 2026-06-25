@@ -35,3 +35,13 @@ export const resolveHeadingScale = (deck) => {
 // back to the 72px the renderer's own default uses.
 export const headingPx = (layout, deck) =>
   Math.round((CANVAS_BASELINE_PX[layout]?.title ?? 72) * resolveHeadingScale(deck));
+
+// The px the current slide's title actually renders at: an absolute per-title
+// `fmt.title.fontSize` (set via the format toolbar) overrides the deck heading
+// scale, mirroring the renderer (fmtStyle wins over the scaled <h1>). The Design
+// panel H1 readout uses this so it reflects the real title size, not just the
+// scale's baseline result (a resized title would otherwise read misleadingly).
+export const effectiveTitlePx = (slide, deck) => {
+  const override = slide?.fmt?.title?.fontSize;
+  return (Number.isFinite(override) && override > 0) ? Math.round(override) : headingPx(slide?.layout, deck);
+};
