@@ -44,6 +44,10 @@ export const SLIDE_LAYOUTS = new Set([
   'cover', 'agenda', 'divider', 'kpi', 'chart', 'split',
   'table', 'text', 'roadmap', 'risks', 'list', 'thanks',
 ]);
+// Slide-transition kinds the Animate panel offers ('none' = an instant cut). A
+// transition is { type, duration(ms) }; presenter playback is a follow-up — for
+// now the panel edits + persists it, nothing renders it yet.
+export const TRANSITION_TYPES = new Set(['none', 'fade', 'slide', 'morph']);
 // The slide fields an AI patch may set — exactly what the renderer/exporter
 // read (id is immutable; num/total/sectionName are injected at render time). A
 // plausible-but-unsupported field (speakerNotes, headline, content…) is rejected
@@ -52,7 +56,7 @@ const SLIDE_FIELDS = new Set([
   'layout', 'title', 'subtitle', 'sub', 'body', 'eyebrow', 'kicker',
   'chapter', 'note', 'notes', 'bg', 'chartType',
   'items', 'kpis', 'stats', 'rows', 'columns',
-  'chart', 'lanes', 'months', 'todayIndex', 'fmt', 'elements',
+  'chart', 'lanes', 'months', 'todayIndex', 'fmt', 'elements', 'transition',
 ]);
 const isPrimitive = (x) => x === null || typeof x !== 'object';
 // A flat record: a non-array object whose own values are all primitives. Used
@@ -60,6 +64,17 @@ const isPrimitive = (x) => x === null || typeof x !== 'object';
 // field (it.t, k.label, st.val) — a nested object would render as a React child.
 const isFlatRecord = (x) => x !== null && typeof x === 'object' && !Array.isArray(x) && Object.values(x).every(isPrimitive);
 const isPlainObject = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+// transition: { type ∈ TRANSITION_TYPES, duration: positive ms } — same strict
+// shape as isShadow/isGradient (both fields present + valid, no extras): the panel
+// always sends both, a typed-but-duration-less value has no timing, and rejecting
+// extras keeps a future presenter consumer reading a clean { type, duration }.
+const TRANSITION_FIELD_OK = {
+  type: (v) => typeof v === 'string' && TRANSITION_TYPES.has(v),
+  duration: (v) => Number.isFinite(v) && v > 0,
+};
+const isValidTransition = (v) => isPlainObject(v)
+  && Object.entries(TRANSITION_FIELD_OK).every(([k, ok]) => ok(v[k]))           // both present + valid
+  && Object.keys(v).every((k) => Object.prototype.hasOwnProperty.call(TRANSITION_FIELD_OK, k)); // no extras
 // chart: { categories: primitive[], series: { name?, values: primitive[] }[] }
 // — exactly what chartData (canvas + export) reads. Both keys are REQUIRED:
 // the patch replaces the whole object, so a plausible-but-different shape
@@ -227,6 +242,9 @@ function fieldOk(key, value, layout) {
   // primitive silently falls back to the bundled note), so reject non-strings to
   // keep the gate aligned with the renderer rather than persisting an inert value.
   if (key === 'notes') return typeof value === 'string';
+  // transition: { type, duration } config (presenter playback is a follow-up) —
+  // gate the shape so a malformed value can't persist (or mislead the Co-pilot).
+  if (key === 'transition') return isValidTransition(value);
   return isPrimitive(value);
 }
 

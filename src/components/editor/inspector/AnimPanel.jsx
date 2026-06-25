@@ -1,14 +1,40 @@
 import React from 'react';
 import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup } from '../../ui/Primitives.jsx';
+import { TRANSITION_TYPES } from '../../../lib/deckUtils.js';
 
-export default function AnimPanel() {
+const DEFAULT_DURATION = 480; // ms — seeds the DUR field when a slide has no transition yet
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// The slide-transition editor. TYPE + DUR read the live `slide.transition` (else
+// a none/480ms default) and commit through the shared patch gate (onApply →
+// sanitizeSlidePatch), the same path the Data/Notes panels use. The gate requires
+// the WHOLE { type, duration }, so each control commits both halves (one edit can't
+// drop the other). The Builds section below is still a mockup (Transition first).
+export default function AnimPanel({ slide, onApply }) {
+  const tr = slide?.transition || {};
+  const type = TRANSITION_TYPES.has(tr.type) ? tr.type : 'none';
+  const duration = Number.isFinite(tr.duration) && tr.duration > 0 ? tr.duration : DEFAULT_DURATION;
+  // Commit the WHOLE { type, duration } (the gate requires both); the controls are
+  // disabled when there's no slide, so this only fires with a real target.
+  const apply = (next) => onApply?.({ transition: { type, duration, ...next } });
   return (
     <>
       <div className="pane-section">
         <h4>Transition</h4>
-        <FieldRow label="TYPE"><div className="input-group"><input value="Morph" readOnly /><Icon name="chevron-down" size={11} /></div></FieldRow>
-        <FieldRow label="DUR"><InputGroup value="480" unit="ms" /></FieldRow>
+        <FieldRow label="TYPE">
+          <div className="input-group">
+            <select aria-label="Transition type" value={type} disabled={!slide}
+              onChange={(e) => apply({ type: e.target.value })}>
+              {[...TRANSITION_TYPES].map((t) => <option key={t} value={t}>{cap(t)}</option>)}
+            </select>
+            <Icon name="chevron-down" size={11} />
+          </div>
+        </FieldRow>
+        <FieldRow label="DUR">
+          <InputGroup ariaLabel="Transition duration" unit="ms" value={String(duration)} disabled={!slide}
+            onChange={(v) => { const n = Number(v); if (Number.isFinite(n) && n > 0) apply({ duration: n }); }} />
+        </FieldRow>
       </div>
       <div className="pane-section">
         <h4>Builds</h4>
