@@ -48,7 +48,7 @@ const textsOf = (s) => s.texts.map((x) => String(x.t));
 const optsOf = (s, text) => s.texts.find((x) => String(x.t) === text)?.o;
 // The options of a table cell (in the slide's single addTable call) whose text
 // matches — the table analogue of optsOf, searching every header/body cell.
-const cellOptsOf = (s, text) => s.tables[0]?.rows.flat().find((c) => String(c.text) === text)?.options;
+const cellOptsOf = (s, text) => (s.tables[0]?.rows || []).flat().find((c) => String(c.text) === text)?.options;
 // A deck wrapping a single slide (section id/name are arbitrary — tests assert
 // on the slide's export, not the section).
 const deckWith = (slide) => ({
