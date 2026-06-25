@@ -240,6 +240,15 @@ describe('exportToPPTX — font-size parity (per-item data fields, index-keyed)'
     expect(optsOf(last(), 'RiskTitle').fontSize).toBe(30);  // 15 × 2
     expect(optsOf(last(), 'RiskDesc').fontSize).toBe(24);   // 12 × 2
   });
+
+  it('exports missing kpi/split data fields as empty text, not "undefined" (canvas parity)', async () => {
+    // The canvas renders nothing for a missing value; the export must too — not the
+    // literal "undefined" (matching the sibling delta / risk-item `|| ''` guards).
+    await exportToPPTX(deckWith({ id: 'k', layout: 'kpi', title: 'T', kpis: [{ delta: '+1' }] })); // no val/label
+    expect(textsOf(last())).not.toContain('undefined');
+    await exportToPPTX(deckWith({ id: 's', layout: 'split', title: 'T', stats: [{}] })); // no val/lbl
+    expect(textsOf(last())).not.toContain('undefined');
+  });
 });
 
 describe('exportToPPTX — thanks / generic / split / cover-subtitle builders', () => {

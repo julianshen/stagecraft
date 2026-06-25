@@ -285,8 +285,9 @@ describe('Slide with elements', () => {
 });
 
 describe('Slide — font-size baselines (single-sourced with the export basePx)', () => {
-  // Find a rendered <div> by its exact text (shared by the per-item baseline tests).
-  const find = (c, t) => [...c.querySelectorAll('div')].find((el) => el.textContent === t);
+  // Find the LEAF <div> with exactly this text (shared by the per-item baseline
+  // tests) — exclude ancestors whose concatenated textContent could coincide.
+  const find = (c, t) => [...c.querySelectorAll('div')].find((el) => el.textContent === t && !el.querySelector('div'));
 
   it('sizes the text layout title/body from the shared CANVAS_BASELINE_PX', () => {
     const slide = { id: 'a', layout: 'text', title: 'Heading', body: 'Body copy' };

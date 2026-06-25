@@ -270,8 +270,8 @@ function addKpiSlide(pptx, slide, tc) {
     const x = 0.5 + col * 3.2;
     const y = 1.1 + row * 1.8;
     sld.addShape(pptx.ShapeType.rect, { x, y, w: 3, h: 1.5, fill: { color: '1A1A2E' }, line: { color: '333355', width: 1 } });
-    fmtText(sld, slide, `kpis.${i}.val`, k.val, { x, y: y + 0.2, w: 3, h: 0.6, fontSize: 28, basePx: CANVAS_BASELINE_PX.kpi['kpis.val'], bold: true, color: tc.ink, align: 'center', fontFace: 'Inter' });
-    fmtText(sld, slide, `kpis.${i}.label`, k.label, { x, y: y + 0.85, w: 3, h: 0.3, fontSize: 11, basePx: CANVAS_BASELINE_PX.kpi['kpis.label'], color: 'AAAAAA', align: 'center', fontFace: 'Inter' });
+    fmtText(sld, slide, `kpis.${i}.val`, k.val || '', { x, y: y + 0.2, w: 3, h: 0.6, fontSize: 28, basePx: CANVAS_BASELINE_PX.kpi['kpis.val'], bold: true, color: tc.ink, align: 'center', fontFace: 'Inter' });
+    fmtText(sld, slide, `kpis.${i}.label`, k.label || '', { x, y: y + 0.85, w: 3, h: 0.3, fontSize: 11, basePx: CANVAS_BASELINE_PX.kpi['kpis.label'], color: 'AAAAAA', align: 'center', fontFace: 'Inter' });
     const deltaColor = k.good === true ? '2ECC71' : k.good === false ? 'E74C3C' : 'AAAAAA';
     fmtText(sld, slide, `kpis.${i}.delta`, k.delta || '', { x, y: y + 1.15, w: 3, h: 0.25, fontSize: 10, basePx: CANVAS_BASELINE_PX.kpi['kpis.delta'], color: deltaColor, align: 'center', fontFace: 'Courier New' });
   });
@@ -375,8 +375,8 @@ function addSplitSlide(pptx, slide, tc) {
     if (!s) return; // null stat — skip like the canvas, keep `i` the true fmt index
     const y = 1.0 + srow * 1.4;
     srow += 1;
-    fmtText(sld, slide, `stats.${i}.val`, s.val, { x: 6.5, y, w: 3, h: 0.7, fontSize: 32, basePx: CANVAS_BASELINE_PX.split['stats.val'], bold: true, color: tc.accent, align: 'center', fontFace: 'Inter' });
-    fmtText(sld, slide, `stats.${i}.lbl`, s.lbl, { x: 6.5, y: y + 0.65, w: 3, h: 0.4, fontSize: 12, basePx: CANVAS_BASELINE_PX.split['stats.lbl'], color: 'AAAAAA', align: 'center', fontFace: 'Inter' });
+    fmtText(sld, slide, `stats.${i}.val`, s.val || '', { x: 6.5, y, w: 3, h: 0.7, fontSize: 32, basePx: CANVAS_BASELINE_PX.split['stats.val'], bold: true, color: tc.accent, align: 'center', fontFace: 'Inter' });
+    fmtText(sld, slide, `stats.${i}.lbl`, s.lbl || '', { x: 6.5, y: y + 0.65, w: 3, h: 0.4, fontSize: 12, basePx: CANVAS_BASELINE_PX.split['stats.lbl'], color: 'AAAAAA', align: 'center', fontFace: 'Inter' });
   });
   return sld;
 }
