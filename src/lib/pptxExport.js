@@ -74,27 +74,25 @@ function fmtOpts(fmt) {
   if (isHexColor(fmt.color)) o.color = pxHex(fmt.color);
   return o;
 }
-// The pptx text-option override for a slide field (its `slide.fmt[key]` record,
-// if any) — the single accessor used by both addText fields (fmtText) and the
-// table-cell builder, so the fmt-map lookup lives in one place.
-const fmtFor = (slide, key) => fmtOpts(slide.fmt?.[key]);
+// The export pt size for a field: its hand-tuned pt baseline, scaled by the canvas
+// ratio (fmt.fontSize ÷ basePx) when the field opts in with a positive basePx and a
+// valid authored size; otherwise the bare baseline. Shared by the addText path
+// (fmtText) and the table-cell builder (cellOpts) so both scale identically. All
+// operands must be finite + positive — a malformed (gate-bypassing) fmt.fontSize
+// floors to the baseline rather than emitting a NaN/Infinity pt size.
+const scaledPt = (basePt, basePx, fmtFontSize) =>
+  (basePx > 0 && Number.isFinite(basePt) && Number.isFinite(fmtFontSize) && fmtFontSize > 0)
+    ? +(basePt * (fmtFontSize / basePx)).toFixed(2)
+    : basePt;
 // addText with the slide.fmt[key] override (if any) merged over the base options.
 // When the builder supplies `basePx` (the field's canvas default font size), an
-// authored `fmt.fontSize` (absolute canvas px) scales the hand-tuned pt baseline
-// by fmt.fontSize ÷ basePx — so a field resized on the canvas exports at the same
-// proportion. `basePx` is stripped (it isn't a pptx option); fields with no basePx
-// keep their pt baseline (parity is wired per-layout).
+// authored `fmt.fontSize` (absolute canvas px) scales the hand-tuned pt baseline via
+// scaledPt — so a field resized on the canvas exports at the same proportion. `basePx`
+// is stripped (not a pptx option); fields with no basePx keep their pt baseline.
 function fmtText(sld, slide, key, value, opts) {
   const { basePx, ...base } = opts;
   const fmt = slide.fmt?.[key]; // the fmt record, read once (B/I/U/colour + fontSize)
-  const o = { ...base, ...fmtOpts(fmt) };
-  // All operands must be finite + positive: a builder that opts in must pass a
-  // positive basePx + pt baseline, and a malformed (gate-bypassing) fmt.fontSize
-  // falls back to the baseline rather than emitting a NaN/Infinity pt size.
-  if (basePx > 0 && Number.isFinite(base.fontSize) && Number.isFinite(fmt?.fontSize) && fmt.fontSize > 0) {
-    o.fontSize = +(base.fontSize * (fmt.fontSize / basePx)).toFixed(2);
-  }
-  sld.addText(value, o);
+  sld.addText(value, { ...base, ...fmtOpts(fmt), fontSize: scaledPt(base.fontSize, basePx, fmt?.fontSize) });
 }
 
 function elementGeo(el) {
@@ -207,7 +205,7 @@ function addCoverSlide(pptx, slide, tc) {
   if (slide.subtitle) {
     fmtText(sld, slide, 'subtitle', slide.subtitle, {
       x: 0.5, y: 3.9, w: 9, h: 0.5,
-      fontSize: 16, color: 'AAAAAA',
+      fontSize: 16, basePx: CANVAS_BASELINE_PX.cover.subtitle, color: 'AAAAAA',
       fontFace: 'Inter', align: 'left',
     });
   }
@@ -314,6 +312,18 @@ function addListSlide(pptx, slide, tc) {
   return sld;
 }
 
+// A table cell's pptx options: the hand-tuned base (colour/face/fill) plus the
+// per-cell fmt — B/I/U/colour merged 1:1, and the 11pt cell baseline scaled by the
+// canvas ratio (via scaledPt), the same parity the addText fields get. Header + body
+// share the 11pt baseline but differ in canvas px, so pass basePx per cell type. The
+// explicit fontSize sits after `...base` (replacing its bare baseline) and fmtOpts
+// never sets fontSize, so the scaled size always wins.
+const TABLE_CELL_PT = 11;
+const cellOpts = (slide, key, basePx, base) => {
+  const fmt = slide.fmt?.[key];
+  return { ...base, fontSize: scaledPt(TABLE_CELL_PT, basePx, fmt?.fontSize), ...fmtOpts(fmt) };
+};
+
 function addTableSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
@@ -324,8 +334,8 @@ function addTableSlide(pptx, slide, tc) {
   const rows = slide.rows || [];
   if (cols.length && rows.length) {
     const tableRows = [
-      cols.map((c, ci) => ({ text: c, options: { bold: true, color: tc.accent, fontSize: 11, fontFace: 'Courier New', fill: { color: '1A1A2E' }, ...fmtFor(slide, `columns.${ci}`) } })),
-      ...rows.map((row, ri) => row.map((cell, ci) => ({ text: cell, options: { color: 'DDDDDD', fontSize: 11, fontFace: 'Inter', ...fmtFor(slide, `rows.${ri}.${ci}`) } }))),
+      cols.map((c, ci) => ({ text: c, options: cellOpts(slide, `columns.${ci}`, CANVAS_BASELINE_PX.table.columns, { bold: true, color: tc.accent, fontFace: 'Courier New', fill: { color: '1A1A2E' } }) })),
+      ...rows.map((row, ri) => row.map((cell, ci) => ({ text: cell, options: cellOpts(slide, `rows.${ri}.${ci}`, CANVAS_BASELINE_PX.table.rows, { color: 'DDDDDD', fontFace: 'Inter' }) }))),
     ];
     sld.addTable(tableRows, {
       x: 0.5, y: 1.0, w: 9, colW: Array(cols.length).fill(9 / cols.length),

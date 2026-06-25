@@ -357,6 +357,18 @@ describe('Slide — font-size baselines (single-sourced with the export basePx)'
     const { container: th } = render(<Slide slide={{ id: 't', layout: 'thanks', title: 'T', subtitle: 'Sub copy' }} deck={{ title: 'Demo' }} num={1} total={1} />);
     expect(find(th, 'Sub copy').style.fontSize).toBe(`${CANVAS_BASELINE_PX.thanks.subtitle}px`);  // 32
   });
+
+  it('sizes the table header/body cells + cover subtitle from the shared CANVAS_BASELINE_PX', () => {
+    // Table cells inherit their row container's size, so walk up from the cell text to
+    // the ancestor carrying the inline fontSize (the cover subtitle's container is the
+    // node `find` returns). Locks the canvas half of the cell/subtitle export parity.
+    const sizedUp = (leaf) => { let el = leaf; while (el && !el.style.fontSize) el = el.parentElement; return el?.style.fontSize; };
+    const { container: tb } = render(<Slide slide={{ id: 't', layout: 'table', title: 'T', columns: ['Name', 'Q1'], rows: [['Alpha', '10']] }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(sizedUp(find(tb, 'Name'))).toBe(`${CANVAS_BASELINE_PX.table.columns}px`); // header 18px
+    expect(sizedUp(find(tb, 'Alpha'))).toBe(`${CANVAS_BASELINE_PX.table.rows}px`);    // body 26px
+    const { container: cv } = render(<Slide slide={{ id: 'c', layout: 'cover', title: 'Hero', subtitle: 'Sub' }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(find(cv, 'Sub').style.fontSize).toBe(`${CANVAS_BASELINE_PX.cover.subtitle}px`); // subtitle 18px
+  });
 });
 
 describe('Slide per-field formatting (fmt)', () => {

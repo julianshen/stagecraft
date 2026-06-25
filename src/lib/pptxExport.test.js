@@ -46,6 +46,9 @@ const deckOf = (roadmap) => ({
 const last = () => rec.slides[rec.slides.length - 1];
 const textsOf = (s) => s.texts.map((x) => String(x.t));
 const optsOf = (s, text) => s.texts.find((x) => String(x.t) === text)?.o;
+// The options of a table cell (in the slide's single addTable call) whose text
+// matches — the table analogue of optsOf, searching every header/body cell.
+const cellOptsOf = (s, text) => s.tables[0]?.rows.flat().find((c) => String(c.text) === text)?.options;
 // A deck wrapping a single slide (section id/name are arbitrary — tests assert
 // on the slide's export, not the section).
 const deckWith = (slide) => ({
@@ -97,7 +100,7 @@ describe('exportToPPTX — font-size parity (cover + divider headings)', () => {
   const coverDeck = (fmt) => ({
     title: 'D', theme: 'indigo',
     sections: [{ id: 's', name: 'S', slides: ['c'] }],
-    slides: [{ id: 'c', layout: 'cover', title: 'Hero', ...(fmt ? { fmt } : {}) }],
+    slides: [{ id: 'c', layout: 'cover', title: 'Hero', subtitle: 'Sub', ...(fmt ? { fmt } : {}) }],
   });
   const dividerDeck = (fmt) => ({
     title: 'D', theme: 'indigo',
@@ -110,6 +113,14 @@ describe('exportToPPTX — font-size parity (cover + divider headings)', () => {
     expect(optsOf(last(), 'Hero').fontSize).toBe(44);
     await exportToPPTX(coverDeck({ title: { fontSize: CANVAS_BASELINE_PX.cover.title * 2 } }));
     expect(optsOf(last(), 'Hero').fontSize).toBe(88); // 44 × 2
+  });
+
+  it('exports the cover subtitle at its pt baseline, scaling it by the canvas ratio', async () => {
+    // The subtitle inherits 18px on the canvas (cover.subtitle baseline); export pt is 16.
+    await exportToPPTX(coverDeck());
+    expect(optsOf(last(), 'Sub').fontSize).toBe(16);   // cover subtitle pt baseline
+    await exportToPPTX(coverDeck({ subtitle: { fontSize: CANVAS_BASELINE_PX.cover.subtitle * 2 } }));
+    expect(optsOf(last(), 'Sub').fontSize).toBe(32);   // 16 × 2
   });
 
   it('exports the divider title at its pt baseline, scaling it by the canvas ratio', async () => {
@@ -248,6 +259,49 @@ describe('exportToPPTX — font-size parity (per-item data fields, index-keyed)'
     expect(textsOf(last())).not.toContain('undefined');
     await exportToPPTX(deckWith({ id: 's', layout: 'split', title: 'T', stats: [{}] })); // no val/lbl
     expect(textsOf(last())).not.toContain('undefined');
+  });
+});
+
+describe('exportToPPTX — font-size parity (table cells)', () => {
+  // Canvas px (SlideRenderer table): header cells 18, body cells 26.
+  // Export pt baseline (addTableSlide): 11pt for both header + body cells.
+  const tableDeck = (fmt) => deckWith({
+    id: 't', layout: 'table', title: 'T',
+    columns: ['Name', 'Q1'], rows: [['Alpha', '10']],
+    ...(fmt ? { fmt } : {}),
+  });
+
+  it('exports header + body cells at their pt baseline when unformatted', async () => {
+    await exportToPPTX(tableDeck());
+    expect(cellOptsOf(last(), 'Name').fontSize).toBe(11);   // header (columns)
+    expect(cellOptsOf(last(), 'Alpha').fontSize).toBe(11);  // body (rows)
+  });
+
+  it('scales a header cell pt by its canvas ratio (columns.C fmt ÷ header baseline px)', async () => {
+    await exportToPPTX(tableDeck({ 'columns.1': { fontSize: CANVAS_BASELINE_PX.table.columns * 2 } }));
+    expect(cellOptsOf(last(), 'Q1').fontSize).toBe(22);     // 11 × 2
+    expect(cellOptsOf(last(), 'Name').fontSize).toBe(11);   // sibling header untouched
+  });
+
+  it('scales a body cell pt by its canvas ratio (rows.R.C fmt ÷ body baseline px)', async () => {
+    await exportToPPTX(tableDeck({ 'rows.0.0': { fontSize: CANVAS_BASELINE_PX.table.rows / 2 } }));
+    expect(cellOptsOf(last(), 'Alpha').fontSize).toBe(5.5); // 11 × 0.5
+    expect(cellOptsOf(last(), '10').fontSize).toBe(11);     // sibling body cell untouched
+  });
+
+  it('floors a malformed (gate-bypassing) cell fmt.fontSize back to the pt baseline', async () => {
+    await exportToPPTX(tableDeck({ 'rows.0.0': { fontSize: 0 } }));
+    expect(cellOptsOf(last(), 'Alpha').fontSize).toBe(11);
+    await exportToPPTX(tableDeck({ 'columns.0': { fontSize: Infinity } }));
+    expect(cellOptsOf(last(), 'Name').fontSize).toBe(11);
+  });
+
+  it('still applies a cell fmt bold/colour alongside the scaled size', async () => {
+    await exportToPPTX(tableDeck({ 'rows.0.0': { fontSize: CANVAS_BASELINE_PX.table.rows * 2, bold: true, color: '#FF0000' } }));
+    const o = cellOptsOf(last(), 'Alpha');
+    expect(o.fontSize).toBe(22);     // 11 × 2
+    expect(o.bold).toBe(true);
+    expect(o.color).toBe('FF0000');
   });
 });
 
@@ -793,13 +847,13 @@ describe('per-field / per-item formatting (slide.fmt)', () => {
     expect(o.bold).toBe(true);   // other fmt axes still apply
   });
 
-  it('does NOT scale fmt.fontSize for a field that has not opted in (cover subtitle), other axes still applying', async () => {
-    // Every layout TITLE is now wired; the cover subtitle stays un-wired by design
-    // (its canvas size is inherited, not per-field), so it's a stable witness that
-    // a no-basePx field keeps its pt baseline while other fmt axes still apply.
-    await exportToPPTX(deckWith({ id: 'c', layout: 'cover', title: 'C', subtitle: 'Sub', fmt: { subtitle: { fontSize: 300, italic: true } } }));
-    const o = optsOf(last(), 'Sub');
-    expect(o.fontSize).toBe(16);   // cover subtitle baseline unchanged (no basePx)
+  it('does NOT scale fmt.fontSize for a field that has not opted in (generic-layout body), other axes still applying', async () => {
+    // Every named-layout field is now wired; the generic builder (unknown layout) has
+    // no canvas baseline to scale against, so it passes no basePx — a stable witness
+    // that a no-basePx field keeps its pt baseline while other fmt axes still apply.
+    await exportToPPTX(deckWith({ id: 'g', layout: 'mystery', title: 'C', body: 'Body', fmt: { body: { fontSize: 300, italic: true } } }));
+    const o = optsOf(last(), 'Body');
+    expect(o.fontSize).toBe(14);   // generic body baseline unchanged (no basePx)
     expect(o.italic).toBe(true);   // other fmt axes still apply
   });
 });
