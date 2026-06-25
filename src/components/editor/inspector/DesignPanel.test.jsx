@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import DesignPanel from './DesignPanel.jsx';
+import { headingPx } from '../../../lib/headingScale.js';
 
 describe('DesignPanel', () => {
   it('renders the real slide layouts and marks the current slide\'s layout active', () => {
@@ -46,6 +47,48 @@ describe('DesignPanel', () => {
     const { getByText } = render(<DesignPanel deck={{}} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
     // THEME_OPTIONS[0] is indigo (chroma 0.17, hue 265)
     expect(getByText('oklch(.62/.17/265)')).toBeInTheDocument();
+  });
+
+  it('shows an editable heading-scale control reflecting the deck and emits the picked scale', () => {
+    const onChangeHeadingScale = vi.fn();
+    const { getByLabelText } = render(<DesignPanel deck={{ theme: 'indigo', headingScale: 1.15 }} current="agenda" onChangeHeadingScale={onChangeHeadingScale} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    const sel = getByLabelText('Heading scale');
+    expect(sel.value).toBe('1.15');                       // reflects the live deck scale
+    fireEvent.change(sel, { target: { value: '1.3' } });
+    expect(onChangeHeadingScale).toHaveBeenCalledWith(1.3); // commits a number, not a string
+  });
+
+  it('defaults the heading-scale control to 1 when the deck has none', () => {
+    const { getByLabelText } = render(<DesignPanel deck={{ theme: 'indigo' }} current="cover" onChangeHeadingScale={vi.fn()} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    expect(getByLabelText('Heading scale').value).toBe('1');
+  });
+
+  it('shows the live current-slide title size under the scale (not a hardcoded 96)', () => {
+    const { getByText } = render(<DesignPanel deck={{ theme: 'indigo', headingScale: 1.5 }} current="agenda" slide={{ id: 'a', layout: 'agenda' }} onChangeHeadingScale={vi.fn()} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    // agenda title 96 × 1.5 = 144, single-sourced via headingPx (the size the slide renders)
+    expect(getByText(new RegExp(`${headingPx('agenda', { headingScale: 1.5 })}px`))).toBeInTheDocument();
+  });
+
+  it('reflects a per-title fmt.fontSize override in the H1 readout, not just the scale baseline', () => {
+    // A resized title renders at its absolute px (overriding the scale); the readout
+    // must show that, or it misleads — per the "honest readouts" intent.
+    const slide = { id: 'a', layout: 'agenda', fmt: { title: { fontSize: 210 } } };
+    const { getByText } = render(<DesignPanel deck={{ theme: 'indigo', headingScale: 1.5 }} current="agenda" slide={slide} onChangeHeadingScale={vi.fn()} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    expect(getByText(/210px/)).toBeInTheDocument(); // override wins over 96×1.5=144
+  });
+
+  it('reflects a custom (non-preset) in-range heading scale via a fallback option', () => {
+    // A gate-bypassing deck write (PUT/MCP) could set an in-range non-preset scale;
+    // resolveHeadingScale honours it (it clamps a range, not a preset set), so the
+    // canvas/export render it — the control must reflect it, not snap to a preset.
+    const { getByLabelText } = render(<DesignPanel deck={{ theme: 'indigo', headingScale: 1.1 }} current="cover" onChangeHeadingScale={vi.fn()} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    expect(getByLabelText('Heading scale').value).toBe('1.1');
+  });
+
+  it('shows the real canvas slide ink in the Tokens section, not the old mock value', () => {
+    const { getByText, queryByText } = render(<DesignPanel deck={{ theme: 'indigo' }} current="cover" onChangeHeadingScale={vi.fn()} onChangeTheme={vi.fn()} onAddComponent={vi.fn()} />);
+    expect(getByText('#0a0a0b')).toBeInTheDocument(); // matches the .slide canvas ink
+    expect(queryByText('#15171c')).toBeNull();        // the old hardcoded mock is gone
   });
 
   it('renders without callbacks (read-only safe)', () => {

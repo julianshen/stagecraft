@@ -404,6 +404,7 @@ export default function SlideEditor(props) {
             onChangeTheme={callbacks.onChangeTheme}
             onChangeLayout={callbacks.onChangeLayout}
             onAddComponent={callbacks.onAddComponent}
+            onChangeHeadingScale={callbacks.onChangeHeadingScale}
           />
         )}
         {layoutVariant === 'floating' && (
@@ -420,6 +421,7 @@ export default function SlideEditor(props) {
             onChangeTheme={callbacks.onChangeTheme}
             onChangeLayout={callbacks.onChangeLayout}
             onAddComponent={callbacks.onAddComponent}
+            onChangeHeadingScale={callbacks.onChangeHeadingScale}
           />
         )}
       </div>

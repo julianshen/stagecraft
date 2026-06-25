@@ -5,6 +5,7 @@ import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from './roa
 import { resolveNotes } from '../data/deck.js';
 import { flattenDeck } from './deckOrder.js';
 import { CANVAS_BASELINE_PX } from './fontBaselines.js';
+import { resolveHeadingScale } from './headingScale.js';
 import { toHex, isHexColor, mixHex } from './color.js';
 import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType, lineSpacingOf } from './elements.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
@@ -90,9 +91,14 @@ const scaledPt = (basePt, basePx, fmtFontSize) =>
 // scaledPt — so a field resized on the canvas exports at the same proportion. `basePx`
 // is stripped (not a pptx option); fields with no basePx keep their pt baseline.
 function fmtText(sld, slide, key, value, opts) {
-  const { basePx, ...base } = opts;
+  const { basePx, scale = 1, ...base } = opts;
   const fmt = slide.fmt?.[key]; // the fmt record, read once (B/I/U/colour + fontSize)
-  sld.addText(value, { ...base, ...fmtOpts(fmt), fontSize: scaledPt(base.fontSize, basePx, fmt?.fontSize) });
+  // A deck-level heading `scale` (passed only for titles) multiplies BOTH the pt
+  // baseline and basePx, so an unformatted title scales by it while an absolute
+  // per-field fmt.fontSize cancels it out of the ratio (canvas↔export parity). Other
+  // fields pass no scale (1), so their fontSize is unchanged.
+  const sc = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  sld.addText(value, { ...base, ...fmtOpts(fmt), fontSize: scaledPt(base.fontSize * sc, basePx * sc, fmt?.fontSize) });
 }
 
 function elementGeo(el) {
@@ -199,7 +205,7 @@ function addCoverSlide(pptx, slide, tc) {
   sld.background = { color: slide.bg === 'accent' ? tc.accent : tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Untitled', {
     x: 0.5, y: 2.5, w: 9, h: 1.2,
-    fontSize: 44, basePx: CANVAS_BASELINE_PX.cover.title, bold: true, color: tc.ink,
+    fontSize: 44, basePx: CANVAS_BASELINE_PX.cover.title, scale: tc.headingScale, bold: true, color: tc.ink,
     fontFace: 'Inter', align: 'left',
   });
   if (slide.subtitle) {
@@ -217,7 +223,7 @@ function addAgendaSlide(pptx, slide, tc) {
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Agenda', {
     x: 0.5, y: 0.4, w: 9, h: 0.6,
-    fontSize: 22, basePx: CANVAS_BASELINE_PX.agenda.title, bold: true, color: tc.ink, fontFace: 'Inter',
+    fontSize: 22, basePx: CANVAS_BASELINE_PX.agenda.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const items = slide.items || [];
   let row = 0; // gap-free layout position; `i` stays the true index for the fmt key
@@ -246,7 +252,7 @@ function addDividerSlide(pptx, slide, tc) {
   }
   fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 3.0, w: 9, h: 0.8,
-    fontSize: 36, basePx: CANVAS_BASELINE_PX.divider.title, bold: true, color: tc.ink, fontFace: 'Inter',
+    fontSize: 36, basePx: CANVAS_BASELINE_PX.divider.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   return sld;
 }
@@ -255,7 +261,7 @@ function addKpiSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
-    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, basePx: CANVAS_BASELINE_PX.kpi.title, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, basePx: CANVAS_BASELINE_PX.kpi.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const kpis = slide.kpis || [];
   const cols = 3;
@@ -281,7 +287,7 @@ function addTextSlide(pptx, slide, tc) {
   sld.background = { color: tc.bg };
   if (slide.title) {
     fmtText(sld, slide, 'title', slide.title, {
-      x: 0.5, y: 0.4, w: 9, h: 0.7, fontSize: 26, basePx: CANVAS_BASELINE_PX.text.title, bold: true, color: tc.ink, fontFace: 'Inter',
+      x: 0.5, y: 0.4, w: 9, h: 0.7, fontSize: 26, basePx: CANVAS_BASELINE_PX.text.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
     });
   }
   if (slide.body) {
@@ -297,7 +303,7 @@ function addListSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
-    x: 0.5, y: 0.3, w: 9, h: 0.6, fontSize: 24, basePx: CANVAS_BASELINE_PX.list.title, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.3, w: 9, h: 0.6, fontSize: 24, basePx: CANVAS_BASELINE_PX.list.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const items = slide.items || [];
   let row = 0; // gap-free position; `i` stays the true index for the fmt key
@@ -328,7 +334,7 @@ function addTableSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
-    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, basePx: CANVAS_BASELINE_PX.table.title, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, basePx: CANVAS_BASELINE_PX.table.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const cols = slide.columns || [];
   const rows = slide.rows || [];
@@ -350,7 +356,7 @@ function addChartSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Chart', {
-    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, basePx: CANVAS_BASELINE_PX.chart.title, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, basePx: CANVAS_BASELINE_PX.chart.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   const { type, barDir, data } = chartSpec(slide);
   sld.addChart(type, data, {
@@ -372,7 +378,7 @@ function addSplitSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
-    x: 0.5, y: 0.4, w: 5.5, h: 0.8, fontSize: 26, basePx: CANVAS_BASELINE_PX.split.title, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.4, w: 5.5, h: 0.8, fontSize: 26, basePx: CANVAS_BASELINE_PX.split.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   if (slide.body) {
     fmtText(sld, slide, 'body', slide.body, {
@@ -395,7 +401,7 @@ function addRisksSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
-    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, basePx: CANVAS_BASELINE_PX.risks.title, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, basePx: CANVAS_BASELINE_PX.risks.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
   });
   // Iterate the raw array with its true index `i` (so a fmt key like `items.2.t`
   // matches the renderer, which keys per-item fmt by the original index), but
@@ -431,7 +437,7 @@ function addRoadmapSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Roadmap', {
-    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, basePx: CANVAS_BASELINE_PX.roadmap.title, bold: true, color: tc.ink, fontFace: 'Inter',
+    x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, basePx: CANVAS_BASELINE_PX.roadmap.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
   });
 
   const { months, lanes, todayIndex } = roadmapModel(slide);
@@ -492,7 +498,7 @@ function addThanksSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Thank you', {
-    x: 0.5, y: 2.2, w: 9, h: 1.2, fontSize: 52, basePx: CANVAS_BASELINE_PX.thanks.title, bold: true, color: tc.ink, align: 'center', fontFace: 'Inter',
+    x: 0.5, y: 2.2, w: 9, h: 1.2, fontSize: 52, basePx: CANVAS_BASELINE_PX.thanks.title, scale: tc.headingScale, bold: true, color: tc.ink, align: 'center', fontFace: 'Inter',
   });
   if (slide.subtitle) {
     fmtText(sld, slide, 'subtitle', slide.subtitle, {
@@ -528,7 +534,9 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
   pptx.subject = deck.subtitle || '';
   pptx.author = deck.author || 'Stagecraft';
 
-  const tc = themeColors(deck.theme);
+  // Theme palette + the deck-level heading scale, in one render context passed to
+  // every builder (fresh object so the shared THEME_COLORS entry isn't mutated).
+  const tc = { ...themeColors(deck.theme), headingScale: resolveHeadingScale(deck) };
 
   // Flatten slides in section order (the same order the canvas/sorter render +
   // the export-modal range is measured against — single-sourced via flattenDeck).
