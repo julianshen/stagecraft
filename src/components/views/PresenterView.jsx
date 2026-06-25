@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { resolveNotes } from '../../data/deck.js';
+import { transitionAnim } from '../../lib/transitions.js';
 import LaserLayer from '../presenter/LaserLayer.jsx';
 import PresenterSidePanel from '../presenter/PresenterSidePanel.jsx';
 import PresenterControls from '../presenter/PresenterControls.jsx';
@@ -55,13 +56,16 @@ export default function PresenterView({ deck, onExit }) {
   // Authored slide notes → bundled sample notes → a default nudge (the shared
   // resolver honours an intentionally-cleared empty string as "no notes").
   const note = resolveNotes(cur, "Drive the narrative: what does the audience need to walk away believing? If you don't know, the slide isn't ready.");
+  // The entering slide plays its own transition (Animate panel → slide.transition);
+  // keying the stage on idx remounts it so the CSS animation re-runs on each advance.
+  const anim = transitionAnim(cur.transition);
 
   return (
     <div className="presenter">
       <div className="presenter-main">
         <div className="label">Now presenting · slide {idx + 1} of {flat.length} · {cur.sectionName}</div>
         <div className="presenter-current">
-          <ScaledSlide>
+          <ScaledSlide key={idx} style={anim ? { animation: anim } : undefined}>
             <Slide slide={cur} deck={deck} sectionName={cur.sectionName} num={idx + 1} total={flat.length}/>
           </ScaledSlide>
           {laser && !blackout && <LaserLayer/>}

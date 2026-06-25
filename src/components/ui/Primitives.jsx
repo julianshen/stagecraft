@@ -65,7 +65,7 @@ export function Seg({ value, onChange, options }) {
 }
 
 // ---------------- scalable slide wrapper ----------------
-export function ScaledSlide({ children, fit = 'contain', className = '' }) {
+export function ScaledSlide({ children, fit = 'contain', className = '', style }) {
   const ref = useRef(null);
   const innerRef = useRef(null);
   useEffect(() => {
@@ -87,7 +87,7 @@ export function ScaledSlide({ children, fit = 'contain', className = '' }) {
     return () => ro.disconnect();
   }, [fit]);
   return (
-    <div ref={ref} className={className} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+    <div ref={ref} className={className} style={{ ...style, position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
       <div ref={innerRef} style={{ position: 'absolute', top: 0, left: 0, width: 1920, height: 1080, transformOrigin: 'top left' }}>
         {children}
       </div>
