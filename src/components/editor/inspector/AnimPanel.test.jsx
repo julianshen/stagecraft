@@ -40,6 +40,17 @@ describe('AnimPanel — per-slide transition editing', () => {
     expect(onApply).not.toHaveBeenCalled();
   });
 
+  it('lets the duration field hold an incomplete value while typing, then reverts on blur', () => {
+    const onApply = vi.fn();
+    render(<AnimPanel slide={withTransition} onApply={onApply} />); // duration 600
+    const dur = screen.getByLabelText('Transition duration');
+    fireEvent.change(dur, { target: { value: '' } }); // cleared mid-edit — tolerated locally
+    expect(dur.value).toBe('');                        // not snapped back, so it stays editable
+    expect(onApply).not.toHaveBeenCalled();            // empty never commits an invalid patch
+    fireEvent.blur(dur);                               // blur reverts to the committed value
+    expect(dur.value).toBe('600');
+  });
+
   it('disables the controls when no slide is selected', () => {
     render(<AnimPanel slide={null} onApply={vi.fn()} />);
     expect(screen.getByLabelText('Transition type').disabled).toBe(true);

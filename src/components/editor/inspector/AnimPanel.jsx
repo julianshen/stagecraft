@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup } from '../../ui/Primitives.jsx';
 import { TRANSITION_TYPES } from '../../../lib/deckUtils.js';
@@ -15,6 +15,12 @@ export default function AnimPanel({ slide, onApply }) {
   const tr = slide?.transition || {};
   const type = TRANSITION_TYPES.has(tr.type) ? tr.type : 'none';
   const duration = Number.isFinite(tr.duration) && tr.duration > 0 ? tr.duration : DEFAULT_DURATION;
+  // The DUR field tolerates incomplete input (a cleared field on the way to a new
+  // value) via a local string, committing only a valid >0 number and reverting to
+  // the committed value on blur — the NumberCell pattern. (A positive-only commit-
+  // on-change input would otherwise snap a cleared field back, leaving it untypeable.)
+  const [durRaw, setDurRaw] = useState(String(duration));
+  useEffect(() => { setDurRaw(String(duration)); }, [duration]);
   // Commit the WHOLE { type, duration } (the gate requires both); the controls are
   // disabled when there's no slide, so this only fires with a real target.
   const apply = (next) => onApply?.({ transition: { type, duration, ...next } });
@@ -32,8 +38,9 @@ export default function AnimPanel({ slide, onApply }) {
           </div>
         </FieldRow>
         <FieldRow label="DUR">
-          <InputGroup ariaLabel="Transition duration" unit="ms" value={String(duration)} disabled={!slide}
-            onChange={(v) => { const n = Number(v); if (Number.isFinite(n) && n > 0) apply({ duration: n }); }} />
+          <InputGroup ariaLabel="Transition duration" unit="ms" value={durRaw} disabled={!slide}
+            onChange={(v) => { setDurRaw(v); const n = Number(v); if (Number.isFinite(n) && n > 0) apply({ duration: n }); }}
+            onBlur={() => setDurRaw(String(duration))} />
         </FieldRow>
       </div>
       <div className="pane-section">
