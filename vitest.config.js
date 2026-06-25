@@ -30,6 +30,7 @@ export default defineConfig({
         'src/lib/align.js',
         'src/lib/slideFmt.js',
         'src/lib/fontBaselines.js',
+        'src/lib/headingScale.js',
         'src/lib/transitions.js',
         'src/lib/pptxExport.js',
         'src/lib/color.js',

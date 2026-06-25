@@ -369,6 +369,16 @@ describe('Slide — font-size baselines (single-sourced with the export basePx)'
     const { container: cv } = render(<Slide slide={{ id: 'c', layout: 'cover', title: 'Hero', subtitle: 'Sub' }} deck={{ title: 'Demo' }} num={1} total={1} />);
     expect(find(cv, 'Sub').style.fontSize).toBe(`${CANVAS_BASELINE_PX.cover.subtitle}px`); // subtitle 18px
   });
+
+  it('scales every layout title by the deck heading scale (deck.headingScale)', () => {
+    const sized = (px, s) => `${Math.round(px * s)}px`;
+    const { container: a } = render(<Slide slide={{ id: 'a', layout: 'agenda', title: 'Plan' }} deck={{ title: 'Demo', headingScale: 1.5 }} num={1} total={1} />);
+    expect(a.querySelector('h1').style.fontSize).toBe(sized(CANVAS_BASELINE_PX.agenda.title, 1.5)); // 96 → 144
+    const { container: c } = render(<Slide slide={{ id: 'c', layout: 'cover', title: 'Hero' }} deck={{ title: 'Demo', headingScale: 0.85 }} num={1} total={1} />);
+    expect(c.querySelector('h1').style.fontSize).toBe(sized(CANVAS_BASELINE_PX.cover.title, 0.85)); // 140 → 119
+    const { container: t } = render(<Slide slide={{ id: 't', layout: 'text', title: 'T' }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(t.querySelector('h1').style.fontSize).toBe(`${CANVAS_BASELINE_PX.text.title}px`); // no scale → baseline 84
+  });
 });
 
 describe('Slide per-field formatting (fmt)', () => {

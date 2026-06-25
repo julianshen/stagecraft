@@ -52,6 +52,12 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
     onDeckChange(prev => ({ ...prev, theme }));
   }
 
+  // Deck-level heading scale (a title-size multiplier) — same deck-mutation path as
+  // changeTheme; the renderer/export clamp it on read via resolveHeadingScale.
+  function changeHeadingScale(headingScale) {
+    onDeckChange(prev => ({ ...prev, headingScale }));
+  }
+
   function deleteSlide(slideId) {
     const flat = getFlatSlideIds(deck);
     deletingRef.current = { id: slideId, idx: flat.indexOf(slideId) };
@@ -338,6 +344,7 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onAddText: addText,
         onChangeLayout: changeLayout,
         onChangeTheme: changeTheme,
+        onChangeHeadingScale: changeHeadingScale,
         onNewSlide: () => addComponent('text'),
         onDeleteSlide: deleteSlide,
         onDuplicateSlide: duplicateCurrentSlide,

@@ -857,3 +857,40 @@ describe('per-field / per-item formatting (slide.fmt)', () => {
     expect(o.italic).toBe(true);   // other fmt axes still apply
   });
 });
+
+describe('exportToPPTX — deck heading scale (titles)', () => {
+  // deck.headingScale multiplies every layout title; cover title pt baseline is 44,
+  // canvas baseline px 140. Non-title fields (the subtitle) are unaffected.
+  const coverSlide = (fmt) => ({ id: 'c', layout: 'cover', title: 'Hero', subtitle: 'Sub', ...(fmt ? { fmt } : {}) });
+  const scaledDeck = (slide, headingScale) => ({ ...deckWith(slide), ...(headingScale != null ? { headingScale } : {}) });
+
+  it('scales the title pt by the deck heading scale, leaving other fields unscaled', async () => {
+    await exportToPPTX(scaledDeck(coverSlide(), 1.5));
+    expect(optsOf(last(), 'Hero').fontSize).toBe(66); // cover title 44pt × 1.5
+    expect(optsOf(last(), 'Sub').fontSize).toBe(16);  // subtitle baseline, unscaled
+  });
+
+  it('leaves the title at its baseline when no heading scale is set', async () => {
+    await exportToPPTX(scaledDeck(coverSlide()));
+    expect(optsOf(last(), 'Hero').fontSize).toBe(44);
+  });
+
+  it('keeps an absolute per-title fmt.fontSize in canvas↔export parity regardless of the heading scale', async () => {
+    // A per-title override is absolute px on the canvas (ignores the deck scale); the
+    // export must match, so the heading scale cancels out of the fmt ratio.
+    await exportToPPTX(scaledDeck(coverSlide({ title: { fontSize: CANVAS_BASELINE_PX.cover.title * 2 } }), 1.5));
+    expect(optsOf(last(), 'Hero').fontSize).toBe(88); // 44 × 2 — same as with no heading scale
+  });
+
+  it('also scales a non-cover layout title (agenda) by the deck heading scale', async () => {
+    await exportToPPTX(scaledDeck({ id: 'a', layout: 'agenda', title: 'Plan' }, 1.5));
+    expect(optsOf(last(), 'Plan').fontSize).toBe(33); // agenda title 22pt × 1.5
+  });
+
+  it('clamps a malformed (gate-bypassing) heading scale before applying it', async () => {
+    await exportToPPTX(scaledDeck(coverSlide(), 99));   // out of range → clamps to max 1.6
+    expect(optsOf(last(), 'Hero').fontSize).toBe(70.4); // 44 × 1.6
+    await exportToPPTX(scaledDeck(coverSlide(), NaN));  // non-finite → default 1
+    expect(optsOf(last(), 'Hero').fontSize).toBe(44);
+  });
+});
