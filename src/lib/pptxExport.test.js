@@ -196,6 +196,52 @@ describe('exportToPPTX — font-size parity (remaining layout titles)', () => {
   });
 });
 
+describe('exportToPPTX — font-size parity (per-item data fields, index-keyed)', () => {
+  // The per-item card/row data fields (mirrors the agenda/list item parity): basePx
+  // is keyed by field-type, and the export reads each row's per-index fmt against it.
+  it('scales the kpi val/label/delta fields by their canvas ratios', async () => {
+    const kpi = { id: 'k', layout: 'kpi', title: 'T', kpis: [{ val: '42', label: 'Users', delta: '+5' }] };
+    await exportToPPTX(deckWith(kpi));
+    expect(optsOf(last(), '42').fontSize).toBe(28);     // kpis.val baseline
+    expect(optsOf(last(), 'Users').fontSize).toBe(11);  // kpis.label
+    expect(optsOf(last(), '+5').fontSize).toBe(10);     // kpis.delta
+    await exportToPPTX(deckWith({ ...kpi, fmt: {
+      'kpis.0.val': { fontSize: CANVAS_BASELINE_PX.kpi['kpis.val'] * 2 },
+      'kpis.0.label': { fontSize: CANVAS_BASELINE_PX.kpi['kpis.label'] * 2 },
+      'kpis.0.delta': { fontSize: CANVAS_BASELINE_PX.kpi['kpis.delta'] * 2 },
+    } }));
+    expect(optsOf(last(), '42').fontSize).toBe(56);     // 28 × 2
+    expect(optsOf(last(), 'Users').fontSize).toBe(22);  // 11 × 2
+    expect(optsOf(last(), '+5').fontSize).toBe(20);     // 10 × 2
+  });
+
+  it('scales the split stat val/lbl fields by their canvas ratios', async () => {
+    const split = { id: 's', layout: 'split', title: 'T', stats: [{ val: '99', lbl: 'Score' }] };
+    await exportToPPTX(deckWith(split));
+    expect(optsOf(last(), '99').fontSize).toBe(32);     // stats.val baseline
+    expect(optsOf(last(), 'Score').fontSize).toBe(12);  // stats.lbl
+    await exportToPPTX(deckWith({ ...split, fmt: {
+      'stats.0.val': { fontSize: CANVAS_BASELINE_PX.split['stats.val'] * 2 },
+      'stats.0.lbl': { fontSize: CANVAS_BASELINE_PX.split['stats.lbl'] * 2 },
+    } }));
+    expect(optsOf(last(), '99').fontSize).toBe(64);     // 32 × 2
+    expect(optsOf(last(), 'Score').fontSize).toBe(24);  // 12 × 2
+  });
+
+  it('scales the risks item title/desc fields by their canvas ratios', async () => {
+    const risks = { id: 'r', layout: 'risks', title: 'T', items: [{ sev: 'high', t: 'RiskTitle', d: 'RiskDesc' }] };
+    await exportToPPTX(deckWith(risks));
+    expect(optsOf(last(), 'RiskTitle').fontSize).toBe(15);  // items.t baseline
+    expect(optsOf(last(), 'RiskDesc').fontSize).toBe(12);   // items.d
+    await exportToPPTX(deckWith({ ...risks, fmt: {
+      'items.0.t': { fontSize: CANVAS_BASELINE_PX.risks['items.t'] * 2 },
+      'items.0.d': { fontSize: CANVAS_BASELINE_PX.risks['items.d'] * 2 },
+    } }));
+    expect(optsOf(last(), 'RiskTitle').fontSize).toBe(30);  // 15 × 2
+    expect(optsOf(last(), 'RiskDesc').fontSize).toBe(24);   // 12 × 2
+  });
+});
+
 describe('exportToPPTX — thanks / generic / split / cover-subtitle builders', () => {
   it('exports a thanks slide (title + subtitle), and its default title when none is given', async () => {
     await exportToPPTX(deckWith({ id: 't', layout: 'thanks', title: 'Thanks!', subtitle: 'Questions?' }));

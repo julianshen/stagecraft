@@ -634,14 +634,14 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
               {(Array.isArray(slide.kpis) ? slide.kpis : []).map((k,i)=> k && (
                 <div key={i} style={{ padding:'28px 32px', border:'1px solid #e8e5df', borderRadius:10, background:'white', position:'relative' }}>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-                    {E(['kpis', i, 'label'], k.label, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:16, letterSpacing:'0.08em', textTransform:'uppercase', color:'#888' } })}
+                    {E(['kpis', i, 'label'], k.label, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:CANVAS_BASELINE_PX.kpi['kpis.label'], letterSpacing:'0.08em', textTransform:'uppercase', color:'#888' } })}
                     {E(['kpis', i, 'delta'], k.delta, { as: 'div', style: {
-                      fontFamily:'var(--f-mono)', fontSize:14, padding:'2px 8px', borderRadius:4,
+                      fontFamily:'var(--f-mono)', fontSize:CANVAS_BASELINE_PX.kpi['kpis.delta'], padding:'2px 8px', borderRadius:4,
                       background: k.good === true ? 'oklch(0.95 0.04 155)' : k.good === false ? 'oklch(0.95 0.04 25)' : '#f0ede8',
                       color: k.good === true ? 'oklch(0.45 0.14 155)' : k.good === false ? 'oklch(0.5 0.18 25)' : '#666'
                     } })}
                   </div>
-                  {E(['kpis', i, 'val'], k.val, { as: 'div', style: { fontSize:68, fontWeight:600, letterSpacing:'-0.03em', lineHeight:1, marginBottom:14 } })}
+                  {E(['kpis', i, 'val'], k.val, { as: 'div', style: { fontSize:CANVAS_BASELINE_PX.kpi['kpis.val'], fontWeight:600, letterSpacing:'-0.03em', lineHeight:1, marginBottom:14 } })}
                   {E(['kpis', i, 'target'], k.target, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:16, color:'#888' } })}
                 </div>
               ))}
@@ -680,8 +680,8 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
             <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
               {(Array.isArray(slide.stats) ? slide.stats : []).map((st,i)=> st && (
                 <div key={i} style={{ padding:'36px 40px', background:'oklch(0.97 0.01 85)', borderRadius:10, display:'flex', alignItems:'baseline', justifyContent:'space-between' }}>
-                  {E(['stats', i, 'lbl'], st.lbl, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:20, color:'#555', letterSpacing:'0.05em', textTransform:'uppercase' } })}
-                  {E(['stats', i, 'val'], st.val, { as: 'div', style: { fontSize:72, fontWeight:600, letterSpacing:'-0.03em', color: String(st.val ?? '').startsWith('-') ? 'oklch(0.55 0.18 25)' : 'oklch(0.45 0.14 155)' } })}
+                  {E(['stats', i, 'lbl'], st.lbl, { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:CANVAS_BASELINE_PX.split['stats.lbl'], color:'#555', letterSpacing:'0.05em', textTransform:'uppercase' } })}
+                  {E(['stats', i, 'val'], st.val, { as: 'div', style: { fontSize:CANVAS_BASELINE_PX.split['stats.val'], fontWeight:600, letterSpacing:'-0.03em', color: String(st.val ?? '').startsWith('-') ? 'oklch(0.55 0.18 25)' : 'oklch(0.45 0.14 155)' } })}
                 </div>
               ))}
             </div>
@@ -767,8 +767,8 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
                   <div key={i} style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:40, padding:'32px 36px', border:'1px solid #eee', borderLeft:`6px solid ${sevC}`, borderRadius:6, background:'white' }}>
                     <div style={{ fontFamily:'var(--f-mono)', fontSize:18, letterSpacing:'0.08em', textTransform:'uppercase', color:sevC, fontWeight:600, paddingTop:6 }}>{it.sev} risk</div>
                     <div>
-                      {E(['items', i, 't'], it.t, { as: 'div', style: { fontSize:36, fontWeight:600, marginBottom:10 } })}
-                      {E(['items', i, 'd'], it.d, { as: 'div', style: { fontSize:24, color:'#555' } })}
+                      {E(['items', i, 't'], it.t, { as: 'div', style: { fontSize:CANVAS_BASELINE_PX.risks['items.t'], fontWeight:600, marginBottom:10 } })}
+                      {E(['items', i, 'd'], it.d, { as: 'div', style: { fontSize:CANVAS_BASELINE_PX.risks['items.d'], color:'#555' } })}
                     </div>
                   </div>
                 );

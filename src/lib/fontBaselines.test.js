@@ -9,9 +9,13 @@ describe('CANVAS_BASELINE_PX', () => {
     expect(CANVAS_BASELINE_PX.text.body).toBe(32);
     expect(CANVAS_BASELINE_PX.agenda).toEqual({ title: 96, 'items.n': 36, 'items.t': 38, 'items.d': 22 });
     expect(CANVAS_BASELINE_PX.list).toEqual({ title: 84, items: 38 });
-    for (const layout of ['kpi', 'chart', 'split', 'table', 'risks', 'roadmap']) {
+    for (const layout of ['chart', 'table', 'roadmap']) {
       expect(CANVAS_BASELINE_PX[layout]).toEqual({ title: 72 });
     }
+    // kpi/split/risks also carry their per-item data fields (keyed by field-type).
+    expect(CANVAS_BASELINE_PX.kpi).toEqual({ title: 72, 'kpis.val': 68, 'kpis.label': 16, 'kpis.delta': 14 });
+    expect(CANVAS_BASELINE_PX.split).toEqual({ title: 72, 'stats.val': 72, 'stats.lbl': 20 });
+    expect(CANVAS_BASELINE_PX.risks).toEqual({ title: 72, 'items.t': 36, 'items.d': 24 });
     expect(CANVAS_BASELINE_PX.thanks).toEqual({ title: 220 });
   });
 
