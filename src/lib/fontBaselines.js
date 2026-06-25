@@ -19,9 +19,9 @@ export const CANVAS_BASELINE_PX = Object.freeze({
   // agenda above (every row shares the canvas px; the export reads the per-index fmt).
   kpi: Object.freeze({ title: 72, 'kpis.val': 68, 'kpis.label': 16, 'kpis.delta': 14 }),
   chart: Object.freeze({ title: 72 }),
-  split: Object.freeze({ title: 72, 'stats.val': 72, 'stats.lbl': 20 }),
+  split: Object.freeze({ title: 72, body: 28, 'stats.val': 72, 'stats.lbl': 20 }),
   table: Object.freeze({ title: 72 }),
   risks: Object.freeze({ title: 72, 'items.t': 36, 'items.d': 24 }),
   roadmap: Object.freeze({ title: 72 }),
-  thanks: Object.freeze({ title: 220 }),
+  thanks: Object.freeze({ title: 220, subtitle: 32 }),
 });
