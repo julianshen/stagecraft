@@ -285,6 +285,10 @@ describe('Slide with elements', () => {
 });
 
 describe('Slide — font-size baselines (single-sourced with the export basePx)', () => {
+  // Find the LEAF <div> with exactly this text (shared by the per-item baseline
+  // tests) — exclude ancestors whose concatenated textContent could coincide.
+  const find = (c, t) => [...c.querySelectorAll('div')].find((el) => el.textContent === t && !el.querySelector('div'));
+
   it('sizes the text layout title/body from the shared CANVAS_BASELINE_PX', () => {
     const slide = { id: 'a', layout: 'text', title: 'Heading', body: 'Body copy' };
     const { container } = render(<Slide slide={slide} deck={{ title: 'Demo' }} sectionName="Intro" num={1} total={1} />);
@@ -303,7 +307,6 @@ describe('Slide — font-size baselines (single-sourced with the export basePx)'
   });
 
   it('sizes the agenda + list item fields from the shared CANVAS_BASELINE_PX', () => {
-    const find = (c, txt) => [...c.querySelectorAll('div')].find((el) => el.textContent === txt);
     const { container: ag } = render(<Slide slide={{ id: 'a', layout: 'agenda', title: 'Plan', items: [{ n: '07', t: 'First', d: 'Details' }] }} deck={{ title: 'Demo' }} num={1} total={1} />);
     expect(find(ag, '07').style.fontSize).toBe(`${CANVAS_BASELINE_PX.agenda['items.n']}px`);   // 36px
     expect(find(ag, 'First').style.fontSize).toBe(`${CANVAS_BASELINE_PX.agenda['items.t']}px`); // 38px
@@ -332,6 +335,19 @@ describe('Slide — font-size baselines (single-sourced with the export basePx)'
     // to actually resize on the canvas (unformatted it merely inherits the h1's 220).
     render(<Slide slide={{ id: 't', layout: 'thanks', title: 'Goodbye', fmt: { title: { fontSize: CANVAS_BASELINE_PX.thanks.title * 2 } } }} deck={{ title: 'Demo' }} num={1} total={1} />);
     expect(screen.getByText('Goodbye').style.fontSize).toBe(`${CANVAS_BASELINE_PX.thanks.title * 2}px`); // 440px — 2× the inherited 220, matching the export's 2×
+  });
+
+  it('sizes the kpi/split/risks per-item data fields from the shared CANVAS_BASELINE_PX', () => {
+    const { container: kp } = render(<Slide slide={{ id: 'k', layout: 'kpi', title: 'T', kpis: [{ val: 'KV', label: 'KL', delta: 'KD' }] }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(find(kp, 'KV').style.fontSize).toBe(`${CANVAS_BASELINE_PX.kpi['kpis.val']}px`);   // 68
+    expect(find(kp, 'KL').style.fontSize).toBe(`${CANVAS_BASELINE_PX.kpi['kpis.label']}px`); // 16
+    expect(find(kp, 'KD').style.fontSize).toBe(`${CANVAS_BASELINE_PX.kpi['kpis.delta']}px`); // 14
+    const { container: sp } = render(<Slide slide={{ id: 's', layout: 'split', title: 'T', stats: [{ val: 'SV', lbl: 'SL' }] }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(find(sp, 'SV').style.fontSize).toBe(`${CANVAS_BASELINE_PX.split['stats.val']}px`); // 72
+    expect(find(sp, 'SL').style.fontSize).toBe(`${CANVAS_BASELINE_PX.split['stats.lbl']}px`); // 20
+    const { container: rk } = render(<Slide slide={{ id: 'r', layout: 'risks', title: 'T', items: [{ sev: 'high', t: 'RT', d: 'RD' }] }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(find(rk, 'RT').style.fontSize).toBe(`${CANVAS_BASELINE_PX.risks['items.t']}px`); // 36
+    expect(find(rk, 'RD').style.fontSize).toBe(`${CANVAS_BASELINE_PX.risks['items.d']}px`); // 24
   });
 });
 
