@@ -55,5 +55,59 @@ describe('AnimPanel — per-slide transition editing', () => {
     render(<AnimPanel slide={null} onApply={vi.fn()} />);
     expect(screen.getByLabelText('Transition type').disabled).toBe(true);
     expect(screen.getByLabelText('Transition duration').disabled).toBe(true);
+    expect(screen.getByText('Add build').disabled).toBe(true);
+  });
+});
+
+describe('AnimPanel — builds editing', () => {
+  const withBuilds = { id: 's', layout: 'cover', builds: [{ type: 'fadeIn' }] };
+
+  it('lists each slide.build with its type', () => {
+    render(<AnimPanel slide={withBuilds} onApply={vi.fn()} />);
+    expect(screen.getByLabelText('Build 1 type').value).toBe('fadeIn');
+  });
+
+  it('skips malformed build entries (null / non-object / unknown type) instead of crashing', () => {
+    // MCP update_slide / PUT /api/deck bypass the gate, so a persisted deck can carry
+    // junk; the editor guards its render the way isRenderableShadow/Gradient guard the
+    // canvas — a raw render would deref b.type on null and crash the inspector.
+    const messy = { id: 's', layout: 'cover', builds: [null, 42, {}, { type: 'spinIn' }, { type: 'riseIn' }] };
+    render(<AnimPanel slide={messy} onApply={vi.fn()} />);
+    expect(screen.getByLabelText('Build 1 type').value).toBe('riseIn'); // only the renderable entry
+    expect(screen.queryByLabelText('Build 2 type')).toBeNull();
+  });
+
+  it('adds a build (appends a typed default to the array)', () => {
+    const onApply = vi.fn();
+    render(<AnimPanel slide={{ id: 's', layout: 'cover' }} onApply={onApply} />); // no builds yet
+    fireEvent.click(screen.getByText('Add build'));
+    expect(onApply).toHaveBeenCalledWith({ builds: [{ type: 'fadeIn' }] });
+  });
+
+  it('changes one build type, keeping the others, committing the whole array', () => {
+    const onApply = vi.fn();
+    const two = { id: 's', layout: 'cover', builds: [{ type: 'fadeIn' }, { type: 'riseIn' }] };
+    render(<AnimPanel slide={two} onApply={onApply} />);
+    fireEvent.change(screen.getByLabelText('Build 1 type'), { target: { value: 'zoomIn' } });
+    expect(onApply).toHaveBeenCalledWith({ builds: [{ type: 'zoomIn' }, { type: 'riseIn' }] });
+  });
+
+  it('deletes a build', () => {
+    const onApply = vi.fn();
+    render(<AnimPanel slide={withBuilds} onApply={onApply} />);
+    fireEvent.click(screen.getByTitle('Delete build 1'));
+    expect(onApply).toHaveBeenCalledWith({ builds: [] });
+  });
+
+  it('strips a persisted extra-key build to the strict { type } shape it commits', () => {
+    // An ungated MCP/PUT write can persist { type, duration }; if the editor forwarded
+    // that extra key, sanitizeSlidePatch (isValidBuild = no extras) would reject the
+    // whole builds patch and the next edit would be a silent no-op. The editor
+    // normalizes each entry to { type }, so every commit stays gate-valid.
+    const onApply = vi.fn();
+    const persisted = { id: 's', layout: 'cover', builds: [{ type: 'fadeIn', duration: 400 }] };
+    render(<AnimPanel slide={persisted} onApply={onApply} />);
+    fireEvent.click(screen.getByText('Add build'));
+    expect(onApply).toHaveBeenCalledWith({ builds: [{ type: 'fadeIn' }, { type: 'fadeIn' }] });
   });
 });

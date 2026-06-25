@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import Icon from '../../ui/Icon.jsx';
-import { FieldRow, InputGroup } from '../../ui/Primitives.jsx';
-import { TRANSITION_TYPES } from '../../../lib/deckUtils.js';
+import { FieldRow, InputGroup, Button, IconButton } from '../../ui/Primitives.jsx';
+import { TRANSITION_TYPES, BUILD_TYPES } from '../../../lib/deckUtils.js';
 
 const DEFAULT_DURATION = 480; // ms — seeds the DUR field when a slide has no transition yet
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+// "fadeIn" → "Fade In" for the build TYPE options (derived, so a new BUILD_TYPE is labelled).
+const buildLabel = (t) => cap(t.replace(/([A-Z])/g, ' $1'));
 
 // The slide-transition editor. TYPE + DUR read the live `slide.transition` (else
 // a none/480ms default) and commit through the shared patch gate (onApply →
 // sanitizeSlidePatch), the same path the Data/Notes panels use. The gate requires
 // the WHOLE { type, duration }, so each control commits both halves (one edit can't
-// drop the other). The Builds section below is still a mockup (Transition first).
+// drop the other). Builds (below) are a per-slide list of entrance animations.
 export default function AnimPanel({ slide, onApply }) {
   const tr = slide?.transition || {};
   const type = TRANSITION_TYPES.has(tr.type) ? tr.type : 'none';
@@ -24,6 +26,19 @@ export default function AnimPanel({ slide, onApply }) {
   // Commit the WHOLE { type, duration } (the gate requires both); the controls are
   // disabled when there's no slide, so this only fires with a real target.
   const apply = (next) => onApply?.({ transition: { type, duration, ...next } });
+  // Builds: a per-slide array of entrance animations. The whole array is committed
+  // (the gate replaces it); rows key by index (v1 has no reorder). Normalize to the
+  // strict { type } shape first — the MCP update_slide / PUT /api/deck paths bypass the
+  // gate, so a persisted deck can carry junk (null, a non-object, an unknown type, or a
+  // valid type with stale extra keys). Rendering it raw would deref b.type and crash the
+  // inspector; keeping the extra keys would poison every commit (isValidBuild forbids
+  // extras, so sanitizeSlidePatch would reject the whole array — a silent no-op edit).
+  // Stripping to { type } keeps the crash guard and gate-validity in one pass. Same
+  // defence isRenderableShadow/Gradient give the canvas; BUILD_TYPES is the shared vocab.
+  const builds = Array.isArray(slide?.builds)
+    ? slide.builds.flatMap((b) => (b && typeof b === 'object' && BUILD_TYPES.has(b.type) ? [{ type: b.type }] : []))
+    : [];
+  const commitBuilds = (next) => onApply?.({ builds: next });
   return (
     <>
       <div className="pane-section">
@@ -45,13 +60,21 @@ export default function AnimPanel({ slide, onApply }) {
       </div>
       <div className="pane-section">
         <h4>Builds</h4>
-        {[{ t: 'Fade in', o: 'click 1' }, { t: 'Rise 8px', o: 'click 1, +100ms' }, { t: 'Stagger', o: '3 children' }].map((it, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 4, fontSize: 12, marginBottom: 6 }}>
-            <Icon name="dot" size={12} style={{ color: 'var(--accent)' }} />
-            <span style={{ flex: 1 }}>{it.t}</span>
-            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-4)' }}>{it.o}</span>
+        {builds.map((b, i) => (
+          <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 6 }}>
+            <div className="input-group" style={{ flex: 1 }}>
+              <select aria-label={`Build ${i + 1} type`} value={b.type} disabled={!slide}
+                onChange={(e) => commitBuilds(builds.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))}>
+                {[...BUILD_TYPES].map((t) => <option key={t} value={t}>{buildLabel(t)}</option>)}
+              </select>
+              <Icon name="chevron-down" size={11} />
+            </div>
+            <IconButton name="trash" size={12} title={`Delete build ${i + 1}`} disabled={!slide}
+              onClick={() => commitBuilds(builds.filter((_, j) => j !== i))} />
           </div>
         ))}
+        <Button variant="outline" style={{ height: 26, fontSize: 11 }} disabled={!slide}
+          onClick={() => commitBuilds([...builds, { type: 'fadeIn' }])}>Add build</Button>
       </div>
     </>
   );

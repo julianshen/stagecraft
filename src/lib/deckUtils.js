@@ -48,6 +48,9 @@ export const SLIDE_LAYOUTS = new Set([
 // transition is { type, duration(ms) } — the presenter plays it on advance
 // (lib/transitions.js maps it to a CSS entrance).
 export const TRANSITION_TYPES = new Set(['none', 'fade', 'slide', 'morph']);
+// Per-element build (entrance) animations the Animate panel offers; played per
+// click-advance within a slide (presenter playback is a follow-up).
+export const BUILD_TYPES = new Set(['fadeIn', 'riseIn', 'zoomIn']);
 // The slide fields an AI patch may set — exactly what the renderer/exporter
 // read (id is immutable; num/total/sectionName are injected at render time). A
 // plausible-but-unsupported field (speakerNotes, headline, content…) is rejected
@@ -56,7 +59,7 @@ const SLIDE_FIELDS = new Set([
   'layout', 'title', 'subtitle', 'sub', 'body', 'eyebrow', 'kicker',
   'chapter', 'note', 'notes', 'bg', 'chartType',
   'items', 'kpis', 'stats', 'rows', 'columns',
-  'chart', 'lanes', 'months', 'todayIndex', 'fmt', 'elements', 'transition',
+  'chart', 'lanes', 'months', 'todayIndex', 'fmt', 'elements', 'transition', 'builds',
 ]);
 const isPrimitive = (x) => x === null || typeof x !== 'object';
 // A flat record: a non-array object whose own values are all primitives. Used
@@ -132,6 +135,16 @@ const isPosFinite = (v) => isFinite_(v) && v > 0; // a size that must render (fo
 const isNonNeg = (v) => isFinite_(v) && v >= 0;   // a width where 0 means "off" (e.g. no stroke)
 const isStr = (v) => typeof v === 'string';
 const isBool = (v) => typeof v === 'boolean';
+// build: { type ∈ BUILD_TYPES } — the same strict shape as the transition gate
+// (present + valid, no extras). v1 is type-only (don't gate fields the editor can't
+// set yet); timing (delay/duration), per-element targeting, a stable id, and
+// presenter playback are follow-ups that add their fields here alongside a control.
+const BUILD_FIELD_OK = {
+  type: (v) => isStr(v) && BUILD_TYPES.has(v),
+};
+const isValidBuild = (b) => isPlainObject(b)
+  && Object.entries(BUILD_FIELD_OK).every(([k, ok]) => ok(b[k]))
+  && Object.keys(b).every((k) => Object.prototype.hasOwnProperty.call(BUILD_FIELD_OK, k));
 const isKnownElementType = (t) => typeof t === 'string' && (t === 'text' || t === 'image' || t === 'path' || !!shapeDef(t));
 // An overlay image must be an embedded data URL — the app never fetches remote
 // images (privacy/offline), and the exporter passes `src` straight to addImage.
@@ -245,6 +258,9 @@ function fieldOk(key, value, layout) {
   // transition: { type, duration } config (presenter playback is a follow-up) —
   // gate the shape so a malformed value can't persist (or mislead the Co-pilot).
   if (key === 'transition') return isValidTransition(value);
+  // builds: an array of per-element entrance animations — the whole array is
+  // replaced, so reject it entirely if any entry is malformed (matches `elements`).
+  if (key === 'builds') return Array.isArray(value) && value.every(isValidBuild);
   return isPrimitive(value);
 }
 
