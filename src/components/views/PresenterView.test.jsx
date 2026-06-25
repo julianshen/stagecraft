@@ -10,7 +10,7 @@ const deck = {
   title: 'D',
   sections: [{ id: 's1', name: 'Main', slides: ['a', 'b', 'c', 'd', 'e'] }],
   slides: [
-    { id: 'a', layout: 'cover', title: 'Cover' },
+    { id: 'a', layout: 'cover', title: 'Cover', transition: { type: 'fade', duration: 480 } },
     { id: 'b', layout: 'text', title: 'B' },
     { id: 'c', layout: 'text', title: 'C' },
     { id: 'd', layout: 'text', title: 'D4' },
@@ -103,5 +103,13 @@ describe('PresenterView', () => {
     expect(laserBtn.className).not.toContain('active');
     fireEvent.click(laserBtn);
     expect(laserBtn.className).toContain('active');
+  });
+
+  it('plays the entering slide\'s transition on advance, and nothing when the slide has none', () => {
+    const { container } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+    const stageStyle = () => container.querySelector('.presenter-current > div').getAttribute('style') || '';
+    expect(stageStyle()).toContain('present-fade 480ms ease both'); // slide a (cover) has a fade transition
+    fireEvent.keyDown(window, { key: 'ArrowRight' });                // advance → slide b has no transition
+    expect(stageStyle()).not.toContain('animation');                 // instant cut, no animation
   });
 });
