@@ -27,11 +27,14 @@ export default function AnimPanel({ slide, onApply }) {
   // disabled when there's no slide, so this only fires with a real target.
   const apply = (next) => onApply?.({ transition: { type, duration, ...next } });
   // Builds: a per-slide array of entrance animations. The whole array is committed
-  // (the gate replaces it); rows key by index (v1 has no reorder). The TYPE select
-  // shows b.type as-is — unlike the Transition select it doesn't normalize an unknown
-  // type, since the gate guarantees a valid one on every UI/AI write and nothing reads
-  // it yet (presenter playback is v2; the normalization lands there with its reader).
-  const builds = Array.isArray(slide?.builds) ? slide.builds : [];
+  // (the gate replaces it); rows key by index (v1 has no reorder). Filter to
+  // renderable entries first — the MCP update_slide / PUT /api/deck paths bypass the
+  // gate, so a persisted deck can carry junk (null, a non-object, an unknown type) and
+  // rendering it raw would deref b.type and crash the inspector. Same defence
+  // isRenderableShadow/Gradient give the canvas; BUILD_TYPES is the shared vocabulary.
+  const builds = Array.isArray(slide?.builds)
+    ? slide.builds.filter((b) => b && typeof b === 'object' && BUILD_TYPES.has(b.type))
+    : [];
   const commitBuilds = (next) => onApply?.({ builds: next });
   return (
     <>

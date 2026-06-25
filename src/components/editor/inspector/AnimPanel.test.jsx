@@ -67,6 +67,16 @@ describe('AnimPanel — builds editing', () => {
     expect(screen.getByLabelText('Build 1 type').value).toBe('fadeIn');
   });
 
+  it('skips malformed build entries (null / non-object / unknown type) instead of crashing', () => {
+    // MCP update_slide / PUT /api/deck bypass the gate, so a persisted deck can carry
+    // junk; the editor guards its render the way isRenderableShadow/Gradient guard the
+    // canvas — a raw render would deref b.type on null and crash the inspector.
+    const messy = { id: 's', layout: 'cover', builds: [null, 42, {}, { type: 'spinIn' }, { type: 'riseIn' }] };
+    render(<AnimPanel slide={messy} onApply={vi.fn()} />);
+    expect(screen.getByLabelText('Build 1 type').value).toBe('riseIn'); // only the renderable entry
+    expect(screen.queryByLabelText('Build 2 type')).toBeNull();
+  });
+
   it('adds a build (appends a typed default to the array)', () => {
     const onApply = vi.fn();
     render(<AnimPanel slide={{ id: 's', layout: 'cover' }} onApply={onApply} />); // no builds yet
