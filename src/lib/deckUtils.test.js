@@ -174,6 +174,19 @@ describe('applySlidePatch', () => {
     expect(next.slides[0].notes).toBe('Speak to the pain.');
   });
 
+  it('accepts a valid transition (type in the enum + a positive duration)', () => {
+    const next = applySlidePatch(deck(), 'a', { transition: { type: 'fade', duration: 480 } });
+    expect(next.slides[0].transition).toEqual({ type: 'fade', duration: 480 });
+  });
+
+  it('drops a transition with an unknown type, a non-positive/absent duration, extra keys, or a non-object value', () => {
+    expect(applySlidePatch(deck(), 'a', { transition: { type: 'warp', duration: 480 } }).slides[0].transition).toBeUndefined();
+    expect(applySlidePatch(deck(), 'a', { transition: { type: 'fade', duration: 0 } }).slides[0].transition).toBeUndefined();
+    expect(applySlidePatch(deck(), 'a', { transition: { type: 'fade' } }).slides[0].transition).toBeUndefined(); // duration required
+    expect(applySlidePatch(deck(), 'a', { transition: { type: 'fade', duration: 480, evil: 1 } }).slides[0].transition).toBeUndefined(); // no extra keys (matches isShadow/isGradient)
+    expect(applySlidePatch(deck(), 'a', { transition: 'fade' }).slides[0].transition).toBeUndefined();
+  });
+
   it('drops a collection field (items/kpis/stats/rows/columns) that is not an array', () => {
     const next = applySlidePatch(deck(), 'a', { items: 'one\ntwo', title: 'Keep' });
     expect(next.slides[0].title).toBe('Keep');       // legit field applied

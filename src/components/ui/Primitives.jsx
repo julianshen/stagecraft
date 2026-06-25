@@ -41,11 +41,11 @@ export function FieldRow({ label, children }) {
   );
 }
 
-export function InputGroup({ icoLeft, unit, value, onChange, placeholder }) {
+export function InputGroup({ icoLeft, unit, value, onChange, placeholder, disabled, ariaLabel, onBlur }) {
   return (
     <div className="input-group">
       {icoLeft && <span className="ico">{icoLeft}</span>}
-      <input value={value} onChange={e => onChange && onChange(e.target.value)} placeholder={placeholder} />
+      <input value={value} onChange={e => onChange && onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder} disabled={disabled} aria-label={ariaLabel} />
       {unit && <span className="unit">{unit}</span>}
     </div>
   );

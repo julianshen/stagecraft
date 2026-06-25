@@ -24,7 +24,7 @@ export default function InspectorBody({ labels, tab, setTab, selection, setSelec
         {tab === 'props' && <PropsPanel selected={selection} setSelected={setSelection} count={count} />}
         {tab === 'data' && <DataPanel slide={slide} onApply={onApplyPatch} />}
         {tab === 'notes' && <NotesPanel slide={slide} onApply={onApplyPatch} />}
-        {tab === 'anim' && <AnimPanel />}
+        {tab === 'anim' && <AnimPanel slide={slide} onApply={onApplyPatch} />}
         {extras}
       </div>
     </>

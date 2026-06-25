@@ -49,6 +49,7 @@ export default defineConfig({
         'src/components/editor/inspector/DataPanel.jsx',
         'src/components/editor/inspector/DesignPanel.jsx',
         'src/components/editor/inspector/NotesPanel.jsx',
+        'src/components/editor/inspector/AnimPanel.jsx',
         'src/components/editor/menus/LayoutGrid.jsx',
         'src/components/editor/inspector/PropsPanel.jsx',
         'src/components/editor/inspector/InspectorBody.jsx',
