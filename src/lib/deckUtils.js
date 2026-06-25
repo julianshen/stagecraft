@@ -45,8 +45,8 @@ export const SLIDE_LAYOUTS = new Set([
   'table', 'text', 'roadmap', 'risks', 'list', 'thanks',
 ]);
 // Slide-transition kinds the Animate panel offers ('none' = an instant cut). A
-// transition is { type, duration(ms) }; presenter playback is a follow-up — for
-// now the panel edits + persists it, nothing renders it yet.
+// transition is { type, duration(ms) } — the presenter plays it on advance
+// (lib/transitions.js maps it to a CSS entrance).
 export const TRANSITION_TYPES = new Set(['none', 'fade', 'slide', 'morph']);
 // The slide fields an AI patch may set — exactly what the renderer/exporter
 // read (id is immutable; num/total/sectionName are injected at render time). A
@@ -67,7 +67,7 @@ const isPlainObject = (x) => x !== null && typeof x === 'object' && !Array.isArr
 // transition: { type ∈ TRANSITION_TYPES, duration: positive ms } — same strict
 // shape as isShadow/isGradient (both fields present + valid, no extras): the panel
 // always sends both, a typed-but-duration-less value has no timing, and rejecting
-// extras keeps a future presenter consumer reading a clean { type, duration }.
+// extras keeps the presenter consumer reading a clean { type, duration }.
 const TRANSITION_FIELD_OK = {
   type: (v) => typeof v === 'string' && TRANSITION_TYPES.has(v),
   duration: (v) => Number.isFinite(v) && v > 0,

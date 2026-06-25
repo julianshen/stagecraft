@@ -178,6 +178,10 @@ code fences. Keep the same "layout" unless the instruction clearly calls for a
 different one. Valid layouts: cover, agenda, divider, kpi, chart, split, table,
 text, roadmap, risks, list, thanks. Do not include an "id".
 
+To set how this slide enters in the presenter, set "transition": an object
+{"type": one of "none","fade","slide","morph", "duration": a positive number of
+milliseconds (e.g. 480)}; "none" is an instant cut.
+
 To add or change free-form overlay graphics, set "elements": an array of objects
 placed in a 1920x1080 canvas (origin top-left). Every element needs "type",
 numeric "x","y","w","h", and a hex "fill" (e.g. "#1a1a2e" — for text this is the

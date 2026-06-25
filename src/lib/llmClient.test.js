@@ -330,6 +330,15 @@ describe('editSlide', () => {
     expect(body.system).toMatch(/1920|1080/);    // in the canvas coordinate space
     expect(body.system).toMatch(/existing/i);    // and tells it to preserve existing elements (incl. images)
   });
+
+  it('tells the model it can author a slide transition', async () => {
+    fetchMock.mockResolvedValue(res({ text: '{}' }));
+    await editSlide({ id: 'a', layout: 'cover' }, 'add a fade transition');
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.system).toMatch(/transition/i);  // the transition field is described
+    expect(body.system).toMatch(/fade/);          // with its type vocabulary
+    expect(body.system).toMatch(/duration/i);     // and a duration
+  });
 });
 
 describe('editSlide non-object replies', () => {
