@@ -56,8 +56,10 @@ export default function PresenterView({ deck, onExit }) {
   // Authored slide notes → bundled sample notes → a default nudge (the shared
   // resolver honours an intentionally-cleared empty string as "no notes").
   const note = resolveNotes(cur, "Drive the narrative: what does the audience need to walk away believing? If you don't know, the slide isn't ready.");
-  // The entering slide plays its own transition (Animate panel → slide.transition);
-  // keying the stage on idx remounts it so the CSS animation re-runs on each advance.
+  // The entering slide plays its own transition (Animate panel → slide.transition).
+  // Key the stage on idx ONLY when it animates, so the CSS animation replays on
+  // advance to an animated slide while no-transition slides reconcile in place
+  // (no needless remount of the slide's charts/SVG/elements).
   const anim = transitionAnim(cur.transition);
 
   return (
@@ -65,7 +67,7 @@ export default function PresenterView({ deck, onExit }) {
       <div className="presenter-main">
         <div className="label">Now presenting · slide {idx + 1} of {flat.length} · {cur.sectionName}</div>
         <div className="presenter-current">
-          <ScaledSlide key={idx} style={anim ? { animation: anim } : undefined}>
+          <ScaledSlide key={anim ? idx : 'none'} style={anim ? { animation: anim } : undefined}>
             <Slide slide={cur} deck={deck} sectionName={cur.sectionName} num={idx + 1} total={flat.length}/>
           </ScaledSlide>
           {laser && !blackout && <LaserLayer/>}

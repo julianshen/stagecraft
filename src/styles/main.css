@@ -1520,11 +1520,15 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   box-shadow: 0 20px 60px rgba(0,0,0,0.5);
 }
 /* Slide-transition entrances the presenter plays on advance (Animate panel →
-   slide.transition; mapped to a name by lib/transitions.js). 'morph' has no real
-   web analogue, so it's approximated as a soft scale-in. */
+   slide.transition; mapped to a name by lib/transitions.js). These apply to the
+   <ScaledSlide> root, which sizes its content from its own getBoundingClientRect —
+   so an entrance must NOT use `transform: scale` (the measured rect includes the
+   transform, so a scaling root would mis-size the slide). 'morph' has no real web
+   analogue, so it's approximated as a soft blur dissolve (filter doesn't affect
+   the measured rect); slide's translateX shifts position, not width/height. */
 @keyframes present-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes present-slide { from { opacity: 0; transform: translateX(48px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes present-morph { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+@keyframes present-morph { from { opacity: 0; filter: blur(10px); } to { opacity: 1; filter: blur(0); } }
 /* Laser: a transparent capture layer over the slide; the dot follows the
    pointer (positioned in % by LaserPointer). */
 .laser-layer { position: absolute; inset: 0; z-index: 1; }
