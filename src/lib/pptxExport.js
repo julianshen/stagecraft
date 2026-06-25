@@ -366,7 +366,7 @@ function addSplitSlide(pptx, slide, tc) {
   });
   if (slide.body) {
     fmtText(sld, slide, 'body', slide.body, {
-      x: 0.5, y: 1.4, w: 5.5, h: 3.5, fontSize: 14, color: 'CCCCCC', fontFace: 'Inter', wrap: true, valign: 'top',
+      x: 0.5, y: 1.4, w: 5.5, h: 3.5, fontSize: 14, basePx: CANVAS_BASELINE_PX.split.body, color: 'CCCCCC', fontFace: 'Inter', wrap: true, valign: 'top',
     });
   }
   const stats = slide.stats || [];
@@ -486,7 +486,7 @@ function addThanksSlide(pptx, slide, tc) {
   });
   if (slide.subtitle) {
     fmtText(sld, slide, 'subtitle', slide.subtitle, {
-      x: 0.5, y: 3.6, w: 9, h: 0.5, fontSize: 15, color: 'AAAAAA', align: 'center', fontFace: 'Inter',
+      x: 0.5, y: 3.6, w: 9, h: 0.5, fontSize: 15, basePx: CANVAS_BASELINE_PX.thanks.subtitle, color: 'AAAAAA', align: 'center', fontFace: 'Inter',
     });
   }
   return sld;

@@ -675,7 +675,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
             <div>
               {E(['eyebrow'], slide.eyebrow || 'Scorecard', { as: 'div', className: 'slide-eyebrow' })}
               {E(['title'], slide.title, { as: 'h1', style: { fontSize:CANVAS_BASELINE_PX.split.title, fontWeight:600, letterSpacing:'-0.03em', margin:'0 0 40px', lineHeight:1 } })}
-              {E(['body'], slide.body, { as: 'p', style: { fontSize:28, lineHeight:1.5, color:'#333', maxWidth:760 } })}
+              {E(['body'], slide.body, { as: 'p', style: { fontSize:CANVAS_BASELINE_PX.split.body, lineHeight:1.5, color:'#333', maxWidth:760 } })}
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
               {(Array.isArray(slide.stats) ? slide.stats : []).map((st,i)=> st && (
@@ -803,7 +803,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
             <h1 style={{ fontSize:CANVAS_BASELINE_PX.thanks.title, fontWeight:600, letterSpacing:'-0.05em', margin:0, lineHeight:0.9 }}>
               {E(['title'], slide.title || 'Thanks', { as: 'span' })}.
             </h1>
-            {E(['subtitle'], slide.subtitle, { as: 'div', style: { fontSize:32, opacity:0.7, marginTop:40 } })}
+            {E(['subtitle'], slide.subtitle, { as: 'div', style: { fontSize:CANVAS_BASELINE_PX.thanks.subtitle, opacity:0.7, marginTop:40 } })}
           </div>
           <div style={{ position:'absolute', right:100, top:100, width:320, height:320, border:'2px solid rgba(255,255,255,0.1)', borderRadius:'50%' }}/>
           <div style={{ position:'absolute', right:200, top:200, width:120, height:120, background:'oklch(0.62 0.17 265)', borderRadius:'50%' }}/>

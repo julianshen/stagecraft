@@ -251,6 +251,22 @@ describe('exportToPPTX — font-size parity (per-item data fields, index-keyed)'
   });
 });
 
+describe('exportToPPTX — font-size parity (top-level secondary text)', () => {
+  // The remaining top-level fields (like text body): split body + thanks subtitle.
+  it('scales the split body + thanks subtitle by their canvas ratios', async () => {
+    const split = { id: 'sp', layout: 'split', title: 'T', body: 'SplitBody' };
+    await exportToPPTX(deckWith(split));
+    expect(optsOf(last(), 'SplitBody').fontSize).toBe(14);  // split body baseline
+    await exportToPPTX(deckWith({ ...split, fmt: { body: { fontSize: CANVAS_BASELINE_PX.split.body * 2 } } }));
+    expect(optsOf(last(), 'SplitBody').fontSize).toBe(28);  // 14 × 2
+    const thanks = { id: 'th', layout: 'thanks', title: 'T', subtitle: 'ThxSub' };
+    await exportToPPTX(deckWith(thanks));
+    expect(optsOf(last(), 'ThxSub').fontSize).toBe(15);     // thanks subtitle baseline
+    await exportToPPTX(deckWith({ ...thanks, fmt: { subtitle: { fontSize: CANVAS_BASELINE_PX.thanks.subtitle * 2 } } }));
+    expect(optsOf(last(), 'ThxSub').fontSize).toBe(30);     // 15 × 2
+  });
+});
+
 describe('exportToPPTX — thanks / generic / split / cover-subtitle builders', () => {
   it('exports a thanks slide (title + subtitle), and its default title when none is given', async () => {
     await exportToPPTX(deckWith({ id: 't', layout: 'thanks', title: 'Thanks!', subtitle: 'Questions?' }));

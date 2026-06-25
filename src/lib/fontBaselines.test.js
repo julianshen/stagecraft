@@ -14,9 +14,9 @@ describe('CANVAS_BASELINE_PX', () => {
     }
     // kpi/split/risks also carry their per-item data fields (keyed by field-type).
     expect(CANVAS_BASELINE_PX.kpi).toEqual({ title: 72, 'kpis.val': 68, 'kpis.label': 16, 'kpis.delta': 14 });
-    expect(CANVAS_BASELINE_PX.split).toEqual({ title: 72, 'stats.val': 72, 'stats.lbl': 20 });
+    expect(CANVAS_BASELINE_PX.split).toEqual({ title: 72, body: 28, 'stats.val': 72, 'stats.lbl': 20 });
     expect(CANVAS_BASELINE_PX.risks).toEqual({ title: 72, 'items.t': 36, 'items.d': 24 });
-    expect(CANVAS_BASELINE_PX.thanks).toEqual({ title: 220 });
+    expect(CANVAS_BASELINE_PX.thanks).toEqual({ title: 220, subtitle: 32 });
   });
 
   it('is deeply frozen — it is shared between the renderer and the export, so no consumer may mutate it', () => {

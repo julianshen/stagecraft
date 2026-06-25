@@ -349,6 +349,14 @@ describe('Slide — font-size baselines (single-sourced with the export basePx)'
     expect(find(rk, 'RT').style.fontSize).toBe(`${CANVAS_BASELINE_PX.risks['items.t']}px`); // 36
     expect(find(rk, 'RD').style.fontSize).toBe(`${CANVAS_BASELINE_PX.risks['items.d']}px`); // 24
   });
+
+  it('sizes the split body + thanks subtitle from the shared CANVAS_BASELINE_PX', () => {
+    const { container: sp } = render(<Slide slide={{ id: 's', layout: 'split', title: 'T', body: 'Body copy' }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    const body = [...sp.querySelectorAll('p')].find((el) => el.textContent === 'Body copy');
+    expect(body.style.fontSize).toBe(`${CANVAS_BASELINE_PX.split.body}px`);                       // 28
+    const { container: th } = render(<Slide slide={{ id: 't', layout: 'thanks', title: 'T', subtitle: 'Sub copy' }} deck={{ title: 'Demo' }} num={1} total={1} />);
+    expect(find(th, 'Sub copy').style.fontSize).toBe(`${CANVAS_BASELINE_PX.thanks.subtitle}px`);  // 32
+  });
 });
 
 describe('Slide per-field formatting (fmt)', () => {
