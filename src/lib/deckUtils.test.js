@@ -187,6 +187,20 @@ describe('applySlidePatch', () => {
     expect(applySlidePatch(deck(), 'a', { transition: 'fade' }).slides[0].transition).toBeUndefined();
   });
 
+  it('accepts a valid builds array (each a known build type)', () => {
+    const next = applySlidePatch(deck(), 'a', { builds: [{ type: 'fadeIn' }, { type: 'riseIn' }] });
+    expect(next.slides[0].builds).toEqual([{ type: 'fadeIn' }, { type: 'riseIn' }]);
+  });
+
+  it('drops a builds array with a malformed entry (unknown type, extra key, missing type, non-object, or non-array)', () => {
+    const bad = (b) => applySlidePatch(deck(), 'a', { builds: b }).slides[0].builds;
+    expect(bad([{ type: 'swirl' }])).toBeUndefined();                 // unknown type
+    expect(bad([{ type: 'fadeIn', duration: 400 }])).toBeUndefined(); // no extra keys (v1 is type-only)
+    expect(bad([{}])).toBeUndefined();                                // missing type
+    expect(bad([42])).toBeUndefined();                                // entry not an object
+    expect(bad('fadeIn')).toBeUndefined();                            // not an array
+  });
+
   it('drops a collection field (items/kpis/stats/rows/columns) that is not an array', () => {
     const next = applySlidePatch(deck(), 'a', { items: 'one\ntwo', title: 'Keep' });
     expect(next.slides[0].title).toBe('Keep');       // legit field applied

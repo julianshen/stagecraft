@@ -55,5 +55,37 @@ describe('AnimPanel — per-slide transition editing', () => {
     render(<AnimPanel slide={null} onApply={vi.fn()} />);
     expect(screen.getByLabelText('Transition type').disabled).toBe(true);
     expect(screen.getByLabelText('Transition duration').disabled).toBe(true);
+    expect(screen.getByText('Add build').disabled).toBe(true);
+  });
+});
+
+describe('AnimPanel — builds editing', () => {
+  const withBuilds = { id: 's', layout: 'cover', builds: [{ type: 'fadeIn' }] };
+
+  it('lists each slide.build with its type', () => {
+    render(<AnimPanel slide={withBuilds} onApply={vi.fn()} />);
+    expect(screen.getByLabelText('Build 1 type').value).toBe('fadeIn');
+  });
+
+  it('adds a build (appends a typed default to the array)', () => {
+    const onApply = vi.fn();
+    render(<AnimPanel slide={{ id: 's', layout: 'cover' }} onApply={onApply} />); // no builds yet
+    fireEvent.click(screen.getByText('Add build'));
+    expect(onApply).toHaveBeenCalledWith({ builds: [{ type: 'fadeIn' }] });
+  });
+
+  it('changes one build type, keeping the others, committing the whole array', () => {
+    const onApply = vi.fn();
+    const two = { id: 's', layout: 'cover', builds: [{ type: 'fadeIn' }, { type: 'riseIn' }] };
+    render(<AnimPanel slide={two} onApply={onApply} />);
+    fireEvent.change(screen.getByLabelText('Build 1 type'), { target: { value: 'zoomIn' } });
+    expect(onApply).toHaveBeenCalledWith({ builds: [{ type: 'zoomIn' }, { type: 'riseIn' }] });
+  });
+
+  it('deletes a build', () => {
+    const onApply = vi.fn();
+    render(<AnimPanel slide={withBuilds} onApply={onApply} />);
+    fireEvent.click(screen.getByTitle('Delete build 1'));
+    expect(onApply).toHaveBeenCalledWith({ builds: [] });
   });
 });
