@@ -27,13 +27,16 @@ export default function AnimPanel({ slide, onApply }) {
   // disabled when there's no slide, so this only fires with a real target.
   const apply = (next) => onApply?.({ transition: { type, duration, ...next } });
   // Builds: a per-slide array of entrance animations. The whole array is committed
-  // (the gate replaces it); rows key by index (v1 has no reorder). Filter to
-  // renderable entries first — the MCP update_slide / PUT /api/deck paths bypass the
-  // gate, so a persisted deck can carry junk (null, a non-object, an unknown type) and
-  // rendering it raw would deref b.type and crash the inspector. Same defence
-  // isRenderableShadow/Gradient give the canvas; BUILD_TYPES is the shared vocabulary.
+  // (the gate replaces it); rows key by index (v1 has no reorder). Normalize to the
+  // strict { type } shape first — the MCP update_slide / PUT /api/deck paths bypass the
+  // gate, so a persisted deck can carry junk (null, a non-object, an unknown type, or a
+  // valid type with stale extra keys). Rendering it raw would deref b.type and crash the
+  // inspector; keeping the extra keys would poison every commit (isValidBuild forbids
+  // extras, so sanitizeSlidePatch would reject the whole array — a silent no-op edit).
+  // Stripping to { type } keeps the crash guard and gate-validity in one pass. Same
+  // defence isRenderableShadow/Gradient give the canvas; BUILD_TYPES is the shared vocab.
   const builds = Array.isArray(slide?.builds)
-    ? slide.builds.filter((b) => b && typeof b === 'object' && BUILD_TYPES.has(b.type))
+    ? slide.builds.flatMap((b) => (b && typeof b === 'object' && BUILD_TYPES.has(b.type) ? [{ type: b.type }] : []))
     : [];
   const commitBuilds = (next) => onApply?.({ builds: next });
   return (

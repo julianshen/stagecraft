@@ -98,4 +98,16 @@ describe('AnimPanel — builds editing', () => {
     fireEvent.click(screen.getByTitle('Delete build 1'));
     expect(onApply).toHaveBeenCalledWith({ builds: [] });
   });
+
+  it('strips a persisted extra-key build to the strict { type } shape it commits', () => {
+    // An ungated MCP/PUT write can persist { type, duration }; if the editor forwarded
+    // that extra key, sanitizeSlidePatch (isValidBuild = no extras) would reject the
+    // whole builds patch and the next edit would be a silent no-op. The editor
+    // normalizes each entry to { type }, so every commit stays gate-valid.
+    const onApply = vi.fn();
+    const persisted = { id: 's', layout: 'cover', builds: [{ type: 'fadeIn', duration: 400 }] };
+    render(<AnimPanel slide={persisted} onApply={onApply} />);
+    fireEvent.click(screen.getByText('Add build'));
+    expect(onApply).toHaveBeenCalledWith({ builds: [{ type: 'fadeIn' }, { type: 'fadeIn' }] });
+  });
 });
