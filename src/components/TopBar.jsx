@@ -1,7 +1,25 @@
+import { useReducer, useEffect } from 'react';
 import Icon from './ui/Icon.jsx';
 import { Button } from './ui/Primitives.jsx';
 
-export default function TopBar({ view, setView, deckTitle, setModal, onPresent }) {
+function savedAgo(ts, now = Date.now()) {
+  if (!ts) return '';
+  const sec = Math.floor(Math.max(0, now - ts) / 1000);
+  if (sec < 5) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  return `${Math.floor(min / 60)}h ago`;
+}
+
+export default function TopBar({ view, setView, deckTitle, setModal, onPresent, savedAt, searchQuery, onSearchChange }) {
+  const [, tick] = useReducer(n => n + 1, 0);
+  useEffect(() => {
+    if (!savedAt || view === 'home' || view === 'settings') return;
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [savedAt, view]);
+  const agoLabel = savedAgo(savedAt);
   return (
     <div className="topbar">
       <div className="logo">
@@ -25,7 +43,11 @@ export default function TopBar({ view, setView, deckTitle, setModal, onPresent }
         {view === 'home' ? (
           <div className="input-group" style={{ height: 26, width: 320, background: 'var(--bg)' }}>
             <span className="ico"><Icon name="search" size={12} /></span>
-            <input placeholder="Search decks and slides…" />
+            <input
+              placeholder="Search decks and slides…"
+              value={searchQuery ?? ''}
+              onChange={(e) => onSearchChange?.(e.target.value)}
+            />
             <span className="kbd">⌘K</span>
           </div>
         ) : view === 'settings' ? (
@@ -33,7 +55,7 @@ export default function TopBar({ view, setView, deckTitle, setModal, onPresent }
         ) : (
           <>
             <span className="doc-name">{deckTitle}</span>
-            <span className="saved">Saved · 12s</span>
+            <span className="saved">{agoLabel ? `Saved · ${agoLabel}` : 'Saved'}</span>
           </>
         )}
       </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { IconButton, ScaledSlide } from '../ui/Primitives.jsx';
 import { DECK_CHROME_FIELDS } from '../slides/SlideRenderer.jsx';
@@ -60,7 +60,16 @@ const Thumb = React.memo(function Thumb({ slide, idx, total, isActive, nComments
   );
 }, thumbPropsEqual);
 
-export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx = {}, comments = [], onNewSlide, onReorder }) {
+export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx = {}, comments = [], onNewSlide, onReorder, onAddSection }) {
+  const [collapsed, setCollapsed] = useState(new Set());
+  function toggleSection(id) {
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
   // Drag-to-reorder mechanics shared with the Sorter grid.
   const { dragProps } = useReorderDrag(onReorder);
   // Hoisted out of the thumb loop: per-slide lookups would be O(n²)/O(n·m)
@@ -79,16 +88,22 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
         </div>
       </div>
       <div className="thumbs">
-        {sections.map((sec, si) => (
+        {sections.map((sec, si) => {
+          const isCollapsed = collapsed.has(sec.id);
+          return (
           <React.Fragment key={sec.id}>
-            <div style={{ padding: '10px 4px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div
+              data-section-id={sec.id}
+              onClick={() => toggleSection(sec.id)}
+              style={{ padding: '10px 4px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+            >
               <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
-                <Icon name="chevron-down" size={10} style={{ marginRight: 4 }} />
+                <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} size={10} style={{ marginRight: 4 }} />
                 {String(si + 1).padStart(2, '0')} · {sec.name}
               </span>
               <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>{sec.slides.length}</span>
             </div>
-            {sec.slides.map((sid) => {
+            {!isCollapsed && sec.slides.map((sid) => {
               const idx = idxById.get(sid);
               const s = idx === undefined ? null : flat[idx];
               if (!s) return null;
@@ -113,8 +128,12 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
               );
             })}
           </React.Fragment>
-        ))}
-        <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 6px', color: 'var(--ink-3)', fontSize: 12, width: '100%' }}>
+          );
+        })}
+        <button
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 6px', color: 'var(--ink-3)', fontSize: 12, width: '100%' }}
+          onClick={() => onAddSection?.()}
+        >
           <Icon name="plus" size={12} /> New section
         </button>
       </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ACCENTS, SAMPLE_DECK } from './data/deck.js';
 import TopBar from './components/TopBar.jsx';
 
@@ -49,6 +49,9 @@ export default function App() {
 
   const [modal, setModal] = useState(null);     // 'templates' | 'export' | null
   const [presenting, setPresenting] = useState(false);
+  const [savedAt, setSavedAt] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const handleDeckChange = useCallback((upd) => { commit(upd); setSavedAt(Date.now()); }, [commit]);
 
   // ---- deck state (lifted from Editor so it persists across view switches) ----
   // Wrapped in undo/redo history: `commit` records an undoable edit; `reset`
@@ -80,6 +83,9 @@ export default function App() {
     } catch { /* server absent */ }
     return [];
   };
+  // Clear search when leaving home view.
+  useEffect(() => { if (view !== 'home') setSearchQuery(''); }, [view]);
+
   // Refresh the library whenever Home is shown (badges/edited times stay current).
   useEffect(() => {
     if (view !== 'home') return;
@@ -96,6 +102,7 @@ export default function App() {
       if (!opened) return;          // no content — stay on Home rather than show a stale deck
       adoptDeck(opened, rev, id);   // tag subsequent writes for this deck
       setActiveDeckId(id);
+      setSavedAt(null);
       setView('editor');
     } catch { /* server error — stay on Home */ }
   };
@@ -183,7 +190,16 @@ export default function App() {
 
   return (
     <div className="app" data-screen-label={`${String(viewIdx(view)).padStart(2, '0')} ${viewName(view)}`}>
-      <TopBar view={view} setView={setView} deckTitle={deck?.title || 'Untitled deck'} setModal={setModal} onPresent={() => setPresenting(true)} />
+      <TopBar
+        view={view}
+        setView={setView}
+        deckTitle={deck?.title || 'Untitled deck'}
+        setModal={setModal}
+        onPresent={() => setPresenting(true)}
+        savedAt={savedAt}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+      />
 
       {/* ---- views ---- */}
       {view === 'home' && (
@@ -194,13 +210,14 @@ export default function App() {
           onRenameDeck={handleRenameDeck}
           onDeleteDeck={handleDeleteDeck}
           onOpenTemplates={() => setModal('templates')}
+          searchQuery={searchQuery}
         />
       )}
 
       {view === 'editor' && (
         <Editor
           deck={deck}
-          onDeckChange={commit}
+          onDeckChange={handleDeckChange}
           accent={tw.accent}
           layoutVariant={tw.layout}
           density={tw.density}
@@ -214,7 +231,7 @@ export default function App() {
       )}
 
       {view === 'sorter' && (
-        <SorterView deck={deck} onDeckChange={commit} onBack={() => setView('editor')} onOpenSlide={() => setView('editor')}/>
+        <SorterView deck={deck} onDeckChange={handleDeckChange} onBack={() => setView('editor')} onOpenSlide={() => setView('editor')}/>
       )}
 
       {view === 'settings' && (
