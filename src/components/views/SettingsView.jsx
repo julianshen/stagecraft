@@ -83,10 +83,11 @@ function ParamSlider({ label, value, min, max, step, onChange, hint }) {
   );
 }
 
-function ToggleRow({ title, sub, on }) {
+function ToggleRow({ title, sub, on, onChange }) {
   const [v, setV] = useState(!!on);
+  const toggle = () => { const next = !v; setV(next); onChange?.(next); };
   return (
-    <div className="toggle-row" onClick={() => setV(x => !x)}>
+    <div className="toggle-row" onClick={toggle}>
       <div className="toggle-meta">
         <div className="toggle-t">{title}</div>
         <div className="toggle-s">{sub}</div>
@@ -353,21 +354,50 @@ function AppearanceSettings({ tw, setTw }) {
 }
 
 // ---- general settings ----
+const GENERAL_DEFAULTS = {
+  slideSize: '16:9',
+  language: 'en-US',
+  autosave: true,
+  snapToGrid: true,
+  showRulers: true,
+  spellCheck: true,
+};
+
 function GeneralSettings() {
+  const [settings, setSettings] = useState(() => {
+    try {
+      const raw = localStorage.getItem('stagecraft.general');
+      if (raw) return { ...GENERAL_DEFAULTS, ...JSON.parse(raw) };
+    } catch {}
+    return { ...GENERAL_DEFAULTS };
+  });
+
+  function save(patch) {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    try { localStorage.setItem('stagecraft.general', JSON.stringify(next)); } catch {}
+  }
+
   return (
     <div className="settings-scroll">
       <SettingsHeader title="General" sub="Deck defaults and editing behavior."/>
       <Section label="Defaults">
         <div className="set-row">
           <div className="set-row-label"><div className="srl-title">Default slide size</div></div>
-          <div className="set-row-control"><Seg value="16:9" onChange={() => {}} options={[{ v: '16:9', l: '16:9' }, { v: '4:3', l: '4:3' }, { v: '1:1', l: '1:1' }]}/></div>
+          <div className="set-row-control">
+            <Seg value={settings.slideSize} onChange={v => save({ slideSize: v })} options={[{ v: '16:9', l: '16:9' }, { v: '4:3', l: '4:3' }, { v: '1:1', l: '1:1' }]}/>
+          </div>
         </div>
         <div className="set-row">
           <div className="set-row-label"><div className="srl-title">Language</div></div>
           <div className="set-row-control">
             <div className="select">
-              <select defaultValue="en-US">
-                <option>en-US</option><option>en-GB</option><option>fr-FR</option><option>de-DE</option><option>ja-JP</option>
+              <select value={settings.language} onChange={e => save({ language: e.target.value })}>
+                <option value="en-US">en-US</option>
+                <option value="en-GB">en-GB</option>
+                <option value="fr-FR">fr-FR</option>
+                <option value="de-DE">de-DE</option>
+                <option value="ja-JP">ja-JP</option>
               </select>
               <Icon name="chevron-down" size={11} className="chev"/>
             </div>
@@ -375,10 +405,10 @@ function GeneralSettings() {
         </div>
       </Section>
       <Section label="Editing">
-        <ToggleRow title="Autosave" sub="Save changes continuously." on/>
-        <ToggleRow title="Snap to grid" sub="8px grid with smart guides." on/>
-        <ToggleRow title="Show rulers" sub="Pixel rulers on the canvas edges." on/>
-        <ToggleRow title="Spell check" sub="Underline misspellings while typing." on/>
+        <ToggleRow title="Autosave" sub="Save changes continuously." on={settings.autosave} onChange={v => save({ autosave: v })}/>
+        <ToggleRow title="Snap to grid" sub="8px grid with smart guides." on={settings.snapToGrid} onChange={v => save({ snapToGrid: v })}/>
+        <ToggleRow title="Show rulers" sub="Pixel rulers on the canvas edges." on={settings.showRulers} onChange={v => save({ showRulers: v })}/>
+        <ToggleRow title="Spell check" sub="Underline misspellings while typing." on={settings.spellCheck} onChange={v => save({ spellCheck: v })}/>
       </Section>
     </div>
   );
