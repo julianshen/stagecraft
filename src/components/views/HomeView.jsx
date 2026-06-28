@@ -29,7 +29,7 @@ function DeckCover({ deck }) {
   );
 }
 
-export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemplates, onRenameDeck, onDeleteDeck }) {
+export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemplates, onRenameDeck, onDeleteDeck, searchQuery = '' }) {
   const [filter, setFilter] = useState('all');
   const [view, setView] = useState('grid');
   const [menuId, setMenuId] = useState(null);   // card whose actions menu is open
@@ -39,7 +39,9 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
 
   const toggleMenu = (id) => { setMenuId(menuId === id ? null : id); setConfirmingDelete(false); };
 
-  const cards = decks.map(toCard);
+  const q = searchQuery.trim().toLowerCase();
+  const filtered = q ? decks.filter((d) => (d.name || '').toLowerCase().includes(q)) : decks;
+  const cards = filtered.map(toCard);
 
   // A rename session ends exactly once. Enter/blur both route here, and clearing
   // `renaming` unmounts the input which fires another blur — the ref makes that
@@ -57,8 +59,8 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
   };
 
   const sections = [
-    { id: 'all',     label: 'All files',  count: cards.length, icon: 'grid' },
-    { id: 'recent',  label: 'Recent',     count: cards.length, icon: 'history' },
+    { id: 'all',     label: 'All files',  count: decks.length, icon: 'grid' },
+    { id: 'recent',  label: 'Recent',     count: decks.length, icon: 'history' },
     { id: 'starred', label: 'Starred',    count: 0,            icon: 'star' },
     { id: 'trash',   label: 'Trash',      count: 0,            icon: 'trash' },
   ];
@@ -89,7 +91,7 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
 
       <main className="home-main">
         <h1>Good afternoon.</h1>
-        <p className="home-sub">You have <b>{cards.length} {cards.length === 1 ? 'deck' : 'decks'}</b> in your library.</p>
+        <p className="home-sub">You have <b>{decks.length} {decks.length === 1 ? 'deck' : 'decks'}</b> in your library.</p>
 
         <div className="home-actions">
           {newCards.map(c => (
@@ -132,8 +134,14 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
         {cards.length === 0 ? (
           <div className="deck-empty" style={{ padding: '48px 0', textAlign: 'center', color: 'var(--ink-3)' }}>
             <Icon name="frame" size={28}/>
-            <p style={{ marginTop: 12 }}>No decks yet — create one to get started.</p>
-            <Button variant="accent" icon="plus" onClick={() => onNewDeck()}>New deck</Button>
+            {q ? (
+              <p style={{ marginTop: 12 }}>No decks match &ldquo;{searchQuery}&rdquo;.</p>
+            ) : (
+              <>
+                <p style={{ marginTop: 12 }}>No decks yet — create one to get started.</p>
+                <Button variant="accent" icon="plus" onClick={() => onNewDeck()}>New deck</Button>
+              </>
+            )}
           </div>
         ) : view === 'grid' ? (
           <div className="deck-grid">

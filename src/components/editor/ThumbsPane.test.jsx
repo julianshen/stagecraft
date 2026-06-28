@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, screen } from '@testing-library/react';
 import ThumbsPane from './ThumbsPane.jsx';
 import { flattenDeck } from '../../lib/deckOrder.js';
 
@@ -157,5 +157,69 @@ describe('ThumbsPane memoization', () => {
     // b/c swapped positions; a's number is unchanged but its section's order
     // changed, so its (closure-captured) drop handler must be rebuilt too.
     expect(renderSlide).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('section collapse', () => {
+  it('clicking a section header collapses its thumbnails', () => {
+    const { container } = renderPane(vi.fn());
+    expect(thumb(container, 'a')).toBeTruthy();
+    expect(thumb(container, 'b')).toBeTruthy();
+    fireEvent.click(container.querySelector('[data-section-id="s1"]'));
+    expect(thumb(container, 'a')).toBeNull();
+    expect(thumb(container, 'b')).toBeNull();
+    expect(thumb(container, 'c')).toBeTruthy();
+  });
+
+  it('clicking the header again re-expands the section', () => {
+    const { container } = renderPane(vi.fn());
+    const hd = container.querySelector('[data-section-id="s1"]');
+    fireEvent.click(hd);
+    expect(thumb(container, 'a')).toBeNull();
+    fireEvent.click(hd);
+    expect(thumb(container, 'a')).toBeTruthy();
+  });
+
+  it('sections collapse independently', () => {
+    const { container } = renderPane(vi.fn());
+    fireEvent.click(container.querySelector('[data-section-id="s2"]'));
+    expect(thumb(container, 'c')).toBeNull();
+    expect(thumb(container, 'a')).toBeTruthy();
+    expect(thumb(container, 'b')).toBeTruthy();
+  });
+});
+
+describe('new section', () => {
+  it('calls onAddSection when the "New section" button is clicked', () => {
+    const onAddSection = vi.fn();
+    render(
+      <ThumbsPane
+        flat={flattenDeck(deck)}
+        sections={deck.sections}
+        curId="a"
+        onPick={() => {}}
+        renderSlide={renderSlide}
+        deckCtx={{ deck }}
+        onReorder={() => {}}
+        onAddSection={onAddSection}
+      />,
+    );
+    fireEvent.click(screen.getByText('New section'));
+    expect(onAddSection).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not crash when onAddSection is omitted', () => {
+    render(
+      <ThumbsPane
+        flat={flattenDeck(deck)}
+        sections={deck.sections}
+        curId="a"
+        onPick={() => {}}
+        renderSlide={renderSlide}
+        deckCtx={{ deck }}
+        onReorder={() => {}}
+      />,
+    );
+    expect(() => fireEvent.click(screen.getByText('New section'))).not.toThrow();
   });
 });

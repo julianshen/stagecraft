@@ -44,6 +44,7 @@ export default defineConfig({
         'src/data/deck.js',
         'src/components/editor/CanvasSlide.jsx',
         'src/components/editor/FormatToolbar.jsx',
+        'src/components/TopBar.jsx',
         'src/components/editor/ThumbsPane.jsx',
         'src/components/ui/EditableText.jsx',
         'src/components/ui/Toaster.jsx',

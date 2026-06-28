@@ -77,3 +77,36 @@ describe('HomeView', () => {
     expect(onDeleteDeck).toHaveBeenCalledWith('d2');
   });
 });
+
+describe('search filtering', () => {
+  it('shows all decks when searchQuery is empty', () => {
+    render(<HomeView decks={decks} searchQuery="" onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    expect(screen.getAllByText('Meet Stagecraft').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('GTM Plan').length).toBeGreaterThan(0);
+  });
+
+  it('filters decks by name when searchQuery is set', () => {
+    render(<HomeView decks={decks} searchQuery="GTM" onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    expect(screen.queryAllByText('Meet Stagecraft')).toHaveLength(0);
+    expect(screen.getAllByText('GTM Plan').length).toBeGreaterThan(0);
+  });
+
+  it('is case-insensitive', () => {
+    render(<HomeView decks={decks} searchQuery="gtm" onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    expect(screen.getAllByText('GTM Plan').length).toBeGreaterThan(0);
+  });
+
+  it('shows a no-match message when nothing matches', () => {
+    render(<HomeView decks={decks} searchQuery="xyzzy" onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    expect(screen.getByText(/no decks match/i)).toBeInTheDocument();
+  });
+
+  it('shows total library count in sidebar badge even when search filters results', () => {
+    // 2 decks total, only 1 matches "GTM" — sidebar badge should show 02 (total), not 01 (filtered)
+    render(<HomeView decks={decks} searchQuery="GTM" onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    // The sidebar "All files" badge uses decks.length (2), not cards.length (1)
+    const counts = document.querySelectorAll('.count');
+    const allFilesCount = Array.from(counts).find(el => el.textContent === '02');
+    expect(allFilesCount).toBeTruthy();
+  });
+});
