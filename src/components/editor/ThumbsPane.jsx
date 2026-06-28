@@ -92,17 +92,19 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
           const isCollapsed = collapsed.has(sec.id);
           return (
           <React.Fragment key={sec.id}>
-            <div
+            <button
+              type="button"
               data-section-id={sec.id}
               onClick={() => toggleSection(sec.id)}
-              style={{ padding: '10px 4px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+              aria-expanded={!isCollapsed}
+              style={{ padding: '10px 4px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', cursor: 'pointer' }}
             >
               <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
                 <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} size={10} style={{ marginRight: 4 }} />
                 {String(si + 1).padStart(2, '0')} · {sec.name}
               </span>
               <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>{sec.slides.length}</span>
-            </div>
+            </button>
             {!isCollapsed && sec.slides.map((sid) => {
               const idx = idxById.get(sid);
               const s = idx === undefined ? null : flat[idx];

@@ -51,7 +51,6 @@ export default function App() {
   const [presenting, setPresenting] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const handleDeckChange = useCallback((upd) => { commit(upd); setSavedAt(Date.now()); }, [commit]);
 
   // ---- deck state (lifted from Editor so it persists across view switches) ----
   // Wrapped in undo/redo history: `commit` records an undoable edit; `reset`
@@ -59,6 +58,7 @@ export default function App() {
   // undo across a different document).
   const { deck, commit, reset, undo, redo, canUndo, canRedo } =
     useDeckHistory(() => JSON.parse(JSON.stringify(SAMPLE_DECK)));
+  const handleDeckChange = useCallback((upd) => { commit(upd); setSavedAt(Date.now()); }, [commit]);
 
   // Two-way sync with the in-memory MCP server: push local edits and adopt
   // external (MCP/agent) edits live. Runs app-wide so it works in every view.
