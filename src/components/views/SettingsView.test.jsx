@@ -213,6 +213,54 @@ describe('settings interactions', () => {
   });
 });
 
+describe('GeneralSettings persistence', () => {
+  function openGeneral() {
+    fireEvent.click(screen.getByText('General'));
+  }
+
+  it('persists autosave:false to localStorage when toggled off', () => {
+    renderSettings();
+    openGeneral();
+    fireEvent.click(screen.getByText('Autosave').closest('.toggle-row'));
+    expect(JSON.parse(store.get('stagecraft.general')).autosave).toBe(false);
+  });
+
+  it('persists autosave back to true when toggled on again', () => {
+    renderSettings();
+    openGeneral();
+    const row = screen.getByText('Autosave').closest('.toggle-row');
+    fireEvent.click(row);
+    fireEvent.click(row);
+    expect(JSON.parse(store.get('stagecraft.general')).autosave).toBe(true);
+  });
+
+  it('loads autosave:false from localStorage on mount', () => {
+    store.set(
+      'stagecraft.general',
+      JSON.stringify({ autosave: false, snapToGrid: true, showRulers: true, spellCheck: true }),
+    );
+    renderSettings();
+    openGeneral();
+    const switchEl = screen.getByText('Autosave').closest('.toggle-row').querySelector('.switch');
+    expect(switchEl.classList.contains('on')).toBe(false);
+  });
+
+  it('leaves defaults intact for keys absent from the stored object', () => {
+    store.set('stagecraft.general', JSON.stringify({ autosave: false }));
+    renderSettings();
+    openGeneral();
+    const snapSwitch = screen.getByText('Snap to grid').closest('.toggle-row').querySelector('.switch');
+    expect(snapSwitch.classList.contains('on')).toBe(true);
+  });
+
+  it('persists slide size change to localStorage', () => {
+    renderSettings();
+    openGeneral();
+    fireEvent.click(screen.getByText('4:3'));
+    expect(JSON.parse(store.get('stagecraft.general')).slideSize).toBe('4:3');
+  });
+});
+
 describe('navigation smoke', () => {
   it('renders every settings section', () => {
     renderSettings();

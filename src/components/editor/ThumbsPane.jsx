@@ -3,6 +3,7 @@ import Icon from '../ui/Icon.jsx';
 import { IconButton, ScaledSlide } from '../ui/Primitives.jsx';
 import { DECK_CHROME_FIELDS } from '../slides/SlideRenderer.jsx';
 import { useReorderDrag } from '../../hooks/useReorderDrag.js';
+import { useSectionRename } from '../../hooks/useSectionRename.js';
 
 // flattenDeck rebuilds every slide wrapper per render, so wrapper identity
 // can't drive the memo — compare the wrapper's own values instead (untouched
@@ -60,7 +61,7 @@ const Thumb = React.memo(function Thumb({ slide, idx, total, isActive, nComments
   );
 }, thumbPropsEqual);
 
-export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx = {}, comments = [], onNewSlide, onReorder, onAddSection }) {
+export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx = {}, comments = [], onNewSlide, onReorder, onAddSection, onRenameSection, onDeleteSection }) {
   const [collapsed, setCollapsed] = useState(new Set());
   function toggleSection(id) {
     setCollapsed(prev => {
@@ -69,6 +70,8 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
       return next;
     });
   }
+
+  const { editingId, draft, setDraft, startRename, commitRename } = useSectionRename(onRenameSection);
 
   // Drag-to-reorder mechanics shared with the Sorter grid.
   const { dragProps } = useReorderDrag(onReorder);
@@ -92,19 +95,40 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
           const isCollapsed = collapsed.has(sec.id);
           return (
           <React.Fragment key={sec.id}>
-            <button
-              type="button"
-              data-section-id={sec.id}
-              onClick={() => toggleSection(sec.id)}
-              aria-expanded={!isCollapsed}
-              style={{ padding: '10px 4px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', cursor: 'pointer' }}
-            >
-              <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
-                <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} size={10} style={{ marginRight: 4 }} />
-                {String(si + 1).padStart(2, '0')} · {sec.name}
-              </span>
-              <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>{sec.slides.length}</span>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 2 }}>
+              {editingId === sec.id ? (
+                <input
+                  autoFocus
+                  className="deck-rename"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={() => commitRename(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitRename(true);
+                    else if (e.key === 'Escape') commitRename(false);
+                  }}
+                  style={{ flex: 1, minWidth: 0, font: 'inherit', fontSize: 10, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--accent)', background: 'var(--bg)', color: 'var(--ink)', margin: '10px 4px 4px' }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  data-section-id={sec.id}
+                  onClick={() => toggleSection(sec.id)}
+                  aria-expanded={!isCollapsed}
+                  style={{ flex: 1, padding: '10px 4px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                >
+                  <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
+                    <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} size={10} style={{ marginRight: 4 }} />
+                    {String(si + 1).padStart(2, '0')} · {sec.name}
+                  </span>
+                  <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>{sec.slides.length}</span>
+                </button>
+              )}
+              {editingId !== sec.id && <>
+                <IconButton name="pen" size={11} title={`Rename: ${sec.name}`} onClick={() => startRename(sec)} style={{ flexShrink: 0 }} />
+                <IconButton name="trash" size={11} title={`Delete: ${sec.name}`} disabled={sections.length <= 1} onClick={() => onDeleteSection?.(sec.id)} style={{ flexShrink: 0 }} />
+              </>}
+            </div>
             {!isCollapsed && sec.slides.map((sid) => {
               const idx = idxById.get(sid);
               const s = idx === undefined ? null : flat[idx];

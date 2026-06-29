@@ -189,6 +189,115 @@ describe('section collapse', () => {
   });
 });
 
+describe('section rename and delete', () => {
+  function renderRenamePane(overrides = {}) {
+    return render(
+      <ThumbsPane
+        flat={flattenDeck(deck)}
+        sections={deck.sections}
+        curId="a"
+        onPick={() => {}}
+        renderSlide={renderSlide}
+        deckCtx={{ deck }}
+        onReorder={() => {}}
+        onRenameSection={vi.fn()}
+        onDeleteSection={vi.fn()}
+        {...overrides}
+      />,
+    );
+  }
+
+  it('clicking the rename button shows an input pre-filled with the section name', () => {
+    renderRenamePane();
+    fireEvent.click(screen.getByTitle('Rename: Intro'));
+    expect(screen.getByDisplayValue('Intro')).toBeInTheDocument();
+  });
+
+  it('Enter commits the rename and calls onRenameSection', () => {
+    const onRenameSection = vi.fn();
+    renderRenamePane({ onRenameSection });
+    fireEvent.click(screen.getByTitle('Rename: Intro'));
+    const input = screen.getByDisplayValue('Intro');
+    fireEvent.change(input, { target: { value: 'Overview' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.blur(input); // exercises renameSettled guard — must not double-fire
+    expect(onRenameSection).toHaveBeenCalledWith('s1', 'Overview');
+    expect(onRenameSection).toHaveBeenCalledTimes(1);
+  });
+
+  it('Escape cancels without calling onRenameSection', () => {
+    const onRenameSection = vi.fn();
+    renderRenamePane({ onRenameSection });
+    fireEvent.click(screen.getByTitle('Rename: Intro'));
+    const input = screen.getByDisplayValue('Intro');
+    fireEvent.change(input, { target: { value: 'Discarded' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    fireEvent.blur(input); // renameSettled guard must suppress the follow-on blur
+    expect(onRenameSection).not.toHaveBeenCalled();
+  });
+
+  it('blur commits the rename', () => {
+    const onRenameSection = vi.fn();
+    renderRenamePane({ onRenameSection });
+    fireEvent.click(screen.getByTitle('Rename: Intro'));
+    const input = screen.getByDisplayValue('Intro');
+    fireEvent.change(input, { target: { value: 'New Name' } });
+    fireEvent.blur(input);
+    expect(onRenameSection).toHaveBeenCalledWith('s1', 'New Name');
+  });
+
+  it('hides pen and trash buttons while rename input is open', () => {
+    renderRenamePane({});
+    fireEvent.click(screen.getByTitle('Rename: Intro'));
+    expect(screen.queryByTitle('Rename: Intro')).toBeNull();
+    expect(screen.queryByTitle('Delete: Intro')).toBeNull();
+  });
+
+  it('calls onDeleteSection when the delete button is clicked', () => {
+    const onDeleteSection = vi.fn();
+    renderRenamePane({ onDeleteSection });
+    fireEvent.click(screen.getByTitle('Delete: End'));
+    expect(onDeleteSection).toHaveBeenCalledWith('s2');
+  });
+
+  it('delete button is disabled when only one section exists', () => {
+    const oneSectionDeck = {
+      sections: [{ id: 's1', name: 'Only', slides: ['a'] }],
+      slides: [{ id: 'a', layout: 'cover' }],
+    };
+    render(
+      <ThumbsPane
+        flat={flattenDeck(oneSectionDeck)}
+        sections={oneSectionDeck.sections}
+        curId="a"
+        onPick={() => {}}
+        renderSlide={renderSlide}
+        deckCtx={{ deck: oneSectionDeck }}
+        onReorder={() => {}}
+        onRenameSection={vi.fn()}
+        onDeleteSection={vi.fn()}
+      />,
+    );
+    expect(screen.getByTitle('Delete: Only')).toBeDisabled();
+  });
+
+  it('does not crash when onRenameSection and onDeleteSection are omitted', () => {
+    render(
+      <ThumbsPane
+        flat={flattenDeck(deck)}
+        sections={deck.sections}
+        curId="a"
+        onPick={() => {}}
+        renderSlide={renderSlide}
+        deckCtx={{ deck }}
+        onReorder={() => {}}
+      />,
+    );
+    expect(() => fireEvent.click(screen.getByTitle('Rename: Intro'))).not.toThrow();
+    expect(() => fireEvent.click(screen.getByTitle('Delete: End'))).not.toThrow();
+  });
+});
+
 describe('new section', () => {
   it('calls onAddSection when the "New section" button is clicked', () => {
     const onAddSection = vi.fn();

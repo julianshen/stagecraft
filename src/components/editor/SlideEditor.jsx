@@ -325,6 +325,8 @@ export default function SlideEditor(props) {
             comments={comments}
             onNewSlide={callbacks.onNewSlide}
             onAddSection={callbacks.onAddSection}
+            onRenameSection={callbacks.onRenameSection}
+            onDeleteSection={callbacks.onDeleteSection}
             onReorder={callbacks.onReorderSlide}
           />
         )}

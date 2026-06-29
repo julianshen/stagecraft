@@ -4,7 +4,7 @@ import { Slide } from '../slides/SlideRenderer.jsx';
 import { createTableSlide, createChartSlide, createTextSlide, createComponentSlide } from '../../lib/slideFactories.js';
 import { getFlatSlideIds, reconcileCurId, applySlidePatch } from '../../lib/deckUtils.js';
 import { createElement, updateSlideElements, alignElements, distributeElements, autoArrangeElements, reorderElement, duplicateElements, cloneElements, moveElement, expandToGroups, groupElements, ungroupElements, GRID } from '../../lib/elements.js';
-import { moveSlide, duplicateSlide, appendSlide, addSection } from '../../lib/deckOrder.js';
+import { moveSlide, duplicateSlide, appendSlide, addSection, renameSection, deleteSection } from '../../lib/deckOrder.js';
 import { fieldPatch, prepareAIPatch, applyPreparedPatch } from '../../lib/slideEdit.js';
 
 export default function Editor({ deck, onDeckChange, accent, layoutVariant, density, onPresent, onOpenExport, onUndo, onRedo, canUndo, canRedo }) {
@@ -347,6 +347,8 @@ export default function Editor({ deck, onDeckChange, accent, layoutVariant, dens
         onChangeHeadingScale: changeHeadingScale,
         onNewSlide: () => addComponent('text'),
         onAddSection: () => onDeckChange(prev => addSection(prev)?.deck ?? prev),
+        onRenameSection: (id, name) => onDeckChange(prev => renameSection(prev, id, name)),
+        onDeleteSection: (id) => onDeckChange(prev => deleteSection(prev, id)),
         onDeleteSlide: deleteSlide,
         onDuplicateSlide: duplicateCurrentSlide,
         onReorderSlide: (slideId, toSectionId, toIndex) => onDeckChange(prev => moveSlide(prev, slideId, toSectionId, toIndex)),

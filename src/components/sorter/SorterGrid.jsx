@@ -1,8 +1,8 @@
-import { useState } from 'react';
 import { IconButton, ScaledSlide } from '../ui/Primitives.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import Icon from '../ui/Icon.jsx';
 import { useReorderDrag } from '../../hooks/useReorderDrag.js';
+import { useSectionRename } from '../../hooks/useSectionRename.js';
 
 export default function SorterGrid({ deck, flat, active, setActive, onOpenSlide, editable, onReorder, onRenameSection, onDeleteSection }) {
   // Drag-to-reorder mechanics shared with the editor's thumbnail rail.
@@ -10,14 +10,7 @@ export default function SorterGrid({ deck, flat, active, setActive, onOpenSlide,
   // (a card drop wins via stopPropagation; the container append is the fallback).
   const { dragProps, sectionDropProps } = useReorderDrag(onReorder);
 
-  // Inline section rename: which section is in edit mode + the draft text.
-  const [editingId, setEditingId] = useState(null);
-  const [draft, setDraft] = useState('');
-  const startRename = (sec) => { setEditingId(sec.id); setDraft(sec.name); };
-  const commitRename = () => {
-    if (editingId) onRenameSection?.(editingId, draft);
-    setEditingId(null);
-  };
+  const { editingId, draft, setDraft, startRename, commitRename } = useSectionRename(onRenameSection);
 
   return (
     <div className="sorter">
@@ -35,16 +28,16 @@ export default function SorterGrid({ deck, flat, active, setActive, onOpenSlide,
                     autoFocus
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    onBlur={commitRename}
+                    onBlur={() => commitRename(true)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitRename();
-                      else if (e.key === 'Escape') setEditingId(null);
+                      if (e.key === 'Enter') commitRename(true);
+                      else if (e.key === 'Escape') commitRename(false);
                     }}
                   />
                 ) : sec.name}
                 <span style={{ marginLeft: 12, color: 'var(--ink-4)', fontFamily: 'var(--f-mono)' }}>{slides.length} slides</span>
               </h2>
-              {editable && (
+              {editable && editingId !== sec.id && (
                 <div style={{ display: 'flex', gap: 4 }}>
                   <IconButton name="pen" title="Rename section" onClick={() => startRename(sec)}/>
                   {/* Deleting the last section is a no-op (a deck keeps ≥1 section), so
