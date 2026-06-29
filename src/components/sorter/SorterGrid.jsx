@@ -1,8 +1,8 @@
-import { useState, useRef } from 'react';
 import { IconButton, ScaledSlide } from '../ui/Primitives.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import Icon from '../ui/Icon.jsx';
 import { useReorderDrag } from '../../hooks/useReorderDrag.js';
+import { useSectionRename } from '../../hooks/useSectionRename.js';
 
 export default function SorterGrid({ deck, flat, active, setActive, onOpenSlide, editable, onReorder, onRenameSection, onDeleteSection }) {
   // Drag-to-reorder mechanics shared with the editor's thumbnail rail.
@@ -10,17 +10,7 @@ export default function SorterGrid({ deck, flat, active, setActive, onOpenSlide,
   // (a card drop wins via stopPropagation; the container append is the fallback).
   const { dragProps, sectionDropProps } = useReorderDrag(onReorder);
 
-  // Inline section rename — ref guards against double-fire on Escape+blur.
-  const [editingId, setEditingId] = useState(null);
-  const [draft, setDraft] = useState('');
-  const renameSettled = useRef(false);
-  const startRename = (sec) => { renameSettled.current = false; setEditingId(sec.id); setDraft(sec.name); };
-  const commitRename = (commit) => {
-    if (renameSettled.current) return;
-    renameSettled.current = true;
-    if (commit && editingId) onRenameSection?.(editingId, draft);
-    setEditingId(null);
-  };
+  const { editingId, draft, setDraft, startRename, commitRename } = useSectionRename(onRenameSection);
 
   return (
     <div className="sorter">

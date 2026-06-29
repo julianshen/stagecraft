@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { IconButton, ScaledSlide } from '../ui/Primitives.jsx';
 import { DECK_CHROME_FIELDS } from '../slides/SlideRenderer.jsx';
 import { useReorderDrag } from '../../hooks/useReorderDrag.js';
+import { useSectionRename } from '../../hooks/useSectionRename.js';
 
 // flattenDeck rebuilds every slide wrapper per render, so wrapper identity
 // can't drive the memo — compare the wrapper's own values instead (untouched
@@ -70,18 +71,7 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
     });
   }
 
-  // Inline section rename — ref guards against double-fire on Escape+blur.
-  const [editingId, setEditingId] = useState(null);
-  const [draft, setDraft] = useState('');
-  const renameSettled = useRef(false);
-  const startRename = (sec) => { renameSettled.current = false; setEditingId(sec.id); setDraft(sec.name); };
-  const endRename = (commit) => {
-    if (renameSettled.current) return;
-    renameSettled.current = true;
-    const name = draft.trim();
-    setEditingId(null);
-    if (commit && name) onRenameSection?.(editingId, name);
-  };
+  const { editingId, draft, setDraft, startRename, commitRename } = useSectionRename(onRenameSection);
 
   // Drag-to-reorder mechanics shared with the Sorter grid.
   const { dragProps } = useReorderDrag(onReorder);
@@ -112,10 +102,10 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
                   className="deck-rename"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  onBlur={() => endRename(true)}
+                  onBlur={() => commitRename(true)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') endRename(true);
-                    else if (e.key === 'Escape') endRename(false);
+                    if (e.key === 'Enter') commitRename(true);
+                    else if (e.key === 'Escape') commitRename(false);
                   }}
                   style={{ flex: 1, minWidth: 0, font: 'inherit', fontSize: 10, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--accent)', background: 'var(--bg)', color: 'var(--ink)', margin: '10px 4px 4px' }}
                 />
