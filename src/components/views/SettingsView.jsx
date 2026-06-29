@@ -354,14 +354,14 @@ function AppearanceSettings({ tw, setTw }) {
 }
 
 // ---- general settings ----
-const GENERAL_DEFAULTS = {
+const GENERAL_DEFAULTS = Object.freeze({
   slideSize: '16:9',
   language: 'en-US',
   autosave: true,
   snapToGrid: true,
   showRulers: true,
   spellCheck: true,
-};
+});
 
 function GeneralSettings() {
   const [settings, setSettings] = useState(() => {
