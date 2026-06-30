@@ -281,11 +281,11 @@ Left nav: General / Appearance / AI & Co-pilot / Export defaults / Shortcuts.
 |---|---|
 | **AI & Co-pilot** | 🟢 provider cards (6), API key (show/hide, persisted), "Test connection" (routes through `callLLM`, shows the classified failure reason via `describeLLMError` in an always-mounted `role="status"` region; any settings edit resets the verdict and discards an in-flight test via a sequence token), **Base URL persisted** for the endpoint-configurable providers (Local + Custom, `hasBaseUrl` catalog flag; unset shows the effective default as a placeholder; `callLLM` forwards `settings.baseUrl` *only* for those providers so a stale Local URL can't hijack OpenAI/Anthropic requests; "Reset to defaults" clears it), model picker, **Temperature** + **Max tokens** persisted, per-task **routing** select. **Top-p** persisted and forwarded end-to-end (`settings.topP` → `callLLM` → proxy `top_p`). |
 | **Appearance** | 🟢 theme / accent / density / editor-layout — all bound to `tw`/`setTw`, live + persisted. |
-| **General** | 🔴 autosave and similar toggles are `onChange = () => {}`. |
+| **General** | 🟢 slide size, language, autosave, snap-to-grid, show-rulers, spell-check — all wired via `ToggleRow.onChange` + `localStorage['stagecraft.general']` (matches AISettings pattern). Autosave stored but **not yet honored** in `useDeckSync` — `PUT /api/deck` still fires on every edit regardless of the toggle; honoring it requires changes in `App.jsx`/`useDeckSync.js`. |
 | **Export defaults** | 🟢 the modal's NOTES toggle + slide RANGE are wired (§13); 🔴 quality / comments stay decorative (no effect on a vector PPTX). |
 | **Shortcuts** | 🔴 reference list, display-only. |
 
-Persistence: `localStorage['stagecraft.ai']`. Reset-to-defaults 🟢.
+Persistence: `localStorage['stagecraft.ai']` (AI), `localStorage['stagecraft.general']` (General). Reset-to-defaults 🟢 (AI); General has no explicit reset button yet.
 
 ### 7.5 Presenter — `PresenterView.jsx` 🟢
 - 🟢 Current + next slide (scaled), section label, speaker notes from `SPEAKER_NOTES`, elapsed clock vs. 40:00 target, progress dots, prev/next, keyboard (`← → space Esc`, `B` blackout).

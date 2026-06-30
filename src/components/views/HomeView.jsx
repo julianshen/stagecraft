@@ -125,8 +125,8 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
             <Button variant="ghost" icon="filter">Filter</Button>
             <Button variant="ghost" icon="sort">Edited</Button>
             <div className="toggles">
-              <IconButton name="grid"  active={view === 'grid'} onClick={() => setView('grid')}/>
-              <IconButton name="list"  active={view === 'list'} onClick={() => setView('list')}/>
+              <IconButton name="grid"  active={view === 'grid'} title="Grid view" onClick={() => setView('grid')}/>
+              <IconButton name="list"  active={view === 'list'} title="List view" onClick={() => setView('list')}/>
             </div>
           </div>
         </div>
@@ -208,8 +208,24 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
               <div key={d.id} className="row" onClick={() => onOpenDeck(d.id)}>
                 <div className="name-cell">
                   <div className="mini" style={{ background: d.tint, color: 'white', display: 'grid', placeItems: 'center', fontFamily: 'var(--f-mono)', fontSize: 9, fontWeight: 700 }}>{d.cover}</div>
-                  <div>
-                    <div style={{ fontWeight: 550 }}>{d.name}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {renaming === d.id ? (
+                      <input
+                        autoFocus
+                        className="deck-rename"
+                        value={renameValue}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') endRename(d.id, true);
+                          else if (e.key === 'Escape') endRename(d.id, false);
+                        }}
+                        onBlur={() => endRename(d.id, true)}
+                        style={{ width: '100%', font: 'inherit', fontSize: 13, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--accent)', background: 'var(--bg)', color: 'var(--ink)' }}
+                      />
+                    ) : (
+                      <div style={{ fontWeight: 550 }}>{d.name}</div>
+                    )}
                     <div className="mono" style={{ fontSize: 10 }}>{d.id}.deck</div>
                   </div>
                 </div>
@@ -223,6 +239,22 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
                   }}>
                     {d.active ? 'LIVE' : 'READY'}
                   </span>
+                </div>
+                <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                  <IconButton name="more-h" size={13} title={`Actions: ${d.name}`} onClick={() => toggleMenu(d.id)} />
+                  {menuId === d.id && (
+                    <div className="deck-menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 10, background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 8, boxShadow: 'var(--shadow-2)', padding: 4, minWidth: 130 }}>
+                      <button className="menu-item" style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', background: 'none', border: 0, color: 'var(--ink)', cursor: 'pointer', borderRadius: 4 }} onClick={() => startRename(d)}>Rename</button>
+                      <button
+                        className="menu-item"
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', background: confirmingDelete ? 'var(--accent-wash)' : 'none', border: 0, color: 'var(--danger)', cursor: 'pointer', borderRadius: 4, fontWeight: confirmingDelete ? 600 : 400 }}
+                        onClick={() => {
+                          if (confirmingDelete) { setMenuId(null); setConfirmingDelete(false); onDeleteDeck?.(d.id); }
+                          else setConfirmingDelete(true);
+                        }}
+                      >{confirmingDelete ? 'Confirm delete' : 'Delete'}</button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
