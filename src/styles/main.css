@@ -1359,7 +1359,8 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   background: var(--panel);
-  overflow: hidden;
+  /* overflow: visible so absolutely-positioned row menus aren't clipped */
+  overflow: visible;
 }
 .deck-table .row {
   display: grid;
@@ -1378,6 +1379,8 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   text-transform: uppercase;
   background: var(--bg-2);
   font-weight: 500;
+  /* clip the header to the table's rounded top corners */
+  border-radius: var(--radius-l) var(--radius-l) 0 0;
 }
 .deck-table .row:hover:not(.header) { background: var(--bg-2); cursor: pointer; }
 .deck-table .row .name-cell {

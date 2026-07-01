@@ -203,9 +203,10 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
               <div>Slides</div>
               <div>Last edited</div>
               <div>Status</div>
+              <div></div>
             </div>
             {cards.map((d) => (
-              <div key={d.id} className="row" onClick={() => onOpenDeck(d.id)}>
+              <div key={d.id} className="row" style={menuId === d.id ? { position: 'relative', zIndex: 1 } : undefined} onClick={() => onOpenDeck(d.id)}>
                 <div className="name-cell">
                   <div className="mini" style={{ background: d.tint, color: 'white', display: 'grid', placeItems: 'center', fontFamily: 'var(--f-mono)', fontSize: 9, fontWeight: 700 }}>{d.cover}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
