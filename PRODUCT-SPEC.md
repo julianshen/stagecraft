@@ -239,8 +239,8 @@ This is the primary journey the product optimizes for.
    functional without a clear affordance that it isn't wired yet, see §9.2).
 2. **Range** (From/To, 1-indexed over the flattened slide order) and **Notes**
    (include/exclude speaker notes) are both real and affect the output. Quality/Comments
-   toggles are decorative and *should* — this is a vector export; "quality" has no meaning
-   until a raster format exists.
+   toggles are decorative and *should stay that way for now* — this is a vector export;
+   "quality" has no meaning until a raster format exists.
 3. Export runs entirely client-side (`pptxgenjs` builds the file in-browser) and triggers a
    browser download — no server round-trip beyond a fire-and-forget acknowledgement ping.
 4. Every layout, the free-form elements overlay, native charts, and a native roadmap timeline
