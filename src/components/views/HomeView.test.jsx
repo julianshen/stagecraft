@@ -78,6 +78,113 @@ describe('HomeView', () => {
   });
 });
 
+function switchToList() {
+  fireEvent.click(screen.getByTitle('List view'));
+}
+
+describe('HomeView list view — rename and delete', () => {
+  it('shows an actions button per list row', () => {
+    render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={noop} onDeleteDeck={noop} />);
+    switchToList();
+    expect(screen.getByTitle('Actions: Meet Stagecraft')).toBeInTheDocument();
+    expect(screen.getByTitle('Actions: GTM Plan')).toBeInTheDocument();
+  });
+
+  it('clicking actions opens a menu with Rename and Delete', () => {
+    render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={noop} onDeleteDeck={noop} />);
+    switchToList();
+    fireEvent.click(screen.getByTitle('Actions: GTM Plan'));
+    expect(screen.getByText('Rename')).toBeInTheDocument();
+    expect(screen.getByText('Delete')).toBeInTheDocument();
+  });
+
+  it('clicking Rename shows an inline input pre-filled with the deck name', () => {
+    render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={noop} onDeleteDeck={noop} />);
+    switchToList();
+    fireEvent.click(screen.getByTitle('Actions: GTM Plan'));
+    fireEvent.click(screen.getByText('Rename'));
+    expect(screen.getByDisplayValue('GTM Plan')).toBeInTheDocument();
+  });
+
+  it('Enter commits the rename and calls onRenameDeck exactly once', () => {
+    const onRenameDeck = vi.fn();
+    render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={onRenameDeck} onDeleteDeck={noop} />);
+    switchToList();
+    fireEvent.click(screen.getByTitle('Actions: GTM Plan'));
+    fireEvent.click(screen.getByText('Rename'));
+    const input = screen.getByDisplayValue('GTM Plan');
+    fireEvent.change(input, { target: { value: 'Renamed' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.blur(input); // settled ref must suppress double-fire
+    expect(onRenameDeck).toHaveBeenCalledWith('d2', 'Renamed');
+    expect(onRenameDeck).toHaveBeenCalledTimes(1);
+  });
+
+  it('Escape cancels without calling onRenameDeck', () => {
+    const onRenameDeck = vi.fn();
+    render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={onRenameDeck} onDeleteDeck={noop} />);
+    switchToList();
+    fireEvent.click(screen.getByTitle('Actions: GTM Plan'));
+    fireEvent.click(screen.getByText('Rename'));
+    const input = screen.getByDisplayValue('GTM Plan');
+    fireEvent.change(input, { target: { value: 'Discarded' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    fireEvent.blur(input); // settled ref must suppress this
+    expect(onRenameDeck).not.toHaveBeenCalled();
+  });
+
+  it('blur commits the rename', () => {
+    const onRenameDeck = vi.fn();
+    render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={onRenameDeck} onDeleteDeck={noop} />);
+    switchToList();
+    fireEvent.click(screen.getByTitle('Actions: GTM Plan'));
+    fireEvent.click(screen.getByText('Rename'));
+    const input = screen.getByDisplayValue('GTM Plan');
+    fireEvent.change(input, { target: { value: 'Via Blur' } });
+    fireEvent.blur(input);
+    expect(onRenameDeck).toHaveBeenCalledWith('d2', 'Via Blur');
+  });
+
+  it('does not call onRenameDeck when value is blank', () => {
+    const onRenameDeck = vi.fn();
+    render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={onRenameDeck} onDeleteDeck={noop} />);
+    switchToList();
+    fireEvent.click(screen.getByTitle('Actions: GTM Plan'));
+    fireEvent.click(screen.getByText('Rename'));
+    const input = screen.getByDisplayValue('GTM Plan');
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRenameDeck).not.toHaveBeenCalled();
+  });
+
+  it('delete requires two clicks (arm then confirm)', () => {
+    const onDeleteDeck = vi.fn();
+    render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={noop} onDeleteDeck={onDeleteDeck} />);
+    switchToList();
+    fireEvent.click(screen.getByTitle('Actions: GTM Plan'));
+    fireEvent.click(screen.getByText('Delete'));
+    expect(onDeleteDeck).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Confirm delete'));
+    expect(onDeleteDeck).toHaveBeenCalledWith('d2');
+  });
+
+  it('clicking a list row opens the deck', () => {
+    const onOpenDeck = vi.fn();
+    render(<HomeView decks={decks} onOpenDeck={onOpenDeck} onNewDeck={noop} onOpenTemplates={noop} />);
+    switchToList();
+    fireEvent.click(screen.getByText('Meet Stagecraft'));
+    expect(onOpenDeck).toHaveBeenCalledWith('d1');
+  });
+
+  it('opening list actions menu does not open the deck', () => {
+    const onOpenDeck = vi.fn();
+    render(<HomeView decks={decks} onOpenDeck={onOpenDeck} onNewDeck={noop} onOpenTemplates={noop} onRenameDeck={noop} onDeleteDeck={noop} />);
+    switchToList();
+    fireEvent.click(screen.getByTitle('Actions: GTM Plan'));
+    expect(onOpenDeck).not.toHaveBeenCalled();
+  });
+});
+
 describe('search filtering', () => {
   it('shows all decks when searchQuery is empty', () => {
     render(<HomeView decks={decks} searchQuery="" onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
