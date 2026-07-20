@@ -4,7 +4,8 @@
 > This document is the authoritative spec for every feature: intended design, data model,
 > behavior, and current implementation status.
 
-**Companion docs:** `design.md` (visual design tokens & system) · `README`/`package.json` (build).
+**Companion docs:** `PRODUCT-SPEC.md` (product vision, personas, user journeys, UX behavior) ·
+`design.md` (visual design tokens & system) · `README`/`package.json` (build).
 
 ---
 
