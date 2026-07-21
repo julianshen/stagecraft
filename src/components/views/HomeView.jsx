@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import Icon from '../ui/Icon.jsx';
+import SoonTag from '../ui/SoonTag.jsx';
 import { Button, IconButton } from '../ui/Primitives.jsx';
 import { themeTint, initials, relativeTime } from '../../lib/decksApi.js';
 
@@ -30,7 +31,7 @@ function DeckCover({ deck }) {
 }
 
 export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemplates, onRenameDeck, onDeleteDeck, searchQuery = '' }) {
-  const [filter, setFilter] = useState('all');
+  const [sortDir, setSortDir] = useState(null); // null = incoming order · 'desc' | 'asc' by edited time
   const [view, setView] = useState('grid');
   const [menuId, setMenuId] = useState(null);   // card whose actions menu is open
   const [confirmingDelete, setConfirmingDelete] = useState(false); // delete armed in the open menu
@@ -41,7 +42,11 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
 
   const q = searchQuery.trim().toLowerCase();
   const filtered = q ? decks.filter((d) => (d.name || '').toLowerCase().includes(q)) : decks;
-  const cards = filtered.map(toCard);
+  // Sort composes with search: order the filtered metas by edited time, then map to cards.
+  const sorted = sortDir
+    ? [...filtered].sort((a, b) => (sortDir === 'desc' ? 1 : -1) * ((b.updatedAt ?? 0) - (a.updatedAt ?? 0)))
+    : filtered;
+  const cards = sorted.map(toCard);
 
   // A rename session ends exactly once. Enter/blur both route here, and clearing
   // `renaming` unmounts the input which fires another blur — the ref makes that
@@ -58,11 +63,13 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
     if (commit && name) onRenameDeck?.(id, name);
   };
 
+  // Only "All files" is a real view today; the rest are visible-but-not-yet
+  // surfaces (honest UI) rendered non-interactive with a Soon tag.
   const sections = [
-    { id: 'all',     label: 'All files',  count: decks.length, icon: 'grid' },
-    { id: 'recent',  label: 'Recent',     count: decks.length, icon: 'history' },
-    { id: 'starred', label: 'Starred',    count: 0,            icon: 'star' },
-    { id: 'trash',   label: 'Trash',      count: 0,            icon: 'trash' },
+    { id: 'all',     label: 'All files', count: decks.length, icon: 'grid' },
+    { id: 'recent',  label: 'Recent',    icon: 'history', soon: true },
+    { id: 'starred', label: 'Starred',   icon: 'star',    soon: true },
+    { id: 'trash',   label: 'Trash',     icon: 'trash',   soon: true },
   ];
 
   const newCards = [
@@ -79,12 +86,15 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
         {sections.map(s => (
           <div
             key={s.id}
-            className={`side-item ${filter === s.id ? 'active' : ''}`}
-            onClick={() => setFilter(s.id)}
+            className={`side-item ${s.soon ? 'is-soon' : 'active'}`}
+            aria-disabled={s.soon || undefined}
+            style={s.soon ? { cursor: 'default' } : undefined}
           >
             <Icon name={s.icon} size={14} />
             <span>{s.label}</span>
-            <span className="count">{String(s.count).padStart(2, '0')}</span>
+            {s.soon
+              ? <span style={{ marginLeft: 'auto' }}><SoonTag /></span>
+              : <span className="count">{String(s.count).padStart(2, '0')}</span>}
           </div>
         ))}
       </aside>
@@ -122,8 +132,15 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
         <div className="section-head">
           <h2>Your decks · {cards.length}</h2>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <Button variant="ghost" icon="filter">Filter</Button>
-            <Button variant="ghost" icon="sort">Edited</Button>
+            <Button variant="ghost" icon="filter" disabled className="is-soon">Filter <SoonTag /></Button>
+            <Button
+              variant="ghost"
+              icon="sort"
+              className={sortDir ? 'active' : ''}
+              aria-pressed={!!sortDir}
+              title={sortDir === 'desc' ? 'Sorted by edited · newest first' : sortDir === 'asc' ? 'Sorted by edited · oldest first' : 'Sort by edited time'}
+              onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
+            >Edited</Button>
             <div className="toggles">
               <IconButton name="grid"  active={view === 'grid'} title="Grid view" onClick={() => setView('grid')}/>
               <IconButton name="list"  active={view === 'list'} title="List view" onClick={() => setView('list')}/>

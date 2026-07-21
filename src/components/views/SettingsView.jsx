@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import Icon from '../ui/Icon.jsx';
+import SoonTag from '../ui/SoonTag.jsx';
 import { Button, Seg, FieldRow } from '../ui/Primitives.jsx';
 import { ACCENTS } from '../../data/deck.js';
 import { callLLM, describeLLMError, LOCAL_DEFAULT_BASE } from '../../lib/llmClient.js';
+import { GENERAL_STORAGE_KEY, readGeneralSettings } from '../../lib/generalSettings.js';
 
 // ---- provider + model catalog ----
 const PROVIDERS = [
@@ -83,13 +85,13 @@ function ParamSlider({ label, value, min, max, step, onChange, hint }) {
   );
 }
 
-function ToggleRow({ title, sub, on, onChange }) {
+function ToggleRow({ title, sub, on, onChange, disabled = false, tag = null }) {
   const [v, setV] = useState(!!on);
-  const toggle = () => { const next = !v; setV(next); onChange?.(next); };
+  const toggle = () => { if (disabled) return; const next = !v; setV(next); onChange?.(next); };
   return (
-    <div className="toggle-row" onClick={toggle}>
+    <div className={`toggle-row${disabled ? ' is-soon' : ''}`} onClick={toggle} aria-disabled={disabled || undefined}>
       <div className="toggle-meta">
-        <div className="toggle-t">{title}</div>
+        <div className="toggle-t">{title}{tag}</div>
         <div className="toggle-s">{sub}</div>
       </div>
       <div className={`switch ${v ? 'on' : ''}`}><div className="knob"/></div>
@@ -354,28 +356,20 @@ function AppearanceSettings({ tw, setTw }) {
 }
 
 // ---- general settings ----
-const GENERAL_DEFAULTS = Object.freeze({
-  slideSize: '16:9',
-  language: 'en-US',
-  autosave: true,
-  snapToGrid: true,
-  showRulers: true,
-  spellCheck: true,
-});
-
+// Only keys something actually reads are persisted (both consumed by the
+// canvas via Task 5); the storage key, defaults, and reader are single-sourced
+// in lib/generalSettings.js so this writer and the canvas readers agree. Slide
+// size / language / autosave / spell check are deliberately inert-and-disabled
+// below — no state, no storage.
 function GeneralSettings() {
-  const [settings, setSettings] = useState(() => {
-    try {
-      const raw = localStorage.getItem('stagecraft.general');
-      if (raw) return { ...GENERAL_DEFAULTS, ...JSON.parse(raw) };
-    } catch {}
-    return { ...GENERAL_DEFAULTS };
-  });
+  // readGeneralSettings picks only the live keys, so legacy inert values are
+  // dropped, not carried.
+  const [settings, setSettings] = useState(readGeneralSettings);
 
   function save(patch) {
     const next = { ...settings, ...patch };
     setSettings(next);
-    try { localStorage.setItem('stagecraft.general', JSON.stringify(next)); } catch {}
+    try { localStorage.setItem(GENERAL_STORAGE_KEY, JSON.stringify(next)); } catch {}
   }
 
   return (
@@ -383,16 +377,16 @@ function GeneralSettings() {
       <SettingsHeader title="General" sub="Deck defaults and editing behavior."/>
       <Section label="Defaults">
         <div className="set-row">
-          <div className="set-row-label"><div className="srl-title">Default slide size</div></div>
+          <div className="set-row-label"><div className="srl-title">Default slide size <SoonTag/></div></div>
           <div className="set-row-control">
-            <Seg value={settings.slideSize} onChange={v => save({ slideSize: v })} options={[{ v: '16:9', l: '16:9' }, { v: '4:3', l: '4:3' }, { v: '1:1', l: '1:1' }]}/>
+            <Seg value="16:9" disabled onChange={() => {}} options={[{ v: '16:9', l: '16:9' }, { v: '4:3', l: '4:3' }, { v: '1:1', l: '1:1' }]}/>
           </div>
         </div>
         <div className="set-row">
-          <div className="set-row-label"><div className="srl-title">Language</div></div>
+          <div className="set-row-label"><div className="srl-title">Language <SoonTag/></div></div>
           <div className="set-row-control">
-            <div className="select">
-              <select value={settings.language} onChange={e => save({ language: e.target.value })}>
+            <div className="select is-soon">
+              <select value="en-US" disabled onChange={() => {}}>
                 <option value="en-US">en-US</option>
                 <option value="en-GB">en-GB</option>
                 <option value="fr-FR">fr-FR</option>
@@ -405,10 +399,10 @@ function GeneralSettings() {
         </div>
       </Section>
       <Section label="Editing">
-        <ToggleRow title="Autosave" sub="Save changes continuously." on={settings.autosave} onChange={v => save({ autosave: v })}/>
+        <ToggleRow title="Autosave" sub="Changes save continuously — always on." on disabled tag={<SoonTag label="Always on"/>}/>
         <ToggleRow title="Snap to grid" sub="8px grid with smart guides." on={settings.snapToGrid} onChange={v => save({ snapToGrid: v })}/>
         <ToggleRow title="Show rulers" sub="Pixel rulers on the canvas edges." on={settings.showRulers} onChange={v => save({ showRulers: v })}/>
-        <ToggleRow title="Spell check" sub="Underline misspellings while typing." on={settings.spellCheck} onChange={v => save({ spellCheck: v })}/>
+        <ToggleRow title="Spell check" sub="Underline misspellings while typing." disabled tag={<SoonTag/>}/>
       </Section>
     </div>
   );

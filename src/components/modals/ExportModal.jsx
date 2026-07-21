@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, IconButton, FieldRow } from '../ui/Primitives.jsx';
+import SoonTag from '../ui/SoonTag.jsx';
 import { exportToPPTX } from '../../lib/pptxExport.js';
 import { flattenDeck } from '../../lib/deckOrder.js';
 
@@ -19,35 +20,33 @@ export default function ExportModal({ onClose, deck }) {
 
   const opts = [
     { id: 'pptx',  title: 'PowerPoint · .pptx',  sub: 'Editable, preserves type & shapes',    ext: 'PPT' },
-    { id: 'key',   title: 'Keynote · .key',       sub: 'Native Keynote package',               ext: 'KEY' },
-    { id: 'pdf',   title: 'PDF',                  sub: 'One page per slide, hi-res',           ext: 'PDF' },
-    { id: 'png',   title: 'PNG sequence',         sub: '1920×1080, one file per slide',        ext: 'PNG' },
-    { id: 'video', title: 'MP4 video',            sub: 'Renders transitions & animations',     ext: 'MP4' },
-    { id: 'link',  title: 'Shareable link',       sub: 'Web viewer with access controls',      ext: 'URL' },
+    { id: 'key',   title: 'Keynote · .key',       sub: 'Native Keynote package',               ext: 'KEY', soon: true },
+    { id: 'pdf',   title: 'PDF',                  sub: 'One page per slide, hi-res',           ext: 'PDF', soon: true },
+    { id: 'png',   title: 'PNG sequence',         sub: '1920×1080, one file per slide',        ext: 'PNG', soon: true },
+    { id: 'video', title: 'MP4 video',            sub: 'Renders transitions & animations',     ext: 'MP4', soon: true },
+    { id: 'link',  title: 'Shareable link',       sub: 'Web viewer with access controls',      ext: 'URL', soon: true },
   ];
 
   async function handleExport() {
-    if (fmt === 'pptx') {
-      setExporting(true);
-      try {
-        // Parse each field (empty/invalid → the full bound; a typed 0 clamps to 1
-        // rather than falling through), clamp to [1, total], then normalise start≤end;
-        // send a range only when it actually narrows the deck (a full range stays unranged).
-        const bound = (s, full) => { const n = parseInt(s, 10); return Number.isNaN(n) ? full : n; };
-        const lo = Math.max(1, Math.min(total, bound(from, 1)));
-        const hi = Math.max(1, Math.min(total, bound(to, total)));
-        const start = Math.min(lo, hi), end = Math.max(lo, hi);
-        const exportOpts = { includeNotes };
-        if (start > 1 || end < total) exportOpts.range = { from: start, to: end };
-        await exportToPPTX(deck, exportOpts);
-      } catch (err) {
-        console.error('PPTX export failed:', err);
-      } finally {
-        setExporting(false);
-        onClose();
-      }
-    } else {
-      // Other formats: just close for now (placeholder)
+    // Only PPTX is implemented; `fmt` can only ever be 'pptx' (soon options
+    // can't be selected), but guard anyway so no format silently no-ops.
+    if (fmt !== 'pptx') return;
+    setExporting(true);
+    try {
+      // Parse each field (empty/invalid → the full bound; a typed 0 clamps to 1
+      // rather than falling through), clamp to [1, total], then normalise start≤end;
+      // send a range only when it actually narrows the deck (a full range stays unranged).
+      const bound = (s, full) => { const n = parseInt(s, 10); return Number.isNaN(n) ? full : n; };
+      const lo = Math.max(1, Math.min(total, bound(from, 1)));
+      const hi = Math.max(1, Math.min(total, bound(to, total)));
+      const start = Math.min(lo, hi), end = Math.max(lo, hi);
+      const exportOpts = { includeNotes };
+      if (start > 1 || end < total) exportOpts.range = { from: start, to: end };
+      await exportToPPTX(deck, exportOpts);
+    } catch (err) {
+      console.error('PPTX export failed:', err);
+    } finally {
+      setExporting(false);
       onClose();
     }
   }
@@ -61,13 +60,18 @@ export default function ExportModal({ onClose, deck }) {
         </div>
         <div className="modal-body">
           {opts.map(o => (
-            <div key={o.id} className={`export-opt ${fmt === o.id ? 'selected' : ''}`} onClick={() => setFmt(o.id)}>
+            <div
+              key={o.id}
+              className={`export-opt ${fmt === o.id ? 'selected' : ''} ${o.soon ? 'is-soon' : ''}`}
+              aria-disabled={o.soon || undefined}
+              onClick={o.soon ? undefined : () => setFmt(o.id)}
+            >
               <div className="icon-box">{o.ext}</div>
               <div>
                 <div className="et">{o.title}</div>
                 <div className="es">{o.sub}</div>
               </div>
-              <div className="radio"/>
+              {o.soon ? <SoonTag/> : <div className="radio"/>}
             </div>
           ))}
           <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--line)' }}>

@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import CanvasSlide from './CanvasSlide.jsx';
 import { MIN_SIZE } from '../../lib/elements.js';
+import { stubLocalStorage } from '../../test/localStorage.js';
+
+// Map-backed localStorage (fresh per test): CanvasSlide reads Settings→General
+// from it on mount; with nothing stored the defaults (snap + rulers on) apply,
+// so every pre-existing test runs against today's behavior.
+const store = stubLocalStorage();
 
 // jsdom has no ResizeObserver; CanvasSlide measures its frame with one. Restore
 // the original afterwards so the stub can't leak across test files.
@@ -517,7 +523,7 @@ describe('CanvasSlide draw tool', () => {
       drawTool="rect" onDrawElement={onDrawElement} {...extra} />,
   );
 
-  it('sweeping a rect with a draw tool creates the element at that rect', () => {
+  it('sweeping a rect with a draw tool creates the element at that rect (AC-5.2: grid-snapped by default)', () => {
     const onDrawElement = vi.fn();
     const { container } = renderDraw(onDrawElement);
     const overlay = container.querySelector('.elements-overlay');
@@ -695,6 +701,75 @@ describe('CanvasSlide group transform (2+ selection)', () => {
     fire(window, 'pointermove', { clientX: 0, clientY: 0 });   // return to the start
     fire(window, 'pointerup', { clientX: 0, clientY: 0 });     // release at the start
     expect(onUpdateElements).not.toHaveBeenCalled(); // final position == start → no net change
+  });
+});
+
+// Task 5: Settings→General's "Snap to grid" governs the pointer gestures. The
+// setting is read once per CanvasSlide mount (Settings and the editor are
+// different views, so a toggle flip is picked up by the remount on view switch).
+describe('CanvasSlide snap-to-grid setting (AC-5.2)', () => {
+  const setGeneral = (v) => store.set('stagecraft.general', JSON.stringify(v));
+
+  const renderCanvas = (extra = {}) => render(
+    <CanvasSlide slide={slide} deckCtx={{}} renderSlide={renderSlide} zoom={62}
+      selectedIds={['a']} onSelectElement={vi.fn()} onUpdateElements={vi.fn()}
+      onMarqueeSelect={vi.fn()} {...extra} />,
+  );
+
+  it('AC-5.2: with the setting absent, a drag commits grid-snapped coordinates (default on)', () => {
+    const onUpdateElements = vi.fn();
+    const { container } = renderCanvas({ onUpdateElements });
+    drag(hits(container)[0], { dx: 5 }); // raw 105 → 8px grid → 104
+    expect(onUpdateElements.mock.calls[0][0].get('a').x).toBe(104);
+  });
+
+  it('AC-5.2: with snapToGrid=false a drag commits the raw, unsnapped position', () => {
+    setGeneral({ snapToGrid: false, showRulers: true });
+    const onUpdateElements = vi.fn();
+    const { container } = renderCanvas({ onUpdateElements });
+    drag(hits(container)[0], { dx: 5 }); // would snap to 104; stays raw
+    expect(onUpdateElements.mock.calls[0][0].get('a').x).toBe(105);
+  });
+
+  it('AC-5.2: with snapToGrid=false a resize commits the raw, unsnapped size', () => {
+    setGeneral({ snapToGrid: false });
+    const onUpdateElements = vi.fn();
+    const { container } = renderCanvas({ onUpdateElements });
+    drag(container.querySelector('.sel-handle[data-handle="e"]'), { dx: 5 }); // w 200+5; would snap to 208
+    expect(onUpdateElements.mock.calls[0][0].get('a').w).toBe(205);
+  });
+
+  it('with snapToGrid=false smart alignment guides are off too (the toggle governs "grid with smart guides")', () => {
+    setGeneral({ snapToGrid: false });
+    const onUpdateElements = vi.fn();
+    const { container } = renderCanvas({ onUpdateElements });
+    fire(hits(container)[0], 'pointerdown', { clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { clientX: 197, clientY: 0 }); // right edge lands within guide tolerance of b.left
+    expect(container.querySelector('.align-guide')).toBeFalsy(); // no guide shown
+    fire(window, 'pointerup', { clientX: 197, clientY: 0 });
+    expect(onUpdateElements.mock.calls[0][0].get('a').x).toBe(297); // raw — neither grid- nor guide-snapped
+  });
+
+  it('AC-5.2: with snapToGrid=false a drawn sweep keeps the raw box (and rides grid:1 to the factory)', () => {
+    setGeneral({ snapToGrid: false });
+    const onDrawElement = vi.fn();
+    const { container } = renderCanvas({ selectedIds: [], drawTool: 'rect', onDrawElement });
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 40, clientY: 60 });
+    fire(window, 'pointermove', { clientX: 245, clientY: 261 });
+    fire(window, 'pointerup', { clientX: 245, clientY: 261 });
+    // grid:1 rides along so createElement (which re-snaps x/y) stays unsnapped too.
+    expect(onDrawElement).toHaveBeenCalledWith('rect', { x: 40, y: 60, w: 205, h: 201, grid: 1 });
+  });
+
+  it('AC-5.2: with snapToGrid=false a draw-tool click places the raw, unsnapped point', () => {
+    setGeneral({ snapToGrid: false });
+    const onDrawElement = vi.fn();
+    const { container } = renderCanvas({ selectedIds: [], drawTool: 'rect', onDrawElement });
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 81, clientY: 90 });
+    fire(window, 'pointerup', { clientX: 81, clientY: 90 }); // no move → click; 81 would snap to 80
+    expect(onDrawElement).toHaveBeenCalledWith('rect', { x: 81, y: 90, grid: 1 });
   });
 });
 

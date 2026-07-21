@@ -17,6 +17,7 @@ export default defineConfig({
         'src/server/api.js',
         'src/lib/deckOrder.js',
         'src/lib/deckUtils.js',
+        'src/lib/generalSettings.js',
         'src/lib/elements.js',
         'src/lib/llmClient.js',
         'src/lib/decksApi.js',

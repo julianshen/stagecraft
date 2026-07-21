@@ -79,6 +79,11 @@ const DEFAULTS = {
 };
 
 // Build a new element of `type`, centered by default, with snapped position.
+// `opts.grid` overrides the snap grid (canvas draws pass 1 when the snap-to-grid
+// setting is off, so the raw pointer point survives this factory re-snap);
+// absent → the default 8px GRID, unchanged for every other caller. It rides in
+// `opts` because the draw commit (CanvasSlide → Editor's addElement) forwards
+// opts verbatim; it is read here, never stamped onto the element.
 export function createElement(type, opts = {}) {
   const d = DEFAULTS[type] || DEFAULTS.rect;
   const w = opts.w ?? d.w;
@@ -86,8 +91,8 @@ export function createElement(type, opts = {}) {
   const el = {
     id: opts.id ?? `el-${type}`,
     type,
-    x: snap(opts.x ?? (SLIDE_W - w) / 2),
-    y: snap(opts.y ?? (SLIDE_H - h) / 2),
+    x: snap(opts.x ?? (SLIDE_W - w) / 2, opts.grid),
+    y: snap(opts.y ?? (SLIDE_H - h) / 2, opts.grid),
     w,
     h,
   };
@@ -113,12 +118,14 @@ export function createElement(type, opts = {}) {
 // floor each dimension to its minimum, so a canvas draw aligns like the move/
 // resize gestures and can't produce a degenerate (zero/sub-min) shape. A line's
 // height is a thickness, so it floors at MIN_LINE_THICKNESS rather than MIN_SIZE.
-export function snapDrawnBox(type, { x, y, w, h }) {
+// `grid` defaults to the 8px GRID; the canvas passes 1 when the snap-to-grid
+// setting is off (plain integer rounding — the min floors still apply).
+export function snapDrawnBox(type, { x, y, w, h }, { grid = GRID } = {}) {
   return {
-    x: snap(x),
-    y: snap(y),
-    w: Math.max(snap(w), MIN_SIZE),
-    h: Math.max(snap(h), heightMin({ type }, MIN_SIZE)),
+    x: snap(x, grid),
+    y: snap(y, grid),
+    w: Math.max(snap(w, grid), MIN_SIZE),
+    h: Math.max(snap(h, grid), heightMin({ type }, MIN_SIZE)),
   };
 }
 

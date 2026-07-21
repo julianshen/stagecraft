@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { ACCENTS, SAMPLE_DECK } from './data/deck.js';
 import TopBar from './components/TopBar.jsx';
 
@@ -49,7 +49,6 @@ export default function App() {
 
   const [modal, setModal] = useState(null);     // 'templates' | 'export' | null
   const [presenting, setPresenting] = useState(false);
-  const [savedAt, setSavedAt] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   // ---- deck state (lifted from Editor so it persists across view switches) ----
@@ -58,14 +57,15 @@ export default function App() {
   // undo across a different document).
   const { deck, commit, reset, undo, redo, canUndo, canRedo } =
     useDeckHistory(() => JSON.parse(JSON.stringify(SAMPLE_DECK)));
-  const handleDeckChange = useCallback((upd) => { commit(upd); setSavedAt(Date.now()); }, [commit]);
+  const handleDeckChange = commit;
 
   // Two-way sync with the in-memory MCP server: push local edits and adopt
   // external (MCP/agent) edits live. Runs app-wide so it works in every view.
   // External/opened decks are adopted via `reset` (a new baseline, not undoable).
   // Returns `adoptDeck(deck, rev)` for adopting an authoritative server deck
-  // (e.g. on open) without echoing it back as a fresh edit.
-  const adoptDeck = useDeckSync(deck, reset);
+  // (e.g. on open) without echoing it back as a fresh edit, plus the honest
+  // save status (`syncStatus`/`savedAt` are ack-time, owned by the hook).
+  const { adopt: adoptDeck, status: syncStatus, savedAt } = useDeckSync(deck, reset);
 
   // ---- deck library (multi-deck) ----
   const [decks, setDecks] = useState([]);
@@ -102,7 +102,6 @@ export default function App() {
       if (!opened) return;          // no content — stay on Home rather than show a stale deck
       adoptDeck(opened, rev, id);   // tag subsequent writes for this deck
       setActiveDeckId(id);
-      setSavedAt(null);
       setView('editor');
     } catch { /* server error — stay on Home */ }
   };
@@ -196,6 +195,7 @@ export default function App() {
         deckTitle={deck?.title || 'Untitled deck'}
         setModal={setModal}
         onPresent={() => setPresenting(true)}
+        syncStatus={syncStatus}
         savedAt={savedAt}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
