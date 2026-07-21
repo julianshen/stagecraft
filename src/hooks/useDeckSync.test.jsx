@@ -527,3 +527,14 @@ describe('sync status', () => {
     expect(controls.sync.savedAt).not.toBeNull();
   });
 });
+
+// AC-1.5 — the sync hook's logic must sit under the ≥90% coverage gate: the
+// vitest config's coverage.include lists src/hooks/useDeckSync.js (CLAUDE.md:
+// "when you add tests for more of the app, widen that include list").
+describe('coverage gate config (AC-1.5)', () => {
+  it('keeps src/hooks/useDeckSync.js in vitest coverage.include [AC-1.5]', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const cfg = await readFile('vitest.config.js', 'utf8'); // vitest cwd = project root
+    expect(cfg).toMatch(/['"]src\/hooks\/useDeckSync\.js['"]/);
+  });
+});
