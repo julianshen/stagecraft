@@ -538,3 +538,28 @@ describe('coverage gate config (AC-1.5)', () => {
     expect(cfg).toMatch(/['"]src\/hooks\/useDeckSync\.js['"]/);
   });
 });
+
+// AC-1.2 / AC-1.1 regression (StrictMode) — main.jsx renders under
+// React.StrictMode, whose dev-mode mount→cleanup→remount permanently latched
+// the `mounted` teardown guard at false, silently suppressing every status
+// update in the real app while the non-StrictMode tests stayed green. Caught
+// by browser verification; this pins the fix (the guard must re-arm on mount).
+describe('useDeckSync under StrictMode', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('reports "saved" after the mount fetch and "saving"→"saved" on an edit under StrictMode [AC-1.1][AC-1.2]', async () => {
+    const { StrictMode } = await import('react');
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    render(<StrictMode><Harness fetchFn={srv.fetchFn} controls={controls} /></StrictMode>);
+    await flush(); // mount fetch + seed PUT settle
+    expect(controls.sync.status).toBe('saved'); // not stuck 'unsupported'
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'edited' }); });
+    await flush(0);
+    expect(controls.sync.status).toBe('saving');
+    await flush(300); // debounce + ack
+    expect(controls.sync.status).toBe('saved');
+    expect(controls.sync.savedAt).not.toBeNull();
+  });
+});

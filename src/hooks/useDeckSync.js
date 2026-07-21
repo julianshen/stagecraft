@@ -75,7 +75,10 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   const [savedAt, setSavedAt] = useState(null);
   const serverSeen = useRef(false); // did the mount state fetch ever succeed?
   const mounted = useRef(true);     // guards async setState after teardown
-  useEffect(() => () => { mounted.current = false; }, []);
+  // Re-arm on mount, not just via the initializer: StrictMode's dev-mode
+  // mount→cleanup→remount would otherwise leave the guard latched false and
+  // silently suppress every status update in the real (StrictMode) app.
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const adopt = useCallback((serverDeck, rev, forId) => {
     lastRev.current = rev;
