@@ -12,13 +12,24 @@ function savedAgo(ts, now = Date.now()) {
   return `${Math.floor(min / 60)}h ago`;
 }
 
-export default function TopBar({ view, setView, deckTitle, setModal, onPresent, savedAt, searchQuery, onSearchChange }) {
+// The save badge for one sync status (from useDeckSync). 'unsupported' renders
+// nothing — a static build has no /api middleware, so there is no save state to
+// report (honestly absent, not an error).
+function SaveBadge({ syncStatus, agoLabel }) {
+  if (syncStatus === 'saving') return <span className="saved sync-saving">Saving…</span>;
+  if (syncStatus === 'error') return <span className="saved sync-error">Offline · unsaved changes</span>;
+  if (syncStatus === 'saved') return <span className="saved">{agoLabel ? `Saved · ${agoLabel}` : 'Saved'}</span>;
+  return null;
+}
+
+export default function TopBar({ view, setView, deckTitle, setModal, onPresent, syncStatus, savedAt, searchQuery, onSearchChange }) {
   const [, tick] = useReducer(n => n + 1, 0);
   useEffect(() => {
-    if (!savedAt || view === 'home' || view === 'settings') return;
+    // The ago label only exists on a settled save; other states are static text.
+    if (syncStatus !== 'saved' || !savedAt || view === 'home' || view === 'settings') return;
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [savedAt, view]);
+  }, [syncStatus, savedAt, view]);
   const agoLabel = savedAgo(savedAt);
   return (
     <div className="topbar">
@@ -55,7 +66,7 @@ export default function TopBar({ view, setView, deckTitle, setModal, onPresent, 
         ) : (
           <>
             <span className="doc-name">{deckTitle}</span>
-            <span className="saved">{agoLabel ? `Saved · ${agoLabel}` : 'Saved'}</span>
+            <SaveBadge syncStatus={syncStatus} agoLabel={agoLabel} />
           </>
         )}
       </div>

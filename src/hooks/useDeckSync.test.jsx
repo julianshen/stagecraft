@@ -34,8 +34,8 @@ function makeServer(initial = { deck: null, rev: 0 }) {
 // onExternalDeck. `controls` exposes the live deck + a setter to drive edits.
 function Harness({ initialDeck = localDeck, intervalMs = 1000, pushDebounceMs, fetchFn, controls }) {
   const [deck, setDeck] = useState(initialDeck);
-  const adopt = useDeckSync(deck, setDeck, { intervalMs, pushDebounceMs, fetchFn });
-  if (controls) { controls.deck = deck; controls.setDeck = setDeck; controls.adopt = adopt; }
+  const sync = useDeckSync(deck, setDeck, { intervalMs, pushDebounceMs, fetchFn });
+  if (controls) { controls.deck = deck; controls.setDeck = setDeck; controls.adopt = sync.adopt; controls.sync = sync; }
   return null;
 }
 
@@ -424,5 +424,298 @@ describe('push debounce', () => {
     expect(puts[1]).toEqual(adoptedRef);   // PUT body is serialized, so compare by value
 
     act(() => { resolvers.forEach((r) => r()); }); // drain held acks
+  });
+});
+
+// A PUT double whose acks are deferred: each PUT registers a resolver in
+// `pending` that the test releases explicitly, so we can observe the 'saving'
+// window and prove savedAt is stamped at ack time (not edit time).
+function makeDeferredServer(initial = { deck: null, rev: 0, activeId: null }) {
+  const state = { ...initial };
+  const pending = [];
+  const fetchFn = vi.fn((url, init) => {
+    if (url.split('?')[0] === '/api/deck/state') {
+      return Promise.resolve({ json: async () => ({ deck: state.deck, rev: state.rev, activeId: state.activeId }) });
+    }
+    if (init?.method === 'PUT') {
+      state.deck = JSON.parse(init.body);
+      if (state.activeId == null) state.activeId = 'seeded';
+      state.rev += 1;
+      const rev = state.rev, activeId = state.activeId;
+      return new Promise((res) => pending.push(() => res({ json: async () => ({ ok: true, rev, activeId }) })));
+    }
+    return Promise.resolve({ json: async () => ({}) });
+  });
+  return { state, pending, fetchFn };
+}
+
+describe('sync status', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('AC-1.1: reports "saving" while a PUT is debounce-pending/in-flight after an edit', async () => {
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush(); // mount (server seen) + seed acked immediately
+    expect(controls.sync.status).toBe('saved');
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'edit' }); });
+    await flush(0); // effect ran, debounce timer pending, PUT not yet fired
+    expect(controls.sync.status).toBe('saving');
+  });
+
+  it('AC-1.2: stamps savedAt at PUT ack time, not edit time', async () => {
+    const srv = makeDeferredServer();
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush(0); // mount: server seen (empty); seed PUT dispatched but ack deferred
+    expect(controls.sync.savedAt).toBeNull(); // no commit acked yet
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'e' }); });
+    await flush(300); // debounce fires: edit PUT dispatched, ack still deferred
+    expect(controls.sync.status).toBe('saving');
+    expect(controls.sync.savedAt).toBeNull(); // NOT stamped at edit time
+    await act(async () => { srv.pending.forEach((r) => r()); srv.pending.length = 0; });
+    await flush(0); // acks land
+    expect(controls.sync.status).toBe('saved');
+    expect(controls.sync.savedAt).not.toBeNull(); // stamped only once the PUT resolved
+  });
+
+  it('AC-1.3: transitions to "error" when the server was seen on mount and a later PUT rejects', async () => {
+    let putFails = false;
+    const state = { deck: null, rev: 0, activeId: null };
+    const fetchFn = vi.fn((url, init) => {
+      if (url.split('?')[0] === '/api/deck/state') {
+        return Promise.resolve({ json: async () => ({ ...state }) });
+      }
+      if (init?.method === 'PUT') {
+        if (putFails) return Promise.reject(new Error('write failed'));
+        state.deck = JSON.parse(init.body);
+        if (state.activeId == null) state.activeId = 'seeded';
+        state.rev += 1;
+        return Promise.resolve({ json: async () => ({ ok: true, rev: state.rev, activeId: state.activeId }) });
+      }
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    const controls = {};
+    render(<Harness fetchFn={fetchFn} controls={controls} />);
+    await flush(); // mount: server seen; seed acks → saved
+    expect(controls.sync.status).toBe('saved');
+    putFails = true;
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'boom' }); });
+    await flush(300); // edit PUT rejects
+    expect(controls.sync.status).toBe('error');
+  });
+
+  it('AC-1.4: stays "unsupported" (never "error") when the initial state fetch never succeeds', async () => {
+    const fetchFn = vi.fn(() => Promise.reject(new Error('offline')));
+    const controls = {};
+    render(<Harness fetchFn={fetchFn} controls={controls} />);
+    await flush(); // mount GET rejects (server never seen); seed PUT also rejects
+    expect(controls.sync.status).toBe('unsupported');
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'x' }); });
+    await flush(300); // edit PUT rejects too — a missing server is not an error
+    expect(controls.sync.status).toBe('unsupported');
+  });
+
+  it('AC-1.3/AC-1.4: a successful PUT after a failed mount GET marks the server seen, so a later failed PUT is an error', async () => {
+    // Transient mount failure: the server was down when the page loaded (mount
+    // GET + seed PUT reject), then came up. A successful PUT is a real server
+    // round-trip — a later failed PUT must surface 'error', not be swallowed
+    // behind a stale "never saw a server" latch showing 'saved'/'unsupported'.
+    let down = true;
+    let putFails = false;
+    const state = { deck: null, rev: 0, activeId: null };
+    const fetchFn = vi.fn((url, init) => {
+      if (down) return Promise.reject(new Error('server down'));
+      if (url.split('?')[0] === '/api/deck/state') {
+        return Promise.resolve({ json: async () => ({ ...state }) });
+      }
+      if (init?.method === 'PUT') {
+        if (putFails) return Promise.reject(new Error('write failed'));
+        state.deck = JSON.parse(init.body);
+        if (state.activeId == null) state.activeId = 'seeded';
+        state.rev += 1;
+        return Promise.resolve({ json: async () => ({ ok: true, rev: state.rev, activeId: state.activeId }) });
+      }
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    const controls = {};
+    render(<Harness fetchFn={fetchFn} controls={controls} />);
+    await flush(); // mount GET rejects; immediate seed PUT rejects too
+    expect(controls.sync.status).toBe('unsupported');
+    down = false; // the server came up
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'first' }); });
+    await flush(300); // PUT succeeds — a real round-trip
+    expect(controls.sync.status).toBe('saved');
+    putFails = true;
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'boom' }); });
+    await flush(300); // this PUT rejects — must NOT be swallowed
+    expect(controls.sync.status).toBe('error');
+  });
+
+  it('AC-1.4: a successful poll leaves "unsupported" behind after a failed mount GET', async () => {
+    // Same transient-mount scenario, but the POLL is the first round-trip that
+    // succeeds: it must mark the server seen and settle 'unsupported' → 'saved'.
+    let down = true;
+    const state = { deck: null, rev: 0, activeId: null };
+    const fetchFn = vi.fn((url, init) => {
+      if (down) return Promise.reject(new Error('server down'));
+      if (url.split('?')[0] === '/api/deck/state') {
+        return Promise.resolve({ json: async () => ({ ...state }) });
+      }
+      if (init?.method === 'PUT') return Promise.reject(new Error('write failed'));
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    const controls = {};
+    render(<Harness fetchFn={fetchFn} controls={controls} />);
+    await flush(); // mount GET + seed PUT reject
+    expect(controls.sync.status).toBe('unsupported');
+    down = false;
+    await flush(1000); // one poll tick succeeds
+    expect(controls.sync.status).toBe('saved');
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'x' }); });
+    await flush(300); // PUT still rejects — now an honest error, not 'unsupported'
+    expect(controls.sync.status).toBe('error');
+  });
+
+  it('AC-1.3: a superseded write rejecting late does not overwrite a newer push\'s "saved"', async () => {
+    // The first PUT's ack is held; a second edit supersedes it and its PUT acks.
+    // Only then does the first PUT reject — a stale failure for a write that no
+    // longer represents the latest edit must not flip 'saved' to 'error'.
+    const state = { deck: null, rev: 0, activeId: null };
+    let rejectFirstPut = null;
+    let puts = 0;
+    const fetchFn = vi.fn((url, init) => {
+      if (url.split('?')[0] === '/api/deck/state') {
+        return Promise.resolve({ json: async () => ({ ...state }) });
+      }
+      if (init?.method === 'PUT') {
+        puts += 1;
+        if (puts === 1) return new Promise((_res, rej) => { rejectFirstPut = () => rej(new Error('late failure')); });
+        state.deck = JSON.parse(init.body);
+        if (state.activeId == null) state.activeId = 'seeded';
+        state.rev += 1;
+        return Promise.resolve({ json: async () => ({ ok: true, rev: state.rev, activeId: state.activeId }) });
+      }
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    const controls = {};
+    render(<Harness fetchFn={fetchFn} controls={controls} />);
+    await flush(0); // mount GET ok (server seen); seed PUT #1 dispatched, held
+    // A newer edit supersedes the seed; its PUT #2 acks → 'saved'.
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'newer' }); });
+    await flush(300);
+    expect(controls.sync.status).toBe('saved');
+    // Now the superseded PUT #1 rejects, late.
+    await act(async () => { rejectFirstPut(); });
+    await flush(0);
+    expect(controls.sync.status).toBe('saved'); // NOT a false 'error'
+  });
+
+  it('AC-1.3: a rev-less (non-ignored) PUT ack reports "error" instead of wedging at "saving"', async () => {
+    const state = { deck: null, rev: 0, activeId: null };
+    let putBroken = false;
+    const fetchFn = vi.fn((url, init) => {
+      if (url.split('?')[0] === '/api/deck/state') {
+        return Promise.resolve({ json: async () => ({ ...state }) });
+      }
+      if (init?.method === 'PUT') {
+        if (putBroken) return Promise.resolve({ json: async () => ({}) }); // no rev, not ignored
+        state.deck = JSON.parse(init.body);
+        if (state.activeId == null) state.activeId = 'seeded';
+        state.rev += 1;
+        return Promise.resolve({ json: async () => ({ ok: true, rev: state.rev, activeId: state.activeId }) });
+      }
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    const controls = {};
+    render(<Harness fetchFn={fetchFn} controls={controls} />);
+    await flush(); // mount + healthy seed → saved
+    expect(controls.sync.status).toBe('saved');
+    putBroken = true;
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'x' }); });
+    await flush(300); // PUT resolves {} — unconfirmable write
+    expect(controls.sync.status).toBe('error'); // not stuck at 'saving'
+  });
+
+  it('AC-1.3: recovers "error" → "saving" → "saved" with a fresh savedAt once the server is healthy again', async () => {
+    let putFails = false;
+    const state = { deck: null, rev: 0, activeId: null };
+    const fetchFn = vi.fn((url, init) => {
+      if (url.split('?')[0] === '/api/deck/state') {
+        return Promise.resolve({ json: async () => ({ ...state }) });
+      }
+      if (init?.method === 'PUT') {
+        if (putFails) return Promise.reject(new Error('write failed'));
+        state.deck = JSON.parse(init.body);
+        if (state.activeId == null) state.activeId = 'seeded';
+        state.rev += 1;
+        return Promise.resolve({ json: async () => ({ ok: true, rev: state.rev, activeId: state.activeId }) });
+      }
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    const controls = {};
+    render(<Harness fetchFn={fetchFn} controls={controls} />);
+    await flush(); // mount + seed acked
+    const seedSavedAt = controls.sync.savedAt;
+    expect(seedSavedAt).not.toBeNull();
+    putFails = true;
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'boom' }); });
+    await flush(300);
+    expect(controls.sync.status).toBe('error');
+    // Server healthy again: the next edit must recover (error is not sticky).
+    putFails = false;
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'recovered' }); });
+    await flush(0);
+    expect(controls.sync.status).toBe('saving');
+    await flush(300);
+    expect(controls.sync.status).toBe('saved');
+    expect(controls.sync.savedAt).toBeGreaterThan(seedSavedAt); // freshly stamped
+  });
+
+  it('stamps savedAt and reports "saved" when an external deck is adopted', async () => {
+    const serverDeck = { id: 'agent', theme: 'emerald', slides: [], sections: [] };
+    const srv = makeServer({ deck: serverDeck, rev: 3 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush(); // mount adopts the server deck
+    expect(controls.sync.status).toBe('saved');
+    expect(controls.sync.savedAt).not.toBeNull();
+  });
+});
+
+// AC-1.5 — the sync hook's logic must sit under the ≥90% coverage gate: the
+// vitest config's coverage.include lists src/hooks/useDeckSync.js (CLAUDE.md:
+// "when you add tests for more of the app, widen that include list").
+describe('coverage gate config (AC-1.5)', () => {
+  it('keeps src/hooks/useDeckSync.js in vitest coverage.include [AC-1.5]', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const cfg = await readFile('vitest.config.js', 'utf8'); // vitest cwd = project root
+    expect(cfg).toMatch(/['"]src\/hooks\/useDeckSync\.js['"]/);
+  });
+});
+
+// AC-1.2 / AC-1.1 regression (StrictMode) — main.jsx renders under
+// React.StrictMode, whose dev-mode mount→cleanup→remount permanently latched
+// the `mounted` teardown guard at false, silently suppressing every status
+// update in the real app while the non-StrictMode tests stayed green. Caught
+// by browser verification; this pins the fix (the guard must re-arm on mount).
+describe('useDeckSync under StrictMode', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('reports "saved" after the mount fetch and "saving"→"saved" on an edit under StrictMode [AC-1.1][AC-1.2]', async () => {
+    const { StrictMode } = await import('react');
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    render(<StrictMode><Harness fetchFn={srv.fetchFn} controls={controls} /></StrictMode>);
+    await flush(); // mount fetch + seed PUT settle
+    expect(controls.sync.status).toBe('saved'); // not stuck 'unsupported'
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'edited' }); });
+    await flush(0);
+    expect(controls.sync.status).toBe('saving');
+    await flush(300); // debounce + ack
+    expect(controls.sync.status).toBe('saved');
+    expect(controls.sync.savedAt).not.toBeNull();
   });
 });

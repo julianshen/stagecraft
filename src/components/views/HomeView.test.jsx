@@ -192,7 +192,7 @@ describe('search filtering', () => {
     expect(screen.getAllByText('GTM Plan').length).toBeGreaterThan(0);
   });
 
-  it('filters decks by name when searchQuery is set', () => {
+  it('AC-7.3: filters decks by name when searchQuery is set', () => {
     render(<HomeView decks={decks} searchQuery="GTM" onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
     expect(screen.queryAllByText('Meet Stagecraft')).toHaveLength(0);
     expect(screen.getAllByText('GTM Plan').length).toBeGreaterThan(0);
@@ -203,17 +203,105 @@ describe('search filtering', () => {
     expect(screen.getAllByText('GTM Plan').length).toBeGreaterThan(0);
   });
 
-  it('shows a no-match message when nothing matches', () => {
+  it('AC-7.3: shows a no-match message when nothing matches', () => {
     render(<HomeView decks={decks} searchQuery="xyzzy" onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
     expect(screen.getByText(/no decks match/i)).toBeInTheDocument();
   });
 
-  it('shows total library count in sidebar badge even when search filters results', () => {
+  it('AC-7.3: shows total library count in sidebar badge even when search filters results', () => {
     // 2 decks total, only 1 matches "GTM" — sidebar badge should show 02 (total), not 01 (filtered)
     render(<HomeView decks={decks} searchQuery="GTM" onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
     // The sidebar "All files" badge uses decks.length (2), not cards.length (1)
     const counts = document.querySelectorAll('.count');
     const allFilesCount = Array.from(counts).find(el => el.textContent === '02');
     expect(allFilesCount).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 7 — Home honesty: wired Edited sort, Soon-disabled Filter + sidebar.
+// ---------------------------------------------------------------------------
+
+// Decks deliberately NOT in edited order, so a sort visibly reorders them.
+const sortDecks = [
+  { id: 'q1', name: 'Q1 Plan', slides: 3, theme: 'indigo',  updatedAt: 1_000, active: false },
+  { id: 'nt', name: 'Notes',   slides: 5, theme: 'amber',   updatedAt: 2_000, active: false },
+  { id: 'q2', name: 'Q2 Plan', slides: 8, theme: 'emerald', updatedAt: 3_000, active: false },
+];
+
+// DOM order of deck cards, mapped back to fixture names.
+function cardOrder() {
+  const names = sortDecks.map((d) => d.name);
+  return Array.from(document.querySelectorAll('.deck-card'))
+    .map((card) => names.find((n) => card.textContent.includes(n)));
+}
+
+describe('Edited sort (AC-7.1)', () => {
+  it('AC-7.1: default order is the incoming deck order until sort is activated', () => {
+    render(<HomeView decks={sortDecks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    expect(cardOrder()).toEqual(['Q1 Plan', 'Notes', 'Q2 Plan']);
+  });
+
+  it('AC-7.1: clicking Edited sorts by edited time desc, clicking again toggles asc', () => {
+    render(<HomeView decks={sortDecks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    const btn = screen.getByRole('button', { name: /edited/i });
+    fireEvent.click(btn);
+    expect(cardOrder()).toEqual(['Q2 Plan', 'Notes', 'Q1 Plan']); // most recent first
+    fireEvent.click(btn);
+    expect(cardOrder()).toEqual(['Q1 Plan', 'Notes', 'Q2 Plan']); // oldest first
+  });
+
+  it('AC-7.1: the Edited button shows an active state once sorting is on', () => {
+    render(<HomeView decks={sortDecks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    const btn = screen.getByRole('button', { name: /edited/i });
+    expect(btn).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(btn);
+    expect(btn).toHaveAttribute('aria-pressed', 'true');
+    expect(btn.className).toContain('active');
+  });
+
+  it('AC-7.1: sort composes with an active search query (sorts the filtered list)', () => {
+    render(<HomeView decks={sortDecks} searchQuery="plan" onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    expect(cardOrder()).toEqual(['Q1 Plan', 'Q2 Plan']); // filtered, default order
+    fireEvent.click(screen.getByRole('button', { name: /edited/i }));
+    expect(cardOrder()).toEqual(['Q2 Plan', 'Q1 Plan']); // filtered AND sorted desc
+  });
+});
+
+describe('Soon-disabled surfaces (AC-7.2)', () => {
+  it('AC-7.2: the Filter button is disabled with a Soon tag and clicking it changes nothing', () => {
+    render(<HomeView decks={sortDecks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    const btn = screen.getByRole('button', { name: /filter/i });
+    expect(btn).toBeDisabled();
+    expect(btn.className).toContain('is-soon');
+    expect(btn.querySelector('.soon-tag')).toBeTruthy();
+    const before = cardOrder();
+    fireEvent.click(btn);
+    expect(cardOrder()).toEqual(before); // no reorder, no filtering
+  });
+
+  it('AC-7.2: Recent/Starred/Trash sidebar items are non-interactive with a Soon affordance', () => {
+    render(<HomeView decks={sortDecks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    for (const label of ['Recent', 'Starred', 'Trash']) {
+      const item = screen.getByText(label).closest('.side-item');
+      expect(item).toHaveAttribute('aria-disabled', 'true');
+      expect(item.className).toContain('is-soon');
+      expect(item.querySelector('.soon-tag')).toBeTruthy();
+    }
+  });
+
+  it('AC-7.2: clicking a Soon sidebar item changes nothing — no filter, no active-state move', () => {
+    render(<HomeView decks={sortDecks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    const before = cardOrder();
+    const sideClasses = () => Array.from(document.querySelectorAll('.side-item')).map((el) => el.className);
+    const classesBefore = sideClasses();
+    fireEvent.click(screen.getByText('Recent'));
+    fireEvent.click(screen.getByText('Trash'));
+    expect(cardOrder()).toEqual(before);
+    expect(sideClasses()).toEqual(classesBefore);
+    // "All files" remains the one active item.
+    const active = document.querySelectorAll('.side-item.active');
+    expect(active).toHaveLength(1);
+    expect(active[0].textContent).toContain('All files');
   });
 });

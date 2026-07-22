@@ -76,12 +76,45 @@ describe('ExportModal', () => {
     await waitFor(() => expect(exportToPPTX).toHaveBeenCalledWith(deck, { includeNotes: true, range: { from: 1, to: 1 } }));
   });
 
-  it('does not run the PPTX export for a non-pptx format — just closes (placeholder)', async () => {
+  // AC-6.1: Keynote/PDF/PNG/MP4/Link options are disabled with a Soon affordance
+  // and clicking one does NOT select it — pptx remains the selected format.
+  it('AC-6.1: non-PPTX options are marked Soon, aria-disabled, and unselectable', () => {
+    const { getByText, getAllByLabelText } = render(<ExportModal deck={deck} onClose={vi.fn()} />);
+    // query by the sub-line ("PDF" as a title collides with the PDF icon-box text)
+    const soonSubs = [
+      'Native Keynote package',            // key
+      'One page per slide, hi-res',        // pdf
+      '1920×1080, one file per slide',     // png
+      'Renders transitions & animations',  // video
+      'Web viewer with access controls',   // link
+    ];
+    for (const sub of soonSubs) {
+      const opt = getByText(sub).closest('.export-opt');
+      expect(opt.className).toContain('is-soon');
+      expect(opt.getAttribute('aria-disabled')).toBe('true');
+      expect(opt.querySelector('.soon-tag')).toBeTruthy();
+      fireEvent.click(opt); // must NOT select it
+      expect(opt.className).not.toContain('selected');
+    }
+    expect(getAllByLabelText('Coming soon')).toHaveLength(soonSubs.length);
+    // pptx stays selected and default-selected throughout
+    const pptx = getByText('PowerPoint · .pptx').closest('.export-opt');
+    expect(pptx.className).toContain('selected');
+    expect(pptx.className).not.toContain('is-soon');
+    expect(getByText(/Export PPTX/)).toBeTruthy(); // footer still offers the pptx export
+  });
+
+  // AC-6.2: with PPTX selected, Export calls exportToPPTX with the current
+  // notes/range options — and there is no path where a non-PPTX format closes
+  // the modal with no output (clicking a soon option then Export still runs pptx).
+  it('AC-6.2: Export after clicking a soon option still runs the PPTX path with current options', async () => {
     const onClose = vi.fn();
-    const { getByText } = render(<ExportModal deck={deck} onClose={onClose} />);
-    fireEvent.click(getByText('One page per slide, hi-res').closest('.export-opt')); // the PDF option
-    fireEvent.click(getByText(/Export PDF/));
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(exportToPPTX).not.toHaveBeenCalled();
+    const { getByText, getByLabelText } = render(<ExportModal deck={deck} onClose={onClose} />);
+    fireEvent.click(getByText('One page per slide, hi-res').closest('.export-opt')); // the PDF soon option — never becomes selected
+    fireEvent.change(getByLabelText('Speaker notes'), { target: { value: 'exclude' } });
+    fireEvent.change(getByLabelText('Range from'), { target: { value: '2' } });
+    fireEvent.click(getByText(/Export PPTX/));
+    await waitFor(() => expect(exportToPPTX).toHaveBeenCalledWith(deck, { includeNotes: false, range: { from: 2, to: 2 } }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled()); // closes only after producing output
   });
 });

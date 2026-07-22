@@ -450,6 +450,10 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   width: 5px; height: 5px; border-radius: 50%;
   background: var(--success);
 }
+.topbar-title .saved.sync-saving { color: var(--ink-3); }
+.topbar-title .saved.sync-saving::before { background: var(--ink-3); }
+.topbar-title .saved.sync-error { color: var(--warn); }
+.topbar-title .saved.sync-error::before { background: var(--warn); }
 .topbar-right { display: flex; align-items: center; gap: 6px; }
 
 /* avatars */
@@ -485,6 +489,7 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   white-space: nowrap;
 }
 .btn:hover { background: var(--bg-3); color: var(--ink); }
+.btn.active { background: var(--accent-wash); color: var(--accent); }
 .btn.icon-caret { padding: 0 6px; gap: 2px; }
 .btn.ghost { }
 .btn.quiet { color: var(--ink-3); }
@@ -1347,6 +1352,23 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   border-radius: 3px;
   font-weight: 500;
 }
+
+/* ---- "Soon" affordance (visible-but-not-yet-available controls) ---- */
+.soon-tag {
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  background: var(--bg-3);
+  padding: 1px 5px;
+  border-radius: var(--radius-s);
+  white-space: nowrap;
+}
+/* wrapper for a control that is shown but disabled; consumers still set a
+   real `disabled` attr — this only styles the muted state, no pointer-events
+   trap that would kill tooltips. */
+.is-soon { opacity: 0.55; }
 .deck-card .sub {
   font-family: var(--f-mono);
   font-size: 10.5px;
@@ -1707,6 +1729,10 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
 }
 .export-opt:hover { border-color: var(--line-2); }
 .export-opt.selected { border-color: var(--accent); background: var(--accent-wash); }
+/* "Soon" (disabled) options aren't clickable: no pointer cursor, no hover
+   highlight — the affordances must not promise an interaction that no-ops. */
+.export-opt.is-soon { cursor: default; }
+.export-opt.is-soon:hover { border-color: var(--line); }
 .export-opt .icon-box {
   width: 40px; height: 40px;
   border-radius: var(--radius);

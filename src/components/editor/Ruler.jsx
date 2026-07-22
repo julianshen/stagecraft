@@ -1,7 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { readGeneralSettings } from '../../lib/generalSettings.js';
 
 export default function Ruler() {
+  // Settings→General "Show rulers" (AC-5.1), read ONCE per mount: the Settings
+  // and editor views never coexist, so a toggle flip is picked up by the
+  // remount on the next view switch — no storage listener needed (same policy
+  // as CanvasSlide's snap-to-grid read).
+  const [{ showRulers }] = useState(readGeneralSettings);
   const ticks = Array.from({ length: 21 }, (_, i) => i * 100);
+  if (!showRulers) return null;
   return (
     <>
       <div className="canvas-ruler-h">

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import TopBar from './TopBar.jsx';
 
-const base = { view: 'editor', setView: vi.fn(), deckTitle: 'My Deck' };
+const base = { view: 'editor', setView: vi.fn(), deckTitle: 'My Deck', syncStatus: 'saved' };
 
 describe('view branches', () => {
   it('renders a search input in home view', () => {
@@ -75,5 +75,57 @@ describe('saved badge', () => {
     vi.useRealTimers();
     render(<TopBar {...base} savedAt={null} />);
     expect(screen.getByText('Saved')).toBeInTheDocument();
+  });
+});
+
+// The badge reflects the sync hook's honest status, not edit-time optimism.
+describe('sync status states', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  // AC-2.1: while a push is pending/in flight the badge says "Saving…", not "Saved".
+  it('AC-2.1: shows "Saving…" (and not "Saved") while syncStatus is saving', () => {
+    render(<TopBar {...base} syncStatus="saving" savedAt={990_000} />);
+    const badge = screen.getByText('Saving…');
+    expect(badge).toBeInTheDocument();
+    expect(badge.className).toContain('sync-saving');
+    expect(screen.queryByText(/^Saved/)).not.toBeInTheDocument();
+  });
+
+  // AC-2.2: an acked save shows "Saved · {relative}" from the hook's ack-time savedAt.
+  it('AC-2.2: shows "Saved · {relative}" when syncStatus is saved with a savedAt', () => {
+    render(<TopBar {...base} syncStatus="saved" savedAt={990_000} />); // 10s ago
+    expect(screen.getByText('Saved · 10s ago')).toBeInTheDocument();
+  });
+
+  // AC-2.3: a failed push shows a visually distinct offline indicator. The copy
+  // must be honest: nothing auto-retries until the next edit, so it reports the
+  // unsaved state rather than promising a retry.
+  it('AC-2.3: shows the offline indicator with a distinct class when syncStatus is error', () => {
+    render(<TopBar {...base} syncStatus="error" savedAt={990_000} />);
+    const badge = screen.getByText('Offline · unsaved changes');
+    expect(badge).toBeInTheDocument();
+    expect(badge.className).toContain('sync-error');
+    expect(screen.queryByText(/^Saved/)).not.toBeInTheDocument();
+  });
+
+  // AC-2.4: no /api middleware (static build) → no save indicator at all, never an error.
+  it('AC-2.4: renders no save indicator when syncStatus is unsupported', () => {
+    render(<TopBar {...base} syncStatus="unsupported" savedAt={null} />);
+    expect(document.querySelector('.saved')).toBeNull();
+    expect(screen.queryByText(/Saved|Saving|Offline/)).not.toBeInTheDocument();
+    // the rest of the editor topbar (deck title) still renders
+    expect(screen.getByText('My Deck')).toBeInTheDocument();
+  });
+
+  // The ago-refresh interval only runs for a settled save with a timestamp.
+  it('does not tick the ago label while saving', () => {
+    render(<TopBar {...base} syncStatus="saving" savedAt={990_000} />);
+    expect(screen.getByText('Saving…')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(5000));
+    expect(screen.getByText('Saving…')).toBeInTheDocument();
   });
 });

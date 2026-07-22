@@ -12,8 +12,8 @@ export function Avatar({ name, color, size = 22, initials }) {
 }
 
 // ---------------- Button / IconButton ----------------
-export function Button({ children, variant = 'ghost', size, icon, kbd, style, ...rest }) {
-  const cls = `btn ${variant}${size === 'lg' ? ' lg' : ''}`;
+export function Button({ children, variant = 'ghost', size, icon, kbd, style, className, ...rest }) {
+  const cls = `btn ${variant}${size === 'lg' ? ' lg' : ''}${className ? ` ${className}` : ''}`;
   return (
     <button className={cls} style={style} {...rest}>
       {icon && <Icon name={icon} size={14} />}
@@ -52,11 +52,11 @@ export function InputGroup({ icoLeft, unit, value, onChange, placeholder, disabl
 }
 
 // ---------------- Segmented ----------------
-export function Seg({ value, onChange, options }) {
+export function Seg({ value, onChange, options, disabled = false }) {
   return (
-    <div className="seg">
+    <div className={`seg${disabled ? ' is-soon' : ''}`}>
       {options.map(o => (
-        <button key={o.v} className={value === o.v ? 'active' : ''} onClick={() => onChange(o.v)} title={o.title || o.l}>
+        <button key={o.v} className={value === o.v ? 'active' : ''} disabled={disabled} onClick={() => !disabled && onChange(o.v)} title={o.title || o.l}>
           {o.ico ? <Icon name={o.ico} size={13} /> : o.l}
         </button>
       ))}

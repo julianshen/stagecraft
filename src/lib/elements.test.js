@@ -774,6 +774,26 @@ describe('snapDrawnBox', () => {
   it('floors a line\'s height at MIN_LINE_THICKNESS, not MIN_SIZE (its height is a thickness)', () => {
     expect(snapDrawnBox('line', { x: 0, y: 0, w: 320, h: 1 })).toEqual({ x: 0, y: 0, w: 320, h: MIN_LINE_THICKNESS });
   });
+
+  // AC-5.2: with grid 1 (snap-to-grid off) the box stays raw — only integer
+  // rounding and the per-type minimums apply.
+  it('honors a grid option: grid 1 keeps the raw box (minimums still floor)', () => {
+    expect(snapDrawnBox('rect', { x: 101, y: 61, w: 203, h: 4 }, { grid: 1 }))
+      .toEqual({ x: 101, y: 61, w: 203, h: MIN_SIZE });
+  });
+});
+
+describe('createElement grid option (AC-5.2: snap-to-grid off)', () => {
+  it('grid 1 keeps a raw off-grid position (default re-snaps to the 8px grid)', () => {
+    expect(createElement('rect', { id: 'r', x: 101, y: 203 }).x).toBe(104);       // default: snapped
+    const el = createElement('rect', { id: 'r', x: 101, y: 203, grid: 1 });
+    expect(el.x).toBe(101);
+    expect(el.y).toBe(203);
+  });
+
+  it('does not stamp the grid option onto the created element', () => {
+    expect(createElement('rect', { id: 'r', x: 101, y: 203, grid: 1 })).not.toHaveProperty('grid');
+  });
 });
 
 describe('pathFromStroke', () => {

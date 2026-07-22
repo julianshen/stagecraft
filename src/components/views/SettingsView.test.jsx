@@ -200,64 +200,113 @@ describe('settings interactions', () => {
     expect(setTw).toHaveBeenCalledTimes(4);
   });
 
-  it('general and export rows respond to clicks', () => {
+  it('export rows respond to clicks', () => {
     const { container } = renderSettings();
-    fireEvent.click(screen.getByText('General'));
-    fireEvent.click(screen.getByText('4:3'));       // Seg
-    fireEvent.click(screen.getByText('Autosave'));  // ToggleRow: switch flips off
-    expect(container.querySelectorAll('.switch.on').length).toBe(3);
     fireEvent.click(screen.getByText('Export defaults'));
+    expect(container.querySelectorAll('.switch.on').length).toBe(3);
     fireEvent.click(screen.getByText('Standard'));      // Seg
-    fireEvent.click(screen.getByText('Speaker notes')); // ToggleRow
+    fireEvent.click(screen.getByText('Speaker notes')); // ToggleRow flips off
     expect(container.querySelectorAll('.switch.on').length).toBe(2);
   });
 });
 
-describe('GeneralSettings persistence', () => {
+describe('General section honesty (Task 4)', () => {
   function openGeneral() {
     fireEvent.click(screen.getByText('General'));
   }
 
-  it('persists autosave:false to localStorage when toggled off', () => {
+  // AC-4.1: the four inert controls (Autosave, slide size, Language, Spell
+  // check) render disabled, each with a Soon/Always-on affordance.
+  it('AC-4.1: inert controls are disabled with a Soon affordance', () => {
     renderSettings();
     openGeneral();
-    fireEvent.click(screen.getByText('Autosave').closest('.toggle-row'));
-    expect(JSON.parse(store.get('stagecraft.general')).autosave).toBe(false);
+
+    // Four affordance pills total: three pending controls announced "Coming
+    // soon" plus Autosave's "Always on" (a live behavior — its accessible name
+    // is its own text, NOT "Coming soon").
+    const soonTags = screen.getAllByLabelText('Coming soon');
+    expect(soonTags).toHaveLength(3);
+    const alwaysOn = screen.getByText('Always on'); // Autosave reads "already handled"
+    expect(alwaysOn).toHaveClass('soon-tag');
+    expect(alwaysOn).not.toHaveAttribute('aria-label');
+
+    // Slide-size Seg buttons carry a real disabled attribute.
+    for (const label of ['16:9', '4:3', '1:1']) {
+      expect(screen.getByRole('button', { name: label })).toBeDisabled();
+    }
+
+    // Language select is truly disabled.
+    expect(screen.getByRole('combobox')).toBeDisabled();
+
+    // Inert toggle rows expose aria-disabled on the interactive row…
+    expect(screen.getByText('Autosave').closest('.toggle-row')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('Spell check').closest('.toggle-row')).toHaveAttribute('aria-disabled', 'true');
+    // …while the Task-5 toggles stay enabled.
+    expect(screen.getByText('Snap to grid').closest('.toggle-row')).not.toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('Show rulers').closest('.toggle-row')).not.toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('persists autosave back to true when toggled on again', () => {
+  // AC-4.2: a disabled control accepts no change and never writes
+  // localStorage['stagecraft.general'].
+  it('AC-4.2: interacting with each disabled control writes nothing to localStorage', () => {
     renderSettings();
     openGeneral();
-    const row = screen.getByText('Autosave').closest('.toggle-row');
-    fireEvent.click(row);
-    fireEvent.click(row);
-    expect(JSON.parse(store.get('stagecraft.general')).autosave).toBe(true);
+
+    const autosaveRow = screen.getByText('Autosave').closest('.toggle-row');
+    const autosaveSwitch = autosaveRow.querySelector('.switch');
+    expect(autosaveSwitch.classList.contains('on')).toBe(true); // always on
+
+    fireEvent.click(autosaveRow);
+    fireEvent.click(screen.getByText('Spell check').closest('.toggle-row'));
+    fireEvent.click(screen.getByRole('button', { name: '4:3' }));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'fr-FR' } });
+
+    expect(autosaveSwitch.classList.contains('on')).toBe(true); // did not flip
+    expect(store.has('stagecraft.general')).toBe(false);        // nothing persisted
   });
 
-  it('loads autosave:false from localStorage on mount', () => {
-    store.set(
-      'stagecraft.general',
-      JSON.stringify({ autosave: false, snapToGrid: true, showRulers: true, spellCheck: true }),
-    );
+  // AC-4.2 (persisted shape): only the keys something reads survive — the
+  // live toggles keep persisting, legacy inert keys are not resurrected.
+  it('AC-4.2: persisted shape contains only snapToGrid and showRulers', () => {
+    store.set('stagecraft.general', JSON.stringify({
+      slideSize: '4:3', language: 'fr-FR', autosave: false, spellCheck: false,
+      snapToGrid: true, showRulers: true,
+    }));
     renderSettings();
     openGeneral();
-    const switchEl = screen.getByText('Autosave').closest('.toggle-row').querySelector('.switch');
-    expect(switchEl.classList.contains('on')).toBe(false);
+
+    fireEvent.click(screen.getByText('Snap to grid').closest('.toggle-row'));
+
+    const persisted = JSON.parse(store.get('stagecraft.general'));
+    expect(Object.keys(persisted).sort()).toEqual(['showRulers', 'snapToGrid']);
+    expect(persisted.snapToGrid).toBe(false);
+    expect(persisted.showRulers).toBe(true);
+  });
+
+  it('persists showRulers back to true when toggled twice', () => {
+    renderSettings();
+    openGeneral();
+    const row = screen.getByText('Show rulers').closest('.toggle-row');
+    fireEvent.click(row);
+    expect(JSON.parse(store.get('stagecraft.general')).showRulers).toBe(false);
+    fireEvent.click(row);
+    expect(JSON.parse(store.get('stagecraft.general')).showRulers).toBe(true);
+  });
+
+  it('loads snapToGrid:false from localStorage on mount', () => {
+    store.set('stagecraft.general', JSON.stringify({ snapToGrid: false, showRulers: true }));
+    renderSettings();
+    openGeneral();
+    const snapSwitch = screen.getByText('Snap to grid').closest('.toggle-row').querySelector('.switch');
+    expect(snapSwitch.classList.contains('on')).toBe(false);
   });
 
   it('leaves defaults intact for keys absent from the stored object', () => {
-    store.set('stagecraft.general', JSON.stringify({ autosave: false }));
+    store.set('stagecraft.general', JSON.stringify({ showRulers: false }));
     renderSettings();
     openGeneral();
     const snapSwitch = screen.getByText('Snap to grid').closest('.toggle-row').querySelector('.switch');
     expect(snapSwitch.classList.contains('on')).toBe(true);
-  });
-
-  it('persists slide size change to localStorage', () => {
-    renderSettings();
-    openGeneral();
-    fireEvent.click(screen.getByText('4:3'));
-    expect(JSON.parse(store.get('stagecraft.general')).slideSize).toBe('4:3');
   });
 });
 

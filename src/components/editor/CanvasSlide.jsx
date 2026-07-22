@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ScaledSlide } from '../ui/Primitives.jsx';
 import { moveElement, resizeElement, elementsInMarquee, rotateElement, hitBox, snap, snapDrawnBox, expandToGroups, resizeGroup, rotateGroup, selectionBounds, pathFromStroke } from '../../lib/elements.js';
 import { alignSnap } from '../../lib/align.js';
+import { readGeneralSettings } from '../../lib/generalSettings.js';
 
 const HANDLE_CURSOR = {
   nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
@@ -72,6 +73,18 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   const [scale, setScale] = useState(0.5);
   const scaleRef = useRef(scale);
   scaleRef.current = scale;
+
+  // Settings→General "Snap to grid" (AC-5.2), read ONCE per mount: the Settings
+  // and editor views never coexist, so a toggle flip is picked up by the canvas
+  // remount on the next view switch — no storage listener needed.
+  const [{ snapToGrid }] = useState(readGeneralSettings);
+  // With snapping off, grid 1 turns every snap() into plain integer rounding —
+  // effectively the raw pointer geometry. undefined → the lib's 8px default.
+  const geomGrid = snapToGrid ? undefined : 1;
+  const geomOpts = { grid: geomGrid };
+  // A draw commit is re-snapped by createElement (Editor forwards the opts to it
+  // verbatim), so with snapping off the grid override must ride along in them.
+  const drawOpts = (o) => (snapToGrid ? o : { ...o, grid: 1 });
 
   useEffect(() => {
     function update() {
@@ -226,11 +239,13 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
     const targets = inSelection ? selected : additive ? [...new Set([...selected, ...grabbed])] : grabbed;
     const onClick = additive && inSelection ? () => onSelectElement?.(el.id, true) : undefined;
     // Snap a lone dragged element against the others (and the slide edges/centre).
-    const snapOthers = targets.length === 1 ? baseElements.filter((x) => x.id !== targets[0].id) : null;
-    startDrag(e, targets, (t, dx, dy) => moveElement(t, dx, dy), onClick, snapOthers);
+    // The Settings toggle reads "8px grid with smart guides", so snapToGrid=false
+    // disables the alignment guides along with the grid.
+    const snapOthers = snapToGrid && targets.length === 1 ? baseElements.filter((x) => x.id !== targets[0].id) : null;
+    startDrag(e, targets, (t, dx, dy) => moveElement(t, dx, dy, geomOpts), onClick, snapOthers);
   }
   function startResize(e, el, handle) {
-    startDrag(e, [el], (t, dx, dy) => resizeElement(t, handle, dx, dy));
+    startDrag(e, [el], (t, dx, dy) => resizeElement(t, handle, dx, dy, geomOpts));
   }
 
   // Rotate the single selected element: the handle drags around the element's
@@ -454,7 +469,7 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
       const p = toSlide(rect, ev.clientX, ev.clientY); // the release is authoritative (a no-move flick)
       if (farEnough(p)) pts.push(p);
       if (pts.length < 2) return; // nothing past the start survived decimation — draw nothing
-      onDrawElement?.('path', pathFromStroke(pts.map((q) => [q.x, q.y])));
+      onDrawElement?.('path', drawOpts(pathFromStroke(pts.map((q) => [q.x, q.y]))));
     }
     function cancel() { removeListeners(); }
     window.addEventListener('pointermove', move);
@@ -494,9 +509,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
         const p = toSlide(rect, ev.clientX, ev.clientY);
         // Grid-snap + per-type floor the drawn box (snapDrawnBox), so a draw
         // aligns like move/resize and an on-axis sweep can't make a degenerate one.
-        onDrawElement?.(type, snapDrawnBox(type, boxFromCorners(start.x, start.y, p.x, p.y)));
+        onDrawElement?.(type, drawOpts(snapDrawnBox(type, boxFromCorners(start.x, start.y, p.x, p.y), geomOpts)));
       } else {
-        onDrawElement?.(type, { x: snap(start.x), y: snap(start.y) }); // click → factory default size
+        onDrawElement?.(type, drawOpts({ x: snap(start.x, geomGrid), y: snap(start.y, geomGrid) })); // click → factory default size
       }
     }
     function cancel() { removeListeners(); }
