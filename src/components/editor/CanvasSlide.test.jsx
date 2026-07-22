@@ -839,4 +839,32 @@ describe('CanvasSlide pen tool', () => {
     expect(onDrawElement).not.toHaveBeenCalled();
     expect(container.querySelector('polyline')).toBeNull();
   });
+
+  // AC-3.1: the pen commit routes through the same drawOpts gate as the shape
+  // tools — with snapping off, grid:1 must ride along in the committed opts so
+  // createElement (which re-snaps x/y) keeps the raw stroke geometry.
+  it('AC-3.1: with snapToGrid=false a pen stroke commits its path opts with grid:1 riding along', () => {
+    store.set('stagecraft.general', JSON.stringify({ snapToGrid: false }));
+    const onDrawElement = vi.fn();
+    const { container } = renderPen(onDrawElement);
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 100, clientY: 100 });
+    fire(window, 'pointermove', { clientX: 200, clientY: 150 });
+    fire(window, 'pointermove', { clientX: 150, clientY: 300 });
+    fire(window, 'pointerup', { clientX: 150, clientY: 300 });
+    const [type, opts] = onDrawElement.mock.calls[0];
+    expect(type).toBe('path');
+    expect(opts).toMatchObject({ x: 100, y: 100, w: 100, h: 200, grid: 1 }); // raw bbox + the override
+  });
+
+  it('AC-3.1: with defaults (snap on) the committed pen opts carry no grid override', () => {
+    const onDrawElement = vi.fn();
+    const { container } = renderPen(onDrawElement);
+    const overlay = container.querySelector('.elements-overlay');
+    fire(overlay, 'pointerdown', { clientX: 100, clientY: 100 });
+    fire(window, 'pointermove', { clientX: 200, clientY: 150 });
+    fire(window, 'pointermove', { clientX: 150, clientY: 300 });
+    fire(window, 'pointerup', { clientX: 150, clientY: 300 });
+    expect(onDrawElement.mock.calls[0][1]).not.toHaveProperty('grid'); // pathFromStroke output passed through untouched
+  });
 });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, IconButton, FieldRow } from '../ui/Primitives.jsx';
 import SoonTag from '../ui/SoonTag.jsx';
@@ -26,6 +26,29 @@ export default function ExportModal({ onClose, deck }) {
     { id: 'video', title: 'MP4 video',            sub: 'Renders transitions & animations',     ext: 'MP4', soon: true },
     { id: 'link',  title: 'Shareable link',       sub: 'Web viewer with access controls',      ext: 'URL', soon: true },
   ];
+
+  // ARIA radio-group keyboard support (roving tabindex). Selection follows
+  // focus on arrows, per the radio convention: arrows wrap around the ENABLED
+  // options only (soon formats are skipped entirely), so no key path can land
+  // on — let alone activate — a soon option. With one live format today the
+  // arrows simply stay put, but the wrap/skip logic is generic for when more
+  // formats go live.
+  const optionRefs = useRef({});
+  function onOptionKeyDown(e, o) {
+    const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+    if (isArrow || e.key === ' ') e.preventDefault(); // arrows/Space must not scroll the modal
+    if (o.soon) return; // a soon option (even if keyed directly) never selects
+    if (isArrow) {
+      const enabled = opts.filter(x => !x.soon);
+      const dir = (e.key === 'ArrowDown' || e.key === 'ArrowRight') ? 1 : -1;
+      const idx = enabled.findIndex(x => x.id === o.id);
+      const next = enabled[(idx + dir + enabled.length) % enabled.length];
+      setFmt(next.id);
+      optionRefs.current[next.id]?.focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      setFmt(o.id);
+    }
+  }
 
   async function handleExport() {
     // Only PPTX is implemented; `fmt` can only ever be 'pptx' (soon options
@@ -59,21 +82,28 @@ export default function ExportModal({ onClose, deck }) {
           <IconButton name="x" onClick={onClose}/>
         </div>
         <div className="modal-body">
-          {opts.map(o => (
-            <div
-              key={o.id}
-              className={`export-opt ${fmt === o.id ? 'selected' : ''} ${o.soon ? 'is-soon' : ''}`}
-              aria-disabled={o.soon || undefined}
-              onClick={o.soon ? undefined : () => setFmt(o.id)}
-            >
-              <div className="icon-box">{o.ext}</div>
-              <div>
-                <div className="et">{o.title}</div>
-                <div className="es">{o.sub}</div>
+          <div role="radiogroup" aria-label="Export format">
+            {opts.map(o => (
+              <div
+                key={o.id}
+                ref={el => { optionRefs.current[o.id] = el; }}
+                role="radio"
+                aria-checked={fmt === o.id}
+                tabIndex={fmt === o.id ? 0 : -1}
+                className={`export-opt ${fmt === o.id ? 'selected' : ''} ${o.soon ? 'is-soon' : ''}`}
+                aria-disabled={o.soon || undefined}
+                onClick={o.soon ? undefined : () => setFmt(o.id)}
+                onKeyDown={e => onOptionKeyDown(e, o)}
+              >
+                <div className="icon-box">{o.ext}</div>
+                <div>
+                  <div className="et">{o.title}</div>
+                  <div className="es">{o.sub}</div>
+                </div>
+                {o.soon ? <SoonTag/> : <div className="radio"/>}
               </div>
-              {o.soon ? <SoonTag/> : <div className="radio"/>}
-            </div>
-          ))}
+            ))}
+          </div>
           <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 10 }}>Options</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
