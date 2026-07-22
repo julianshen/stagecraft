@@ -17,7 +17,7 @@ function savedAgo(ts, now = Date.now()) {
 // report (honestly absent, not an error).
 function SaveBadge({ syncStatus, agoLabel }) {
   if (syncStatus === 'saving') return <span className="saved sync-saving">Saving…</span>;
-  if (syncStatus === 'error') return <span className="saved sync-error">Offline · retrying</span>;
+  if (syncStatus === 'error') return <span className="saved sync-error">Offline · unsaved changes</span>;
   if (syncStatus === 'saved') return <span className="saved">{agoLabel ? `Saved · ${agoLabel}` : 'Saved'}</span>;
   return null;
 }

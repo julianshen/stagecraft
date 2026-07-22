@@ -101,10 +101,12 @@ describe('sync status states', () => {
     expect(screen.getByText('Saved · 10s ago')).toBeInTheDocument();
   });
 
-  // AC-2.3: a failed push shows a visually distinct offline indicator.
+  // AC-2.3: a failed push shows a visually distinct offline indicator. The copy
+  // must be honest: nothing auto-retries until the next edit, so it reports the
+  // unsaved state rather than promising a retry.
   it('AC-2.3: shows the offline indicator with a distinct class when syncStatus is error', () => {
     render(<TopBar {...base} syncStatus="error" savedAt={990_000} />);
-    const badge = screen.getByText('Offline · retrying');
+    const badge = screen.getByText('Offline · unsaved changes');
     expect(badge).toBeInTheDocument();
     expect(badge.className).toContain('sync-error');
     expect(screen.queryByText(/^Saved/)).not.toBeInTheDocument();

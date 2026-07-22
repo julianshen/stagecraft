@@ -35,9 +35,12 @@ function putInit(deck) {
  * may change between renders without disrupting the poll interval.
  *
  * Alongside the sync itself it exposes an honest save-status for the UI:
- *   - 'unsupported' — the mount `GET /api/deck/state` never succeeded (a static
- *     build/preview has no `/api` middleware). A missing server is NOT an error,
- *     so a later failed PUT in this mode stays 'unsupported'.
+ *   - 'unsupported' — no server round-trip has EVER succeeded (a static
+ *     build/preview has no `/api` middleware). Any successful round-trip — the
+ *     mount GET, a PUT ack, or a poll — leaves this mode for good, so a server
+ *     that was merely down at page load isn't mistaken for a missing one. A
+ *     missing server is NOT an error, so a failed PUT in this mode stays
+ *     'unsupported'.
  *   - 'saving'      — local edits diverge from the last acked state and a PUT is
  *     debounce-pending or in flight (set the moment the push effect schedules).
  *   - 'saved'       — the last local edit was acknowledged (a PUT committed with
@@ -73,7 +76,7 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   // Honest save-status surfaced to the UI (see the JSDoc for the state machine).
   const [status, setStatus] = useState('unsupported');
   const [savedAt, setSavedAt] = useState(null);
-  const serverSeen = useRef(false); // did the mount state fetch ever succeed?
+  const serverSeen = useRef(false); // did ANY server round-trip ever succeed?
   const mounted = useRef(true);     // guards async setState after teardown
   // Re-arm on mount, not just via the initializer: StrictMode's dev-mode
   // mount→cleanup→remount would otherwise leave the guard latched false and
@@ -154,38 +157,53 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
       fetchRef.current(url, putInit(deck))
         .then((r) => r.json())
         .then((body) => {
-          if (!body) return;
-          // Learn the active id (e.g. right after a seed created it) so the very
-          // next edit is tagged without waiting for a poll — but ONLY if this push
-          // hasn't been superseded. A delayed ack from a write for the old deck
-          // must not drag activeId back after a switch, or the first edit to the
-          // new deck would be PUT with the stale forId and dropped by the server.
-          if (!cancelled && body.activeId !== undefined) activeId.current = body.activeId;
-          // A dropped (stale-tagged) write didn't take effect — don't advance
-          // lastRev, or the next poll would skip adopting the actually-active deck.
-          if (body.ignored) return;
+          // A parsed PUT response IS a successful server round-trip — even if
+          // the mount GET failed transiently, the server is provably there, so
+          // leave 'unsupported' mode for good (later failures are real errors).
+          serverSeen.current = true;
+          if (body) {
+            // Learn the active id (e.g. right after a seed created it) so the very
+            // next edit is tagged without waiting for a poll — but ONLY if this push
+            // hasn't been superseded. A delayed ack from a write for the old deck
+            // must not drag activeId back after a switch, or the first edit to the
+            // new deck would be PUT with the stale forId and dropped by the server.
+            if (!cancelled && body.activeId !== undefined) activeId.current = body.activeId;
+            // A dropped (stale-tagged) write didn't take effect — don't advance
+            // lastRev, or the next poll would skip adopting the actually-active
+            // deck. Not a failure either: the server deliberately ignored it.
+            if (body.ignored) return;
+          }
+          if (!body || typeof body.rev !== 'number') {
+            // A falsy body, or a non-ignored ack with no rev: the write can't be
+            // confirmed. Treat it exactly like a rejected PUT — otherwise the
+            // status wedges at 'saving' forever with the edit unconfirmed.
+            if (!cancelled && serverSeen.current && mounted.current) setStatus('error');
+            return;
+          }
           // Record the rev even for a superseded (cancelled) write: it still
           // COMMITTED, so the rev is "ours" — skipping it would let the next poll
           // mistake our own write for an external edit and adopt it over live
           // typing. Advance MONOTONICALLY so a late ack can't drag lastRev below a
           // newer write's rev that already landed. (Refs only, never React state,
           // so it's safe after teardown.)
-          if (typeof body.rev === 'number' && (lastRev.current === null || body.rev > lastRev.current)) {
+          if (lastRev.current === null || body.rev > lastRev.current) {
             lastRev.current = body.rev;
           }
           // A confirmed commit (rev present, not dropped) stamps savedAt. Only
           // the LATEST push (not one superseded by a newer edit) settles the
           // status to 'saved' — a superseded write isn't the "last edit", and a
           // newer push has already re-set 'saving'.
-          if (typeof body.rev === 'number' && mounted.current) {
+          if (mounted.current) {
             setSavedAt(Date.now());
             if (!cancelled) setStatus('saved');
           }
         })
         .catch(() => {
-          // The server was reachable at mount but this write failed — a real,
+          // The server was seen at some point but this write failed — a real,
           // reportable error (distinct from the never-had-a-server 'unsupported').
-          if (serverSeen.current && mounted.current) setStatus('error');
+          // Only the LATEST push may report it: a superseded write rejecting
+          // late (`cancelled`) must not overwrite a newer push's 'saved'.
+          if (!cancelled && serverSeen.current && mounted.current) setStatus('error');
         });
     };
     if (!seeded.current && lastRev.current === null) {
@@ -203,7 +221,12 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
     const id = setInterval(async () => {
       try {
         const data = await (await fetchRef.current('/api/deck/state')).json();
+        // A successful poll is a server round-trip too: if the mount GET failed
+        // transiently, this is where 'unsupported' honestly ends (mirrors the
+        // mount reconcile's settle-to-'saved').
+        serverSeen.current = true;
         if (stopped) return;
+        if (mounted.current) setStatus((s) => (s === 'unsupported' ? 'saved' : s));
         if (data && data.activeId !== undefined) activeId.current = data.activeId; // keep our write tag current
         if (!data || typeof data.rev !== 'number' || data.rev === lastRev.current) return;
         // rev changed: keep lastRev in step even on a server reset (rev → 0 with

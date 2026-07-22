@@ -221,10 +221,14 @@ describe('General section honesty (Task 4)', () => {
     renderSettings();
     openGeneral();
 
-    // One "Coming soon" pill per inert control.
-    const tags = screen.getAllByLabelText('Coming soon');
-    expect(tags).toHaveLength(4);
-    expect(tags.some(t => t.textContent === 'Always on')).toBe(true); // Autosave reads "already handled"
+    // Four affordance pills total: three pending controls announced "Coming
+    // soon" plus Autosave's "Always on" (a live behavior — its accessible name
+    // is its own text, NOT "Coming soon").
+    const soonTags = screen.getAllByLabelText('Coming soon');
+    expect(soonTags).toHaveLength(3);
+    const alwaysOn = screen.getByText('Always on'); // Autosave reads "already handled"
+    expect(alwaysOn).toHaveClass('soon-tag');
+    expect(alwaysOn).not.toHaveAttribute('aria-label');
 
     // Slide-size Seg buttons carry a real disabled attribute.
     for (const label of ['16:9', '4:3', '1:1']) {

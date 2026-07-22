@@ -1729,6 +1729,10 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
 }
 .export-opt:hover { border-color: var(--line-2); }
 .export-opt.selected { border-color: var(--accent); background: var(--accent-wash); }
+/* "Soon" (disabled) options aren't clickable: no pointer cursor, no hover
+   highlight — the affordances must not promise an interaction that no-ops. */
+.export-opt.is-soon { cursor: default; }
+.export-opt.is-soon:hover { border-color: var(--line); }
 .export-opt .icon-box {
   width: 40px; height: 40px;
   border-radius: var(--radius);
