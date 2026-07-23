@@ -40,7 +40,10 @@ function putInit(deck) {
  *     mount GET, a PUT ack, or a poll — leaves this mode for good, so a server
  *     that was merely down at page load isn't mistaken for a missing one. A
  *     missing server is NOT an error, so a failed PUT in this mode stays
- *     'unsupported'.
+ *     'unsupported'. When a poll is the FIRST success (a transient mount outage
+ *     recovering), it does NOT jump straight to 'saved' — it re-pushes any edit
+ *     made while offline and lets the normal 'saving'→ack flow report the truth,
+ *     so the badge never claims 'saved' for an edit that's still only in the tab.
  *   - 'saving'      — local edits diverge from the last acked state and a PUT is
  *     debounce-pending or in flight (set the moment the push effect schedules).
  *   - 'saved'       — the last local edit was acknowledged (a PUT committed with
@@ -77,6 +80,11 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   const [status, setStatus] = useState('unsupported');
   const [savedAt, setSavedAt] = useState(null);
   const serverSeen = useRef(false); // did ANY server round-trip ever succeed?
+  // Bumped once when the server FIRST becomes reachable via the poll (a transient
+  // mount outage recovering). It's a push-effect dependency so that any edit made
+  // while offline is retried on recovery — the badge must not claim 'saved' until
+  // that pending edit is actually acked (it isn't on the server yet).
+  const [recoveredTick, setRecoveredTick] = useState(0);
   const mounted = useRef(true);     // guards async setState after teardown
   // Re-arm on mount, not just via the initializer: StrictMode's dev-mode
   // mount→cleanup→remount would otherwise leave the guard latched false and
@@ -213,7 +221,7 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
     }
     const t = setTimeout(push, pushDebounceMs);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [deck, initialized, pushDebounceMs]);
+  }, [deck, initialized, pushDebounceMs, recoveredTick]);
 
   // Poll for external edits.
   useEffect(() => {
@@ -221,12 +229,17 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
     const id = setInterval(async () => {
       try {
         const data = await (await fetchRef.current('/api/deck/state')).json();
-        // A successful poll is a server round-trip too: if the mount GET failed
-        // transiently, this is where 'unsupported' honestly ends (mirrors the
-        // mount reconcile's settle-to-'saved').
-        serverSeen.current = true;
         if (stopped) return;
-        if (mounted.current) setStatus((s) => (s === 'unsupported' ? 'saved' : s));
+        // A successful poll is a server round-trip too. If the mount GET failed
+        // transiently, this is where the server is first seen — but we must NOT
+        // flip 'unsupported'→'saved' here: an edit made while offline is still
+        // unpushed, so declaring 'saved' would lie. Instead mark the server seen
+        // and poke the push effect (via recoveredTick) to retry that edit; its
+        // normal 'saving'→ack flow then reports 'saved' honestly (or 'error').
+        if (!serverSeen.current) {
+          serverSeen.current = true;
+          if (mounted.current) setRecoveredTick((t) => t + 1);
+        }
         if (data && data.activeId !== undefined) activeId.current = data.activeId; // keep our write tag current
         if (!data || typeof data.rev !== 'number' || data.rev === lastRev.current) return;
         // rev changed: keep lastRev in step even on a server reset (rev → 0 with
