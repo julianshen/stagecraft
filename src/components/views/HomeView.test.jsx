@@ -268,6 +268,87 @@ describe('Edited sort (AC-7.1)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// export-a11y-and-test-debt Task 2 — TEST-ONLY pins of the Edited sort edges.
+// These encode shipped behavior; they must not require production changes.
+// ---------------------------------------------------------------------------
+
+describe('Edited sort edges (export-a11y-and-test-debt Task 2)', () => {
+  // DOM order of deck cards (grid view), mapped back to the given names.
+  const gridOrder = (names) =>
+    Array.from(document.querySelectorAll('.deck-card'))
+      .map((card) => names.find((n) => card.textContent.includes(n)));
+
+  // DOM order of list rows (header row excluded), mapped back to the given names.
+  const listOrder = (names) =>
+    Array.from(document.querySelectorAll('.deck-table .row:not(.header)'))
+      .map((row) => names.find((n) => row.textContent.includes(n)));
+
+  it('AC-2.1: equal updatedAt decks keep their incoming relative order (stable tiebreak)', () => {
+    const ties = [
+      { id: 'a', name: 'Alpha', slides: 1, theme: 'indigo',  updatedAt: 5_000, active: false },
+      { id: 'b', name: 'Bravo', slides: 2, theme: 'emerald', updatedAt: 5_000, active: false },
+      { id: 'c', name: 'Charlie', slides: 3, theme: 'amber', updatedAt: 9_000, active: false },
+    ];
+    const names = ties.map((d) => d.name);
+    render(<HomeView decks={ties} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    fireEvent.click(screen.getByRole('button', { name: /edited/i })); // desc
+    // Charlie is newest; Alpha/Bravo tie and preserve incoming order.
+    expect(gridOrder(names)).toEqual(['Charlie', 'Alpha', 'Bravo']);
+    fireEvent.click(screen.getByRole('button', { name: /edited/i })); // asc
+    expect(gridOrder(names)).toEqual(['Alpha', 'Bravo', 'Charlie']);
+  });
+
+  it('AC-2.2: a deck with no updatedAt sorts last under newest-first (treated as oldest via ?? 0)', () => {
+    const mixed = [
+      { id: 'u', name: 'Undated', slides: 1, theme: 'indigo',  active: false }, // no updatedAt
+      { id: 'o', name: 'Older',   slides: 2, theme: 'emerald', updatedAt: 1_000, active: false },
+      { id: 'n', name: 'Newer',   slides: 3, theme: 'amber',   updatedAt: 2_000, active: false },
+    ];
+    const names = mixed.map((d) => d.name);
+    render(<HomeView decks={mixed} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    fireEvent.click(screen.getByRole('button', { name: /edited/i })); // desc = newest first
+    expect(gridOrder(names)).toEqual(['Newer', 'Older', 'Undated']);
+  });
+
+  it('AC-2.3: repeated clicks cycle incoming → desc → asc → desc, with aria-pressed and title tracking', () => {
+    render(<HomeView decks={sortDecks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    const btn = screen.getByRole('button', { name: /edited/i });
+
+    // State 0 — default: incoming order, sort inactive.
+    expect(cardOrder()).toEqual(['Q1 Plan', 'Notes', 'Q2 Plan']);
+    expect(btn).toHaveAttribute('aria-pressed', 'false');
+    expect(btn).toHaveAttribute('title', 'Sort by edited time');
+
+    // State 1 — desc: newest first.
+    fireEvent.click(btn);
+    expect(cardOrder()).toEqual(['Q2 Plan', 'Notes', 'Q1 Plan']);
+    expect(btn).toHaveAttribute('aria-pressed', 'true');
+    expect(btn).toHaveAttribute('title', 'Sorted by edited · newest first');
+
+    // State 2 — asc: oldest first.
+    fireEvent.click(btn);
+    expect(cardOrder()).toEqual(['Q1 Plan', 'Notes', 'Q2 Plan']);
+    expect(btn).toHaveAttribute('aria-pressed', 'true');
+    expect(btn).toHaveAttribute('title', 'Sorted by edited · oldest first');
+
+    // State 3 — back to desc, never back to null.
+    fireEvent.click(btn);
+    expect(cardOrder()).toEqual(['Q2 Plan', 'Notes', 'Q1 Plan']);
+    expect(btn).toHaveAttribute('aria-pressed', 'true');
+    expect(btn).toHaveAttribute('title', 'Sorted by edited · newest first');
+  });
+
+  it('AC-2.4: activating sort in list view reorders rows identically to the grid order', () => {
+    const names = sortDecks.map((d) => d.name);
+    render(<HomeView decks={sortDecks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+    switchToList();
+    expect(listOrder(names)).toEqual(['Q1 Plan', 'Notes', 'Q2 Plan']); // incoming order
+    fireEvent.click(screen.getByRole('button', { name: /edited/i })); // desc
+    expect(listOrder(names)).toEqual(['Q2 Plan', 'Notes', 'Q1 Plan']); // same as grid desc order
+  });
+});
+
 describe('Soon-disabled surfaces (AC-7.2)', () => {
   it('AC-7.2: the Filter button is disabled with a Soon tag and clicking it changes nothing', () => {
     render(<HomeView decks={sortDecks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);

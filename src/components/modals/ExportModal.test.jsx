@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent, waitFor } from '@testing-library/react';
+import { render, fireEvent, waitFor, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import ExportModal from './ExportModal.jsx';
 
 // vi.hoisted so the mock fn is initialized before the hoisted vi.mock factory
@@ -116,5 +117,83 @@ describe('ExportModal', () => {
     fireEvent.click(getByText(/Export PPTX/));
     await waitFor(() => expect(exportToPPTX).toHaveBeenCalledWith(deck, { includeNotes: false, range: { from: 2, to: 2 } }));
     await waitFor(() => expect(onClose).toHaveBeenCalled()); // closes only after producing output
+  });
+});
+
+describe('ExportModal format picker accessibility (ARIA radio group)', () => {
+  // AC-1.1: the whole export flow is drivable from the keyboard alone — tab into
+  // the format group (roving tabindex lands on the selected pptx option), Enter
+  // explicitly selects it, tab onward to the Export button, Enter exports.
+  it('AC-1.1: full keyboard export flow with no pointer events', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<ExportModal deck={deck} onClose={onClose} />);
+    // Tab until focus enters the radio group. Roving tabindex means the FIRST
+    // radio reached must be the selected pptx option (soon radios aren't tabbable).
+    let guard = 0;
+    while (document.activeElement?.getAttribute('role') !== 'radio' && guard++ < 10) await user.tab();
+    const pptx = screen.getByRole('radio', { name: /PowerPoint/ });
+    expect(pptx).toHaveFocus();
+    await user.keyboard('{Enter}'); // explicit select of the focused option
+    expect(pptx).toHaveAttribute('aria-checked', 'true');
+    // Tab onward, out of the group and through the options fields, to Export.
+    const exportBtn = screen.getByRole('button', { name: /Export PPTX/ });
+    guard = 0;
+    while (document.activeElement !== exportBtn && guard++ < 20) await user.tab();
+    expect(exportBtn).toHaveFocus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(exportToPPTX).toHaveBeenCalledWith(deck, { includeNotes: true }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  // AC-1.2: canonical single-select semantics — one radiogroup with an accessible
+  // name, every option a radio, exactly one checked and exactly one tabbable.
+  it('AC-1.2: radiogroup with 6 radios, aria-checked and tabIndex 0 only on pptx', () => {
+    render(<ExportModal deck={deck} onClose={vi.fn()} />);
+    const group = screen.getByRole('radiogroup', { name: 'Export format' });
+    const radios = within(group).getAllByRole('radio');
+    expect(radios).toHaveLength(6);
+    const checked = radios.filter(r => r.getAttribute('aria-checked') === 'true');
+    expect(checked).toHaveLength(1);
+    expect(checked[0]).toHaveTextContent('PowerPoint · .pptx');
+    const tabbable = radios.filter(r => r.tabIndex === 0);
+    expect(tabbable).toHaveLength(1);
+    expect(tabbable[0]).toBe(checked[0]); // roving tabindex rides the selection
+  });
+
+  // AC-1.3: arrows move to the next/previous ENABLED option with wrap-around,
+  // skipping soon options. With pptx the only enabled option today, every arrow
+  // wraps back onto it — focus and selection stay put, soon radios never focus.
+  it('AC-1.3: arrow keys skip soon options — focus and selection stay on pptx', async () => {
+    const user = userEvent.setup();
+    render(<ExportModal deck={deck} onClose={vi.fn()} />);
+    const pptx = screen.getByRole('radio', { name: /PowerPoint/ });
+    pptx.focus();
+    for (const key of ['{ArrowDown}', '{ArrowRight}', '{ArrowUp}', '{ArrowLeft}']) {
+      await user.keyboard(key);
+      expect(pptx).toHaveFocus();               // never lands on a soon option
+      expect(pptx).toHaveAttribute('aria-checked', 'true'); // selection follows focus, stays put
+    }
+    for (const r of screen.getAllByRole('radio')) {
+      if (r !== pptx) {
+        expect(r).toHaveAttribute('aria-checked', 'false');
+        expect(r).toHaveAttribute('aria-disabled', 'true');
+      }
+    }
+  });
+
+  // AC-1.4: no pointer or key path can activate a soon option — click, Enter,
+  // Space, and arrows dispatched straight at it all leave it unchecked.
+  it('AC-1.4: click/Enter/Space/arrows on a soon option never select it', () => {
+    render(<ExportModal deck={deck} onClose={vi.fn()} />);
+    const pptx = screen.getByRole('radio', { name: /PowerPoint/ });
+    const keynote = screen.getByRole('radio', { name: /Keynote/ });
+    fireEvent.click(keynote);
+    fireEvent.keyDown(keynote, { key: 'Enter' });
+    fireEvent.keyDown(keynote, { key: ' ' });
+    fireEvent.keyDown(keynote, { key: 'ArrowDown' });
+    expect(keynote).toHaveAttribute('aria-checked', 'false');
+    expect(keynote).toHaveAttribute('aria-disabled', 'true');
+    expect(pptx).toHaveAttribute('aria-checked', 'true');
   });
 });
