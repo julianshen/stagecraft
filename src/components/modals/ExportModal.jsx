@@ -134,8 +134,10 @@ export default function ExportModal({ onClose, deck }) {
                 <div className="input-group"><input value="High" readOnly/><Icon name="chevron-down" size={11}/></div>
               </FieldRow>
               <FieldRow label="NOTES">
-                <div className="input-group">
-                  <select value={includeNotes ? 'include' : 'exclude'} onChange={(e) => setIncludeNotes(e.target.value === 'include')} aria-label="Speaker notes">
+                <div className={`input-group${fmt === 'pdf' ? ' is-soon' : ''}`}>
+                  {/* PDF is a visual artifact — it carries no speaker notes, so the
+                      control is disabled (and ignored: exportToPDF takes no notes). */}
+                  <select value={fmt === 'pdf' ? 'exclude' : (includeNotes ? 'include' : 'exclude')} disabled={fmt === 'pdf'} onChange={(e) => setIncludeNotes(e.target.value === 'include')} aria-label="Speaker notes">
                     <option value="include">Include speaker notes</option>
                     <option value="exclude">Exclude speaker notes</option>
                   </select>

@@ -239,6 +239,21 @@ describe('ExportModal — PDF export (pdf-export)', () => {
     reject(new Error('pdf boom'));
     await waitFor(() => expect(screen.getByText(/failed/i)).toBeTruthy());   // visible error
     expect(onClose).not.toHaveBeenCalled();                                  // NOT a silent close
+    // the busy state is released — the button is usable again for a retry, not stuck "Exporting…"
+    const btn = screen.getByRole('button', { name: /Export PDF/ });
+    expect(btn).not.toBeDisabled();
+    expect(screen.queryByText(/Exporting/)).toBeNull();
+  });
+
+  it('PDF carries no notes: the NOTES control is disabled and exportToPDF gets no includeNotes [AC-2.2]', async () => {
+    const onClose = vi.fn();
+    render(<ExportModal deck={deck} onClose={onClose} />);
+    // even if notes were toggled while on PPTX, selecting PDF drops them
+    fireEvent.change(screen.getByLabelText('Speaker notes'), { target: { value: 'exclude' } });
+    fireEvent.click(screen.getByRole('radio', { name: /PDF/ }));
+    expect(screen.getByLabelText('Speaker notes')).toBeDisabled(); // notes N/A for a visual PDF
+    fireEvent.click(screen.getByText(/Export PDF/));
+    await waitFor(() => expect(exportToPDF).toHaveBeenCalledWith(deck, {})); // no includeNotes key
   });
 });
 

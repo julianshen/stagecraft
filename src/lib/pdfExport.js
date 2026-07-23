@@ -33,7 +33,10 @@ const PAGE_H = 1080;
  */
 export async function exportToPDF(deck, { range = null } = {}) {
   let slides = flattenDeck(deck);
-  if (range) slides = slides.slice(range.from - 1, range.to); // inclusive, 1-indexed
+  // Inclusive, 1-indexed. Clamp the lower bound to 0 as defence-in-depth on the
+  // public boundary — a caller passing range.from < 1 must not become a negative
+  // slice start (which would grab from the tail). The modal already clamps to ≥1.
+  if (range) slides = slides.slice(Math.max(0, range.from - 1), Math.max(0, range.to));
   if (!slides.length) return;
 
   // Fonts must be loaded before capture or the raster falls back to system
@@ -74,5 +77,18 @@ export async function exportToPDF(deck, { range = null } = {}) {
     }
   }
 
-  doc.save(`${deck?.title || 'deck'}.pdf`);
+  doc.save(`${safeFilename(deck?.title)}.pdf`);
+}
+
+// Strip path separators and control characters from a deck title before it
+// becomes a download filename. Browsers already strip path parts from the
+// download name, but a title with slashes/newlines yields an ugly or malformed
+// name — normalise to a clean base and fall back to 'deck' when empty.
+function safeFilename(title) {
+  const cleaned = String(title || '')
+    .replace(/[/\\]+/g, '-')            // path separators -> dash
+    .replace(/[\u0000-\u001f]+/g, ' ')  // control chars (newlines/tabs) -> space
+    .replace(/\s+/g, ' ')                // collapse whitespace
+    .trim();
+  return cleaned || 'deck';
 }
