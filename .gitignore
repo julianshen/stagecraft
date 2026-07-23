@@ -11,3 +11,7 @@ coverage/
 
 # Persisted deck library (dev server)
 .stagecraft-decks.json
+
+# tGD scan symlinks (artifacts live in ../stagecraft-tGD)
+.codegraph
+.understand-anything
