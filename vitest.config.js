@@ -34,6 +34,7 @@ export default defineConfig({
         'src/lib/headingScale.js',
         'src/lib/transitions.js',
         'src/lib/pptxExport.js',
+        'src/lib/pdfExport.js',
         'src/lib/color.js',
         'src/lib/domEvents.js',
         'src/lib/shapes.js',
