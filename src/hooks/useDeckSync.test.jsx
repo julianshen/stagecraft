@@ -517,6 +517,46 @@ describe('sync status', () => {
     expect(controls.sync.status).toBe('unsupported');
   });
 
+  it('does not show "saved" when the server recovers with an edit still unpushed — it re-pushes first [AC-1.3]', async () => {
+    // The server is down at mount (GET + seed PUT reject). The user edits while
+    // offline (that PUT rejects too). When the server later comes back, a naive
+    // poll flip to "saved" would LIE: the edit lives only in this tab and is not
+    // on the server. The recovery must re-push the pending edit and only report
+    // "saved" once the server actually ACKs it.
+    let down = true;
+    const state = { deck: null, rev: 0, activeId: null };
+    const puts = [];
+    const fetchFn = vi.fn((url, init) => {
+      if (down) return Promise.reject(new Error('offline'));
+      const path = url.split('?')[0];
+      if (path === '/api/deck/state') {
+        return Promise.resolve({ json: async () => ({ deck: state.deck, rev: state.rev, activeId: state.activeId }) });
+      }
+      if (path === '/api/deck' && init?.method === 'PUT') {
+        const body = JSON.parse(init.body); puts.push(body); state.deck = body;
+        if (state.activeId == null) state.activeId = 'seeded';
+        state.rev += 1;
+        return Promise.resolve({ json: async () => ({ ok: true, rev: state.rev, activeId: state.activeId }) });
+      }
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    const controls = {};
+    render(<Harness fetchFn={fetchFn} intervalMs={1000} controls={controls} />);
+    await flush();                       // mount GET + seed PUT reject → 'unsupported'
+    await act(async () => { controls.setDeck({ ...localDeck, title: 'edited offline' }); });
+    await flush(300);                    // that edit's PUT rejects too
+    expect(controls.sync.status).toBe('unsupported');
+    expect(puts).toEqual([]);            // nothing has reached the server yet
+
+    down = false;                        // server comes back up
+    await flush(1000);                   // next poll succeeds → must retry the pending edit
+    await flush(300);                    // the retried PUT is debounced then acks
+    // the badge is honest: the edit was actually pushed, THEN 'saved'
+    expect(puts.at(-1)).toMatchObject({ title: 'edited offline' });
+    expect(controls.sync.status).toBe('saved');
+    expect(controls.sync.savedAt).not.toBeNull();
+  });
+
   it('AC-1.3/AC-1.4: a successful PUT after a failed mount GET marks the server seen, so a later failed PUT is an error', async () => {
     // Transient mount failure: the server was down when the page loaded (mount
     // GET + seed PUT reject), then came up. A successful PUT is a real server
@@ -553,17 +593,24 @@ describe('sync status', () => {
     expect(controls.sync.status).toBe('error');
   });
 
-  it('AC-1.4: a successful poll leaves "unsupported" behind after a failed mount GET', async () => {
-    // Same transient-mount scenario, but the POLL is the first round-trip that
-    // succeeds: it must mark the server seen and settle 'unsupported' → 'saved'.
+  it('AC-1.4: a successful poll marks the server seen — the pending seed re-pushes to "saved", then a later failed PUT is "error"', async () => {
+    // Transient-mount scenario where the POLL is the first round-trip to succeed.
+    // It must NOT blindly settle 'unsupported'→'saved' (the seed never landed);
+    // it re-pushes the pending seed and only reaches 'saved' once that ACKs —
+    // after which a later failed PUT is an honest 'error', not swallowed.
     let down = true;
+    let putFails = false;
     const state = { deck: null, rev: 0, activeId: null };
     const fetchFn = vi.fn((url, init) => {
       if (down) return Promise.reject(new Error('server down'));
       if (url.split('?')[0] === '/api/deck/state') {
         return Promise.resolve({ json: async () => ({ ...state }) });
       }
-      if (init?.method === 'PUT') return Promise.reject(new Error('write failed'));
+      if (init?.method === 'PUT') {
+        if (putFails) return Promise.reject(new Error('write failed'));
+        state.rev += 1; if (state.activeId == null) state.activeId = 'seeded';
+        return Promise.resolve({ json: async () => ({ ok: true, rev: state.rev, activeId: state.activeId }) });
+      }
       return Promise.resolve({ json: async () => ({}) });
     });
     const controls = {};
@@ -571,10 +618,12 @@ describe('sync status', () => {
     await flush(); // mount GET + seed PUT reject
     expect(controls.sync.status).toBe('unsupported');
     down = false;
-    await flush(1000); // one poll tick succeeds
-    expect(controls.sync.status).toBe('saved');
+    await flush(1000); // poll succeeds → server seen → pending seed re-pushes
+    await flush(300);  // the retried seed PUT acks
+    expect(controls.sync.status).toBe('saved'); // honest: the seed actually landed
+    putFails = true;
     await act(async () => { controls.setDeck({ ...localDeck, title: 'x' }); });
-    await flush(300); // PUT still rejects — now an honest error, not 'unsupported'
+    await flush(300); // PUT rejects — now an honest error
     expect(controls.sync.status).toBe('error');
   });
 
