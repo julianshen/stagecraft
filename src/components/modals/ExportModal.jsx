@@ -3,12 +3,14 @@ import Icon from '../ui/Icon.jsx';
 import { Button, IconButton, FieldRow } from '../ui/Primitives.jsx';
 import SoonTag from '../ui/SoonTag.jsx';
 import { exportToPPTX } from '../../lib/pptxExport.js';
+import { exportToPDF } from '../../lib/pdfExport.js';
 import { flattenDeck } from '../../lib/deckOrder.js';
 
 export default function ExportModal({ onClose, deck }) {
   const [fmt, setFmt] = useState('pptx');
   const [includeNotes, setIncludeNotes] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState(null);
   // The range is 1-indexed over the FLATTENED slides (the order + count the export
   // actually emits — single-sourced via flattenDeck so the bounds can't drift).
   const total = flattenDeck(deck).length;
@@ -21,7 +23,7 @@ export default function ExportModal({ onClose, deck }) {
   const opts = [
     { id: 'pptx',  title: 'PowerPoint · .pptx',  sub: 'Editable, preserves type & shapes',    ext: 'PPT' },
     { id: 'key',   title: 'Keynote · .key',       sub: 'Native Keynote package',               ext: 'KEY', soon: true },
-    { id: 'pdf',   title: 'PDF',                  sub: 'One page per slide, hi-res',           ext: 'PDF', soon: true },
+    { id: 'pdf',   title: 'PDF',                  sub: 'One page per slide, hi-res',           ext: 'PDF' },
     { id: 'png',   title: 'PNG sequence',         sub: '1920×1080, one file per slide',        ext: 'PNG', soon: true },
     { id: 'video', title: 'MP4 video',            sub: 'Renders transitions & animations',     ext: 'MP4', soon: true },
     { id: 'link',  title: 'Shareable link',       sub: 'Web viewer with access controls',      ext: 'URL', soon: true },
@@ -51,27 +53,40 @@ export default function ExportModal({ onClose, deck }) {
   }
 
   async function handleExport() {
-    // Only PPTX is implemented; `fmt` can only ever be 'pptx' (soon options
-    // can't be selected), but guard anyway so no format silently no-ops.
-    if (fmt !== 'pptx') return;
+    // Only PPTX + PDF are implemented; soon options can't be selected, but guard
+    // anyway so no format silently no-ops.
+    if (fmt !== 'pptx' && fmt !== 'pdf') return;
     setExporting(true);
+    setError(null);
+    // Parse each field (empty/invalid → the full bound; a typed 0 clamps to 1
+    // rather than falling through), clamp to [1, total], then normalise start≤end;
+    // send a range only when it actually narrows the deck (a full range stays unranged).
+    const bound = (s, full) => { const n = parseInt(s, 10); return Number.isNaN(n) ? full : n; };
+    const lo = Math.max(1, Math.min(total, bound(from, 1)));
+    const hi = Math.max(1, Math.min(total, bound(to, total)));
+    const start = Math.min(lo, hi), end = Math.max(lo, hi);
+    const range = (start > 1 || end < total) ? { from: start, to: end } : undefined;
     try {
-      // Parse each field (empty/invalid → the full bound; a typed 0 clamps to 1
-      // rather than falling through), clamp to [1, total], then normalise start≤end;
-      // send a range only when it actually narrows the deck (a full range stays unranged).
-      const bound = (s, full) => { const n = parseInt(s, 10); return Number.isNaN(n) ? full : n; };
-      const lo = Math.max(1, Math.min(total, bound(from, 1)));
-      const hi = Math.max(1, Math.min(total, bound(to, total)));
-      const start = Math.min(lo, hi), end = Math.max(lo, hi);
-      const exportOpts = { includeNotes };
-      if (start > 1 || end < total) exportOpts.range = { from: start, to: end };
-      await exportToPPTX(deck, exportOpts);
+      if (fmt === 'pdf') {
+        await exportToPDF(deck, range ? { range } : {});
+      } else {
+        const exportOpts = { includeNotes };
+        if (range) exportOpts.range = range;
+        await exportToPPTX(deck, exportOpts);
+      }
     } catch (err) {
+      // PDF: surface the failure inline and keep the modal open so the user can
+      // retry — a silent close on the most portable export would hide data loss.
+      if (fmt === 'pdf') {
+        setExporting(false);
+        setError('PDF export failed — please try again.');
+        return;
+      }
+      // PPTX behaviour is unchanged (log + close); upgrading it is Ask-first (SPEC).
       console.error('PPTX export failed:', err);
-    } finally {
-      setExporting(false);
-      onClose();
     }
+    setExporting(false);
+    onClose();
   }
 
   return (
@@ -119,8 +134,10 @@ export default function ExportModal({ onClose, deck }) {
                 <div className="input-group"><input value="High" readOnly/><Icon name="chevron-down" size={11}/></div>
               </FieldRow>
               <FieldRow label="NOTES">
-                <div className="input-group">
-                  <select value={includeNotes ? 'include' : 'exclude'} onChange={(e) => setIncludeNotes(e.target.value === 'include')} aria-label="Speaker notes">
+                <div className={`input-group${fmt === 'pdf' ? ' is-soon' : ''}`}>
+                  {/* PDF is a visual artifact — it carries no speaker notes, so the
+                      control is disabled (and ignored: exportToPDF takes no notes). */}
+                  <select value={fmt === 'pdf' ? 'exclude' : (includeNotes ? 'include' : 'exclude')} disabled={fmt === 'pdf'} onChange={(e) => setIncludeNotes(e.target.value === 'include')} aria-label="Speaker notes">
                     <option value="include">Include speaker notes</option>
                     <option value="exclude">Exclude speaker notes</option>
                   </select>
@@ -134,8 +151,8 @@ export default function ExportModal({ onClose, deck }) {
           </div>
         </div>
         <div className="modal-foot">
-          <span style={{ flex: 1, fontSize: 12, color: 'var(--ink-3)', fontFamily: 'var(--f-mono)' }}>
-            {fmt.toUpperCase()} · ~6.4 MB · est 4s
+          <span style={{ flex: 1, fontSize: 12, fontFamily: 'var(--f-mono)', color: error ? 'var(--danger)' : 'var(--ink-3)' }} role={error ? 'alert' : undefined}>
+            {error || `${fmt.toUpperCase()} · ~6.4 MB · est 4s`}
           </span>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button variant="accent" icon="download" onClick={handleExport} disabled={exporting}>

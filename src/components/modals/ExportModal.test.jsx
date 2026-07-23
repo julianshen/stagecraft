@@ -8,10 +8,12 @@ import ExportModal from './ExportModal.jsx';
 // closure to dodge the hoist-order TDZ.
 const exportToPPTX = vi.hoisted(() => vi.fn(() => Promise.resolve('ok.pptx')));
 vi.mock('../../lib/pptxExport.js', () => ({ exportToPPTX }));
+const exportToPDF = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+vi.mock('../../lib/pdfExport.js', () => ({ exportToPDF }));
 
 const deck = { title: 'D', slides: [{ id: 'a' }, { id: 'b' }], sections: [{ id: 's', name: 'S', slides: ['a', 'b'] }] };
 
-beforeEach(() => { exportToPPTX.mockClear(); });
+beforeEach(() => { exportToPPTX.mockClear(); exportToPDF.mockClear(); });
 
 describe('ExportModal', () => {
   it('exports PPTX with notes included by default', async () => {
@@ -84,11 +86,10 @@ describe('ExportModal', () => {
     // query by the sub-line ("PDF" as a title collides with the PDF icon-box text)
     const soonSubs = [
       'Native Keynote package',            // key
-      'One page per slide, hi-res',        // pdf
       '1920×1080, one file per slide',     // png
       'Renders transitions & animations',  // video
       'Web viewer with access controls',   // link
-    ];
+    ]; // PDF is now a real, selectable format (pdf-export) — no longer Soon
     for (const sub of soonSubs) {
       const opt = getByText(sub).closest('.export-opt');
       expect(opt.className).toContain('is-soon');
@@ -111,7 +112,7 @@ describe('ExportModal', () => {
   it('AC-6.2: Export after clicking a soon option still runs the PPTX path with current options', async () => {
     const onClose = vi.fn();
     const { getByText, getByLabelText } = render(<ExportModal deck={deck} onClose={onClose} />);
-    fireEvent.click(getByText('One page per slide, hi-res').closest('.export-opt')); // the PDF soon option — never becomes selected
+    fireEvent.click(getByText('Native Keynote package').closest('.export-opt')); // a soon option (Keynote) — never becomes selected
     fireEvent.change(getByLabelText('Speaker notes'), { target: { value: 'exclude' } });
     fireEvent.change(getByLabelText('Range from'), { target: { value: '2' } });
     fireEvent.click(getByText(/Export PPTX/));
@@ -162,20 +163,25 @@ describe('ExportModal format picker accessibility (ARIA radio group)', () => {
   });
 
   // AC-1.3: arrows move to the next/previous ENABLED option with wrap-around,
-  // skipping soon options. With pptx the only enabled option today, every arrow
-  // wraps back onto it — focus and selection stay put, soon radios never focus.
-  it('AC-1.3: arrow keys skip soon options — focus and selection stay on pptx', async () => {
+  // skipping soon options. With pptx + pdf now both enabled (pdf-export), arrows
+  // move focus+selection between the two and wrap; the 4 soon radios never focus.
+  it('AC-1.3: arrow keys move between the enabled options (pptx↔pdf), skipping soon', async () => {
     const user = userEvent.setup();
     render(<ExportModal deck={deck} onClose={vi.fn()} />);
     const pptx = screen.getByRole('radio', { name: /PowerPoint/ });
+    const pdf = screen.getByRole('radio', { name: /PDF/ });
     pptx.focus();
-    for (const key of ['{ArrowDown}', '{ArrowRight}', '{ArrowUp}', '{ArrowLeft}']) {
-      await user.keyboard(key);
-      expect(pptx).toHaveFocus();               // never lands on a soon option
-      expect(pptx).toHaveAttribute('aria-checked', 'true'); // selection follows focus, stays put
-    }
+    await user.keyboard('{ArrowDown}');           // next enabled → pdf (soon options skipped)
+    expect(pdf).toHaveFocus();
+    expect(pdf).toHaveAttribute('aria-checked', 'true');   // selection follows focus
+    await user.keyboard('{ArrowDown}');           // wrap forward past the soon tail → back to pptx
+    expect(pptx).toHaveFocus();
+    expect(pptx).toHaveAttribute('aria-checked', 'true');
+    await user.keyboard('{ArrowUp}');             // wrap backward → pdf
+    expect(pdf).toHaveFocus();
+    // the 4 soon options never receive focus or selection and stay disabled
     for (const r of screen.getAllByRole('radio')) {
-      if (r !== pptx) {
+      if (r !== pptx && r !== pdf) {
         expect(r).toHaveAttribute('aria-checked', 'false');
         expect(r).toHaveAttribute('aria-disabled', 'true');
       }
@@ -197,3 +203,57 @@ describe('ExportModal format picker accessibility (ARIA radio group)', () => {
     expect(pptx).toHaveAttribute('aria-checked', 'true');
   });
 });
+
+describe('ExportModal — PDF export (pdf-export)', () => {
+  it('PDF is a selectable radio (no Soon); other formats stay disabled+Soon [AC-2.1]', () => {
+    render(<ExportModal deck={deck} onClose={vi.fn()} />);
+    const pdf = screen.getByRole('radio', { name: /PDF/ });
+    expect(pdf).not.toHaveAttribute('aria-disabled', 'true');
+    expect(within(pdf).queryByText('Soon')).toBeNull();
+    // the previously-shipped disabled formats are unchanged
+    for (const name of [/Keynote/, /PNG sequence/, /MP4/, /Shareable link/]) {
+      expect(screen.getByRole('radio', { name })).toHaveAttribute('aria-disabled', 'true');
+    }
+  });
+
+  it('selecting PDF + a range dispatches exportToPDF with the range (not PPTX) [AC-2.2]', async () => {
+    const onClose = vi.fn();
+    render(<ExportModal deck={deck} onClose={onClose} />);
+    fireEvent.click(screen.getByRole('radio', { name: /PDF/ }));       // select PDF
+    fireEvent.change(screen.getByLabelText('Range from'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('Range to'), { target: { value: '2' } });
+    fireEvent.click(screen.getByText(/Export PDF/));
+    await waitFor(() => expect(exportToPDF).toHaveBeenCalledWith(deck, { range: { from: 2, to: 2 } }));
+    expect(exportToPPTX).not.toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalled());           // success closes
+  });
+
+  it('shows a busy state while exporting and a visible error (no silent close) on PDF failure [AC-2.3]', async () => {
+    const onClose = vi.fn();
+    let reject;
+    exportToPDF.mockReturnValueOnce(new Promise((_, rej) => { reject = rej; }));
+    render(<ExportModal deck={deck} onClose={onClose} />);
+    fireEvent.click(screen.getByRole('radio', { name: /PDF/ }));
+    fireEvent.click(screen.getByText(/Export PDF/));
+    await waitFor(() => expect(screen.getByText(/Exporting/)).toBeTruthy()); // busy
+    reject(new Error('pdf boom'));
+    await waitFor(() => expect(screen.getByText(/failed/i)).toBeTruthy());   // visible error
+    expect(onClose).not.toHaveBeenCalled();                                  // NOT a silent close
+    // the busy state is released — the button is usable again for a retry, not stuck "Exporting…"
+    const btn = screen.getByRole('button', { name: /Export PDF/ });
+    expect(btn).not.toBeDisabled();
+    expect(screen.queryByText(/Exporting/)).toBeNull();
+  });
+
+  it('PDF carries no notes: the NOTES control is disabled and exportToPDF gets no includeNotes [AC-2.2]', async () => {
+    const onClose = vi.fn();
+    render(<ExportModal deck={deck} onClose={onClose} />);
+    // even if notes were toggled while on PPTX, selecting PDF drops them
+    fireEvent.change(screen.getByLabelText('Speaker notes'), { target: { value: 'exclude' } });
+    fireEvent.click(screen.getByRole('radio', { name: /PDF/ }));
+    expect(screen.getByLabelText('Speaker notes')).toBeDisabled(); // notes N/A for a visual PDF
+    fireEvent.click(screen.getByText(/Export PDF/));
+    await waitFor(() => expect(exportToPDF).toHaveBeenCalledWith(deck, {})); // no includeNotes key
+  });
+});
+
