@@ -154,7 +154,7 @@ Elements live on `slide.elements?: Element[]` and render in `ElementsLayer` over
 ### 4.1 Layout
 Fixed-height flex column: **topbar** (40px) + active **view**.
 
-Topbar: logo · tab nav (Files / Editor / Sorter) · contextual center (deck name + "Saved" 🔴 static, or Home search 🔴, or "Settings") · Settings toggle.
+Topbar: logo · tab nav (Files / Editor / Sorter) · contextual center (deck name + a **live sync/save badge** 🟢 — `Saving…` / `Saved · {ago}` / `Offline · unsaved changes` / nothing in static builds, driven by `useDeckSync` status, see §11.6, or Home search 🟢, or "Settings") · Settings toggle.
 
 ### 4.2 View routing
 `view ∈ {home, editor, sorter, settings}`, persisted to `localStorage['stagecraft.view']` (default `editor`). Presenter is a separate full-screen overlay (`presenting` boolean).
@@ -222,8 +222,8 @@ Backed by the real **deck library** (`GET /api/decks`, see §11.6/§17), not a m
 - **Deck grid** 🟢 — lists the persisted decks; a card opens the deck (activates it server-side and adopts its content); the active deck shows a **LIVE** badge; cover tint/initials and the "edited" time derive from each deck's metadata (`lib/decksApi.js` view-model helpers). Empty state when the library has no decks.
 - **Per-card actions** 🟢 — a ⋯ menu offers **Rename** (inline edit; sets the deck title as the single source of its name) and **Delete**.
 - **"New" cards** 🟢 — Blank creates + opens a fresh deck (`POST /api/decks`); "From template" opens the picker.
-- **Deck list view** 🟡 toggle — rows open the deck; per-row rename/delete not yet wired (grid only).
-- 🔴 Search input, Filter/Edited sort buttons, greeting name, and the Recent/Starred/Trash sidebar filters are still static.
+- **Deck list view** 🟢 toggle — rows open the deck; per-row rename/delete wired (PR #105), matching the grid.
+- **Search** 🟢 filters decks (case-insensitive, no-match empty state); **Edited sort** 🟢 toggles newest/oldest-first, composing with search (v2026.07.23). 🔴 Filter button, greeting name, and the Recent/Starred/Trash sidebar are visibly disabled with a "Soon" affordance — honestly not-yet-built (they need a starred/soft-delete data model), not decorative.
 
 ### 7.2 Editor — `Editor.jsx` + `SlideEditor.jsx`
 The core surface. Composed of toolbar, left thumbs, canvas, right inspector.
@@ -282,7 +282,7 @@ Left nav: General / Appearance / AI & Co-pilot / Export defaults / Shortcuts.
 |---|---|
 | **AI & Co-pilot** | 🟢 provider cards (6), API key (show/hide, persisted), "Test connection" (routes through `callLLM`, shows the classified failure reason via `describeLLMError` in an always-mounted `role="status"` region; any settings edit resets the verdict and discards an in-flight test via a sequence token), **Base URL persisted** for the endpoint-configurable providers (Local + Custom, `hasBaseUrl` catalog flag; unset shows the effective default as a placeholder; `callLLM` forwards `settings.baseUrl` *only* for those providers so a stale Local URL can't hijack OpenAI/Anthropic requests; "Reset to defaults" clears it), model picker, **Temperature** + **Max tokens** persisted, per-task **routing** select. **Top-p** persisted and forwarded end-to-end (`settings.topP` → `callLLM` → proxy `top_p`). |
 | **Appearance** | 🟢 theme / accent / density / editor-layout — all bound to `tw`/`setTw`, live + persisted. |
-| **General** | 🟢 slide size, language, autosave, snap-to-grid, show-rulers, spell-check — all wired via `ToggleRow.onChange` + `localStorage['stagecraft.general']` (matches AISettings pattern). Autosave stored but **not yet honored** in `useDeckSync` — `PUT /api/deck` still fires on every edit regardless of the toggle; honoring it requires changes in `App.jsx`/`useDeckSync.js`. |
+| **General** | 🟢 honest post-`ui-honesty-pass` (v2026.07.23): **snap-to-grid** + **show-rulers** are wired end-to-end — persisted to `localStorage['stagecraft.general']` (single-sourced via `lib/generalSettings.js`) and read by the canvas (`CanvasSlide` skips the grid snap / `Ruler` self-gates). **Autosave** ("Always on"), **default slide size**, **language**, **spell-check** are visibly disabled with a "Soon"/"Always on" affordance and **persist nothing** — no inert values, no toggle that lies (they had no behavior to bind). |
 | **Export defaults** | 🟢 the modal's NOTES toggle + slide RANGE are wired (§13); 🔴 quality / comments stay decorative (no effect on a vector PPTX). |
 | **Shortcuts** | 🔴 reference list, display-only. |
 
@@ -401,7 +401,7 @@ The app-owned deck state is wrapped in **`useDeckHistory`** (`src/hooks/useDeckH
 ---
 
 ## 13. Export modal — `ExportModal.jsx` 🟡
-Format chooser: **PPTX 🟢**; Keynote / PDF / PNG seq / MP4 / Link 🔴 (close only). **NOTES is 🟢 wired** — the Include/Exclude select feeds `exportToPPTX(deck, { includeNotes })`, which attaches each slide's speaker notes (`slide.notes`, else the bundled `SPEAKER_NOTES`, mirroring the presenter) via `slide.addNotes`. 🟢 **RANGE is wired** — From/To inputs (1-indexed over the flattened slide order; `exportToPPTX` and the modal both measure it via `flattenDeck`, single-sourced) commit an inclusive `range` that the exporter slices, sent only when it narrows the deck. QUALITY/COMMENTS stay 🔴 decorative — they're rasterisation / comment-model concepts with no honest effect on a *vector* PPTX (shapes/text are native, charts are text placeholders); they apply once a raster format / comments model exists. Shows estimated size. ⚪ Spec: implement PDF (print/jsPDF), PNG sequence (canvas of each `ScaledSlide`).
+Format chooser 🟢 **keyboard-accessible** (v2026.07.23.2) — the options are an ARIA **radiogroup** (`role="radio"` + `aria-checked`, roving tabindex, arrow-navigation that wraps over enabled options and skips the disabled ones, Enter/Space to select, a `:focus-visible` ring): **PPTX 🟢** is the one selectable format; Keynote / PDF / PNG seq / MP4 / Link are visibly disabled with a "Soon" affordance and cannot be selected by any input (mouse or keyboard) — the silent close-with-no-output path is gone. **NOTES is 🟢 wired** — the Include/Exclude select feeds `exportToPPTX(deck, { includeNotes })`, which attaches each slide's speaker notes (`slide.notes`, else the bundled `SPEAKER_NOTES`, mirroring the presenter) via `slide.addNotes`. 🟢 **RANGE is wired** — From/To inputs (1-indexed over the flattened slide order; `exportToPPTX` and the modal both measure it via `flattenDeck`, single-sourced) commit an inclusive `range` that the exporter slices, sent only when it narrows the deck. QUALITY/COMMENTS stay 🔴 decorative — they're rasterisation / comment-model concepts with no honest effect on a *vector* PPTX (shapes/text are native, charts are text placeholders); they apply once a raster format / comments model exists. Shows estimated size. ⚪ Spec: implement PDF (print/jsPDF), PNG sequence (canvas of each `ScaledSlide`).
 
 ---
 
@@ -467,5 +467,8 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 5. ~~**Drag-to-reorder + section CRUD + AI reorder**~~ ✅ **Done** — Thumbs rail (§7.2.3) and Sorter grid (§7.3) both reorder via `moveSlide`; Sorter adds section create/rename/delete (`addSection`/`renameSection`/`deleteSection`); **Rearrange with AI** sends the outline to the Co-pilot (`suggestSlideOrder`) and applies the order via `applySlideOrder` (all in `lib/deckOrder.js`/`lib/llmClient.js`). _(§7.3)_
 6. ~~**Chart + roadmap in PPTX**~~ ✅ **Done** — native editable `addChart` via `chartSpec`; canvas + export share `chartData` so charts are data-driven and match (§12). Roadmap now exports as a native timeline (month axis, status-coloured lane bars, TODAY marker, legend), built from the shared `roadmapModel` (`lib/roadmapSpec.js`) so canvas and export match. ⚪ Remaining: multi-series chart canvas rendering; wire export-modal range/quality/notes options. _(§12, §13)_
 7. ~~**Templates seed real decks**~~ ✅ **Done** — the picker creates a themed library deck via `templateDeck` + `createDeck` (§14). (Top-p persistence ✅ §7.4; per-template skeletons ✅ §14; slide-renderer chrome is slide/deck-driven; the `DeckCover` chrome string was genericized back in the multi-deck PR — stale note removed; **inspector Data tab** ✅ §7.2.5.) _(§7.4, §7.1)_ (Duplicate-slide ✅ §7.2.1.)
-8. **Presenter** laser-tracks-pointer + blackout. _(§7.5)_
-9. **Collaboration** presence + comments. _(§16)_
+8. ~~**Presenter** laser-tracks-pointer + blackout~~ ✅ **Done** — the laser follows the cursor in slide-percent coords and `B` blacks out (§7.5); this line was stale.
+9. ~~**UI honesty pass**~~ ✅ **Done** (v2026.07.23) — a live sync/save badge (`useDeckSync` exposes `saving/saved/error/unsupported`, `savedAt` is ack-time not edit-time), a shared `SoonTag` for not-yet-built controls, Settings→General wired (snap/rulers) or honestly-disabled (autosave/size/language/spell-check), Export non-PPTX formats disabled+Soon, Home search + Edited-sort wired. _(§4.1, §7.1, §7.4, §13, §11.6)_
+10. ~~**Export a11y + review test-debt**~~ ✅ **Done** (v2026.07.23.2) — Export format options are a keyboard-operable ARIA radiogroup; five review-flagged behaviors pinned (Home sort edges, list-view order, pen snap-off). _(§13)_
+11. **Collaboration** presence + comments. _(§16)_ ⚪ (single-user is a deliberate constraint — see PRODUCT-SPEC.md §12.)
+12. **Next real formats** — PDF (print/jsPDF) then PNG sequence, cashing the Export modal's honest "Soon" promises; the radiogroup already handles multiple live formats. _(§13)_
