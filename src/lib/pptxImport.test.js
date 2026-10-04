@@ -168,9 +168,9 @@ describe('importPptx — shapes, lines, pictures, tables', () => {
     expect(slide.elements[0]).toMatchObject({ type: 'rounded', fill: '#4472C4', stroke: '#000000', strokeWidth: 4, strokeDash: 'dashed' });
   });
 
-  it('imports an unknown preset as a rectangle and says so', async () => {
+  it('imports an unknown preset as a (sharp) rectangle and says so', async () => {
     const { slide, warnings } = await one(shape(2, 'cloud', 0, 0, 100, 100, '<a:solidFill><a:srgbClr val="AAAAAA"/></a:solidFill>'));
-    expect(slide.elements[0].type).toBe('shape');
+    expect(slide.elements[0].type).toBe('rect');
     expect(warnings.join(' ')).toMatch(/cloud/);
   });
 
@@ -240,7 +240,7 @@ describe('importPptx — shapes, lines, pictures, tables', () => {
         <a:tr h="${50 * PX}"><a:tc gridSpan="2"><a:txBody><a:bodyPr/>${para('Wide')}</a:txBody><a:tcPr/></a:tc><a:tc hMerge="1"><a:txBody><a:bodyPr/><a:p/></a:txBody><a:tcPr/></a:tc></a:tr>
       </a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
     const { slide } = await one(tbl);
-    const cells = els(slide, 'shape');
+    const cells = els(slide, 'rect');
     expect(cells).toHaveLength(3);
     expect(cells[0]).toMatchObject({ x: 0, y: 0, w: 100, h: 50, fill: '#DDDDDD' });
     expect(cells[2]).toMatchObject({ x: 0, y: 50, w: 200, h: 50 });
@@ -292,7 +292,7 @@ describe('importPptx — slide-level properties', () => {
   it('draws non-placeholder master art beneath the slide, unless showMasterSp="0"', async () => {
     const master = DEFAULT_MASTER.replace('</p:spTree>', `${shape(9, 'rect', 0, 1000, 1920, 80, '<a:solidFill><a:srgbClr val="4472C4"/></a:solidFill>')}</p:spTree>`);
     const shown = await one(textBox(2, 0, 0, 10, 10, para('Top')), {}, { master });
-    expect(shown.slide.elements.map((e) => e.type)).toEqual(['shape', 'text']);
+    expect(shown.slide.elements.map((e) => e.type)).toEqual(['rect', 'text']);
     const hidden = await one(textBox(2, 0, 0, 10, 10, para('Top')), { attrs: ' showMasterSp="0"' }, { master });
     expect(hidden.slide.elements.map((e) => e.type)).toEqual(['text']);
   });
@@ -384,7 +384,7 @@ describe('importPptx — OOXML edge cases', () => {
 
   it('imports a custom geometry as a rectangle', async () => {
     const sp = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="C"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(0, 0, 10, 10)}<a:custGeom/><a:solidFill><a:srgbClr val="010101"/></a:solidFill></p:spPr></p:sp>`;
-    expect((await one(sp)).slide.elements[0].type).toBe('shape');
+    expect((await one(sp)).slide.elements[0].type).toBe('rect');
   });
 
   it('handles groups without a child space, nested groups and AlternateContent', async () => {
@@ -498,8 +498,8 @@ describe('importPptx — OOXML edge cases', () => {
         <a:tr><a:tc vMerge="1"><a:txBody><a:bodyPr/><a:p/></a:txBody></a:tc></a:tr>
       </a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
     const { slide } = await one(tbl);
-    expect(els(slide, 'shape')).toHaveLength(1);
-    expect(els(slide, 'shape')[0].fill).toBe('#FFFFFF');
+    expect(els(slide, 'rect')).toHaveLength(1);
+    expect(els(slide, 'rect')[0].fill).toBe('#FFFFFF');
   });
 
   it('names unnamed sections and ignores references to unknown slides', async () => {
@@ -514,5 +514,74 @@ describe('importPptx — OOXML edge cases', () => {
     const layout = `<p:sldLayout ${NS}>${tree(`<p:sp><p:nvSpPr><p:cNvPr id="2" name="T"/><p:cNvSpPr/><p:nvPr><p:ph type="title" idx="0"/></p:nvPr></p:nvSpPr><p:spPr>${xfrm(1, 2, 3, 4)}</p:spPr></p:sp>`)}</p:sldLayout>`;
     const t = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="T"/><p:cNvSpPr/><p:nvPr><p:ph type="ctrTitle" idx="7"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/>${para('X')}</p:txBody></p:sp>`;
     expect((await one(t, {}, { layout })).slide.elements[0]).toMatchObject({ x: 1, y: 2, w: 3, h: 4 });
+  });
+});
+
+describe('importPptx — review fixes', () => {
+  it('imports a plain rectangle as the sharp-cornered rect type', async () => {
+    const { slide } = await one(shape(2, 'rect', 0, 0, 10, 10, '<a:solidFill><a:srgbClr val="123456"/></a:solidFill>'));
+    expect(slide.elements[0].type).toBe('rect');
+  });
+
+  it('rotates a rotated group\'s children about the group centre', async () => {
+    // A 200×100 group at (100,100) rotated 90°; its child fills the left half.
+    const grp = `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="9" name="G"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm rot="5400000"><a:off x="${100 * PX}" y="${100 * PX}"/><a:ext cx="${200 * PX}" cy="${100 * PX}"/><a:chOff x="0" y="0"/><a:chExt cx="${200 * PX}" cy="${100 * PX}"/></a:xfrm></p:grpSpPr>
+      ${shape(3, 'rect', 0, 0, 100, 100, '<a:solidFill><a:srgbClr val="123456"/></a:solidFill>')}</p:grpSp>`;
+    const el = (await one(grp)).slide.elements[0];
+    // Child centre (150,150) turns 90° clockwise about the group centre (200,150) → (200,100).
+    expect(el.x + el.w / 2).toBeCloseTo(200);
+    expect(el.y + el.h / 2).toBeCloseTo(100);
+    expect(el.rot).toBe(90);
+  });
+
+  it('warns that mirrored (flipped) shapes and pictures import unmirrored', async () => {
+    const sp = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="A"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(0, 0, 10, 10, ' flipH="1"')}<a:prstGeom prst="rightArrow"/><a:solidFill><a:srgbClr val="000000"/></a:solidFill></p:spPr></p:sp>`;
+    expect((await one(sp)).warnings.join(' ')).toMatch(/mirrored/i);
+  });
+
+  it('keeps an explicit fill on a placeholder whose geometry is inherited', async () => {
+    const layout = `<p:sldLayout ${NS}>${tree(`<p:sp><p:nvSpPr><p:cNvPr id="2" name="T"/><p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:spPr>${xfrm(0, 0, 100, 50)}<a:prstGeom prst="rect"/></p:spPr></p:sp>`)}</p:sldLayout>`;
+    const t = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="T"/><p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:spPr><a:solidFill><a:srgbClr val="1F3864"/></a:solidFill></p:spPr><p:txBody><a:bodyPr/>${para('Banner')}</p:txBody></p:sp>`;
+    const { slide } = await one(t, {}, { layout });
+    expect(slide.elements.map((e) => e.type)).toEqual(['rect', 'text']);
+    expect(slide.elements[0].fill).toBe('#1F3864');
+  });
+
+  it('draws a vertically merged cell across its whole row span', async () => {
+    const tbl = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="6" name="T"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>
+      <p:xfrm><a:off x="0" y="0"/><a:ext cx="${200 * PX}" cy="${100 * PX}"/></p:xfrm>
+      <a:graphic><a:graphicData uri="t"><a:tbl><a:tblGrid><a:gridCol w="${100 * PX}"/><a:gridCol w="${100 * PX}"/></a:tblGrid>
+        <a:tr h="${50 * PX}"><a:tc rowSpan="2"><a:txBody><a:bodyPr/>${para('Tall')}</a:txBody><a:tcPr/></a:tc><a:tc><a:txBody><a:bodyPr/>${para('B1')}</a:txBody><a:tcPr/></a:tc></a:tr>
+        <a:tr h="${50 * PX}"><a:tc vMerge="1"><a:txBody><a:bodyPr/><a:p/></a:txBody><a:tcPr/></a:tc><a:tc><a:txBody><a:bodyPr/>${para('B2')}</a:txBody><a:tcPr/></a:tc></a:tr>
+      </a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+    const cells = els((await one(tbl)).slide, 'rect');
+    expect(cells.map((c) => [c.x, c.y, c.w, c.h])).toEqual([[0, 0, 100, 100], [100, 0, 100, 50], [100, 50, 100, 50]]);
+  });
+
+  it('letterboxes a picture background with the slide content', async () => {
+    const bg = '<p:bg><p:bgPr><a:blipFill><a:blip r:embed="rId10"/></a:blipFill></p:bgPr></p:bg>';
+    const { slide } = await one('', { bg, slide: { extraRels: [['rId10', 'image', '../media/bg.png']] } }, { media: { 'bg.png': PNG }, size: { cx: 9144000, cy: 6858000 } });
+    expect(slide.elements[0]).toMatchObject({ x: 240, y: 0, w: 1440, h: 1080 });
+  });
+
+  it('warns that master/layout pictures are copied onto every slide', async () => {
+    const master = DEFAULT_MASTER.replace('</p:spTree>', `<p:pic><p:nvPicPr><p:cNvPr id="9" name="Logo"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdL"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic></p:spTree>`);
+    const { warnings } = await importPptx(await buildPptx({ slides: [{ xml: slideXml('') }, { xml: slideXml('') }], master, masterRels: [['rIdL', 'image', '../media/logo.png']], media: { 'logo.png': PNG } }));
+    expect(warnings.join(' ')).toMatch(/copied onto every slide/);
+  });
+
+  it('warns about picture/pattern-filled shapes and cropped pictures', async () => {
+    const blipShape = shape(2, 'roundRect', 0, 0, 10, 10, '<a:blipFill><a:blip r:embed="rIdX"/></a:blipFill>');
+    const cropped = `<p:pic><p:nvPicPr><p:cNvPr id="4" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId10"/><a:srcRect l="10000"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic>`;
+    const { warnings } = await one(blipShape + cropped, { slide: { extraRels: [['rId10', 'image', '../media/p.png']] } }, { media: { 'p.png': PNG } });
+    expect(warnings.join(' ')).toMatch(/picture or pattern fill/i);
+    expect(warnings.join(' ')).toMatch(/crop/i);
+  });
+
+  it('titles an untitled slide from its own text, not master decoration', async () => {
+    const master = DEFAULT_MASTER.replace('</p:spTree>', `${textBox(9, 0, 1000, 300, 40, para('Company Confidential'))}</p:spTree>`);
+    const { slide } = await one(textBox(2, 0, 0, 10, 10, para('Own heading')), {}, { master });
+    expect(slide.title).toBe('Own heading');
   });
 });

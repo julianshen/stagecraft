@@ -126,6 +126,28 @@ describe('App — Import PowerPoint', () => {
     expect(screen.getByText(/A chart can't be imported yet/)).toBeInTheDocument();
   });
 
+  it('folds the result and every warning into one toast, so none is evicted', async () => {
+    store.set('stagecraft.view', 'home');
+    const imported = { title: 'Big', theme: 'slate', sections: [{ id: 's', name: 'S', slides: [] }], slides: [] };
+    const warnings = ['w1.', 'w2.', 'w3.', 'w4.', 'w5.'];
+    vi.mocked(importPptx).mockResolvedValue({ deck: imported, warnings });
+    const srv = makeServer();
+    const base = srv.fetchFn.getMockImplementation();
+    srv.fetchFn.mockImplementation((url, init) => (String(url) === '/api/decks' && init?.method === 'POST'
+      ? Promise.resolve({ ok: true, json: async () => ({ id: 'b1' }) })
+      : String(url) === '/api/decks/b1/activate' ? Promise.resolve({ ok: true, json: async () => ({ deck: imported, rev: 1 }) })
+        : base(url, init)));
+    vi.stubGlobal('fetch', srv.fetchFn);
+    render(<App />);
+    await flush();
+    pick(pptxFile());
+    await flush();
+    const msgs = [...document.querySelectorAll('.toast-msg')].map((n) => n.textContent);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatch(/Imported 0 slides from Board\.pptx/);
+    for (const w of warnings) expect(msgs[0]).toContain(w);
+  });
+
   it('stays on Home and shows the parser error when the file is not a presentation', async () => {
     store.set('stagecraft.view', 'home');
     vi.mocked(importPptx).mockRejectedValue(new Error('Not a valid .pptx file (could not unzip it).'));

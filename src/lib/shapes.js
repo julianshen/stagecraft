@@ -11,6 +11,8 @@
 // codebase's exported-constant convention (riskSpec/chartSpec/DECK_CHROME_FIELDS).
 export const SHAPES = Object.freeze({
   shape: { pptx: 'rect', radius: 8 },
+  // A sharp-cornered rectangle — PowerPoint's plain `rect` (imported shapes, table cells).
+  rect: { pptx: 'rect', radius: 0 },
   rounded: { pptx: 'roundRect', radius: 28 },
   circle: { pptx: 'ellipse', round: true },
   triangle: { pptx: 'triangle', clip: 'polygon(50% 0, 100% 100%, 0 100%)' },
@@ -24,8 +26,8 @@ export const SHAPES = Object.freeze({
 Object.values(SHAPES).forEach(Object.freeze);
 
 // Model-level aliases (same visual, alternate type token): the shape menu emits
-// `shape` for a rectangle, but the canonical rect/ellipse tokens also resolve.
-const ALIASES = Object.freeze({ rect: 'shape', ellipse: 'circle' });
+// `shape` for a (rounded) rectangle; the canonical ellipse token also resolves.
+const ALIASES = Object.freeze({ ellipse: 'circle' });
 
 // Own-property check (not `Object.hasOwn`, which is absent on Vite's default
 // targets like Safari 14 / Chrome 87) so a prototype-chain key (e.g. a

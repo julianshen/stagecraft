@@ -1008,3 +1008,9 @@ describe('exportToPPTX — canvas colour-scheme parity', () => {
     expect(t.tables[0].rows[1][0].options.color).toBe('333333');
   });
 });
+
+describe('exportToPPTX — malformed decks', () => {
+  it('exports a deck without a sections array (nothing to place) instead of throwing', async () => {
+    await expect(exportToPPTX({ title: 'x', slides: [] })).resolves.toBe('x.pptx');
+  });
+});

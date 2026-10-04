@@ -204,7 +204,7 @@ function fillOf(props, ctx) {
 // a 4:3 deck letterboxes rather than stretching.
 function makeFit(cx, cy) {
   const k = Math.min(SLIDE_W / cx, SLIDE_H / cy);
-  return { k, ox: (SLIDE_W - cx * k) / 2, oy: (SLIDE_H - cy * k) / 2 };
+  return { k, ox: (SLIDE_W - cx * k) / 2, oy: (SLIDE_H - cy * k) / 2, w: cx * k, h: cy * k };
 }
 const round2 = (v) => Math.round(v * 100) / 100;
 
@@ -236,10 +236,19 @@ function groupTransform(grpSpPr, parentT) {
   const ecx = numAttr(chExt, 'cx', 0), ecy = numAttr(chExt, 'cy', 0);
   const sx = ecx ? own.w / ecx : 1;
   const sy = ecy ? own.h / ecy : 1;
-  return (b) => ({
-    ...b, x: own.x + (b.x - cx) * sx, y: own.y + (b.y - cy) * sy, w: b.w * sx, h: b.h * sy,
-    rot: (b.rot || 0) + (own.rot || 0),
-  });
+  // Scale/offset into the group box, then turn each child's centre about the
+  // group centre by the group's rotation (clockwise, y-down) and add it to the
+  // child's own rotation, so a rotated group keeps its composition.
+  const gx = own.x + own.w / 2, gy = own.y + own.h / 2;
+  const t = ((own.rot || 0) * Math.PI) / 180, cos = Math.cos(t), sin = Math.sin(t);
+  return (b) => {
+    const w = b.w * sx, h = b.h * sy;
+    const dx = own.x + (b.x - cx) * sx + w / 2 - gx, dy = own.y + (b.y - cy) * sy + h / 2 - gy;
+    return {
+      ...b, w, h, x: gx + dx * cos - dy * sin - w / 2, y: gy + dx * sin + dy * cos - h / 2,
+      rot: (b.rot || 0) + (own.rot || 0),
+    };
+  };
 }
 
 // ---- preset geometry → element type ----
@@ -247,7 +256,7 @@ function groupTransform(grpSpPr, parentT) {
 // so a shape added there imports too; aliases map close presets onto it.
 const PRST_TYPE = {
   ...Object.fromEntries(Object.entries(SHAPES).filter(([, d]) => !d.line).map(([type, d]) => [d.pptx, type])),
-  snip1Rect: 'shape', flowChartProcess: 'shape',
+  rect: 'rect', snip1Rect: 'rect', flowChartProcess: 'rect',
   round1Rect: 'rounded', round2SameRect: 'rounded', flowChartAlternateProcess: 'rounded',
   flowChartConnector: 'circle',
   rtTriangle: 'triangle', flowChartExtract: 'triangle',
@@ -273,6 +282,8 @@ function outlinePoints(type) {
   }
   return [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]];
 }
+
+const FLIP_WARNING = 'Mirrored (flipped) shapes and pictures were imported unmirrored.';
 
 // ---- line (a:ln) ----
 const DASH = { dash: 'dashed', lgDash: 'dashed', sysDash: 'dashed', dashDot: 'dashed', lgDashDot: 'dashed', lgDashDotDot: 'dashed', sysDashDot: 'dashed', sysDashDotDot: 'dashed', dot: 'dotted', sysDot: 'dotted' };
@@ -466,7 +477,8 @@ class SlideReader {
     if (!box || !(box.w >= 0) || !(box.h >= 0)) return;
     const geo = toPx(box, this.ctx.fit);
     const spPr = kid(sp, 'spPr');
-    const prst = attr(kid(spPr, 'prstGeom'), 'prst') || (kid(spPr, 'custGeom') ? 'rect' : null);
+    // Geometry may be inherited from the layout/master placeholder.
+    const prst = firstOf([spPr, ...inh.spPrs], (p) => attr(kid(p, 'prstGeom'), 'prst') ?? (kid(p, 'custGeom') ? 'rect' : null));
     const style = kid(sp, 'style');
     // A shape style's fill/line refs (idx 0 = "no style fill/line").
     const styleRef = (name) => (numAttr(kid(style, name), 'idx', 0) > 0 ? colorIn(kid(style, name), this.ctx) : null);
@@ -475,7 +487,11 @@ class SlideReader {
     const ln = lineOf(kid(spPr, 'ln'), this.ctx, styleLn);
     const known = PRST_TYPE[prst];
     if (prst && !known) this.warn(`Shape "${prst}" was imported as a rectangle.`);
-    const type = known || (prst ? 'shape' : null);
+    const type = known || (prst ? 'rect' : null);
+    if ((box.flipH || box.flipV) && type !== 'line') this.warn(FLIP_WARNING);
+    if (['blipFill', 'pattFill', 'grpFill'].some((f) => kid(spPr, f))) {
+      this.warn("Picture or pattern fills on shapes aren't supported — those shapes import without them.");
+    }
 
     if (type === 'line') {
       if (ln) this.line(box, ln, groupId);
@@ -525,6 +541,9 @@ class SlideReader {
     const inh = this.inherit(pic);
     const box = xfrmBox(inh.xfrm, groupT);
     if (!box) return;
+    if (box.flipH || box.flipV) this.warn(FLIP_WARNING);
+    const srcRect = path(pic, 'blipFill', 'srcRect');
+    if (srcRect && [...srcRect.attributes].some((a) => Number(a.value))) this.warn('Cropped pictures import uncropped (stretched to their frame).');
     const rId = relAttr(path(pic, 'blipFill', 'blip'), 'embed');
     const src = await imageData(this.pkg, rels[rId], this.warn);
     if (src) this.push({ type: 'image', ...toPx(box, this.ctx.fit), src }, groupId);
@@ -540,7 +559,7 @@ class SlideReader {
     this.warn(`A ${what} can't be imported yet — a labelled placeholder was added.`);
     if (box) {
       const geo = toPx(box, this.ctx.fit);
-      this.push({ type: 'shape', ...geo, fill: '#F2F2F2', stroke: '#BFBFBF', strokeWidth: 2, strokeDash: 'dashed' }, groupId);
+      this.push({ type: 'rect', ...geo, fill: '#F2F2F2', stroke: '#BFBFBF', strokeWidth: 2, strokeDash: 'dashed' }, groupId);
       this.push({ type: 'text', ...geo, content: `[${what} — not imported]`, fill: '#7F7F7F',
         fontSize: 24, align: 'center', valign: 'middle' }, groupId);
     }
@@ -564,10 +583,11 @@ class SlideReader {
         if (attr(tc, 'hMerge') !== '1' && attr(tc, 'vMerge') !== '1') {
           const span = numAttr(tc, 'gridSpan', 1);
           const cw = cols.slice(ci, ci + span).reduce((a, b) => a + b, 0) * sx;
-          const cellBox = { x, y, w: cw, h };
+          const ch = rowHs.slice(ri, ri + numAttr(tc, 'rowSpan', 1)).reduce((a, b) => a + b, 0) * sy;
+          const cellBox = { x, y, w: cw, h: ch };
           const geo = toPx(cellBox, this.ctx.fit);
           const fill = fillOf(kid(tc, 'tcPr'), this.ctx);
-          this.push({ type: 'shape', ...geo, fill: fill?.kind === 'solid' ? fill.color.hex : '#FFFFFF',
+          this.push({ type: 'rect', ...geo, fill: fill?.kind === 'solid' ? fill.color.hex : '#FFFFFF',
             stroke: '#BFBFBF', strokeWidth: 1 }, gid);
           const text = textOf(tc, this.ctx, { txBodies: [], txStyle: kid(this.ctx.txStyles, 'otherStyle') });
           const anchor = ANCHOR[attr(kid(tc, 'tcPr'), 'anchor')];
@@ -587,7 +607,10 @@ const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'im
 async function imageData(pkg, rel, warn) {
   if (!rel) return null;
   if (rel.external) { warn('A linked (external) picture was skipped.'); return null; }
-  if (!pkg.media.has(rel.target)) pkg.media.set(rel.target, encodeImage(pkg, rel.target, warn));
+  if (pkg.media.has(rel.target)) {
+    // Each element carries its own data URL (there's no shared asset store yet).
+    warn('Pictures reused across slides (e.g. master logos or backgrounds) are copied onto every slide, which enlarges the deck.');
+  } else pkg.media.set(rel.target, encodeImage(pkg, rel.target, warn));
   return pkg.media.get(rel.target);
 }
 async function encodeImage(pkg, target, warn) {
@@ -732,20 +755,21 @@ export async function importPptx(data, { fileName = '' } = {}) {
     const bg = await backgroundOf(pkg, ctx, [
       { root, rels }, { root: layoutRoot, rels: layoutRels }, { root: master.root, rels: master.rels },
     ], warn);
-    if (bg.image) reader.push({ type: 'image', x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, src: bg.image });
+    if (bg.image) reader.push({ type: 'image', x: round2(fit.ox), y: round2(fit.oy), w: round2(fit.w), h: round2(fit.h), src: bg.image });
     // Non-placeholder art on the layout/master (logos, bars) shows on the slide
     // unless the slide/layout hides master shapes (showMasterSp="0").
     if (attr(root, 'showMasterSp') !== '0') {
       if (attr(layoutRoot, 'showMasterSp') !== '0') await furniture(reader, master.root, master.rels);
       await furniture(reader, layoutRoot, layoutRels);
     }
+    const ownFrom = reader.out.length; // the slide's own content follows master/layout art
     await reader.walk(path(root, 'cSld', 'spTree'));
 
     const titleSp = kids(path(root, 'cSld', 'spTree'), 'sp').find((s) => ['title', 'ctrTitle'].includes(phOf(s)?.type));
     const slide = {
       id, layout: 'blank',
       title: (titleSp && plainText(titleSp))
-        || reader.out.find((e) => e.type === 'text')?.content.split('\n')[0].trim()
+        || reader.out.slice(ownFrom).find((e) => e.type === 'text')?.content.split('\n')[0].trim()
         || `Slide ${i + 1}`,
       bgColor: bg.color || '#FFFFFF',
       elements: reader.out,

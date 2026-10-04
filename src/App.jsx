@@ -136,9 +136,12 @@ export default function App() {
       const meta = await createDeck(imported.title, imported);
       if (!meta?.id) throw new Error('The deck library did not accept the import.');
       await handleOpenDeck(meta.id);
+      // One toast for the result + every warning: the toast stack is capped, so
+      // separate warnings could evict the result (or each other).
       const n = imported.slides.length;
-      notify(`Imported ${n} slide${n === 1 ? '' : 's'} from ${file.name}.`);
-      warnings.forEach((w) => notify(w, { tone: 'warn' }));
+      const done = `Imported ${n} slide${n === 1 ? '' : 's'} from ${file.name}.`;
+      notify(warnings.length ? `${done} Not everything came across: ${warnings.join(' ')}` : done,
+        { tone: warnings.length ? 'warn' : 'info' });
     } catch (err) {
       notify(`Couldn't import ${file.name}: ${err?.message || 'unknown error'}`, { tone: 'error' });
     }

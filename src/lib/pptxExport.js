@@ -543,7 +543,7 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
   // " (2)". Only sections with exported slides are emitted (a range may drop some).
   const sectionTitles = new Map();
   const taken = new Set();
-  const sectionIndex = new Map(deck.sections.map((sec, i) => [sec.id, i]));
+  const sectionIndex = new Map((deck.sections || []).map((sec, i) => [sec.id, i]));
   for (const slide of slides) {
     if (sectionTitles.has(slide.sectionId)) continue;
     const base = (slide.sectionName || '').trim() || `Section ${sectionIndex.get(slide.sectionId) + 1}`;

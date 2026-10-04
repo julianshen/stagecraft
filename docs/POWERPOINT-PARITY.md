@@ -50,6 +50,7 @@ missing · **P2** less common or polish. ✅ = fixed in this change.
 | 12 | P2 | Transitions/animations don't export (pptxgenjs has no API); shape gradients export as a solid blend | `pptxExport.js` | Post-process the generated zip with JSZip (now a dependency) to inject `<p:transition>`, `<p:timing>` and `<a:gradFill>` |
 | 13 | P2 | Text insets / autofit not modelled (imported text sits flush to its box edge) | `ElementView`, import | `inset` on text elements (PowerPoint default 0.1″ / 0.05″), honoured on both surfaces |
 | 14 | P2 | Hidden slides, slide numbers/footers/date, hyperlinks, comments, media, SmartArt, equations not modelled | — | See matrix §3; import warns rather than drops silently |
+| 16 | P1 | **No shared asset store.** Every image element carries its own data URL, so a master logo/background imported onto 40 slides is stored 40× in the deck JSON (re-PUT on every sync, kept in undo history). Import decodes once and warns | `elements` model, `pptxImport.js` | A deck-level `assets` map (id → data URL) referenced by image elements / slide backgrounds; export embeds each once |
 | 15 | P2 | Home "Start with AI" card also creates a plain blank deck (same honesty issue as #1) | `HomeView.jsx` | Route it to the Co-pilot (generate an outline → deck) or mark it "Soon" like other unbuilt controls |
 
 ## 3. Feature matrix vs PowerPoint
@@ -88,10 +89,10 @@ what survives the `.pptx` boundary in each direction.
 | | Lines / connectors | 🟡 straight | 🟢 straight, bent → straight | 🟢 | arrowheads |
 | | Freeform / pen | 🟢 | 🔴 custGeom → rect | 🟢 | custGeom paths |
 | | Group / ungroup | 🟢 | 🟢 | 🟡 flattened | grpSp export |
-| | Rotate / flip | 🟡 rotate | 🟡 rotate (flip on lines) | 🟡 | flip |
+| | Rotate / flip | 🟡 rotate | 🟡 rotate incl. rotated groups; flips only on lines (others warned) | 🟡 | flip |
 | | Align / distribute / z-order | 🟢 | — | — | — |
 | **Images** | Insert / move / resize | 🟢 | 🟢 PNG/JPEG/GIF/SVG/WebP | 🟢 | — |
-| | Crop | 🔴 | 🔴 (srcRect ignored) | 🔴 | P2 |
+| | Crop | 🔴 | 🔴 imported uncropped (warned) | 🔴 | P2 |
 | | EMF/WMF | 🔴 | 🔴 skipped (warned) | — | rasterise |
 | **Tables** | Insert / edit cells / rows / cols | 🟢 table layout | 🟡 as cell grid | 🟢 native | #11 |
 | | Table styles / merged cells | 🔴 | 🟡 spans kept, styles dropped (warned) | 🔴 | #11 |
@@ -146,6 +147,7 @@ rendering both in LibreOffice Impress side by side.
 3. `table` element type + table styles (#11).
 4. Export post-processing via JSZip: transitions, gradient fills, group shapes (#12).
 5. Text insets + autofit (#13).
+6. Shared asset store for pictures (#16) — imported master art is currently copied per slide.
 
 **Phase 3 — PowerPoint authoring parity**
 1. Data-driven themes/masters/layouts (#7) — import keeps the source master; "Design" panel

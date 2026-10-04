@@ -209,9 +209,9 @@ describe('ElementsLayer', () => {
     const shadow = { color: '#112233', blur: 16, x: 4, y: 8 };
     const { container } = render(
       <ElementsLayer elements={[
-        { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff', shadow },
+        { id: 'r', type: 'shape', x: 0, y: 0, w: 100, h: 100, fill: '#fff', shadow },
         { id: 't', type: 'triangle', x: 0, y: 0, w: 100, h: 100, fill: '#fff', shadow },
-        { id: 'p', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff' }, // no shadow
+        { id: 'p', type: 'shape', x: 0, y: 0, w: 100, h: 100, fill: '#fff' }, // no shadow
       ]} />
     );
     const boxes = [...container.querySelectorAll('div > div')];
@@ -851,5 +851,12 @@ describe('ElementsLayer — text valign', () => {
   });
   it('defaults to middle (the pre-existing behaviour)', () => {
     expect(box(render(<ElementsLayer elements={[el()]} />).container).style.alignItems).toBe('center');
+  });
+});
+
+describe('ElementsLayer — sharp rect', () => {
+  it('draws the rect type with square corners (PowerPoint rectangle), unlike the rounded shape', () => {
+    const { container } = render(<ElementsLayer elements={[{ id: 'r', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000' }]} />);
+    expect(['0', '0px']).toContain(container.firstChild.firstChild.style.borderRadius);
   });
 });
