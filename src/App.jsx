@@ -17,6 +17,9 @@ import { useDeckHistory } from './hooks/useDeckHistory.js';
 import { isTextEditingTarget } from './lib/domEvents.js';
 import { listDecks, createDeck, openDeck, renameDeck, deleteDeck } from './lib/decksApi.js';
 import { templateDeck } from './lib/templateDeck.js';
+import { importPptx } from './lib/pptxImport.js';
+import { useToasts } from './hooks/useToasts.js';
+import Toaster from './components/ui/Toaster.jsx';
 
 const VIEW_LABELS = { home: 'Home', editor: 'Editor', sorter: 'Sorter', settings: 'Settings' };
 const VIEW_ORDER = ['home', 'editor', 'sorter', 'settings'];
@@ -123,6 +126,23 @@ export default function App() {
       await handleOpenDeck(meta.id);
     } catch { /* server error — leave the picker open */ }
   };
+  // Import a PowerPoint file: parse it client-side, save it as a new library
+  // deck, open it, and say what was (and couldn't be) brought across. App-level
+  // toasts so the notice survives the switch from Home to the editor.
+  const { toasts, notify, dismiss } = useToasts();
+  const handleImportPptx = async (file) => {
+    try {
+      const { deck: imported, warnings } = await importPptx(await file.arrayBuffer(), { fileName: file.name });
+      const meta = await createDeck(imported.title, imported);
+      if (!meta?.id) throw new Error('The deck library did not accept the import.');
+      await handleOpenDeck(meta.id);
+      const n = imported.slides.length;
+      notify(`Imported ${n} slide${n === 1 ? '' : 's'} from ${file.name}.`);
+      warnings.forEach((w) => notify(w, { tone: 'warn' }));
+    } catch (err) {
+      notify(`Couldn't import ${file.name}: ${err?.message || 'unknown error'}`, { tone: 'error' });
+    }
+  };
   const handleRenameDeck = async (id, name) => {
     try { await renameDeck(id, name); await refreshDecks(); } catch { /* ignore */ }
   };
@@ -210,6 +230,7 @@ export default function App() {
           onRenameDeck={handleRenameDeck}
           onDeleteDeck={handleDeleteDeck}
           onOpenTemplates={() => setModal('templates')}
+          onImportPptx={handleImportPptx}
           searchQuery={searchQuery}
         />
       )}
@@ -252,6 +273,7 @@ export default function App() {
 
       {/* ---- tweaks panel (activated via postMessage) ---- */}
       <TweaksPanel state={tw} setState={setTw}/>
+      <Toaster toasts={toasts} onDismiss={dismiss}/>
     </div>
   );
 }

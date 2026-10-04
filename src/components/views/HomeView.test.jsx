@@ -386,3 +386,29 @@ describe('Soon-disabled surfaces (AC-7.2)', () => {
     expect(active[0].textContent).toContain('All files');
   });
 });
+
+describe('HomeView — Import .pptx', () => {
+  const noop = () => {};
+  it('opens a .pptx file picker (not a blank deck) and hands the chosen file to onImportPptx', () => {
+    const onNewDeck = vi.fn();
+    const onImportPptx = vi.fn();
+    const { container } = render(<HomeView decks={[]} onOpenDeck={noop} onNewDeck={onNewDeck} onOpenTemplates={noop} onImportPptx={onImportPptx} />);
+    const input = container.querySelector('input[type="file"]');
+    expect(input.getAttribute('accept')).toMatch(/\.pptx/);
+    const clickSpy = vi.spyOn(input, 'click');
+    fireEvent.click(screen.getByText('Import PowerPoint'));
+    expect(clickSpy).toHaveBeenCalled();
+    expect(onNewDeck).not.toHaveBeenCalled();
+    const file = new File(['x'], 'deck.pptx');
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(onImportPptx).toHaveBeenCalledWith(file);
+    expect(input.value).toBe(''); // reset, so re-picking the same file fires again
+  });
+
+  it('ignores a cancelled picker (no file)', () => {
+    const onImportPptx = vi.fn();
+    const { container } = render(<HomeView decks={[]} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} onImportPptx={onImportPptx} />);
+    fireEvent.change(container.querySelector('input[type="file"]'), { target: { files: [] } });
+    expect(onImportPptx).not.toHaveBeenCalled();
+  });
+});
