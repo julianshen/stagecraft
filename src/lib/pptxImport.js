@@ -295,7 +295,7 @@ function groupTransform(grpSpPr, parentT) {
 // so a shape added there imports too; aliases map close presets onto it.
 const PRST_TYPE = {
   ...Object.fromEntries(Object.entries(SHAPES).filter(([, d]) => !d.line).map(([type, d]) => [d.pptx, type])),
-  rect: 'rect', snip1Rect: 'rect', flowChartProcess: 'rect',
+  rect: 'rect', snip1Rect: 'rect', flowChartProcess: 'rect', custGeom: 'rect',
   round1Rect: 'rounded', round2SameRect: 'rounded', flowChartAlternateProcess: 'rounded',
   flowChartConnector: 'circle',
   rtTriangle: 'triangle', flowChartExtract: 'triangle',
@@ -507,6 +507,13 @@ class SlideReader {
     }
   }
 
+  // A text body's element fields (textOf), reporting what text can't carry yet.
+  text(sp, inh) {
+    const body = kid(sp, 'txBody');
+    if (desc(body, 'hlinkClick') || desc(body, 'hlinkMouseOver')) this.warn('Hyperlinks in text were imported as plain text.');
+    return textOf(sp, this.ctx, inh);
+  }
+
   push(el, groupId) {
     const full = { id: this.id('el'), ...el, ...(groupId ? { groupId } : {}) };
     if (isValidElement(full)) this.out.push(full);
@@ -516,13 +523,17 @@ class SlideReader {
   shape(sp, groupT, groupId) {
     const inh = this.inherit(sp);
     // Slide-number / date / footer placeholders are master furniture.
-    if (inh.ph && ['sldNum', 'dt', 'ftr'].includes(inh.ph.type)) return;
+    if (inh.ph && ['sldNum', 'dt', 'ftr'].includes(inh.ph.type)) {
+      this.warn('Slide numbers, dates and footers were not imported.');
+      return;
+    }
     const box = xfrmBox(inh.xfrm, groupT);
     if (!box || !(box.w >= 0) || !(box.h >= 0)) return;
     const geo = toPx(box, this.ctx.fit);
     const spPr = kid(sp, 'spPr');
     // Geometry may be inherited from the layout/master placeholder.
-    const prst = firstOf([spPr, ...inh.spPrs], (p) => attr(kid(p, 'prstGeom'), 'prst') ?? (kid(p, 'custGeom') ? 'rect' : null));
+    const prst = firstOf([spPr, ...inh.spPrs], (p) => attr(kid(p, 'prstGeom'), 'prst') ?? (kid(p, 'custGeom') ? 'custGeom' : null));
+    if (prst === 'custGeom') this.warn('Freeform (custom-geometry) shapes were imported as rectangles.');
     const style = kid(sp, 'style');
     // A shape style's fill/line refs (idx 0 = "no style fill/line").
     const styleRef = (name) => (numAttr(kid(style, name), 'idx', 0) > 0 ? colorIn(kid(style, name), this.ctx) : null);
@@ -551,7 +562,7 @@ class SlideReader {
     }
     // A geometry with text imports as two elements (shape + text overlay); a
     // local group keeps them moving together, unless a PowerPoint group already does.
-    const text = textOf(sp, this.ctx, inh);
+    const text = this.text(sp, inh);
     let gid = groupId;
     const pairUp = () => { gid = gid || (text ? this.id('grp') : undefined); return gid; };
     if (type) {
@@ -691,7 +702,7 @@ class SlideReader {
           } else {
             this.push({ type: 'rect', ...geo, fill: fill?.color ? fill.color.hex : '#FFFFFF', stroke: '#BFBFBF', strokeWidth: 1 }, gid);
           }
-          const text = textOf(tc, this.ctx, { txBodies: [], txStyle: kid(this.ctx.txStyles, 'otherStyle') });
+          const text = this.text(tc, { txBodies: [], txStyle: kid(this.ctx.txStyles, 'otherStyle') });
           const anchor = ANCHOR[attr(kid(tc, 'tcPr'), 'anchor')];
           if (text) this.push({ type: 'text', ...geo, ...text, ...(anchor ? { valign: anchor } : {}) }, gid);
         }

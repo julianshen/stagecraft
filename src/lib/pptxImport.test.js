@@ -788,3 +788,24 @@ describe('importPptx — Codex review fixes (round 7)', () => {
     expect((await one(textBox(2, 0, 0, 10, 10, para('Solo')))).slide.elements[0].groupId).toBeUndefined();
   });
 });
+
+describe('importPptx — Codex review fixes (round 8)', () => {
+  it('warns that hyperlinks in text are imported as plain text', async () => {
+    const run = '<a:p><a:r><a:rPr lang="en-US"><a:hlinkClick r:id="rIdH"/></a:rPr><a:t>Docs</a:t></a:r></a:p>';
+    const { slide, warnings } = await one(textBox(2, 0, 0, 100, 20, run));
+    expect(slide.elements[0].content).toBe('Docs');
+    expect(warnings.join(' ')).toMatch(/hyperlink/i);
+  });
+
+  it('warns that freeform (custom-geometry) shapes become rectangles', async () => {
+    const sp = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="F"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(0, 0, 10, 10)}<a:custGeom/><a:solidFill><a:srgbClr val="010101"/></a:solidFill></p:spPr></p:sp>`;
+    expect((await one(sp)).warnings.join(' ')).toMatch(/freeform/i);
+    // A real rect preset raises no such warning.
+    expect((await one(shape(3, 'rect', 0, 0, 10, 10, '<a:solidFill><a:srgbClr val="010101"/></a:solidFill>'))).warnings.join(' ')).not.toMatch(/freeform/i);
+  });
+
+  it('warns that footer / date / slide-number placeholders were not imported', async () => {
+    const ph = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="x"/><p:cNvSpPr/><p:nvPr><p:ph type="sldNum"/></p:nvPr></p:nvSpPr><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr><p:txBody><a:bodyPr/>${para('7')}</p:txBody></p:sp>`;
+    expect((await one(ph)).warnings.join(' ')).toMatch(/slide numbers/i);
+  });
+});
