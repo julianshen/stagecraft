@@ -716,3 +716,30 @@ describe('importPptx — Codex review fixes (round 4)', () => {
     expect(slide.elements[0].fill).toBe('#FFFFFF');
   });
 });
+
+describe('importPptx — Codex review fixes (round 5)', () => {
+  it('accepts the textual true form of XML booleans (flipH="true", showMasterSp="false")', async () => {
+    const sp = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="A"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(0, 0, 10, 10, ' flipH="true"')}<a:prstGeom prst="rightArrow"/><a:solidFill><a:srgbClr val="000000"/></a:solidFill></p:spPr></p:sp>`;
+    expect((await one(sp)).warnings.join(' ')).toMatch(/mirrored/i);
+    const master = DEFAULT_MASTER.replace('</p:spTree>', `${shape(9, 'rect', 0, 0, 10, 10, '<a:solidFill><a:srgbClr val="4472C4"/></a:solidFill>')}</p:spTree>`);
+    expect((await one('', { attrs: ' showMasterSp="false"' }, { master })).slide.elements).toEqual([]);
+  });
+
+  it('imports an elbow connector as a three-segment path (not a diagonal), honouring flips', async () => {
+    const cxn = (prst, extra = '') => `<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="5" name="L"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr>${xfrm(0, 0, 100, 50, extra)}<a:prstGeom prst="${prst}"/><a:ln w="12700"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln></p:spPr></p:cxnSp>`;
+    const bent = (await one(cxn('bentConnector3'))).slide.elements[0];
+    expect(bent).toMatchObject({ type: 'path', stroke: '#000000', x: 0, y: 0, w: 100, h: 50 });
+    expect(bent.points).toEqual([[0, 0], [0.5, 0], [0.5, 1], [1, 1]]);
+    expect((await one(cxn('bentConnector3', ' flipH="1"'))).slide.elements[0].points).toEqual([[1, 0], [0.5, 0], [0.5, 1], [0, 1]]);
+    const curved = await one(cxn('curvedConnector3'));
+    expect(curved.slide.elements[0].type).toBe('path');
+    expect(curved.warnings.join(' ')).toMatch(/curved connectors/i);
+  });
+
+  it('honours a slide\'s explicit masterClrMapping over its layout override', async () => {
+    const layout = `<p:sldLayout ${NS}>${tree('')}<p:clrMapOvr><a:overrideClrMapping bg1="dk1" tx1="lt1" bg2="dk2" tx2="lt2"/></p:clrMapOvr></p:sldLayout>`;
+    const { slide } = await one(textBox(2, 0, 0, 10, 10, para('Master colours')), { after: '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>' }, { layout });
+    expect(slide.bgColor).toBe('#FFFFFF');
+    expect(slide.elements[0].fill).toBe('#000000');
+  });
+});

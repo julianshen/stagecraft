@@ -62,6 +62,11 @@ function relAttr(el, name) {
 }
 // A picture's relationship: embedded (r:embed) or linked (r:link — external).
 const blipRel = (blip) => relAttr(blip, 'embed') ?? relAttr(blip, 'link');
+// An xsd:boolean attribute: "1"/"true" or "0"/"false"; absent → `d`.
+const boolAttr = (el, name, d = false) => {
+  const v = attr(el, name);
+  return v == null ? d : v === '1' || v === 'true';
+};
 const numAttr = (el, name, d = null) => {
   const s = attr(el, name);
   const v = Number(s);
@@ -233,7 +238,7 @@ function xfrmBox(xfrm, groupT) {
   const box = {
     x: numAttr(off, 'x', 0), y: numAttr(off, 'y', 0), w: numAttr(ext, 'cx', 0), h: numAttr(ext, 'cy', 0),
     rot: numAttr(xfrm, 'rot', 0) / 60000,
-    flipH: attr(xfrm, 'flipH') === '1', flipV: attr(xfrm, 'flipV') === '1',
+    flipH: boolAttr(xfrm, 'flipH'), flipV: boolAttr(xfrm, 'flipV'),
   };
   return groupT ? groupT(box) : box;
 }
@@ -294,7 +299,9 @@ const PRST_TYPE = {
   flowChartDecision: 'diamond',
   homePlate: 'arrow', chevron: 'arrow',
   star4: 'star', star6: 'star',
-  line: 'line', straightConnector1: 'line', bentConnector3: 'line', curvedConnector3: 'line',
+  line: 'line', straightConnector1: 'line',
+  // Elbow connectors (curved ones are approximated by the elbow, with a warning).
+  bentConnector3: 'elbow', curvedConnector3: 'elbow',
 };
 // An outline-only (no fill) shape becomes a stroked closed `path` — the element
 // model's fills are always solid, but a path is stroke-only. Its points follow
@@ -394,7 +401,7 @@ function textOf(sp, ctx, inh) {
   const chain = [...local, masterFor(firstPara)];
   const defRPr = (el) => kid(el, 'defRPr');
   const runAttr = (name) => attr(rPr, name) ?? firstOf(chain, (el) => attr(defRPr(el), name));
-  const isOn = (name) => ['1', 'true'].includes(runAttr(name));
+  const isOn = (name) => { const v = runAttr(name); return v === '1' || v === 'true'; };
   const bodyPrs = [kid(txBody, 'bodyPr'), ...inh.txBodies.map((tb) => kid(tb, 'bodyPr'))];
   const szHundredths = numAttr(rPr, 'sz') ?? firstOf(chain, (el) => numAttr(defRPr(el), 'sz')) ?? 1800;
   const fontScale = firstOf(bodyPrs, (bp) => numAttr(kid(bp, 'normAutofit'), 'fontScale')) ?? 100000;
@@ -534,6 +541,11 @@ class SlideReader {
       if (ln) this.line(box, ln, groupId);
       return;
     }
+    if (type === 'elbow') {
+      if (prst.startsWith('curved')) this.warn('Curved connectors were imported as elbow (right-angle) lines.');
+      if (ln) this.elbow(box, ln, groupId);
+      return;
+    }
     if (type) {
       const fill = fillOf(spPr, this.ctx) || firstOf(inh.spPrs, (p) => fillOf(p, this.ctx))
         || (styleFill ? { kind: 'solid', color: styleFill } : { kind: 'none' });
@@ -591,6 +603,21 @@ class SlideReader {
     }, groupId);
   }
 
+  // An elbow connector: start → across to the midpoint bend (PowerPoint's
+  // default; a custom adj is not read) → down → across to the end, as a stroked
+  // path in its box (flips mirror the points).
+  elbow(box, ln, groupId) {
+    const { fit } = this.ctx;
+    const thick = Math.max(MIN_LINE_THICKNESS, round2(ln.w * fit.k));
+    const fx = (x) => (box.flipH ? round2(1 - x) : x), fy = (y) => (box.flipV ? round2(1 - y) : y);
+    this.push({
+      type: 'path', ...toPx(box, fit),
+      points: [[0, 0], [0.5, 0], [0.5, 1], [1, 1]].map(([x, y]) => [fx(x), fy(y)]),
+      stroke: ln.color.hex, strokeWidth: thick, ...(ln.dash ? { strokeDash: ln.dash } : {}),
+      ...(ln.color.alpha < 1 ? { opacity: Math.round(ln.color.alpha * 100) } : {}),
+    }, groupId);
+  }
+
   async picture(pic, groupT, groupId, rels) {
     const inh = this.inherit(pic);
     const box = xfrmBox(inh.xfrm, groupT);
@@ -635,7 +662,7 @@ class SlideReader {
       let x = box.x;
       const h = rowHs[ri] * sy;
       kids(tr, 'tc').forEach((tc, ci) => {
-        if (attr(tc, 'hMerge') !== '1' && attr(tc, 'vMerge') !== '1') {
+        if (!boolAttr(tc, 'hMerge') && !boolAttr(tc, 'vMerge')) {
           const span = numAttr(tc, 'gridSpan', 1);
           const cw = cols.slice(ci, ci + span).reduce((a, b) => a + b, 0) * sx;
           const ch = rowHs.slice(ri, ri + numAttr(tc, 'rowSpan', 1)).reduce((a, b) => a + b, 0) * sy;
@@ -818,7 +845,9 @@ export async function importPptx(data, { fileName = '' } = {}) {
     const masterPart = relOfType(layoutRels, 'slideMaster');
     const master = await masterCtx(masterPart);
     // A colour-map override on the slide, else on its layout, remaps tx/bg.
-    const ovr = desc(kid(root, 'clrMapOvr'), 'overrideClrMapping') ?? desc(kid(layoutRoot, 'clrMapOvr'), 'overrideClrMapping');
+    // A slide-level clrMapOvr is authoritative even when it picks masterClrMapping.
+    const ovrSrc = kid(root, 'clrMapOvr') ?? kid(layoutRoot, 'clrMapOvr');
+    const ovr = desc(ovrSrc, 'overrideClrMapping');
     const ctx = ovr ? { ...master.ctx, clrMap: Object.fromEntries([...ovr.attributes].map((a) => [a.localName, a.value])) } : master.ctx;
 
     const id = `pptx-${i + 1}`;
@@ -829,8 +858,8 @@ export async function importPptx(data, { fileName = '' } = {}) {
     if (bg.image) reader.push({ type: 'image', x: round2(fit.ox), y: round2(fit.oy), w: round2(fit.w), h: round2(fit.h), src: bg.image });
     // Non-placeholder art on the layout/master (logos, bars) shows on the slide
     // unless the slide/layout hides master shapes (showMasterSp="0").
-    if (attr(root, 'showMasterSp') !== '0') {
-      if (attr(layoutRoot, 'showMasterSp') !== '0') await furniture(reader, master.root, master.rels);
+    if (boolAttr(root, 'showMasterSp', true)) {
+      if (boolAttr(layoutRoot, 'showMasterSp', true)) await furniture(reader, master.root, master.rels);
       await furniture(reader, layoutRoot, layoutRels);
     }
     const ownFrom = reader.out.length; // the slide's own content follows master/layout art
@@ -849,7 +878,7 @@ export async function importPptx(data, { fileName = '' } = {}) {
     if (notes) slide.notes = notes;
     const transition = transitionOf(root);
     if (transition) slide.transition = transition;
-    if (attr(root, 'show') === '0') warn('Hidden slides were imported as normal slides.');
+    if (!boolAttr(root, 'show', true)) warn('Hidden slides were imported as normal slides.');
     slides.push(slide);
     bySldId.set(entry.sldId, id);
   }
