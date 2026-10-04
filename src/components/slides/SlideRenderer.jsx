@@ -427,7 +427,8 @@ function ElementView({ el }) {
     const align = el.align || 'left';
     return (
       <div style={{
-        ...base, display: 'flex', alignItems: 'center',
+        ...base, display: 'flex',
+        alignItems: el.valign === 'top' ? 'flex-start' : el.valign === 'bottom' ? 'flex-end' : 'center',
         justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
         fontSize: el.fontSize ?? 48,
         fontWeight: el.bold ? 700 : 500,

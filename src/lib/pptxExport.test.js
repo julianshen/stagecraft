@@ -911,3 +911,17 @@ describe('exportToPPTX — blank layout', () => {
     expect(last().texts).toEqual([]);
   });
 });
+
+describe('exportToPPTX — text element valign', () => {
+  const deck = (valign) => deckWith({ id: 'b', layout: 'blank', elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 100, h: 100, content: 'V', fill: '#000000', ...(valign ? { valign } : {}) }] });
+  it('maps top/bottom to pptx valign', async () => {
+    await exportToPPTX(deck('top'));
+    expect(optsOf(last(), 'V').valign).toBe('top');
+    await exportToPPTX(deck('bottom'));
+    expect(optsOf(last(), 'V').valign).toBe('bottom');
+  });
+  it('defaults to middle', async () => {
+    await exportToPPTX(deck());
+    expect(optsOf(last(), 'V').valign).toBe('middle');
+  });
+});

@@ -635,3 +635,15 @@ describe('sanitizeSlidePatch — blank layout + bgColor', () => {
     expect(sanitizeSlidePatch({ bgColor: '#FFEEDD' }, 'text')).toEqual({});
   });
 });
+
+describe('sanitizeSlidePatch — text element valign', () => {
+  const t = (extra) => ({ id: 'e', type: 'text', x: 0, y: 0, w: 10, h: 10, content: 'x', fill: '#000000', ...extra });
+  it('accepts top / middle / bottom', () => {
+    for (const valign of ['top', 'middle', 'bottom']) {
+      expect(sanitizeSlidePatch({ elements: [t({ valign })] }, 'blank').elements[0].valign).toBe(valign);
+    }
+  });
+  it('rejects any other value (the whole elements array, like every element field)', () => {
+    expect(sanitizeSlidePatch({ elements: [t({ valign: 'center' })] }, 'blank')).toEqual({});
+  });
+});

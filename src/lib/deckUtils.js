@@ -204,6 +204,8 @@ const ELEMENT_FIELD_OK = {
   // back to left); constrain it so canvas and export agree. fontFamily is
   // open-ended (both surfaces fall back per-font, like the browser).
   align: (v) => v === 'left' || v === 'center' || v === 'right', fontFamily: isStr,
+  // Vertical text anchor (PowerPoint's top/middle/bottom); absent = middle.
+  valign: (v) => v === 'top' || v === 'middle' || v === 'bottom',
 };
 // Own-guarded lookup into the element-field table (see ownValidate) — a
 // JSON-parsed patch can carry an own `__proto__`/`constructor` key that must
@@ -217,7 +219,7 @@ const ownFieldOk = (k, v) => ownValidate(ELEMENT_FIELD_OK, k, v);
 // and path is stroked, not filled. Exported so the inspector's Fill control and
 // this gate share one rule (single-sourced, like the shape predicates).
 export const requiresFill = (type) => isKnownElementType(type) && type !== 'image' && type !== 'path';
-const isValidElement = (el) => isPlainObject(el)
+export const isValidElement = (el) => isPlainObject(el)
   && isStr(el.id)                                                 // id required — every consumer keys/selects by it
   && isKnownElementType(el.type)                                  // type present + known
   && isFinite_(el.x) && isFinite_(el.y) && isFinite_(el.w) && isFinite_(el.h) // geometry present + finite

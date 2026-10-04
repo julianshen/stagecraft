@@ -841,3 +841,15 @@ describe('Slide — blank layout (PowerPoint "Blank")', () => {
     expect(container.querySelector('.slide').style.background).toBe('');
   });
 });
+
+describe('ElementsLayer — text valign', () => {
+  const el = (valign) => ({ id: 'e', type: 'text', x: 0, y: 0, w: 100, h: 100, content: 'V', fill: '#000000', ...(valign ? { valign } : {}) });
+  const box = (c) => c.firstChild.firstChild; // layer → element
+  it('anchors top / bottom via flex alignItems', () => {
+    expect(box(render(<ElementsLayer elements={[el('top')]} />).container).style.alignItems).toBe('flex-start');
+    expect(box(render(<ElementsLayer elements={[el('bottom')]} />).container).style.alignItems).toBe('flex-end');
+  });
+  it('defaults to middle (the pre-existing behaviour)', () => {
+    expect(box(render(<ElementsLayer elements={[el()]} />).container).style.alignItems).toBe('center');
+  });
+});

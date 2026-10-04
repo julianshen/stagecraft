@@ -142,7 +142,7 @@ function addElements(pptx, sld, slide) {
     if (el.type === 'text') {
       sld.addText(el.content || '', {
         ...geo, fontSize: PT(num(el.fontSize, 48)), bold: !!el.bold, italic: !!el.italic,
-        underline: !!el.underline, align: el.align || 'left', valign: 'middle', lineSpacingMultiple: lineSpacingOf(el),
+        underline: !!el.underline, align: el.align || 'left', valign: el.valign === 'top' || el.valign === 'bottom' ? el.valign : 'middle', lineSpacingMultiple: lineSpacingOf(el),
         // Match ElementView's `var(--ink, #15171C)` text default (not the deck
         // theme's white ink) so a fill-less text element isn't invisible.
         color: pxHex(el.fill || '#15171C'), fontFace: el.fontFamily || 'Inter', ...withOpacity, ...withShadow,
