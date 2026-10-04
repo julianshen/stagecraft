@@ -28,6 +28,9 @@ const MAX_XML_PART_BYTES = 16 * 1024 * 1024;
 const MAX_XML_TOTAL_BYTES = 128 * 1024 * 1024;
 // Total inflated size of embedded pictures (each also capped at MAX_IMAGE_BYTES).
 const MAX_MEDIA_TOTAL_BYTES = 64 * 1024 * 1024;
+// Total data-URL characters across every picture copy the deck carries (each
+// element holds its own copy until there's a shared asset store).
+const MAX_OUTPUT_IMAGE_CHARS = 96 * 1024 * 1024;
 
 // ---- tiny XML helpers (namespace-agnostic: match on localName) ----
 const parseXml = (text) => new DOMParser().parseFromString(text, 'application/xml');
@@ -87,7 +90,7 @@ function resolvePart(base, target) {
 const relsPathOf = (p) => `${dirOf(p)}_rels/${p.slice(p.lastIndexOf('/') + 1)}.rels`;
 
 class Pkg {
-  constructor(zip) { this.zip = zip; this.cache = new Map(); this.media = new Map(); this.xmlBytes = 0; this.mediaBytes = 0; }
+  constructor(zip) { this.zip = zip; this.cache = new Map(); this.media = new Map(); this.xmlBytes = 0; this.mediaBytes = 0; this.outChars = 0; }
   // Parse an XML part (cached). Each part's declared inflated size — and the
   // package's running total — is checked before inflating, so a zip bomb fails
   // fast instead of exhausting memory.
@@ -698,7 +701,17 @@ async function imageData(pkg, rel, warn) {
     // Each element carries its own data URL (there's no shared asset store yet).
     warn('Pictures reused across slides (e.g. master logos or backgrounds) are copied onto every slide, which enlarges the deck.');
   } else pkg.media.set(rel.target, encodeImage(pkg, rel.target, warn));
-  return pkg.media.get(rel.target);
+  const src = await pkg.media.get(rel.target);
+  // Every copy is serialized into the deck JSON, so all copies (not just the
+  // distinct pictures) share an output budget; past it, further copies are skipped.
+  if (src) {
+    pkg.outChars += src.length;
+    if (pkg.outChars > MAX_OUTPUT_IMAGE_CHARS) {
+      warn('Some repeated picture copies were skipped to keep the deck within its 96 MB picture budget.');
+      return null;
+    }
+  }
+  return src;
 }
 async function encodeImage(pkg, target, warn) {
   const ext = target.split('.').pop().toLowerCase();

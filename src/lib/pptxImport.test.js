@@ -743,3 +743,18 @@ describe('importPptx — Codex review fixes (round 5)', () => {
     expect(slide.elements[0].fill).toBe('#000000');
   });
 });
+
+describe('importPptx — Codex review fixes (round 6)', () => {
+  it('bounds the total size of picture copies the deck carries (a reused master picture counts per slide)', async () => {
+    const master = DEFAULT_MASTER.replace('</p:spTree>', `<p:pic><p:nvPicPr><p:cNvPr id="9" name="Bg"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdL"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic></p:spTree>`);
+    const N = 12; // 12 copies × ~12 MB of base64 > the 96 MB output budget
+    const { deck, warnings } = await importPptx(await buildPptx({
+      slides: Array.from({ length: N }, () => ({ xml: slideXml('') })),
+      master, masterRels: [['rIdL', 'image', '../media/bg.png']], media: { 'bg.png': new Uint8Array(9 * 1024 * 1024) },
+    }));
+    const withPic = deck.slides.filter((s) => s.elements.some((e) => e.type === 'image')).length;
+    expect(withPic).toBeGreaterThan(0);
+    expect(withPic).toBeLessThan(N);
+    expect(warnings.join(' ')).toMatch(/budget/i);
+  }, 60000);
+});
