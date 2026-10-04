@@ -241,12 +241,17 @@ function groupTransform(grpSpPr, parentT) {
   // child's own rotation, so a rotated group keeps its composition.
   const gx = own.x + own.w / 2, gy = own.y + own.h / 2;
   const t = ((own.rot || 0) * Math.PI) / 180, cos = Math.cos(t), sin = Math.sin(t);
+  // A flipped group mirrors each child's centre about the group centre (before
+  // rotating, as PowerPoint applies it) and toggles the child's own flip, so the
+  // child reports itself mirrored (lines take the flipped endpoints).
+  const fx = own.flipH ? -1 : 1, fy = own.flipV ? -1 : 1;
   return (b) => {
     const w = b.w * sx, h = b.h * sy;
-    const dx = own.x + (b.x - cx) * sx + w / 2 - gx, dy = own.y + (b.y - cy) * sy + h / 2 - gy;
+    const dx = fx * (own.x + (b.x - cx) * sx + w / 2 - gx), dy = fy * (own.y + (b.y - cy) * sy + h / 2 - gy);
     return {
       ...b, w, h, x: gx + dx * cos - dy * sin - w / 2, y: gy + dx * sin + dy * cos - h / 2,
       rot: (b.rot || 0) + (own.rot || 0),
+      flipH: b.flipH !== own.flipH, flipV: b.flipV !== own.flipV,
     };
   };
 }
@@ -356,7 +361,8 @@ function textOf(sp, ctx, inh) {
   // The element takes its first run's style, falling back through the chain.
   const rPr = kid(firstRun, 'rPr');
   const pPr0 = kid(firstPara, 'pPr');
-  const local = localFor(firstPara);
+  // The paragraph's own pPr (its defRPr) outranks the list styles.
+  const local = [pPr0, ...localFor(firstPara)];
   const chain = [...local, masterFor(firstPara)];
   const defRPr = (el) => kid(el, 'defRPr');
   const runAttr = (name) => attr(rPr, name) ?? firstOf(chain, (el) => attr(defRPr(el), name));
@@ -377,9 +383,9 @@ function textOf(sp, ctx, inh) {
   let face = attr(kid(rPr, 'latin'), 'typeface') ?? firstOf(chain, (el) => attr(kid(defRPr(el), 'latin'), 'typeface'));
   if (face === '+mj-lt') face = ctx.fonts.major;
   else if (face === '+mn-lt') face = ctx.fonts.minor;
-  const algn = attr(pPr0, 'algn') ?? firstOf(chain, (el) => attr(el, 'algn'));
+  const algn = firstOf(chain, (el) => attr(el, 'algn'));
   const anchor = firstOf(bodyPrs, (bp) => attr(bp, 'anchor'));
-  const spcPct = firstOf([pPr0, ...chain], (el) => numAttr(path(el, 'lnSpc', 'spcPct'), 'val'));
+  const spcPct = firstOf(chain, (el) => numAttr(path(el, 'lnSpc', 'spcPct'), 'val'));
 
   const px = (szHundredths / 100) * (fontScale / 100000) * EMU_PER_PT * ctx.fit.k;
   return {
@@ -618,8 +624,12 @@ async function encodeImage(pkg, target, warn) {
   const mime = MIME[ext];
   const file = pkg.zip.file(target);
   if (!mime || !file) { warn(`A .${ext} picture can't be shown in the browser and was skipped.`); return null; }
+  // Reject from the zip directory's declared size before inflating (JSZip keeps
+  // it on the loaded entry); the post-decode check covers an entry without one.
+  const tooBig = () => { warn('A picture larger than 10 MB was skipped.'); return null; };
+  if (file._data?.uncompressedSize > MAX_IMAGE_BYTES) return tooBig();
   const b64 = await file.async('base64');
-  if ((b64.length * 3) / 4 > MAX_IMAGE_BYTES) { warn('A picture larger than 10 MB was skipped.'); return null; }
+  if ((b64.length * 3) / 4 > MAX_IMAGE_BYTES) return tooBig();
   return `data:${mime};base64,${b64}`;
 }
 

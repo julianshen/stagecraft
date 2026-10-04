@@ -585,3 +585,34 @@ describe('importPptx — review fixes', () => {
     expect(slide.title).toBe('Own heading');
   });
 });
+
+describe('importPptx — Codex review fixes', () => {
+  it('applies paragraph default run properties (pPr/defRPr) when the run has none', async () => {
+    const p = '<a:p><a:pPr algn="ctr"><a:defRPr sz="3200" b="1"><a:solidFill><a:srgbClr val="00AA00"/></a:solidFill><a:latin typeface="Verdana"/></a:defRPr></a:pPr><a:r><a:rPr lang="en-US"/><a:t>Para styled</a:t></a:r></a:p>';
+    const { slide } = await one(textBox(2, 0, 0, 400, 100, p));
+    expect(slide.elements[0]).toMatchObject({ fontSize: 64, bold: true, fill: '#00AA00', fontFamily: 'Verdana', align: 'center' });
+  });
+
+  it('rejects an oversized picture from its declared size, before decoding it', async () => {
+    const pic = `<p:pic><p:nvPicPr><p:cNvPr id="4" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId10"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic>`;
+    const bytes = await buildPptx({ slides: [{ xml: slideXml(pic), extraRels: [['rId10', 'image', '../media/big.png']] }], media: { 'big.png': new Uint8Array(10 * 1024 * 1024 + 3) } });
+    const entryProto = Object.getPrototypeOf(new JSZip().file('x', '').file('x'));
+    const spy = vi.spyOn(entryProto, 'async');
+    try {
+      const { deck, warnings } = await importPptx(bytes);
+      expect(deck.slides[0].elements).toEqual([]);
+      expect(warnings.join(' ')).toMatch(/larger than 10 MB/);
+      expect(spy.mock.contexts.filter((f) => f.name === 'ppt/media/big.png')).toHaveLength(0);
+    } finally { spy.mockRestore(); }
+  });
+
+  it('mirrors a flipped group\'s children about the group centre and warns', async () => {
+    // A 200×100 group flipped horizontally; its child fills the left half.
+    const grp = `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="9" name="G"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm flipH="1"><a:off x="${100 * PX}" y="${100 * PX}"/><a:ext cx="${200 * PX}" cy="${100 * PX}"/><a:chOff x="0" y="0"/><a:chExt cx="${200 * PX}" cy="${100 * PX}"/></a:xfrm></p:grpSpPr>
+      ${shape(3, 'triangle', 0, 0, 100, 100, '<a:solidFill><a:srgbClr val="123456"/></a:solidFill>')}</p:grpSp>`;
+    const { slide, warnings } = await one(grp);
+    expect(slide.elements[0]).toMatchObject({ x: 200, y: 100 }); // moved to the right half
+    expect(warnings.join(' ')).toMatch(/mirrored/i);
+  });
+});
