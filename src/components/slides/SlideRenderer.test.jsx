@@ -817,3 +817,27 @@ describe('Slide inline editing (editable)', () => {
     expect(onEditField).toHaveBeenCalledWith(['rows', 1, 1], '40');
   });
 });
+
+describe('Slide — blank layout (PowerPoint "Blank")', () => {
+  it('renders no template chrome or title — only the element overlay', () => {
+    const slide = {
+      id: 'b', layout: 'blank', title: 'Outline-only title',
+      elements: [{ id: 'e1', type: 'text', x: 10, y: 10, w: 100, h: 40, content: 'Imported box', fill: '#000000' }],
+    };
+    const { container } = render(<Slide slide={slide} deck={{ title: 'Demo', author: 'Me' }} sectionName="S" num={1} total={1} />);
+    expect(screen.getByText('Imported box')).toBeInTheDocument();
+    expect(screen.queryByText('Outline-only title')).toBeNull();
+    expect(container.querySelector('.slide-chrome')).toBeNull();
+    expect(container.querySelector('.slide-foot')).toBeNull();
+  });
+
+  it('paints a hex bgColor as the slide background', () => {
+    const { container } = render(<Slide slide={{ id: 'b', layout: 'blank', bgColor: '#112233' }} deck={{ title: 'D' }} num={1} total={1} />);
+    expect(container.querySelector('.slide').style.background).toBe('rgb(17, 34, 51)');
+  });
+
+  it('ignores a non-hex bgColor (gate-bypassing write) and keeps the default white', () => {
+    const { container } = render(<Slide slide={{ id: 'b', layout: 'blank', bgColor: 'url(x)' }} deck={{ title: 'D' }} num={1} total={1} />);
+    expect(container.querySelector('.slide').style.background).toBe('');
+  });
+});

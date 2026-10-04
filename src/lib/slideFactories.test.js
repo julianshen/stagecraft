@@ -92,3 +92,12 @@ describe('createComponentSlide', () => {
     expect(s.title).toBe('New slide');
   });
 });
+
+describe('createComponentSlide — blank', () => {
+  it('builds an empty Blank slide (no template fields, white background)', () => {
+    const s = createComponentSlide('blank');
+    expect(s.layout).toBe('blank');
+    expect(s.bgColor).toBe('#FFFFFF');
+    expect(s.elements).toEqual([]);
+  });
+});

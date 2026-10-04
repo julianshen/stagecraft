@@ -77,6 +77,7 @@ export function createComponentSlide(id) {
       { lbl: 'Stat one', val: '—' },
       { lbl: 'Stat two', val: '—' },
     ]},
+    blank:   { layout: 'blank', title: '', bgColor: '#FFFFFF', elements: [] },
     thanks:  { layout: 'thanks', title: 'Thanks', subtitle: 'Questions & discussion' },
     risks:   { layout: 'risks', title: 'Top risks', items: [
       { sev: 'high', t: 'First risk',  d: 'Describe the exposure and magnitude' },

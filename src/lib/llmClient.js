@@ -139,7 +139,7 @@ function parseJsonReply(text) {
 export async function generateSlide(prompt, context = {}) {
   const systemMsg = `You are a slide-generation assistant for a presentation app called Stagecraft.
 Given a user prompt, output a single JSON slide object (no markdown, no explanation).
-Valid layouts: cover, agenda, divider, kpi, chart, split, table, text, roadmap, risks, list, thanks.
+Valid layouts: cover, agenda, divider, kpi, chart, split, table, text, roadmap, risks, list, thanks, blank.
 Respond with ONLY valid JSON — no markdown code fences.
 Context deck title: ${context.deckTitle || 'Untitled'}`;
 
@@ -176,7 +176,9 @@ Given the current slide JSON and an instruction, respond with ONLY a JSON object
 containing the fields to change (a partial "patch") — no markdown, no prose, no
 code fences. Keep the same "layout" unless the instruction clearly calls for a
 different one. Valid layouts: cover, agenda, divider, kpi, chart, split, table,
-text, roadmap, risks, list, thanks. Do not include an "id".
+text, roadmap, risks, list, thanks, blank. Do not include an "id".
+A "blank" slide has no template text — its content is entirely "elements"; set
+"bgColor" to a "#RRGGBB" hex to change its background.
 
 To set how this slide enters in the presenter, set "transition" to an object with
 a "type" (one of "none","fade","slide","morph") and a "duration" (a positive

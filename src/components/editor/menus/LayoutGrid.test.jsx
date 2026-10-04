@@ -28,3 +28,9 @@ describe('LayoutGrid', () => {
     expect(() => fireEvent.click(getByLabelText('Cover layout'))).not.toThrow();
   });
 });
+
+describe('LayoutGrid — blank', () => {
+  it('offers the Blank layout', () => {
+    expect(LAYOUT_LABELS.blank).toBe('Blank');
+  });
+});

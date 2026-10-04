@@ -617,3 +617,21 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect({}.polluted).toBeUndefined(); // and nothing was polluted
   });
 });
+
+describe('sanitizeSlidePatch — blank layout + bgColor', () => {
+  it('accepts the blank layout', () => {
+    expect(sanitizeSlidePatch({ layout: 'blank' }, 'text')).toEqual({ layout: 'blank' });
+  });
+
+  it('accepts a hex bgColor on a blank slide', () => {
+    expect(sanitizeSlidePatch({ bgColor: '#FFEEDD' }, 'blank')).toEqual({ bgColor: '#FFEEDD' });
+  });
+
+  it('rejects a non-hex bgColor', () => {
+    expect(sanitizeSlidePatch({ bgColor: 'red' }, 'blank')).toEqual({});
+  });
+
+  it('rejects bgColor on a templated layout (nothing would render it)', () => {
+    expect(sanitizeSlidePatch({ bgColor: '#FFEEDD' }, 'text')).toEqual({});
+  });
+});

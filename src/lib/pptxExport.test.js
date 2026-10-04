@@ -894,3 +894,20 @@ describe('exportToPPTX — deck heading scale (titles)', () => {
     expect(optsOf(last(), 'Hero').fontSize).toBe(44);
   });
 });
+
+describe('exportToPPTX — blank layout', () => {
+  it('exports only the background colour + elements — no template text', async () => {
+    await exportToPPTX(deckWith({
+      id: 'b', layout: 'blank', title: 'Outline only', bgColor: '#112233',
+      elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 192, h: 96, content: 'Hello', fill: '#FFFFFF', fontSize: 48 }],
+    }));
+    expect(last().background).toEqual({ color: '112233' });
+    expect(textsOf(last())).toEqual(['Hello']);
+  });
+
+  it('falls back to white for a missing / non-hex bgColor', async () => {
+    await exportToPPTX(deckWith({ id: 'b', layout: 'blank', bgColor: 'nope' }));
+    expect(last().background).toEqual({ color: 'FFFFFF' });
+    expect(last().texts).toEqual([]);
+  });
+});

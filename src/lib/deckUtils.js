@@ -43,6 +43,9 @@ const UNSAFE_PATCH_KEYS = new Set(['id', '__proto__', 'constructor', 'prototype'
 export const SLIDE_LAYOUTS = new Set([
   'cover', 'agenda', 'divider', 'kpi', 'chart', 'split',
   'table', 'text', 'roadmap', 'risks', 'list', 'thanks',
+  // PowerPoint's "Blank": no template — only the elements overlay (+ bgColor).
+  // Imported .pptx slides land here (lib/pptxImport.js).
+  'blank',
 ]);
 // Slide-transition kinds the Animate panel offers ('none' = an instant cut). A
 // transition is { type, duration(ms) } — the presenter plays it on advance
@@ -57,7 +60,7 @@ export const BUILD_TYPES = new Set(['fadeIn', 'riseIn', 'zoomIn']);
 // so it can't persist and be falsely reported as applied while nothing renders.
 const SLIDE_FIELDS = new Set([
   'layout', 'title', 'subtitle', 'sub', 'body', 'eyebrow', 'kicker',
-  'chapter', 'note', 'notes', 'bg', 'chartType',
+  'chapter', 'note', 'notes', 'bg', 'bgColor', 'chartType',
   'items', 'kpis', 'stats', 'rows', 'columns',
   'chart', 'lanes', 'months', 'todayIndex', 'fmt', 'elements', 'transition', 'builds',
 ]);
@@ -246,6 +249,8 @@ function fieldOk(key, value, layout) {
   // roadmapModel only honors finite numbers (explicit null = "no marker");
   // a string "3" would pass as a primitive but silently render nothing.
   if (key === 'todayIndex') return layout === 'roadmap' && (value === null || Number.isFinite(value));
+  // A blank slide's solid background (canvas == export) — hex only.
+  if (key === 'bgColor') return layout === 'blank' && isHexColor(value);
   // fmt is layout-agnostic — any template field on any layout can be formatted.
   if (key === 'fmt') return isFmtMap(value);
   // elements overlay any layout; the whole array is replaced, so reject it

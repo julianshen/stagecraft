@@ -9,6 +9,7 @@ import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
 import { CANVAS_BASELINE_PX } from '../../lib/fontBaselines.js';
 import { headingPx } from '../../lib/headingScale.js';
 import { shapeDef, hasVisibleStroke, clipPoints } from '../../lib/shapes.js';
+import { isHexColor } from '../../lib/color.js';
 import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider fallbacks,
@@ -802,6 +803,12 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
           </div>
         </div>
       );
+    case 'blank':
+      // PowerPoint's Blank layout: no chrome, no template text — the elements
+      // overlay is the whole slide. `title` is outline metadata only (sorter,
+      // export). A non-hex bgColor (gate-bypassing write) keeps the CSS white,
+      // matching the export's fallback.
+      return <div className="slide" style={isHexColor(slide.bgColor) ? { background: slide.bgColor } : undefined} />;
     case 'thanks':
       return (
         <div className="slide ink">

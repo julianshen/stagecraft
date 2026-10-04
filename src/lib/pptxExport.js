@@ -508,6 +508,14 @@ function addThanksSlide(pptx, slide, tc) {
   return sld;
 }
 
+// PowerPoint's Blank layout: just the solid background — addElements draws the
+// content. White fallback matches the canvas `.slide` default.
+function addBlankSlide(pptx, slide) {
+  const sld = pptx.addSlide();
+  sld.background = { color: isHexColor(slide.bgColor) ? pxHex(slide.bgColor) : 'FFFFFF' };
+  return sld;
+}
+
 function addGenericSlide(pptx, slide, tc) {
   const sld = pptx.addSlide();
   sld.background = { color: tc.bg };
@@ -568,6 +576,7 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
       case 'roadmap':  sld = addRoadmapSlide(pptx, slide, tc); break;
       case 'thanks':   sld = addThanksSlide(pptx, slide, tc);  break;
       case 'chart':    sld = addChartSlide(pptx, slide, tc);   break;
+      case 'blank':    sld = addBlankSlide(pptx, slide);       break;
       default:         sld = addGenericSlide(pptx, slide, tc); break;
     }
     // Overlay the free-form elements layer (any layout may carry it).
