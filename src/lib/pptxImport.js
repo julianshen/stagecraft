@@ -226,6 +226,15 @@ const toPx = (box, fit) => ({
   ...(box.rot ? { rot: round2(box.rot) } : {}),
 });
 
+// Move a box's centre by a clockwise (y-down) turn of `deg` about (gx, gy) — the
+// box itself keeps its size; callers add `deg` to its own rotation.
+function turnAbout(b, gx, gy, deg) {
+  if (!deg) return b;
+  const t = (deg * Math.PI) / 180, cos = Math.cos(t), sin = Math.sin(t);
+  const dx = b.x + b.w / 2 - gx, dy = b.y + b.h / 2 - gy;
+  return { ...b, x: gx + dx * cos - dy * sin - b.w / 2, y: gy + dx * sin + dy * cos - b.h / 2 };
+}
+
 // A group's child coordinate space (chOff/chExt) maps onto its own box.
 function groupTransform(grpSpPr, parentT) {
   const xfrm = kid(grpSpPr, 'xfrm');
@@ -236,21 +245,21 @@ function groupTransform(grpSpPr, parentT) {
   const ecx = numAttr(chExt, 'cx', 0), ecy = numAttr(chExt, 'cy', 0);
   const sx = ecx ? own.w / ecx : 1;
   const sy = ecy ? own.h / ecy : 1;
-  // Scale/offset into the group box, then turn each child's centre about the
-  // group centre by the group's rotation (clockwise, y-down) and add it to the
-  // child's own rotation, so a rotated group keeps its composition.
+  // Scale/offset into the group box; a flipped group then mirrors each child's
+  // centre about the group centre (before rotating, as PowerPoint applies it),
+  // reverses the child's rotation when exactly one axis is mirrored, and toggles
+  // the child's own flip (lines take the mirrored endpoints; other mirrored
+  // children report themselves). Finally the group's rotation turns the child
+  // about the group centre and adds to its own, so the composition holds.
   const gx = own.x + own.w / 2, gy = own.y + own.h / 2;
-  const t = ((own.rot || 0) * Math.PI) / 180, cos = Math.cos(t), sin = Math.sin(t);
-  // A flipped group mirrors each child's centre about the group centre (before
-  // rotating, as PowerPoint applies it) and toggles the child's own flip, so the
-  // child reports itself mirrored (lines take the flipped endpoints).
   const fx = own.flipH ? -1 : 1, fy = own.flipV ? -1 : 1;
   return (b) => {
     const w = b.w * sx, h = b.h * sy;
-    const dx = fx * (own.x + (b.x - cx) * sx + w / 2 - gx), dy = fy * (own.y + (b.y - cy) * sy + h / 2 - gy);
+    const mx = gx + fx * (own.x + (b.x - cx) * sx + w / 2 - gx), my = gy + fy * (own.y + (b.y - cy) * sy + h / 2 - gy);
+    const childRot = fx * fy * (b.rot || 0);
     return {
-      ...b, w, h, x: gx + dx * cos - dy * sin - w / 2, y: gy + dx * sin + dy * cos - h / 2,
-      rot: (b.rot || 0) + (own.rot || 0),
+      ...turnAbout({ ...b, w, h, x: mx - w / 2, y: my - h / 2 }, gx, gy, own.rot || 0),
+      rot: childRot + (own.rot || 0),
       flipH: b.flipH !== own.flipH, flipV: b.flipV !== own.flipV,
     };
   };
@@ -529,17 +538,34 @@ class SlideReader {
   // (the element model's `line` is a bar whose height is its thickness).
   line(box, ln, groupId) {
     const { fit } = this.ctx;
+    const thick = Math.max(MIN_LINE_THICKNESS, round2(ln.w * fit.k));
+    const alpha = ln.color.alpha < 1 ? { opacity: Math.round(ln.color.alpha * 100) } : {};
+    // A dashed/dotted connector → a stroked two-point path (a `line` element is
+    // a solid bar). A degenerate axis (a horizontal/vertical connector) gets a
+    // `thick`-wide box centred on the line so the path has room to draw.
+    if (ln.dash) {
+      const g = toPx(box, fit);
+      const [px0, px1] = box.flipH ? [1, 0] : [0, 1];
+      const [py0, py1] = box.flipV ? [1, 0] : [0, 1];
+      const flatX = g.w < thick, flatY = g.h < thick;
+      this.push({
+        type: 'path', ...g,
+        ...(flatX ? { x: round2(g.x + g.w / 2 - thick / 2), w: thick } : {}),
+        ...(flatY ? { y: round2(g.y + g.h / 2 - thick / 2), h: thick } : {}),
+        points: [[flatX ? 0.5 : px0, flatY ? 0.5 : py0], [flatX ? 0.5 : px1, flatY ? 0.5 : py1]],
+        stroke: ln.color.hex, strokeWidth: thick, strokeDash: ln.dash, ...alpha,
+      }, groupId);
+      return;
+    }
     const x1 = box.flipH ? box.x + box.w : box.x, x2 = box.flipH ? box.x : box.x + box.w;
     const y1 = box.flipV ? box.y + box.h : box.y, y2 = box.flipV ? box.y : box.y + box.h;
     const dx = (x2 - x1) * fit.k, dy = (y2 - y1) * fit.k;
     const len = Math.hypot(dx, dy);
-    const thick = Math.max(MIN_LINE_THICKNESS, round2(ln.w * fit.k));
     const cx = fit.ox + ((x1 + x2) / 2) * fit.k, cy = fit.oy + ((y1 + y2) / 2) * fit.k;
     const rot = round2(Math.atan2(dy, dx) * 180 / Math.PI + (box.rot || 0));
     this.push({
       type: 'line', x: round2(cx - len / 2), y: round2(cy - thick / 2), w: round2(Math.max(len, 1)), h: thick,
-      fill: ln.color.hex, ...(rot ? { rot } : {}),
-      ...(ln.color.alpha < 1 ? { opacity: Math.round(ln.color.alpha * 100) } : {}),
+      fill: ln.color.hex, ...(rot ? { rot } : {}), ...alpha,
     }, groupId);
   }
 
@@ -590,7 +616,8 @@ class SlideReader {
           const span = numAttr(tc, 'gridSpan', 1);
           const cw = cols.slice(ci, ci + span).reduce((a, b) => a + b, 0) * sx;
           const ch = rowHs.slice(ri, ri + numAttr(tc, 'rowSpan', 1)).reduce((a, b) => a + b, 0) * sy;
-          const cellBox = { x, y, w: cw, h: ch };
+          // A rotated frame turns each cell about the table centre.
+          const cellBox = { ...turnAbout({ x, y, w: cw, h: ch }, box.x + box.w / 2, box.y + box.h / 2, box.rot), rot: box.rot };
           const geo = toPx(cellBox, this.ctx.fit);
           const fill = fillOf(kid(tc, 'tcPr'), this.ctx);
           this.push({ type: 'rect', ...geo, fill: fill?.kind === 'solid' ? fill.color.hex : '#FFFFFF',

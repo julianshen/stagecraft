@@ -616,3 +616,42 @@ describe('importPptx — Codex review fixes', () => {
     expect(warnings.join(' ')).toMatch(/mirrored/i);
   });
 });
+
+describe('importPptx — Codex review fixes (round 2)', () => {
+  const cxn = (ln, x = 0, y = 0, w = 100, h = 0, extra = '') => `<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="5" name="L"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr>${xfrm(x, y, w, h, extra)}<a:prstGeom prst="line"/>${ln}</p:spPr></p:cxnSp>`;
+
+  it('keeps a dashed / dotted connector as a stroked two-point path', async () => {
+    const { slide } = await one(cxn('<a:ln w="25400"><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill><a:prstDash val="dash"/></a:ln>', 10, 20, 100, 50));
+    expect(slide.elements[0]).toMatchObject({ type: 'path', stroke: '#FF0000', strokeWidth: 4, strokeDash: 'dashed', x: 10, y: 20, w: 100, h: 50 });
+    expect(slide.elements[0].points).toEqual([[0, 0], [1, 1]]);
+  });
+
+  it('gives a dashed horizontal connector a drawable box (centred on the line)', async () => {
+    const { slide } = await one(cxn('<a:ln w="12700"><a:solidFill><a:srgbClr val="000000"/></a:solidFill><a:prstDash val="sysDot"/></a:ln>', 0, 100, 200, 0));
+    const p = slide.elements[0];
+    expect(p).toMatchObject({ type: 'path', strokeDash: 'dotted', x: 0, w: 200 });
+    expect(p.h).toBeGreaterThan(0);
+    expect(p.y + p.h / 2).toBeCloseTo(100);
+    expect(p.points).toEqual([[0, 0.5], [1, 0.5]]);
+  });
+
+  it('mirrors a child\'s rotation inside a group flipped on one axis', async () => {
+    const grp = `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="9" name="G"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm flipH="1"><a:off x="0" y="0"/><a:ext cx="${200 * PX}" cy="${200 * PX}"/><a:chOff x="0" y="0"/><a:chExt cx="${200 * PX}" cy="${200 * PX}"/></a:xfrm></p:grpSpPr>
+      <p:sp><p:nvSpPr><p:cNvPr id="3" name="R"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(50, 50, 100, 100, ' rot="1800000"')}<a:prstGeom prst="rect"/><a:solidFill><a:srgbClr val="000000"/></a:solidFill></p:spPr></p:sp></p:grpSp>`;
+    expect((await one(grp)).slide.elements[0].rot).toBe(-30);
+  });
+
+  it('rotates a rotated table\'s cells about the table centre', async () => {
+    const tbl = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="6" name="T"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>
+      <p:xfrm rot="5400000"><a:off x="0" y="0"/><a:ext cx="${200 * PX}" cy="${100 * PX}"/></p:xfrm>
+      <a:graphic><a:graphicData uri="t"><a:tbl><a:tblGrid><a:gridCol w="${100 * PX}"/><a:gridCol w="${100 * PX}"/></a:tblGrid>
+        <a:tr h="${100 * PX}"><a:tc><a:txBody><a:bodyPr/>${para('L')}</a:txBody><a:tcPr/></a:tc><a:tc><a:txBody><a:bodyPr/>${para('R')}</a:txBody><a:tcPr/></a:tc></a:tr>
+      </a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+    const [left] = els((await one(tbl)).slide, 'rect');
+    // Left cell centre (50,50) turns 90° about the table centre (100,50) → (100,0).
+    expect(left.rot).toBe(90);
+    expect(left.x + left.w / 2).toBeCloseTo(100);
+    expect(left.y + left.h / 2).toBeCloseTo(0);
+  });
+});
