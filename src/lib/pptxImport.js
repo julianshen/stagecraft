@@ -549,6 +549,11 @@ class SlideReader {
       if (ln) this.elbow(box, ln, groupId);
       return;
     }
+    // A geometry with text imports as two elements (shape + text overlay); a
+    // local group keeps them moving together, unless a PowerPoint group already does.
+    const text = textOf(sp, this.ctx, inh);
+    let gid = groupId;
+    const pairUp = () => { gid = gid || (text ? this.id('grp') : undefined); return gid; };
     if (type) {
       const fill = fillOf(spPr, this.ctx) || firstOf(inh.spPrs, (p) => fillOf(p, this.ctx))
         || (styleFill ? { kind: 'solid', color: styleFill } : { kind: 'none' });
@@ -561,14 +566,13 @@ class SlideReader {
           type, ...geo, fill: fill.color.hex, ...stroke,
           ...(fill.color.alpha < 1 ? { opacity: Math.round(fill.color.alpha * 100) } : {}),
           ...(fill.kind === 'grad' ? { gradient: { from: fill.from.hex, to: fill.to.hex, angle: fill.angle } } : {}),
-        }, groupId);
+        }, pairUp());
       } else if (ln) {
         // Outline-only shape → a closed stroked path (fills are always solid).
-        this.push({ type: 'path', ...geo, points: outlinePoints(type), ...stroke }, groupId);
+        this.push({ type: 'path', ...geo, points: outlinePoints(type), ...stroke }, pairUp());
       }
     }
-    const text = textOf(sp, this.ctx, inh);
-    if (text) this.push({ type: 'text', ...geo, ...text }, groupId);
+    if (text) this.push({ type: 'text', ...geo, ...text }, gid);
   }
 
   // A straight line/connector: endpoints from the box + flips → a rotated bar
@@ -658,8 +662,11 @@ class SlideReader {
     const rows = kids(tbl, 'tr');
     const colSum = cols.reduce((a, b) => a + b, 0) || 1;
     const rowHs = rows.map((r) => numAttr(r, 'h', 0));
+    // Rows scale to the frame either way (a group may compress it); rows that
+    // declare no height share the frame equally.
+    if (!rowHs.some((h) => h > 0)) rowHs.fill(box.h / Math.max(1, rows.length));
     const rowSum = rowHs.reduce((a, b) => a + b, 0) || 1;
-    const sx = box.w / colSum, sy = Math.max(1, box.h / rowSum);
+    const sx = box.w / colSum, sy = box.h / rowSum;
     let y = box.y;
     rows.forEach((tr, ri) => {
       let x = box.x;
@@ -677,8 +684,13 @@ class SlideReader {
           const cellBox = { ...turnAbout({ x: mx, y: my, w: cw, h: ch }, box.x + box.w / 2, box.y + box.h / 2, box.rot), rot: box.rot };
           const geo = toPx(cellBox, this.ctx.fit);
           const fill = fillOf(kid(tc, 'tcPr'), this.ctx);
-          this.push({ type: 'rect', ...geo, fill: fill?.kind === 'solid' ? fill.color.hex : '#FFFFFF',
-            stroke: '#BFBFBF', strokeWidth: 1 }, gid);
+          // An explicitly transparent cell keeps only its grid outline; an
+          // unspecified one (table style decides) falls back to white.
+          if (fill?.kind === 'none') {
+            this.push({ type: 'path', ...geo, points: outlinePoints('rect'), stroke: '#BFBFBF', strokeWidth: 1 }, gid);
+          } else {
+            this.push({ type: 'rect', ...geo, fill: fill?.color ? fill.color.hex : '#FFFFFF', stroke: '#BFBFBF', strokeWidth: 1 }, gid);
+          }
           const text = textOf(tc, this.ctx, { txBodies: [], txStyle: kid(this.ctx.txStyles, 'otherStyle') });
           const anchor = ANCHOR[attr(kid(tc, 'tcPr'), 'anchor')];
           if (text) this.push({ type: 'text', ...geo, ...text, ...(anchor ? { valign: anchor } : {}) }, gid);

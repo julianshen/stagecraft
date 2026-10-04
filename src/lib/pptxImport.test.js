@@ -498,8 +498,9 @@ describe('importPptx — OOXML edge cases', () => {
         <a:tr><a:tc vMerge="1"><a:txBody><a:bodyPr/><a:p/></a:txBody></a:tc></a:tr>
       </a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
     const { slide } = await one(tbl);
-    expect(els(slide, 'rect')).toHaveLength(1);
-    expect(els(slide, 'rect')[0].fill).toBe('#FFFFFF');
+    // One drawn cell (the vMerge continuation is skipped); its noFill keeps it an outline.
+    expect(els(slide, 'rect')).toHaveLength(0);
+    expect(els(slide, 'path')).toHaveLength(1);
   });
 
   it('names unnamed sections and ignores references to unknown slides', async () => {
@@ -757,4 +758,33 @@ describe('importPptx — Codex review fixes (round 6)', () => {
     expect(withPic).toBeLessThan(N);
     expect(warnings.join(' ')).toMatch(/budget/i);
   }, 60000);
+});
+
+describe('importPptx — Codex review fixes (round 7)', () => {
+  const tbl = (xfrmXml, cellPr = '<a:tcPr/>', rowH = 50) => `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="6" name="T"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>
+    ${xfrmXml}<a:graphic><a:graphicData uri="t"><a:tbl><a:tblGrid><a:gridCol w="${100 * PX}"/></a:tblGrid>
+      <a:tr h="${rowH * PX}"><a:tc><a:txBody><a:bodyPr/>${para('C')}</a:txBody>${cellPr}</a:tc></a:tr>
+    </a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+  const frame = (h) => `<p:xfrm><a:off x="0" y="0"/><a:ext cx="${100 * PX}" cy="${h * PX}"/></p:xfrm>`;
+
+  it('keeps an explicitly transparent (noFill) cell transparent — an outline, not a white box', async () => {
+    const { slide } = await one(tbl(frame(50), '<a:tcPr><a:noFill/></a:tcPr>'));
+    expect(els(slide, 'rect')).toEqual([]);
+    expect(els(slide, 'path')[0]).toMatchObject({ stroke: '#BFBFBF', x: 0, y: 0, w: 100, h: 50 });
+  });
+
+  it('scales rows down when the table frame is shorter than its rows', async () => {
+    const { slide } = await one(tbl(frame(25), '<a:tcPr/>', 50));
+    expect(els(slide, 'rect')[0].h).toBe(25);
+  });
+
+  it('groups a standalone shape with its text, keeping an enclosing group id', async () => {
+    const sp = shape(2, 'rect', 0, 0, 50, 50, '<a:solidFill><a:srgbClr val="000000"/></a:solidFill>', `<p:txBody><a:bodyPr/>${para('Label')}</p:txBody>`);
+    const { slide } = await one(sp);
+    expect(slide.elements).toHaveLength(2);
+    expect(slide.elements[0].groupId).toBeTruthy();
+    expect(slide.elements[1].groupId).toBe(slide.elements[0].groupId);
+    // A text-only box stays ungrouped.
+    expect((await one(textBox(2, 0, 0, 10, 10, para('Solo')))).slide.elements[0].groupId).toBeUndefined();
+  });
 });
