@@ -655,3 +655,37 @@ describe('importPptx — Codex review fixes (round 2)', () => {
     expect(left.y + left.h / 2).toBeCloseTo(0);
   });
 });
+
+describe('importPptx — Codex review fixes (round 3)', () => {
+  it('mirrors a flipped table\'s cells within the table and warns', async () => {
+    const tbl = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="6" name="T"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>
+      <p:xfrm flipH="1"><a:off x="0" y="0"/><a:ext cx="${200 * PX}" cy="${100 * PX}"/></p:xfrm>
+      <a:graphic><a:graphicData uri="t"><a:tbl><a:tblGrid><a:gridCol w="${100 * PX}"/><a:gridCol w="${100 * PX}"/></a:tblGrid>
+        <a:tr h="${100 * PX}"><a:tc><a:txBody><a:bodyPr/>${para('First')}</a:txBody><a:tcPr/></a:tc><a:tc><a:txBody><a:bodyPr/>${para('Second')}</a:txBody><a:tcPr/></a:tc></a:tr>
+      </a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+    const { slide, warnings } = await one(tbl);
+    const first = els(slide, 'text').find((t) => t.content === 'First');
+    expect(first.x).toBe(100); // the first column now sits on the right
+    expect(warnings.join(' ')).toMatch(/mirrored/i);
+  });
+
+  it('reports a linked (r:link) picture instead of dropping it silently', async () => {
+    const pic = `<p:pic><p:nvPicPr><p:cNvPr id="4" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:link="rIdL"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic>`;
+    const { warnings } = await one(pic, { slide: { extraRels: [['rIdL', 'image', 'file:///C:/pics/a.png', 'External']] } });
+    expect(warnings.join(' ')).toMatch(/linked/i);
+  });
+
+  it('warns that connector arrowheads are not imported', async () => {
+    const cxn = `<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="5" name="L"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr>${xfrm(0, 0, 100, 0)}<a:prstGeom prst="straightConnector1"/><a:ln><a:solidFill><a:srgbClr val="000000"/></a:solidFill><a:headEnd type="none"/><a:tailEnd type="triangle"/></a:ln></p:spPr></p:cxnSp>`;
+    const plain = cxn.replace('<a:tailEnd type="triangle"/>', '<a:tailEnd type="none"/>');
+    expect((await one(cxn)).warnings.join(' ')).toMatch(/arrowheads/i);
+    expect((await one(plain)).warnings.join(' ')).not.toMatch(/arrowheads/i);
+  });
+
+  it('refuses a package whose XML part declares an oversized inflated size, before inflating it', async () => {
+    const zip = await JSZip.loadAsync(await buildPptx({ slides: [{ xml: slideXml('') }] }));
+    zip.file('ppt/slides/slide1.xml', slideXml(textBox(2, 0, 0, 10, 10, para('x'.repeat(30 * 1024 * 1024)))));
+    const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    await expect(importPptx(bytes)).rejects.toThrow(/too large/i);
+  });
+});

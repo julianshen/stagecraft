@@ -22,6 +22,10 @@ import { SHAPES, shapeDef, clipPoints } from './shapes.js';
 import { MAX_IMAGE_BYTES } from './imageFile.js';
 
 const EMU_PER_PT = 12700;
+// Inflated-size budgets for the package's XML (a real slide part is KBs; a
+// heavy deck's XML totals a few MB).
+const MAX_XML_PART_BYTES = 16 * 1024 * 1024;
+const MAX_XML_TOTAL_BYTES = 128 * 1024 * 1024;
 
 // ---- tiny XML helpers (namespace-agnostic: match on localName) ----
 const parseXml = (text) => new DOMParser().parseFromString(text, 'application/xml');
@@ -54,6 +58,8 @@ function relAttr(el, name) {
   for (const a of el.attributes) if (a.localName === name && a.prefix) return a.value;
   return null;
 }
+// A picture's relationship: embedded (r:embed) or linked (r:link — external).
+const blipRel = (blip) => relAttr(blip, 'embed') ?? relAttr(blip, 'link');
 const numAttr = (el, name, d = null) => {
   const s = attr(el, name);
   const v = Number(s);
@@ -74,10 +80,19 @@ function resolvePart(base, target) {
 const relsPathOf = (p) => `${dirOf(p)}_rels/${p.slice(p.lastIndexOf('/') + 1)}.rels`;
 
 class Pkg {
-  constructor(zip) { this.zip = zip; this.cache = new Map(); this.media = new Map(); }
+  constructor(zip) { this.zip = zip; this.cache = new Map(); this.media = new Map(); this.xmlBytes = 0; }
+  // Parse an XML part (cached). Each part's declared inflated size — and the
+  // package's running total — is checked before inflating, so a zip bomb fails
+  // fast instead of exhausting memory.
   async xml(p) {
     if (!this.cache.has(p)) {
       const f = this.zip.file(p);
+      if (f) {
+        this.xmlBytes += f._data?.uncompressedSize ?? 0;
+        if (f._data?.uncompressedSize > MAX_XML_PART_BYTES || this.xmlBytes > MAX_XML_TOTAL_BYTES) {
+          throw new Error('This presentation is too large to import (an XML part exceeds the size limit).');
+        }
+      }
       this.cache.set(p, f ? parseXml(await f.async('string')).documentElement : null);
     }
     return this.cache.get(p);
@@ -308,7 +323,9 @@ function lineOf(ln, ctx, styleLnColor) {
   // Default line width is 0.75pt (9525 EMU).
   const w = numAttr(ln, 'w', 9525);
   const dash = DASH[attr(kid(ln, 'prstDash'), 'val')];
-  return { color, w, dash };
+  // An arrowhead on either end (type other than "none") — not representable yet.
+  const arrow = ['headEnd', 'tailEnd'].some((e) => (attr(kid(ln, e), 'type') || 'none') !== 'none');
+  return { color, w, dash, arrow };
 }
 
 // ---- text ----
@@ -504,6 +521,7 @@ class SlideReader {
     if (prst && !known) this.warn(`Shape "${prst}" was imported as a rectangle.`);
     const type = known || (prst ? 'rect' : null);
     if ((box.flipH || box.flipV) && type !== 'line') this.warn(FLIP_WARNING);
+    if (ln?.arrow) this.warn('Arrowheads on lines and connectors were not imported.');
     if (['blipFill', 'pattFill', 'grpFill'].some((f) => kid(spPr, f))) {
       this.warn("Picture or pattern fills on shapes aren't supported — those shapes import without them.");
     }
@@ -576,7 +594,7 @@ class SlideReader {
     if (box.flipH || box.flipV) this.warn(FLIP_WARNING);
     const srcRect = path(pic, 'blipFill', 'srcRect');
     if (srcRect && [...srcRect.attributes].some((a) => Number(a.value))) this.warn('Cropped pictures import uncropped (stretched to their frame).');
-    const rId = relAttr(path(pic, 'blipFill', 'blip'), 'embed');
+    const rId = blipRel(path(pic, 'blipFill', 'blip'));
     const src = await imageData(this.pkg, rels[rId], this.warn);
     if (src) this.push({ type: 'image', ...toPx(box, this.ctx.fit), src }, groupId);
   }
@@ -600,6 +618,7 @@ class SlideReader {
   // A native table → one cell rect + text per cell, on the table's grid.
   table(tbl, box, groupId) {
     const gid = groupId || this.id('grp');
+    if (box.flipH || box.flipV) this.warn(FLIP_WARNING);
     if (desc(kid(tbl, 'tblPr'), 'tableStyleId')) this.warn('Table styles (banding, header fills) are not applied — only explicit cell fills.');
     const cols = kids(kid(tbl, 'tblGrid'), 'gridCol').map((c) => numAttr(c, 'w', 0));
     const rows = kids(tbl, 'tr');
@@ -617,7 +636,11 @@ class SlideReader {
           const cw = cols.slice(ci, ci + span).reduce((a, b) => a + b, 0) * sx;
           const ch = rowHs.slice(ri, ri + numAttr(tc, 'rowSpan', 1)).reduce((a, b) => a + b, 0) * sy;
           // A rotated frame turns each cell about the table centre.
-          const cellBox = { ...turnAbout({ x, y, w: cw, h: ch }, box.x + box.w / 2, box.y + box.h / 2, box.rot), rot: box.rot };
+          // A flipped frame mirrors the grid within the table; a rotated one
+          // then turns each cell about the table centre.
+          const mx = box.flipH ? 2 * box.x + box.w - x - cw : x;
+          const my = box.flipV ? 2 * box.y + box.h - y - ch : y;
+          const cellBox = { ...turnAbout({ x: mx, y: my, w: cw, h: ch }, box.x + box.w / 2, box.y + box.h / 2, box.rot), rot: box.rot };
           const geo = toPx(cellBox, this.ctx.fit);
           const fill = fillOf(kid(tc, 'tcPr'), this.ctx);
           this.push({ type: 'rect', ...geo, fill: fill?.kind === 'solid' ? fill.color.hex : '#FFFFFF',
@@ -670,7 +693,7 @@ async function backgroundOf(pkg, ctx, parts, warn) {
     if (bgPr) {
       const blip = path(bgPr, 'blipFill', 'blip');
       if (blip) {
-        const src = await imageData(pkg, rels[relAttr(blip, 'embed')], warn);
+        const src = await imageData(pkg, rels[blipRel(blip)], warn);
         if (src) return { image: src };
       }
       const f = fillOf(bgPr, ctx);
