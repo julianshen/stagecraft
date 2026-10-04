@@ -26,6 +26,8 @@ const EMU_PER_PT = 12700;
 // heavy deck's XML totals a few MB).
 const MAX_XML_PART_BYTES = 16 * 1024 * 1024;
 const MAX_XML_TOTAL_BYTES = 128 * 1024 * 1024;
+// Total inflated size of embedded pictures (each also capped at MAX_IMAGE_BYTES).
+const MAX_MEDIA_TOTAL_BYTES = 64 * 1024 * 1024;
 
 // ---- tiny XML helpers (namespace-agnostic: match on localName) ----
 const parseXml = (text) => new DOMParser().parseFromString(text, 'application/xml');
@@ -80,7 +82,7 @@ function resolvePart(base, target) {
 const relsPathOf = (p) => `${dirOf(p)}_rels/${p.slice(p.lastIndexOf('/') + 1)}.rels`;
 
 class Pkg {
-  constructor(zip) { this.zip = zip; this.cache = new Map(); this.media = new Map(); this.xmlBytes = 0; }
+  constructor(zip) { this.zip = zip; this.cache = new Map(); this.media = new Map(); this.xmlBytes = 0; this.mediaBytes = 0; }
   // Parse an XML part (cached). Each part's declared inflated size — and the
   // package's running total — is checked before inflating, so a zip bomb fails
   // fast instead of exhausting memory.
@@ -516,7 +518,9 @@ class SlideReader {
     const styleRef = (name) => (numAttr(kid(style, name), 'idx', 0) > 0 ? colorIn(kid(style, name), this.ctx) : null);
     const styleFill = styleRef('fillRef');
     const styleLn = styleRef('lnRef');
-    const ln = lineOf(kid(spPr, 'ln'), this.ctx, styleLn);
+    // The outline may be inherited from the layout/master placeholder; the first
+    // explicit a:ln wins (an explicit <a:noFill/> line still means "no outline").
+    const ln = lineOf(firstOf([spPr, ...inh.spPrs], (p) => kid(p, 'ln')), this.ctx, styleLn);
     const known = PRST_TYPE[prst];
     if (prst && !known) this.warn(`Shape "${prst}" was imported as a rectangle.`);
     const type = known || (prst ? 'rect' : null);
@@ -678,6 +682,13 @@ async function encodeImage(pkg, target, warn) {
   // it on the loaded entry); the post-decode check covers an entry without one.
   const tooBig = () => { warn('A picture larger than 10 MB was skipped.'); return null; };
   if (file._data?.uncompressedSize > MAX_IMAGE_BYTES) return tooBig();
+  // A package-wide budget too: many pictures each under the cap could still
+  // exhaust memory, so later ones are skipped once the total is spent.
+  pkg.mediaBytes += file._data?.uncompressedSize ?? 0;
+  if (pkg.mediaBytes > MAX_MEDIA_TOTAL_BYTES) {
+    warn('Pictures beyond the 64 MB total import budget were skipped.');
+    return null;
+  }
   const b64 = await file.async('base64');
   if ((b64.length * 3) / 4 > MAX_IMAGE_BYTES) return tooBig();
   return `data:${mime};base64,${b64}`;
@@ -806,8 +817,8 @@ export async function importPptx(data, { fileName = '' } = {}) {
     const layoutRels = layoutPart ? await pkg.rels(layoutPart) : {};
     const masterPart = relOfType(layoutRels, 'slideMaster');
     const master = await masterCtx(masterPart);
-    // A slide-level clrMapOvr (overrideClrMapping) remaps tx/bg for this slide.
-    const ovr = desc(kid(root, 'clrMapOvr'), 'overrideClrMapping');
+    // A colour-map override on the slide, else on its layout, remaps tx/bg.
+    const ovr = desc(kid(root, 'clrMapOvr'), 'overrideClrMapping') ?? desc(kid(layoutRoot, 'clrMapOvr'), 'overrideClrMapping');
     const ctx = ovr ? { ...master.ctx, clrMap: Object.fromEntries([...ovr.attributes].map((a) => [a.localName, a.value])) } : master.ctx;
 
     const id = `pptx-${i + 1}`;

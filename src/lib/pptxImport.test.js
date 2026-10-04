@@ -689,3 +689,30 @@ describe('importPptx — Codex review fixes (round 3)', () => {
     await expect(importPptx(bytes)).rejects.toThrow(/too large/i);
   });
 });
+
+describe('importPptx — Codex review fixes (round 4)', () => {
+  it('stops embedding pictures once the package-wide media budget is spent', async () => {
+    const pic = (n) => `<p:pic><p:nvPicPr><p:cNvPr id="${n + 10}" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId${n}"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic>`;
+    const N = 8; // 8 × 9 MB > the 64 MB budget, each under the 10 MB per-picture cap
+    const media = {}, extraRels = [];
+    for (let i = 0; i < N; i++) { media[`p${i}.png`] = new Uint8Array(9 * 1024 * 1024); extraRels.push([`rId${i}`, 'image', `../media/p${i}.png`]); }
+    const { slide, warnings } = await one(Array.from({ length: N }, (_, i) => pic(i)).join(''), { slide: { extraRels } }, { media });
+    expect(slide.elements.length).toBeLessThan(N);
+    expect(slide.elements.length).toBeGreaterThan(0);
+    expect(warnings.join(' ')).toMatch(/total/i);
+  }, 60000);
+
+  it('inherits a placeholder outline from its layout, respecting an explicit no-line override', async () => {
+    const layout = `<p:sldLayout ${NS}>${tree(`<p:sp><p:nvSpPr><p:cNvPr id="2" name="B"/><p:cNvSpPr/><p:nvPr><p:ph idx="1"/></p:nvPr></p:nvSpPr><p:spPr>${xfrm(0, 0, 100, 50)}<a:prstGeom prst="rect"/><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln w="12700"><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:ln></p:spPr></p:sp>`)}</p:sldLayout>`;
+    const ph = (spPr) => `<p:sp><p:nvSpPr><p:cNvPr id="3" name="B"/><p:cNvSpPr/><p:nvPr><p:ph idx="1"/></p:nvPr></p:nvSpPr><p:spPr>${spPr}</p:spPr><p:txBody><a:bodyPr/>${para('x')}</p:txBody></p:sp>`;
+    expect((await one(ph(''), {}, { layout })).slide.elements[0]).toMatchObject({ type: 'rect', stroke: '#FF0000' });
+    expect((await one(ph('<a:ln><a:noFill/></a:ln>'), {}, { layout })).slide.elements[0].stroke).toBeUndefined();
+  });
+
+  it('resolves scheme colours through a layout colour-map override', async () => {
+    const layout = `<p:sldLayout ${NS}>${tree('')}<p:clrMapOvr><a:overrideClrMapping bg1="dk1" tx1="lt1" bg2="dk2" tx2="lt2"/></p:clrMapOvr></p:sldLayout>`;
+    const { slide } = await one(textBox(2, 0, 0, 10, 10, para('Light on dark')), {}, { layout });
+    expect(slide.bgColor).toBe('#000000');
+    expect(slide.elements[0].fill).toBe('#FFFFFF');
+  });
+});
