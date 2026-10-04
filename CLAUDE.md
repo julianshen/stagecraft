@@ -67,7 +67,7 @@ This is a Vite + React 18 SPA **with no separate backend** — read these togeth
 Because this lives in the dev middleware, the API **only exists under `npm run dev`** (not in a static `build`/`preview`).
 
 ### Deck data model (`src/data/deck.js`)
-A deck is a **flat `slides` pool plus `sections[].slides` arrays that define order**. `flattenDeck()` (in `SlideEditor.jsx`) resolves the render order; a slide not referenced by a section is never shown. Slides are a **discriminated union keyed by `layout`** (12 layouts: cover, agenda, divider, kpi, chart, split, table, text, list, roadmap, risks, thanks). The schema for each layout is implicit in two places that must stay in sync — see "Adding a slide layout".
+A deck is a **flat `slides` pool plus `sections[].slides` arrays that define order**. `flattenDeck()` (in `SlideEditor.jsx`) resolves the render order; a slide not referenced by a section is never shown. Slides are a **discriminated union keyed by `layout`** (13 layouts: cover, agenda, divider, kpi, chart, split, table, text, list, roadmap, risks, thanks, plus `blank` — PowerPoint's Blank, where the `elements` overlay is the whole slide). The schema for each layout is implicit in two places that must stay in sync — see "Adding a slide layout".
 
 ### Slide rendering is resolution-fixed and scaled
 Every slide is authored in a **1920×1080 coordinate space** (absolute px, no viewport units). `<ScaledSlide>` (`ui/Primitives.jsx`) measures its container with a ResizeObserver and applies a `transform: scale()`. The same `<Slide>` component (`slides/SlideRenderer.jsx`, one big `switch (slide.layout)`) is reused in the canvas, left-rail thumbnails, sorter cards, and presenter — guaranteeing pixel parity at every size.
@@ -84,8 +84,10 @@ Every slide is authored in a **1920×1080 coordinate space** (absolute px, no vi
 ### AI Co-pilot
 `lib/llmClient.js` reads `localStorage['stagecraft.ai']` and routes everything through `POST /api/llm`. Exports `callLLM`, `generateSlide`, `rewriteText`, `suggestImprovements`. Settings UI is in `SettingsView.jsx`.
 
-### PPTX export
-`lib/pptxExport.js` builds a `pptxgenjs` deck entirely client-side, with one builder per layout and a hex theme palette keyed by `deck.theme`. Charts are exported as placeholder text (SVG charts aren't rasterized).
+### PPTX export / import
+`lib/pptxExport.js` builds a `pptxgenjs` deck entirely client-side, with one builder per layout. Each slide exports in the colour scheme the canvas renders it in (`SCHEMES`/`schemeFor`; the deck theme only supplies the accent), filed under a PowerPoint section per deck section — builders must call `pptx.addSlide(tc.slideOpts)`. Charts export as native, editable charts.
+
+`lib/pptxImport.js` is the inbound half: it parses a `.pptx` (JSZip + DOMParser) into a deck whose slides are all `blank` + `elements`, and returns `warnings` for anything it can't represent. Tests build packages with `src/test/pptxFixture.js`. PowerPoint parity status and roadmap: `docs/POWERPOINT-PARITY.md`.
 
 ## Conventions & gotchas
 

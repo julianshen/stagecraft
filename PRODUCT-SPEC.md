@@ -281,8 +281,9 @@ part of the "chrome should shrink, canvas should grow" principle, not fixed chro
   upload flow exists or is planned for deck covers), title, relative edited time, LIVE badge.
   This is deliberately lightweight — no deck-level metadata form, because the product's
   stance is a deck's identity *is* its title and its content, not a separate record.
-- **Two "New" entry points are always pinned first**: Blank (instant, zero-friction) and From
-  Template (the recommended path per §4.1) — both visually distinct from deck cards (dashed
+- **"New" entry points are always pinned first**: Blank (instant, zero-friction), From
+  Template (the recommended path per §4.1), and **Import PowerPoint** (bring an existing
+  `.pptx` in — see `docs/POWERPOINT-PARITY.md`) — all visually distinct from deck cards (dashed
   border / "+" affordance) so they never get confused with existing content.
 - ⚪ **Search, Filter/Edited sort, and the Recent/Starred/Trash sidebar are UI-present but
   not wired.** Product recommendation: search is the highest-value of these to wire next —
@@ -450,7 +451,7 @@ guard rather than a keyboard shortcut at all).
 
 ## 7. Content model UX — choosing a layout
 
-`SPEC.md` §3.2/§6.3 defines the 12 layouts structurally; this section is the *authoring
+`SPEC.md` §3.2/§6.3 defines the 12 layouts (plus `blank`, the freeform target of `.pptx` import) structurally; this section is the *authoring
 guidance* a user (or the AI Co-pilot, via its system prompt) should follow when picking one.
 This is currently tacit knowledge in the Layout menu's ordering — ⚪ recommend surfacing it as
 short helper copy in the Layout picker itself (one line per option), since a new user

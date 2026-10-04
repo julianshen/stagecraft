@@ -76,7 +76,7 @@ src/
     ui/Icon.jsx                 — SVG icon set (~90 paths)
     ui/Primitives.jsx           — Avatar, Button, IconButton, FieldRow, InputGroup, Seg,
                                   ScaledSlide, Menu
-    slides/SlideRenderer.jsx    — Slide (12 layouts), SlideChrome, charts, roadmap graphic
+    slides/SlideRenderer.jsx    — Slide (12 layouts + blank), SlideChrome, charts, roadmap graphic
     editor/Editor.jsx           — stateful deck wrapper; mutations; server sync
     editor/SlideEditor.jsx      — toolbar, thumbs, canvas, inspector, menus, AI drawer
     views/HomeView.jsx          — file browser / dashboard
@@ -89,6 +89,7 @@ src/
   lib/
     llmClient.js                — callLLM, generateSlide, rewriteText, suggestImprovements
     pptxExport.js               — deck → .pptx
+    pptxImport.js               — .pptx → deck (every slide → `blank` + elements)
 ```
 
 ---
@@ -128,6 +129,7 @@ Common optional fields: `id` (required), `eyebrow?` (small label above the title
 | `roadmap` | `{ title, eyebrow?, months?: string[], lanes?: { name, items: { t, d, lbl, state: 'done'\|'inflight'\|'atrisk'\|'planned' }[] }[], todayIndex?: number }` — normalized by `roadmapModel` (`lib/roadmapSpec.js`); falls back to the built-in demo when omitted |
 | `risks` | `{ title, eyebrow?, items: { sev: 'high'\|'med'\|'low', t, d }[] }` |
 | `thanks` | `{ title, subtitle? }` |
+| `blank` | `{ title?, bgColor?: '#RRGGBB' }` — PowerPoint's Blank: no template chrome or text; the `elements` overlay is the whole slide. `title` is outline metadata only (sorter/export). Imported `.pptx` slides land here. |
 
 ### 3.3 Supporting data
 - **`ACCENTS`** — `{ id: { name, hue, chroma } }` for the 5 palettes.
@@ -195,7 +197,7 @@ Slides are authored in a **1920×1080** coordinate system and scaled to fit any 
 ### 6.2 `<Slide>` 🟢
 Pure function of `{ slide, deck, sectionName, num, total }`, switching on `slide.layout`. **SlideChrome** draws the shared footer/eyebrow/page-number furniture. The `eyebrow` field overrides the per-layout default label.
 
-### 6.3 The 12 layouts 🟢
+### 6.3 The 12 layouts (+ blank) 🟢
 Each is a fixed visual composition driven by the slide schema (§3.2):
 - **cover** — full-bleed dark/accent, deck title large, geometric accent circles. Driven by `deck.title`, `slide.title/subtitle/eyebrow/kicker`.
 - **agenda** — 2-col numbered list.
@@ -209,6 +211,7 @@ Each is a fixed visual composition driven by the slide schema (§3.2):
 - **roadmap** — swimlane Gantt graphic. 🟢 data-driven via `roadmapModel` (`lib/roadmapSpec.js`), shared by the canvas and the PPTX export; a slide may supply `months`/`lanes`/`todayIndex`, and falls back to the built-in demo when omitted. 🟢 In-app authoring via the inspector's **Data** tab (§7.2.5); the schema is also settable via MCP/agent or the Co-pilot.
 - **risks** — severity-coded rows (high/med/low). 🟢 Severity colours are single-sourced in `lib/riskSpec.js` (`SEVERITY_OKLCH` for the canvas, `SEVERITY_HEX` — exact sRGB — for the export), so the on-screen accents and the exported bullets match; unknown severities fall back to grey on both.
 - **thanks** — closing slide.
+- **blank** 🟢 — PowerPoint's "Blank": a plain `.slide` painted `bgColor` (hex-gated; a non-hex value keeps the white default on canvas and export alike), no chrome — the elements overlay is the content. Offered in the Layout grid; `createComponentSlide('blank')` seeds `{ bgColor: '#FFFFFF', elements: [] }`.
 
 ### 6.4 Charts (SVG) 🟢 render / 🟡 data
 `ChartByType` → `LineChart` (with plan overlay), `BarChart`, `AreaChart`, `DonutChart`. All accent-aware, hand-drawn SVG. 🟡 Series data is currently fixed inside each chart component (not yet read from slide fields).
@@ -221,7 +224,7 @@ Each is a fixed visual composition driven by the slide schema (§3.2):
 Backed by the real **deck library** (`GET /api/decks`, see §11.6/§17), not a mock list.
 - **Deck grid** 🟢 — lists the persisted decks; a card opens the deck (activates it server-side and adopts its content); the active deck shows a **LIVE** badge; cover tint/initials and the "edited" time derive from each deck's metadata (`lib/decksApi.js` view-model helpers). Empty state when the library has no decks.
 - **Per-card actions** 🟢 — a ⋯ menu offers **Rename** (inline edit; sets the deck title as the single source of its name) and **Delete**.
-- **"New" cards** 🟢 — Blank creates + opens a fresh deck (`POST /api/decks`); "From template" opens the picker.
+- **"New" cards** 🟢 — Blank creates + opens a fresh deck (`POST /api/decks`); "From template" opens the picker; 🟢 **Import PowerPoint** opens a `.pptx` picker → `importPptx` (§12.1) → `createDeck` → open, toasting the slide count and any import warnings (or the parse error) via App-level toasts. (It previously created a blank deck.) 🔴 "Start with AI" still creates a plain blank deck — see `docs/POWERPOINT-PARITY.md` finding #15.
 - **Deck list view** 🟢 toggle — rows open the deck; per-row rename/delete wired (PR #105), matching the grid.
 - **Search** 🟢 filters decks (case-insensitive, no-match empty state); **Edited sort** 🟢 toggles newest/oldest-first, composing with search (v2026.07.23). 🔴 Filter button, greeting name, and the Recent/Starred/Trash sidebar are visibly disabled with a "Soon" affordance — honestly not-yet-built (they need a starred/soft-delete data model), not decorative.
 
@@ -396,7 +399,16 @@ The app-owned deck state is wrapped in **`useDeckHistory`** (`src/hooks/useDeckH
 
 🟢 **Series-colour parity** — canvas and export draw each series the same colour: one ordered palette in `chartSpec.js` (`CHART_SERIES_OKLCH` for the SVG canvas, `CHART_SERIES_HEX` — the exact sRGB equivalents — for pptxgenjs). The export uses it directly (no theme-tint) so it mirrors the screen.
 
-**Spec (⚪):** expand roadmap to a real table/shape timeline. (Export-modal range ✅ + notes ✅ — §13; quality is N/A for vector PPTX.)
+🟢 **Canvas colour-scheme parity** — each slide exports in the scheme the canvas renders it in (`SCHEMES` + `schemeFor` in `pptxExport.js`, mirroring the `.slide` CSS): content layouts white with `#0A0A0B` ink, an ink/accent cover, divider and thanks dark. The deck theme supplies only the accent (`THEME_ACCENT`). (Previously every slide exported on a dark theme background.)
+
+🟢 **PowerPoint sections** — one section per deck section that has exported slides (unnamed → "Section N", duplicate names uniquified); each builder files its slide via the per-slide render context's `slideOpts.sectionTitle` (pptxgenjs would otherwise drop section-less slides into "Default-N").
+
+🟢 **Text anchor** — a text element's `valign` (top/middle/bottom, default middle) exports as the pptx `valign`, matching the canvas flex alignment.
+
+**Spec (⚪):** expand roadmap to a real table/shape timeline. (Export-modal range ✅ + notes ✅ — §13; quality is N/A for vector PPTX.) Transitions/gradients via zip post-processing — see `docs/POWERPOINT-PARITY.md`.
+
+### 12.1 PPTX import — `lib/pptxImport.js` 🟢
+`importPptx(data, { fileName })` → `{ deck, warnings }`, entirely client-side (JSZip + DOMParser). Every slide becomes a `blank` slide whose `elements` reproduce the source in the 1920×1080 space (uniform scale; non-16:9 letterboxes): text boxes + placeholders (geometry and text style inherited slide → layout → master → `txStyles`; theme fonts; bullets per level; `normAutofit` scale; anchor; line spacing), preset shapes (solid / gradient / style-ref fills, outlines; outline-only → closed stroked `path`; unknown presets → rect, warned), connectors → rotated `line`s, groups (child space mapped, shared `groupId`), pictures + picture backgrounds (data URLs; EMF/WMF/external skipped, warned), master/layout art (unless `showMasterSp="0"`), native tables → grouped cell grids, speaker notes, transitions, sections, title/author. Colours resolve through the colour map / `clrMapOvr` / theme with `lumMod`/`lumOff`/`tint`/`shade`/`alpha`. Charts/SmartArt/OLE become labelled placeholders + warnings. Every element passes `isValidElement` (the patch gate). 🟡 Text is flattened to its first run's style (rich runs are ⚪), table styles aren't applied, slide size is fixed 16:9. Full gap analysis + roadmap: `docs/POWERPOINT-PARITY.md`.
 
 ---
 
@@ -439,14 +451,15 @@ Hidden quick-theming panel toggled by `postMessage({type:'__activate_edit_mode'}
 | Area | Status |
 |---|---|
 | Shell, routing, theming, density, accent | 🟢 |
-| Slide rendering (12 layouts) + ScaledSlide | 🟢 |
+| Slide rendering (12 layouts + blank) + ScaledSlide | 🟢 |
 | Charts (render) | 🟢 (🟡 fixed series) |
 | Add/delete slides, change layout/theme, navigation | 🟢 |
 | Toolbar insert menus (component/text/table/chart) | 🟢 |
 | MCP API (REST + tools) | 🟢 |
 | LLM proxy + Co-pilot edits the current slide | 🟢 |
 | Settings: AI + Appearance | 🟢 |
-| PPTX export | 🟢 (🟡 roadmap layout) |
+| PPTX export | 🟢 (🟡 roadmap layout) · sections + canvas colour parity 🟢 |
+| PPTX import | 🟢 (🟡 rich text / tables / charts approximated) |
 | Presenter | 🟡 |
 | Canvas selection / direct manipulation | 🟢 core + multi-select/marquee/move/resize/rotate/align (H+V)/distribute |
 | Inspector Design/Animate, timeline | 🟡 Design partial · Animate transition wired (Builds 🔴) · timeline 🔴 |
