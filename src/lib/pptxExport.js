@@ -201,7 +201,7 @@ function addElements(pptx, sld, slide) {
 
 // ---- per-layout slide builders ----
 function addCoverSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: slide.bg === 'accent' ? tc.accent : tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Untitled', {
     x: 0.5, y: 2.5, w: 9, h: 1.2,
@@ -219,7 +219,7 @@ function addCoverSlide(pptx, slide, tc) {
 }
 
 function addAgendaSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Agenda', {
     x: 0.5, y: 0.4, w: 9, h: 0.6,
@@ -239,7 +239,7 @@ function addAgendaSlide(pptx, slide, tc) {
 }
 
 function addDividerSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: slide.bg === 'accent' ? tc.accent : tc.bg };
   if (slide.chapter) {
     // Decorative chapter numeral — a raw addText (not a fmt field), so no fmt/size
@@ -258,7 +258,7 @@ function addDividerSlide(pptx, slide, tc) {
 }
 
 function addKpiSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, basePx: CANVAS_BASELINE_PX.kpi.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
@@ -283,7 +283,7 @@ function addKpiSlide(pptx, slide, tc) {
 }
 
 function addTextSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: tc.bg };
   if (slide.title) {
     fmtText(sld, slide, 'title', slide.title, {
@@ -300,7 +300,7 @@ function addTextSlide(pptx, slide, tc) {
 }
 
 function addListSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 0.3, w: 9, h: 0.6, fontSize: 24, basePx: CANVAS_BASELINE_PX.list.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
@@ -331,7 +331,7 @@ const cellOpts = (slide, key, basePx, base) => {
 };
 
 function addTableSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, basePx: CANVAS_BASELINE_PX.table.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
@@ -353,7 +353,7 @@ function addTableSlide(pptx, slide, tc) {
 
 // Real, editable PPTX chart (native pptxgenjs chart) instead of a text placeholder.
 function addChartSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Chart', {
     x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 20, basePx: CANVAS_BASELINE_PX.chart.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
@@ -375,7 +375,7 @@ function addChartSlide(pptx, slide, tc) {
 }
 
 function addSplitSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 0.4, w: 5.5, h: 0.8, fontSize: 26, basePx: CANVAS_BASELINE_PX.split.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
@@ -398,7 +398,7 @@ function addSplitSlide(pptx, slide, tc) {
 }
 
 function addRisksSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || '', {
     x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, basePx: CANVAS_BASELINE_PX.risks.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
@@ -434,7 +434,7 @@ function addRisksSlide(pptx, slide, tc) {
 // the shared roadmapModel): a month axis, optional TODAY marker, one row per
 // lane with status-coloured bars, and a status legend.
 function addRoadmapSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Roadmap', {
     x: 0.5, y: 0.3, w: 9, h: 0.5, fontSize: 22, basePx: CANVAS_BASELINE_PX.roadmap.title, scale: tc.headingScale, bold: true, color: tc.ink, fontFace: 'Inter',
@@ -495,7 +495,7 @@ function addRoadmapSlide(pptx, slide, tc) {
 }
 
 function addThanksSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || 'Thank you', {
     x: 0.5, y: 2.2, w: 9, h: 1.2, fontSize: 52, basePx: CANVAS_BASELINE_PX.thanks.title, scale: tc.headingScale, bold: true, color: tc.ink, align: 'center', fontFace: 'Inter',
@@ -510,14 +510,14 @@ function addThanksSlide(pptx, slide, tc) {
 
 // PowerPoint's Blank layout: just the solid background — addElements draws the
 // content. White fallback matches the canvas `.slide` default.
-function addBlankSlide(pptx, slide) {
-  const sld = pptx.addSlide();
+function addBlankSlide(pptx, slide, tc) {
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: isHexColor(slide.bgColor) ? pxHex(slide.bgColor) : 'FFFFFF' };
   return sld;
 }
 
 function addGenericSlide(pptx, slide, tc) {
-  const sld = pptx.addSlide();
+  const sld = pptx.addSlide(tc.slideOpts);
   sld.background = { color: tc.bg };
   fmtText(sld, slide, 'title', slide.title || slide.layout || '', {
     x: 0.5, y: 0.4, w: 9, h: 0.7, fontSize: 24, bold: true, color: tc.ink, fontFace: 'Inter',
@@ -544,7 +544,7 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
 
   // Theme palette + the deck-level heading scale, in one render context passed to
   // every builder (fresh object so the shared THEME_COLORS entry isn't mutated).
-  const tc = { ...themeColors(deck.theme), headingScale: resolveHeadingScale(deck) };
+  const deckTc = { ...themeColors(deck.theme), headingScale: resolveHeadingScale(deck) };
 
   // Flatten slides in section order (the same order the canvas/sorter render +
   // the export-modal range is measured against — single-sourced via flattenDeck).
@@ -561,8 +561,28 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
     slides = flat.slice(Math.min(a, b) - 1, Math.max(a, b));
   }
 
+  // PowerPoint sections mirror the deck's sections. pptxgenjs files any slide
+  // added without a sectionTitle into a "Default-N" section once one exists, so
+  // every builder passes `tc.slideOpts`. Titles must be unique (pptxgenjs looks
+  // sections up by title): an unnamed section gets "Section N", a repeat gets
+  // " (2)". Only sections with exported slides are emitted (a range may drop some).
+  const sectionTitles = new Map();
+  const taken = new Set();
+  for (const slide of slides) {
+    if (sectionTitles.has(slide.sectionId)) continue;
+    const idx = deck.sections.findIndex((sec) => sec.id === slide.sectionId);
+    const base = (slide.sectionName || '').trim() || `Section ${idx + 1}`;
+    let title = base;
+    for (let n = 2; taken.has(title); n += 1) title = `${base} (${n})`;
+    taken.add(title);
+    sectionTitles.set(slide.sectionId, title);
+    pptx.addSection({ title });
+  }
+
   for (const slide of slides) {
     let sld;
+    // A per-slide render context (the shared palette + this slide's section).
+    const tc = { ...deckTc, slideOpts: { sectionTitle: sectionTitles.get(slide.sectionId) } };
     switch (slide.layout) {
       case 'cover':    sld = addCoverSlide(pptx, slide, tc);   break;
       case 'agenda':   sld = addAgendaSlide(pptx, slide, tc);  break;
@@ -576,7 +596,7 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
       case 'roadmap':  sld = addRoadmapSlide(pptx, slide, tc); break;
       case 'thanks':   sld = addThanksSlide(pptx, slide, tc);  break;
       case 'chart':    sld = addChartSlide(pptx, slide, tc);   break;
-      case 'blank':    sld = addBlankSlide(pptx, slide);       break;
+      case 'blank':    sld = addBlankSlide(pptx, slide, tc);   break;
       default:         sld = addGenericSlide(pptx, slide, tc); break;
     }
     // Overlay the free-form elements layer (any layout may carry it).

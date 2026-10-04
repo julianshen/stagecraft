@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Record everything the export draws onto a mocked pptxgenjs, so we can assert
 // the roadmap builder emits a real timeline instead of a placeholder.
-const rec = vi.hoisted(() => ({ slides: [] }));
+const rec = vi.hoisted(() => ({ slides: [], sections: [] }));
 vi.mock('pptxgenjs', () => {
   class FakePptx {
     constructor() {
@@ -14,8 +14,10 @@ vi.mock('pptxgenjs', () => {
         custGeom: 'custGeom', // freeform geometry — real pptxgen 3.12 enum value (pptxgen.cjs.js:242)
       };
     }
-    addSlide() {
+    addSection(o) { rec.sections.push(o); }
+    addSlide(opts) {
       const s = {
+        opts,
         texts: [], shapes: [], charts: [], images: [], tables: [], background: null, notes: null,
         addText(t, o) { this.texts.push({ t, o }); },
         addShape(type, o) { this.shapes.push({ type, o }); },
@@ -57,7 +59,7 @@ const deckWith = (slide) => ({
   slides: [slide],
 });
 
-beforeEach(() => { rec.slides.length = 0; });
+beforeEach(() => { rec.slides.length = 0; rec.sections.length = 0; });
 
 describe('exportToPPTX — font-size parity (text layout)', () => {
   // Canvas defaults (SlideRenderer text layout): title 84px, body 32px.
@@ -923,5 +925,41 @@ describe('exportToPPTX — text element valign', () => {
   it('defaults to middle', async () => {
     await exportToPPTX(deck());
     expect(optsOf(last(), 'V').valign).toBe('middle');
+  });
+});
+
+describe('exportToPPTX — PowerPoint sections', () => {
+  const deck = {
+    title: 'D', theme: 'indigo',
+    sections: [
+      { id: 'a', name: 'Intro', slides: ['1', '2'] },
+      { id: 'b', name: '', slides: ['3'] },
+      { id: 'c', name: 'Intro', slides: ['4'] }, // duplicate name
+      { id: 'd', name: 'Empty', slides: [] },
+    ],
+    slides: ['1', '2', '3', '4'].map((id) => ({ id, layout: id === '2' ? 'blank' : 'text', title: `T${id}` })),
+  };
+
+  it('emits one PowerPoint section per deck section that has slides, uniquely titled', async () => {
+    await exportToPPTX(deck);
+    expect(rec.sections.map((x) => x.title)).toEqual(['Intro', 'Section 2', 'Intro (2)']);
+  });
+
+  it('files every slide (every builder) under its section', async () => {
+    await exportToPPTX(deck);
+    expect(rec.slides.map((x) => x.opts?.sectionTitle)).toEqual(['Intro', 'Intro', 'Section 2', 'Intro (2)']);
+  });
+
+  it('never reuses a title, even against a section literally named like a suffix', async () => {
+    await exportToPPTX({ ...deck, sections: [
+      { id: 'x', name: 'A', slides: ['1'] }, { id: 'y', name: 'A (2)', slides: ['2'] }, { id: 'z', name: 'A', slides: ['3'] },
+    ] });
+    expect(rec.sections.map((x) => x.title)).toEqual(['A', 'A (2)', 'A (3)']);
+  });
+
+  it('only emits the sections a range keeps', async () => {
+    await exportToPPTX(deck, { range: { from: 3, to: 3 } });
+    expect(rec.sections.map((x) => x.title)).toEqual(['Section 2']);
+    expect(rec.slides[0].opts.sectionTitle).toBe('Section 2');
   });
 });
