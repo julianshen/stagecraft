@@ -10,7 +10,7 @@ import { CANVAS_BASELINE_PX } from '../../lib/fontBaselines.js';
 import { headingPx } from '../../lib/headingScale.js';
 import { shapeDef, hasVisibleStroke, clipPoints } from '../../lib/shapes.js';
 import { isHexColor } from '../../lib/color.js';
-import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf } from '../../lib/elements.js';
+import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf, fontStack } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider fallbacks,
 // plus `headingScale`, which sizes every title via headingPx). This is the memo
@@ -435,7 +435,7 @@ function ElementView({ el }) {
         fontStyle: el.italic ? 'italic' : 'normal',
         textDecoration: el.underline ? 'underline' : 'none',
         textAlign: align,
-        fontFamily: el.fontFamily || undefined,
+        fontFamily: fontStack(el.fontFamily),
         // Preserve newlines/spaces typed into the Properties Content textarea
         // (HTML collapses them by default).
         whiteSpace: 'pre-wrap',

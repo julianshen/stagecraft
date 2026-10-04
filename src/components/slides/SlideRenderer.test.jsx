@@ -603,7 +603,7 @@ describe('ElementsLayer text typography', () => {
     expect(el.style.fontStyle).toBe('italic');
     expect(el.style.textDecoration).toContain('underline');
     expect(el.style.textAlign).toBe('center');
-    expect(el.style.fontFamily).toBe('Georgia');
+    expect(el.style.fontFamily).toBe('"Georgia", serif'); // with a generic fallback (fontStack)
     expect(el.style.whiteSpace).toBe('pre-wrap'); // preserves newlines/spaces from the textarea
   });
 
