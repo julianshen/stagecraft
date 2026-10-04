@@ -830,7 +830,7 @@ describe('per-field / per-item formatting (slide.fmt)', () => {
     // colour the export can't convert; rather than toHex's indigo fallback,
     // leave the field's template colour.
     await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Body', fmt: { body: { color: 'red' } } }));
-    expect(optsOf(last(), 'Body').color).toBe('CCCCCC'); // base body colour — NOT indigo
+    expect(optsOf(last(), 'Body').color).toBe('333333'); // base body colour — NOT indigo
   });
 
   it('ignores a malformed fmt entry (non-object) without crashing or formatting', async () => {
@@ -961,5 +961,44 @@ describe('exportToPPTX — PowerPoint sections', () => {
     await exportToPPTX(deck, { range: { from: 3, to: 3 } });
     expect(rec.sections.map((x) => x.title)).toEqual(['Section 2']);
     expect(rec.slides[0].opts.sectionTitle).toBe('Section 2');
+  });
+});
+
+describe('exportToPPTX — canvas colour-scheme parity', () => {
+  // The canvas draws content layouts on white with near-black ink, and only the
+  // cover (ink/accent bg), divider and thanks slides dark — the export matches.
+  const exp = async (slide) => { await exportToPPTX(deckWith({ id: 's', ...slide })); return last(); };
+
+  it.each(['agenda', 'kpi', 'chart', 'split', 'table', 'text', 'list', 'roadmap', 'risks'])(
+    'exports a %s slide light: white background, near-black title',
+    async (layout) => {
+      const s = await exp({ layout, title: 'Heading', body: 'b', columns: ['c'], rows: [['r']] });
+      expect(s.background).toEqual({ color: 'FFFFFF' });
+      expect(optsOf(s, 'Heading').color).toBe('0A0A0B');
+    },
+  );
+
+  it('exports body copy in the canvas grey, not the dark-scheme light grey', async () => {
+    const s = await exp({ layout: 'text', title: 'T', body: 'Body copy' });
+    expect(optsOf(s, 'Body copy').color).toBe('333333');
+  });
+
+  it('exports the cover light by default, ink / accent when the cover asks for them', async () => {
+    expect((await exp({ layout: 'cover', title: 'C' })).background).toEqual({ color: 'FFFFFF' });
+    const ink = await exp({ layout: 'cover', title: 'C', bg: 'ink' });
+    expect(ink.background).toEqual({ color: '15171C' });
+    expect(optsOf(ink, 'C').color).toBe('F8F8F6');
+    expect((await exp({ layout: 'cover', title: 'C', bg: 'accent' })).background).toEqual({ color: '7C5FDC' });
+  });
+
+  it('exports divider and thanks slides dark, like the canvas', async () => {
+    expect((await exp({ layout: 'divider', chapter: '01', title: 'D' })).background).toEqual({ color: '15171C' });
+    expect((await exp({ layout: 'thanks', title: 'Bye' })).background).toEqual({ color: '15171C' });
+  });
+
+  it('draws table/KPI panels in light tones on a light slide', async () => {
+    const t = await exp({ layout: 'table', title: 'T', columns: ['Col'], rows: [['Cell']] });
+    expect(t.tables[0].rows[0][0].options.fill.color).not.toBe('1A1A2E');
+    expect(t.tables[0].rows[1][0].options.color).toBe('333333');
   });
 });
