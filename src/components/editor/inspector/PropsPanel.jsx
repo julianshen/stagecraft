@@ -3,7 +3,7 @@ import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup, Seg } from '../../ui/Primitives.jsx';
 import { toHex } from '../../../lib/color.js';
 import { isStrokeableShape, isFillableShape } from '../../../lib/shapes.js';
-import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, borderStyle } from '../../../lib/elements.js';
+import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, borderStyle, valignOf } from '../../../lib/elements.js';
 import { requiresFill } from '../../../lib/deckUtils.js';
 
 // Line-spacing presets for the dropdown (the field itself is a continuous
@@ -197,7 +197,7 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
               options={[{ v: 'left', ico: 'align-left', title: 'Align left' }, { v: 'center', ico: 'align-center', title: 'Align center' }, { v: 'right', ico: 'align-right', title: 'Align right' }]} />
           </FieldRow>
           <FieldRow label="ANCHOR">
-            <Seg value={selected.valign ?? 'middle'} onChange={v => setSelected({ ...selected, valign: v })}
+            <Seg value={valignOf(selected)} onChange={v => setSelected({ ...selected, valign: v })}
               options={[{ v: 'top', ico: 'align-top', title: 'Anchor top' }, { v: 'middle', ico: 'align-middle', title: 'Anchor middle' }, { v: 'bottom', ico: 'align-bottom', title: 'Anchor bottom' }]} />
           </FieldRow>
           <FieldRow label="STYLE">

@@ -35,6 +35,7 @@ export default defineConfig({
         'src/lib/transitions.js',
         'src/lib/pptxExport.js',
         'src/lib/pptxImport.js',
+        'src/lib/slideScheme.js',
         'src/lib/pdfExport.js',
         'src/lib/color.js',
         'src/lib/domEvents.js',

@@ -18,13 +18,18 @@
 import JSZip from 'jszip';
 import { SLIDE_W, SLIDE_H, MIN_LINE_THICKNESS } from './elements.js';
 import { isValidElement } from './deckUtils.js';
+import { SHAPES, shapeDef, clipPoints } from './shapes.js';
+import { MAX_IMAGE_BYTES } from './imageFile.js';
 
 const EMU_PER_PT = 12700;
 
 // ---- tiny XML helpers (namespace-agnostic: match on localName) ----
 const parseXml = (text) => new DOMParser().parseFromString(text, 'application/xml');
 const kids = (el, name) => (el ? [...el.children].filter((c) => c.localName === name) : []);
-const kid = (el, name) => kids(el, name)[0] || null;
+function kid(el, name) {
+  if (el) for (const c of el.children) if (c.localName === name) return c;
+  return null;
+}
 // Walk a chain of child names: path(sp, 'spPr', 'xfrm', 'off').
 const path = (el, ...names) => names.reduce((cur, n) => kid(cur, n), el);
 function desc(el, name) {
@@ -50,8 +55,9 @@ function relAttr(el, name) {
   return null;
 }
 const numAttr = (el, name, d = null) => {
-  const v = Number(attr(el, name));
-  return attr(el, name) != null && Number.isFinite(v) ? v : d;
+  const s = attr(el, name);
+  const v = Number(s);
+  return s != null && Number.isFinite(v) ? v : d;
 };
 
 // ---- package parts + relationships ----
@@ -68,15 +74,11 @@ function resolvePart(base, target) {
 const relsPathOf = (p) => `${dirOf(p)}_rels/${p.slice(p.lastIndexOf('/') + 1)}.rels`;
 
 class Pkg {
-  constructor(zip) { this.zip = zip; this.cache = new Map(); }
-  async text(p) {
-    const f = this.zip.file(p);
-    return f ? f.async('string') : null;
-  }
+  constructor(zip) { this.zip = zip; this.cache = new Map(); this.media = new Map(); }
   async xml(p) {
     if (!this.cache.has(p)) {
-      const t = await this.text(p);
-      this.cache.set(p, t == null ? null : parseXml(t).documentElement);
+      const f = this.zip.file(p);
+      this.cache.set(p, f ? parseXml(await f.async('string')).documentElement : null);
     }
     return this.cache.get(p);
   }
@@ -144,8 +146,9 @@ function applyMods(hex, clrEl) {
 const PRESET_COLORS = { black: '000000', white: 'FFFFFF', red: 'FF0000', green: '008000', blue: '0000FF', yellow: 'FFFF00', gray: '808080' };
 const DEFAULT_CLR_MAP = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' };
 // A scheme slot (through the colour map) as an opaque colour, or null.
+const schemeHex = (ctx, key) => ctx.scheme[ctx.clrMap[key] || key] || null;
 const schemeColor = (ctx, key) => {
-  const v = ctx.scheme[ctx.clrMap[key] || key];
+  const v = schemeHex(ctx, key);
   return v ? { hex: `#${v}`, alpha: 1 } : null;
 };
 
@@ -158,11 +161,7 @@ function colorOf(clrEl, ctx) {
     case 'srgbClr': base = attr(clrEl, 'val'); break;
     case 'sysClr': base = attr(clrEl, 'lastClr') || (attr(clrEl, 'val') === 'window' ? 'FFFFFF' : '000000'); break;
     case 'prstClr': base = PRESET_COLORS[attr(clrEl, 'val')] || null; break;
-    case 'schemeClr': {
-      const key = attr(clrEl, 'val');
-      base = ctx.scheme[ctx.clrMap[key] || key] || null;
-      break;
-    }
+    case 'schemeClr': base = schemeHex(ctx, attr(clrEl, 'val')); break;
     default: return null;
   }
   if (!base || !/^[0-9a-f]{6}$/i.test(base)) return null;
@@ -176,7 +175,8 @@ const colorIn = (parent, ctx) => {
 };
 
 // A shape-properties fill → { kind: 'none' } | { kind: 'solid', color } |
-// { kind: 'grad', from, to, angle } | null (unspecified → inherit/style).
+// { kind: 'grad', color, from, to, angle } | null (unspecified → inherit/style).
+// `color` is the fill's representative solid (a gradient's first stop).
 function fillOf(props, ctx) {
   if (!props) return null;
   if (kid(props, 'noFill')) return { kind: 'none' };
@@ -194,7 +194,7 @@ function fillOf(props, ctx) {
     if (!stops.length) return null;
     // OOXML lin ang is clockwise from →, in 60000ths; CSS 0deg is ↑ → +90.
     const ang = numAttr(kid(grad, 'lin'), 'ang', 0) / 60000;
-    return { kind: 'grad', from: stops[0].color, to: stops[stops.length - 1].color, angle: Math.round((ang + 90) % 360) };
+    return { kind: 'grad', color: stops[0].color, from: stops[0].color, to: stops[stops.length - 1].color, angle: Math.round((ang + 90) % 360) };
   }
   return null;
 }
@@ -233,8 +233,9 @@ function groupTransform(grpSpPr, parentT) {
   const chOff = kid(xfrm, 'chOff'), chExt = kid(xfrm, 'chExt');
   if (!own || !chOff || !chExt) return parentT;
   const cx = numAttr(chOff, 'x', 0), cy = numAttr(chOff, 'y', 0);
-  const sx = numAttr(chExt, 'cx', 0) ? own.w / numAttr(chExt, 'cx') : 1;
-  const sy = numAttr(chExt, 'cy', 0) ? own.h / numAttr(chExt, 'cy') : 1;
+  const ecx = numAttr(chExt, 'cx', 0), ecy = numAttr(chExt, 'cy', 0);
+  const sx = ecx ? own.w / ecx : 1;
+  const sy = ecy ? own.h / ecy : 1;
   return (b) => ({
     ...b, x: own.x + (b.x - cx) * sx, y: own.y + (b.y - cy) * sy, w: b.w * sx, h: b.h * sy,
     rot: (b.rot || 0) + (own.rot || 0),
@@ -242,25 +243,33 @@ function groupTransform(grpSpPr, parentT) {
 }
 
 // ---- preset geometry → element type ----
+// The core is the SHAPES registry inverted (its `pptx` key is the OOXML preset),
+// so a shape added there imports too; aliases map close presets onto it.
 const PRST_TYPE = {
-  rect: 'shape', snip1Rect: 'shape', flowChartProcess: 'shape',
-  roundRect: 'rounded', round1Rect: 'rounded', round2SameRect: 'rounded', flowChartAlternateProcess: 'rounded',
-  ellipse: 'circle', flowChartConnector: 'circle',
-  triangle: 'triangle', rtTriangle: 'triangle', flowChartExtract: 'triangle',
-  diamond: 'diamond', flowChartDecision: 'diamond',
-  pentagon: 'pentagon', homePlate: 'arrow', chevron: 'arrow',
-  hexagon: 'hexagon', star5: 'star', star4: 'star', star6: 'star',
-  rightArrow: 'arrow',
+  ...Object.fromEntries(Object.entries(SHAPES).filter(([, d]) => !d.line).map(([type, d]) => [d.pptx, type])),
+  snip1Rect: 'shape', flowChartProcess: 'shape',
+  round1Rect: 'rounded', round2SameRect: 'rounded', flowChartAlternateProcess: 'rounded',
+  flowChartConnector: 'circle',
+  rtTriangle: 'triangle', flowChartExtract: 'triangle',
+  flowChartDecision: 'diamond',
+  homePlate: 'arrow', chevron: 'arrow',
+  star4: 'star', star6: 'star',
   line: 'line', straightConnector1: 'line', bentConnector3: 'line', curvedConnector3: 'line',
 };
-// An outline-only (no fill) box becomes a stroked closed `path` — the element
-// model's fills are always solid, but a path is stroke-only.
+// An outline-only (no fill) shape becomes a stroked closed `path` — the element
+// model's fills are always solid, but a path is stroke-only. Its points follow
+// the shape: a sampled ellipse, the clip polygon, or the box.
 function outlinePoints(type) {
-  if (type === 'circle') {
+  const def = shapeDef(type);
+  if (def?.round) {
     return Array.from({ length: 33 }, (_, i) => {
       const a = (i / 32) * Math.PI * 2;
       return [round2(0.5 + 0.5 * Math.cos(a)), round2(0.5 + 0.5 * Math.sin(a))];
     });
+  }
+  if (def?.clip) {
+    const pts = clipPoints(def.clip);
+    return [...pts, pts[0]];
   }
   return [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]];
 }
@@ -280,9 +289,14 @@ function lineOf(ln, ctx, styleLnColor) {
 // ---- text ----
 const ALIGN = { ctr: 'center', r: 'right', just: 'left', l: 'left', dist: 'center' };
 const ANCHOR = { t: 'top', ctr: 'middle', b: 'bottom' };
+// Placeholder types that share a template slot: a centred title is a title; a
+// subtitle / object / untyped placeholder is a body.
+const normPhType = (t) => (t === 'ctrTitle' ? 'title' : t === 'subTitle' || t === 'obj' || t == null ? 'body' : t);
 // Text-style category of a placeholder type (which master txStyles applies).
-const phCategory = (type) => (type === 'title' || type === 'ctrTitle' ? 'title'
-  : type == null || type === 'body' || type === 'obj' || type === 'subTitle' ? 'body' : 'other');
+const phCategory = (type) => {
+  const n = normPhType(type);
+  return n === 'title' || n === 'body' ? n : 'other';
+};
 
 // The first value a getter yields across an ordered chain of list-style levels.
 const firstOf = (chain, get) => {
@@ -296,30 +310,27 @@ const firstOf = (chain, get) => {
 function textOf(sp, ctx, inh) {
   const txBody = kid(sp, 'txBody');
   if (!txBody) return null;
-  const paras = kids(txBody, 'p');
   const lvlName = (p) => `lvl${Math.min(9, numAttr(kid(p, 'pPr'), 'lvl', 0) + 1)}pPr`;
-  // The list-style chain for a paragraph level: shape → layout ph → master ph →
-  // master text styles (by placeholder category). Each entry is an a:lvlNpPr.
-  const chainFor = (p) => {
-    const lvl = lvlName(p);
-    return [kid(sp, 'txBody'), ...inh.txBodies].map((tb) => path(tb, 'lstStyle', lvl))
-      .concat(inh.txStyle ? [kid(inh.txStyle, lvl)] : []);
-  };
+  // The list-style levels for a paragraph: shape → layout ph → master ph (local),
+  // then the master text style by placeholder category (kept apart: a shape
+  // style's fontRef colour ranks between the two). Each is an a:lvlNpPr.
+  const localFor = (p) => [txBody, ...inh.txBodies].map((tb) => path(tb, 'lstStyle', lvlName(p)));
+  const masterFor = (p) => kid(inh.txStyle, lvlName(p));
   const lines = [];
   let firstRun = null, firstPara = null;
-  for (const p of paras) {
+  for (const p of kids(txBody, 'p')) {
     let t = '';
     for (const c of p.children) {
       if (c.localName === 'r' || c.localName === 'fld') {
-        t += kid(c, 't')?.textContent ?? '';
-        if (!firstRun && (kid(c, 't')?.textContent ?? '').trim()) { firstRun = c; firstPara = p; }
+        const run = kid(c, 't')?.textContent ?? '';
+        t += run;
+        if (!firstRun && run.trim()) { firstRun = c; firstPara = p; }
       } else if (c.localName === 'br') t += '\n';
     }
     if (!t.trim()) { lines.push(t); continue; }
     const pPr = kid(p, 'pPr');
-    const chain = [pPr, ...chainFor(p)];
     // Bullets: the nearest buNone / buChar / buAutoNum in the chain decides.
-    const bullet = firstOf(chain, (el) => (kid(el, 'buNone') ? 'none'
+    const bullet = firstOf([pPr, ...localFor(p), masterFor(p)], (el) => (kid(el, 'buNone') ? 'none'
       : kid(el, 'buChar') ? (attr(kid(el, 'buChar'), 'char') || '•')
         : kid(el, 'buAutoNum') ? '•' : null));
     const indent = '  '.repeat(numAttr(pPr, 'lvl', 0));
@@ -331,34 +342,33 @@ function textOf(sp, ctx, inh) {
   const content = lines.join('\n');
   if (!content.trim()) return null;
 
+  // The element takes its first run's style, falling back through the chain.
   const rPr = kid(firstRun, 'rPr');
-  const chain = chainFor(firstPara);
+  const pPr0 = kid(firstPara, 'pPr');
+  const local = localFor(firstPara);
+  const chain = [...local, masterFor(firstPara)];
   const defRPr = (el) => kid(el, 'defRPr');
+  const runAttr = (name) => attr(rPr, name) ?? firstOf(chain, (el) => attr(defRPr(el), name));
+  const isOn = (name) => ['1', 'true'].includes(runAttr(name));
+  const bodyPrs = [kid(txBody, 'bodyPr'), ...inh.txBodies.map((tb) => kid(tb, 'bodyPr'))];
   const szHundredths = numAttr(rPr, 'sz') ?? firstOf(chain, (el) => numAttr(defRPr(el), 'sz')) ?? 1800;
-  const fontScale = firstOf([path(sp, 'txBody', 'bodyPr'), ...inh.txBodies.map((tb) => kid(tb, 'bodyPr'))],
-    (bp) => numAttr(kid(bp, 'normAutofit'), 'fontScale')) ?? 100000;
-  const boolProp = (name) => {
-    const own = attr(rPr, name);
-    const v = own ?? firstOf(chain, (el) => attr(defRPr(el), name));
-    return v === '1' || v === 'true';
-  };
-  const u = attr(rPr, 'u') ?? firstOf(chain, (el) => attr(defRPr(el), 'u'));
+  const fontScale = firstOf(bodyPrs, (bp) => numAttr(kid(bp, 'normAutofit'), 'fontScale')) ?? 100000;
+  const u = runAttr('u');
   // Colour precedence: run → list styles → the shape style's fontRef → the
-  // master text style (always the chain's last entry when present) → tx1.
+  // master text style → tx1.
   const fillOfLvl = (el) => colorIn(kid(defRPr(el), 'solidFill'), ctx);
-  const local = inh.txStyle ? chain.slice(0, -1) : chain;
   const color = colorIn(kid(rPr, 'solidFill'), ctx)
     || firstOf(local, fillOfLvl)
     || inh.fontRefColor
-    || (inh.txStyle ? firstOf(chain.slice(-1), fillOfLvl) : null)
+    || firstOf([masterFor(firstPara)], fillOfLvl)
     || schemeColor(ctx, 'tx1')
     || { hex: '#000000', alpha: 1 };
   let face = attr(kid(rPr, 'latin'), 'typeface') ?? firstOf(chain, (el) => attr(kid(defRPr(el), 'latin'), 'typeface'));
   if (face === '+mj-lt') face = ctx.fonts.major;
   else if (face === '+mn-lt') face = ctx.fonts.minor;
-  const algn = attr(kid(firstPara, 'pPr'), 'algn') ?? firstOf(chain, (el) => attr(el, 'algn'));
-  const anchor = firstOf([path(sp, 'txBody', 'bodyPr'), ...inh.txBodies.map((tb) => kid(tb, 'bodyPr'))], (bp) => attr(bp, 'anchor'));
-  const spcPct = firstOf([kid(firstPara, 'pPr'), ...chain], (el) => numAttr(path(el, 'lnSpc', 'spcPct'), 'val'));
+  const algn = attr(pPr0, 'algn') ?? firstOf(chain, (el) => attr(el, 'algn'));
+  const anchor = firstOf(bodyPrs, (bp) => attr(bp, 'anchor'));
+  const spcPct = firstOf([pPr0, ...chain], (el) => numAttr(path(el, 'lnSpc', 'spcPct'), 'val'));
 
   const px = (szHundredths / 100) * (fontScale / 100000) * EMU_PER_PT * ctx.fit.k;
   return {
@@ -366,8 +376,8 @@ function textOf(sp, ctx, inh) {
     fontSize: Math.max(1, round2(px)),
     fill: color.hex,
     ...(color.alpha < 1 ? { opacity: Math.round(color.alpha * 100) } : {}),
-    ...(boolProp('b') ? { bold: true } : {}),
-    ...(boolProp('i') ? { italic: true } : {}),
+    ...(isOn('b') ? { bold: true } : {}),
+    ...(isOn('i') ? { italic: true } : {}),
     ...(u && u !== 'none' ? { underline: true } : {}),
     ...(face ? { fontFamily: face } : {}),
     align: ALIGN[algn] || 'left',
@@ -385,21 +395,17 @@ function phOf(sp) {
 // Find the matching placeholder shape in a layout/master spTree.
 function findPh(tree, ph, byIdx = true) {
   if (!tree || !ph) return null;
-  const sps = kids(tree, 'sp');
-  const norm = (t) => (t === 'ctrTitle' ? 'title' : t === 'subTitle' || t === 'obj' || t == null ? 'body' : t);
-  if (byIdx && ph.idx != null) {
-    const hit = sps.find((s) => phOf(s)?.idx === ph.idx);
-    if (hit) return hit;
-  }
-  return sps.find((s) => phOf(s) && norm(phOf(s).type) === norm(ph.type)) || null;
+  const phs = kids(tree, 'sp').map((s) => [s, phOf(s)]).filter(([, p]) => p);
+  const hit = (byIdx && ph.idx != null && phs.find(([, p]) => p.idx === ph.idx))
+    || phs.find(([, p]) => normPhType(p.type) === normPhType(ph.type));
+  return hit ? hit[0] : null;
 }
 
 class SlideReader {
-  constructor(pkg, ctx, part, rels, layoutTree, masterTree, warn) {
-    Object.assign(this, { pkg, ctx, part, rels, layoutTree, masterTree, warn });
+  constructor(pkg, ctx, rels, layoutTree, masterTree, warn) {
+    Object.assign(this, { pkg, ctx, rels, layoutTree, masterTree, warn });
     this.out = [];
     this.n = 0;
-    this.groupSeq = 0;
   }
 
   id(prefix) { this.n += 1; return `${prefix}-${this.n}`; }
@@ -415,31 +421,30 @@ class SlideReader {
       ph,
       xfrm: path(sp, 'spPr', 'xfrm') || path(lay, 'spPr', 'xfrm') || path(mas, 'spPr', 'xfrm'),
       txBodies: [lay, mas].map((s) => kid(s, 'txBody')).filter(Boolean),
-      txStyle: txStyles ? kid(txStyles, cat === 'title' ? 'titleStyle' : cat === 'body' ? 'bodyStyle' : 'otherStyle') : null,
+      txStyle: kid(txStyles, `${cat}Style`),
       spPrs: [kid(lay, 'spPr'), kid(mas, 'spPr')].filter(Boolean),
       fontRefColor: colorIn(path(sp, 'style', 'fontRef'), this.ctx),
     };
   }
 
-  // `only` filters the top-level nodes (master/layout furniture skips placeholders).
-  async walk(tree, groupT = null, groupId = undefined, only = null) {
+  // Walk a shape tree. `rels` resolves pictures (a layout/master's own part rels
+  // for its furniture); `only` filters the top-level nodes (furniture skips
+  // placeholders). Nested groups share their outermost group's id.
+  async walk(tree, { groupT = null, groupId, rels = this.rels, only = null } = {}) {
     for (const node of tree.children) {
       if (only && !only(node)) continue;
       switch (node.localName) {
-        case 'sp': this.shape(node, groupT, groupId); break;
+        case 'sp':
         case 'cxnSp': this.shape(node, groupT, groupId); break;
-        case 'pic': await this.picture(node, groupT, groupId); break;
-        case 'grpSp': {
-          this.groupSeq += 1;
-          const gid = groupId || `${this.part}-g${this.groupSeq}`;
-          await this.walk(node, groupTransform(kid(node, 'grpSpPr'), groupT), gid);
+        case 'pic': await this.picture(node, groupT, groupId, rels); break;
+        case 'grpSp':
+          await this.walk(node, { groupT: groupTransform(kid(node, 'grpSpPr'), groupT), groupId: groupId || this.id('grp'), rels });
           break;
-        }
         case 'graphicFrame': this.frame(node, groupT, groupId); break;
         case 'AlternateContent': {
           // mc:AlternateContent — prefer the Fallback (plain DrawingML) branch.
           const branch = kid(node, 'Fallback') || kid(node, 'Choice');
-          if (branch) await this.walk(branch, groupT, groupId);
+          if (branch) await this.walk(branch, { groupT, groupId, rels });
           break;
         }
         default: break;
@@ -468,8 +473,9 @@ class SlideReader {
     const styleFill = styleRef('fillRef');
     const styleLn = styleRef('lnRef');
     const ln = lineOf(kid(spPr, 'ln'), this.ctx, styleLn);
-    const type = PRST_TYPE[prst] || (prst ? 'shape' : null);
-    if (prst && !PRST_TYPE[prst]) this.warn(`Shape "${prst}" was imported as a rectangle.`);
+    const known = PRST_TYPE[prst];
+    if (prst && !known) this.warn(`Shape "${prst}" was imported as a rectangle.`);
+    const type = known || (prst ? 'shape' : null);
 
     if (type === 'line') {
       if (ln) this.line(box, ln, groupId);
@@ -482,17 +488,15 @@ class SlideReader {
         stroke: ln.color.hex, strokeWidth: Math.max(1, round2(ln.w * this.ctx.fit.k)),
         ...(ln.dash ? { strokeDash: ln.dash } : {}),
       } : {};
-      if (fill.kind === 'solid' || fill.kind === 'grad') {
-        const solid = fill.kind === 'solid' ? fill.color : fill.from;
+      if (fill.color) {
         this.push({
-          type, ...geo, fill: solid.hex, ...stroke,
-          ...(solid.alpha < 1 ? { opacity: Math.round(solid.alpha * 100) } : {}),
+          type, ...geo, fill: fill.color.hex, ...stroke,
+          ...(fill.color.alpha < 1 ? { opacity: Math.round(fill.color.alpha * 100) } : {}),
           ...(fill.kind === 'grad' ? { gradient: { from: fill.from.hex, to: fill.to.hex, angle: fill.angle } } : {}),
         }, groupId);
       } else if (ln) {
         // Outline-only shape → a closed stroked path (fills are always solid).
-        this.push({ type: 'path', ...geo, points: outlinePoints(type), stroke: ln.color.hex,
-          strokeWidth: stroke.strokeWidth, ...(ln.dash ? { strokeDash: ln.dash } : {}) }, groupId);
+        this.push({ type: 'path', ...geo, points: outlinePoints(type), ...stroke }, groupId);
       }
     }
     const text = textOf(sp, this.ctx, inh);
@@ -517,12 +521,12 @@ class SlideReader {
     }, groupId);
   }
 
-  async picture(pic, groupT, groupId) {
+  async picture(pic, groupT, groupId, rels) {
     const inh = this.inherit(pic);
     const box = xfrmBox(inh.xfrm, groupT);
     if (!box) return;
     const rId = relAttr(path(pic, 'blipFill', 'blip'), 'embed');
-    const src = await imageData(this.pkg, this.rels[rId], this.warn);
+    const src = await imageData(this.pkg, rels[rId], this.warn);
     if (src) this.push({ type: 'image', ...toPx(box, this.ctx.fit), src }, groupId);
   }
 
@@ -544,7 +548,7 @@ class SlideReader {
 
   // A native table → one cell rect + text per cell, on the table's grid.
   table(tbl, box, groupId) {
-    const gid = groupId || this.id('tbl');
+    const gid = groupId || this.id('grp');
     if (desc(kid(tbl, 'tblPr'), 'tableStyleId')) this.warn('Table styles (banding, header fills) are not applied — only explicit cell fills.');
     const cols = kids(kid(tbl, 'tblGrid'), 'gridCol').map((c) => numAttr(c, 'w', 0));
     const rows = kids(tbl, 'tr');
@@ -555,8 +559,8 @@ class SlideReader {
     let y = box.y;
     rows.forEach((tr, ri) => {
       let x = box.x;
+      const h = rowHs[ri] * sy;
       kids(tr, 'tc').forEach((tc, ci) => {
-        const w = (cols[ci] || 0) * sx, h = rowHs[ri] * sy;
         if (attr(tc, 'hMerge') !== '1' && attr(tc, 'vMerge') !== '1') {
           const span = numAttr(tc, 'gridSpan', 1);
           const cw = cols.slice(ci, ci + span).reduce((a, b) => a + b, 0) * sx;
@@ -565,26 +569,35 @@ class SlideReader {
           const fill = fillOf(kid(tc, 'tcPr'), this.ctx);
           this.push({ type: 'shape', ...geo, fill: fill?.kind === 'solid' ? fill.color.hex : '#FFFFFF',
             stroke: '#BFBFBF', strokeWidth: 1 }, gid);
-          const text = textOf(tc, this.ctx, { txBodies: [], txStyle: this.ctx.otherStyle });
+          const text = textOf(tc, this.ctx, { txBodies: [], txStyle: kid(this.ctx.txStyles, 'otherStyle') });
           const anchor = ANCHOR[attr(kid(tc, 'tcPr'), 'anchor')];
           if (text) this.push({ type: 'text', ...geo, ...text, ...(anchor ? { valign: anchor } : {}) }, gid);
         }
-        x += w;
+        x += (cols[ci] || 0) * sx;
       });
-      y += rowHs[ri] * sy;
+      y += h;
     });
   }
 }
 
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp', svg: 'image/svg+xml' };
+// A picture part as a data URL. Cached per part (master/layout art and
+// backgrounds recur on every slide — one decode, one shared string); capped at
+// the same MAX_IMAGE_BYTES as a picked image, since it rides in the deck JSON.
 async function imageData(pkg, rel, warn) {
   if (!rel) return null;
   if (rel.external) { warn('A linked (external) picture was skipped.'); return null; }
-  const ext = rel.target.split('.').pop().toLowerCase();
+  if (!pkg.media.has(rel.target)) pkg.media.set(rel.target, encodeImage(pkg, rel.target, warn));
+  return pkg.media.get(rel.target);
+}
+async function encodeImage(pkg, target, warn) {
+  const ext = target.split('.').pop().toLowerCase();
   const mime = MIME[ext];
-  const file = pkg.zip.file(rel.target);
+  const file = pkg.zip.file(target);
   if (!mime || !file) { warn(`A .${ext} picture can't be shown in the browser and was skipped.`); return null; }
-  return `data:${mime};base64,${await file.async('base64')}`;
+  const b64 = await file.async('base64');
+  if ((b64.length * 3) / 4 > MAX_IMAGE_BYTES) { warn('A picture larger than 10 MB was skipped.'); return null; }
+  return `data:${mime};base64,${b64}`;
 }
 
 // Background: slide → layout → master; a solid/gradient fill or a theme bgRef
@@ -601,8 +614,7 @@ async function backgroundOf(pkg, ctx, parts, warn) {
         if (src) return { image: src };
       }
       const f = fillOf(bgPr, ctx);
-      if (f?.kind === 'solid') return { color: f.color.hex };
-      if (f?.kind === 'grad') return { color: f.from.hex };
+      if (f?.color) return { color: f.color.hex };
     }
     const ref = colorIn(kid(bg, 'bgRef'), ctx);
     if (ref) return { color: ref.hex };
@@ -684,17 +696,17 @@ export async function importPptx(data, { fileName = '' } = {}) {
     part: presRels[relAttr(s, 'id')]?.target,
   }));
 
+  // A master's parsing context (theme colours/fonts, colour map, text styles);
+  // a slide without a layout/master gets the same shape with empty defaults.
   const masterCache = new Map();
   async function masterCtx(masterPart) {
     if (masterCache.has(masterPart)) return masterCache.get(masterPart);
-    const root = await pkg.xml(masterPart);
-    const rels = await pkg.rels(masterPart);
+    const root = masterPart ? await pkg.xml(masterPart) : null;
+    const rels = masterPart ? await pkg.rels(masterPart) : {};
     const theme = themeOf(await pkg.xml(relOfType(rels, 'theme')));
-    const clrMapEl = kid(root, 'clrMap');
     const clrMap = { ...DEFAULT_CLR_MAP };
-    if (clrMapEl) for (const a of clrMapEl.attributes) clrMap[a.localName] = a.value;
-    const txStyles = kid(root, 'txStyles');
-    const m = { root, rels, ctx: { fit, scheme: theme.scheme, fonts: theme.fonts, clrMap, txStyles, otherStyle: kid(txStyles, 'otherStyle') } };
+    for (const a of kid(root, 'clrMap')?.attributes ?? []) clrMap[a.localName] = a.value;
+    const m = { root, rels, ctx: { fit, scheme: theme.scheme, fonts: theme.fonts, clrMap, txStyles: kid(root, 'txStyles') } };
     masterCache.set(masterPart, m);
     return m;
   }
@@ -710,14 +722,13 @@ export async function importPptx(data, { fileName = '' } = {}) {
     const layoutRoot = layoutPart ? await pkg.xml(layoutPart) : null;
     const layoutRels = layoutPart ? await pkg.rels(layoutPart) : {};
     const masterPart = relOfType(layoutRels, 'slideMaster');
-    const master = masterPart ? await masterCtx(masterPart)
-      : { root: null, rels: {}, ctx: { fit, scheme: {}, fonts: {}, clrMap: { ...DEFAULT_CLR_MAP }, txStyles: null, otherStyle: null } };
+    const master = await masterCtx(masterPart);
     // A slide-level clrMapOvr (overrideClrMapping) remaps tx/bg for this slide.
     const ovr = desc(kid(root, 'clrMapOvr'), 'overrideClrMapping');
     const ctx = ovr ? { ...master.ctx, clrMap: Object.fromEntries([...ovr.attributes].map((a) => [a.localName, a.value])) } : master.ctx;
 
     const id = `pptx-${i + 1}`;
-    const reader = new SlideReader(pkg, ctx, id, rels, path(layoutRoot, 'cSld', 'spTree'), path(master.root, 'cSld', 'spTree'), warn);
+    const reader = new SlideReader(pkg, ctx, rels, path(layoutRoot, 'cSld', 'spTree'), path(master.root, 'cSld', 'spTree'), warn);
     const bg = await backgroundOf(pkg, ctx, [
       { root, rels }, { root: layoutRoot, rels: layoutRels }, { root: master.root, rels: master.rels },
     ], warn);
@@ -769,9 +780,5 @@ export async function importPptx(data, { fileName = '' } = {}) {
 // Their pictures resolve against the part's own relationships.
 async function furniture(reader, root, rels) {
   const tree = path(root, 'cSld', 'spTree');
-  if (!tree) return;
-  const saved = reader.rels;
-  reader.rels = rels;
-  await reader.walk(tree, null, undefined, (n) => !phOf(n));
-  reader.rels = saved;
+  if (tree) await reader.walk(tree, { rels, only: (n) => !phOf(n) });
 }

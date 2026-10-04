@@ -10,7 +10,8 @@ import { CANVAS_BASELINE_PX } from '../../lib/fontBaselines.js';
 import { headingPx } from '../../lib/headingScale.js';
 import { shapeDef, hasVisibleStroke, clipPoints } from '../../lib/shapes.js';
 import { isHexColor } from '../../lib/color.js';
-import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf, fontStack } from '../../lib/elements.js';
+import { slideBgClass } from '../../lib/slideScheme.js';
+import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf, fontStack, valignOf } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider fallbacks,
 // plus `headingScale`, which sizes every title via headingPx). This is the memo
@@ -412,6 +413,8 @@ function StrokeSvg({ points, closed = false, style, stroke, strokeWidth, strokeD
   );
 }
 
+const FLEX_FOR_VALIGN = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
+
 function ElementView({ el }) {
   const base = {
     position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h,
@@ -428,7 +431,7 @@ function ElementView({ el }) {
     return (
       <div style={{
         ...base, display: 'flex',
-        alignItems: el.valign === 'top' ? 'flex-start' : el.valign === 'bottom' ? 'flex-end' : 'center',
+        alignItems: FLEX_FOR_VALIGN[valignOf(el)],
         justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
         fontSize: el.fontSize ?? 48,
         fontWeight: el.bold ? 700 : 500,
@@ -572,7 +575,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
   switch (slide.layout) {
     case 'cover':
       return (
-        <div className={`slide ${slide.bg || ''}`}>
+        <div className={`slide ${slideBgClass(slide)}`}>
           <div style={{ position:'absolute', top:60, left:80, right:80, display:'flex', justifyContent:'space-between', fontFamily:'var(--f-mono)', fontSize:18, opacity:0.5 }}>
             <span>{(deck?.title || 'DECK').toUpperCase()}</span>
             {E(['kicker'], slide.kicker || 'CONFIDENTIAL', { as: 'span' })}
@@ -615,7 +618,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
       );
     case 'divider':
       return (
-        <div className={`slide ${slide.bg || 'ink'}`}>
+        <div className={`slide ${slideBgClass(slide)}`}>
           <div style={{ position:'absolute', top:60, left:80, right:80, display:'flex', justifyContent:'space-between', fontFamily:'var(--f-mono)', fontSize:18, opacity:0.5 }}>
             <span>CHAPTER {slide.chapter}</span>
             <span>{String(deck?.title || '').toUpperCase()}</span>
@@ -812,7 +815,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
       return <div className="slide" style={isHexColor(slide.bgColor) ? { background: slide.bgColor } : undefined} />;
     case 'thanks':
       return (
-        <div className="slide ink">
+        <div className={`slide ${slideBgClass(slide)}`}>
           <div style={{ position:'absolute', left:80, top:'50%', transform:'translateY(-50%)' }}>
             {E(['eyebrow'], slide.eyebrow || 'END OF REVIEW', { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.5, marginBottom:40 } })}
             <h1 style={{ fontSize:h1, fontWeight:600, letterSpacing:'-0.05em', margin:0, lineHeight:0.9 }}>

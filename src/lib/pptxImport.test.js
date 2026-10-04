@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import JSZip from 'jszip';
 import { importPptx } from './pptxImport.js';
 import { sanitizeSlidePatch } from './deckUtils.js';
@@ -354,6 +354,32 @@ describe('importPptx — OOXML edge cases', () => {
     const { slide } = await one(shape(2, 'ellipse', 0, 0, 100, 100, '<a:noFill/><a:ln><a:solidFill><a:srgbClr val="000000"/></a:solidFill><a:prstDash val="sysDot"/></a:ln>'));
     expect(slide.elements[0]).toMatchObject({ type: 'path', strokeDash: 'dotted' });
     expect(slide.elements[0].points).toHaveLength(33);
+  });
+
+  it('outlines an unfilled polygon preset along its own shape', async () => {
+    const { slide } = await one(shape(2, 'triangle', 0, 0, 100, 100, '<a:noFill/><a:ln><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>'));
+    expect(slide.elements[0].points).toEqual([[0.5, 0], [1, 1], [0, 1], [0.5, 0]]);
+  });
+
+  it('skips a picture over the 10 MB embed cap, with a warning', async () => {
+    const pic = `<p:pic><p:nvPicPr><p:cNvPr id="4" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId10"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic>`;
+    const { slide, warnings } = await one(pic, { slide: { extraRels: [['rId10', 'image', '../media/big.png']] } }, { media: { 'big.png': new Uint8Array(10 * 1024 * 1024 + 3) } });
+    expect(slide.elements).toEqual([]);
+    expect(warnings.join(' ')).toMatch(/larger than 10 MB/);
+  });
+
+  it('decodes master art once and shares it across slides', async () => {
+    const master = DEFAULT_MASTER.replace('</p:spTree>', `<p:pic><p:nvPicPr><p:cNvPr id="9" name="Logo"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdL"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic></p:spTree>`);
+    const bytes = await buildPptx({ slides: [{ xml: slideXml('') }, { xml: slideXml('') }], master, masterRels: [['rIdL', 'image', '../media/logo.png']], media: { 'logo.png': PNG } });
+    // Count reads of the logo entry through the zip-entry prototype.
+    const entryProto = Object.getPrototypeOf(new JSZip().file('x', '').file('x'));
+    const spy = vi.spyOn(entryProto, 'async');
+    try {
+      const { deck } = await importPptx(bytes);
+      expect(deck.slides.map((s) => s.elements[0].type)).toEqual(['image', 'image']);
+      expect(deck.slides[0].elements[0].src).toBe(deck.slides[1].elements[0].src);
+      expect(spy.mock.contexts.filter((f) => f.name === 'ppt/media/logo.png')).toHaveLength(1);
+    } finally { spy.mockRestore(); }
   });
 
   it('imports a custom geometry as a rectangle', async () => {

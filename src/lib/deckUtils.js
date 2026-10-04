@@ -1,7 +1,7 @@
 import { isFormattableKey, isFmtRecord } from './slideFmt.js';
 import { shapeDef } from './shapes.js';
 import { isHexColor } from './color.js';
-import { STROKE_DASHES } from './elements.js';
+import { STROKE_DASHES, TEXT_VALIGNS } from './elements.js';
 
 export function getFlatSlideIds(deck) {
   if (!deck) return [];
@@ -205,7 +205,7 @@ const ELEMENT_FIELD_OK = {
   // open-ended (both surfaces fall back per-font, like the browser).
   align: (v) => v === 'left' || v === 'center' || v === 'right', fontFamily: isStr,
   // Vertical text anchor (PowerPoint's top/middle/bottom); absent = middle.
-  valign: (v) => v === 'top' || v === 'middle' || v === 'bottom',
+  valign: (v) => TEXT_VALIGNS.includes(v),
 };
 // Own-guarded lookup into the element-field table (see ownValidate) — a
 // JSON-parsed patch can carry an own `__proto__`/`constructor` key that must

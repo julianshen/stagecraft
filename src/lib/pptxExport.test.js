@@ -991,6 +991,12 @@ describe('exportToPPTX — canvas colour-scheme parity', () => {
     expect((await exp({ layout: 'cover', title: 'C', bg: 'accent' })).background).toEqual({ color: '7C5FDC' });
   });
 
+  it('maps the cover\'s other canvas classes (dark / cream) and falls back to light for an unknown one', async () => {
+    expect((await exp({ layout: 'cover', title: 'C', bg: 'dark' })).background).toEqual({ color: '0C0E12' });
+    expect((await exp({ layout: 'cover', title: 'C', bg: 'cream' })).background).toEqual({ color: 'F5F1EA' });
+    expect((await exp({ layout: 'cover', title: 'C', bg: 'constructor' })).background).toEqual({ color: 'FFFFFF' });
+  });
+
   it('exports divider and thanks slides dark, like the canvas', async () => {
     expect((await exp({ layout: 'divider', chapter: '01', title: 'D' })).background).toEqual({ color: '15171C' });
     expect((await exp({ layout: 'thanks', title: 'Bye' })).background).toEqual({ color: '15171C' });

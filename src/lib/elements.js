@@ -198,6 +198,12 @@ export const borderStyle = (dash) => (dash === 'dashed' || dash === 'dotted' ? d
 // agree, and a degenerate 0/negative value falls back rather than overlapping text.
 export const lineSpacingOf = (el) => (Number.isFinite(el.lineSpacing) && el.lineSpacing > 0 ? el.lineSpacing : 1.2);
 
+// A text element's vertical anchor (PowerPoint top/middle/bottom). Absent or
+// malformed → middle, the canvas's original centring — single-sourced so the gate,
+// the canvas flex alignment, the export valign and the Properties control agree.
+export const TEXT_VALIGNS = Object.freeze(['top', 'middle', 'bottom']);
+export const valignOf = (el) => (TEXT_VALIGNS.includes(el.valign) ? el.valign : 'middle');
+
 // A text element's CSS font-family stack. Imported PowerPoint text names Office
 // fonts the browser often lacks, so the authored family is followed by its
 // metric-compatible open substitute (same widths → same line breaks) and the

@@ -85,7 +85,7 @@ Every slide is authored in a **1920×1080 coordinate space** (absolute px, no vi
 `lib/llmClient.js` reads `localStorage['stagecraft.ai']` and routes everything through `POST /api/llm`. Exports `callLLM`, `generateSlide`, `rewriteText`, `suggestImprovements`. Settings UI is in `SettingsView.jsx`.
 
 ### PPTX export / import
-`lib/pptxExport.js` builds a `pptxgenjs` deck entirely client-side, with one builder per layout. Each slide exports in the colour scheme the canvas renders it in (`SCHEMES`/`schemeFor`; the deck theme only supplies the accent), filed under a PowerPoint section per deck section — builders must call `pptx.addSlide(tc.slideOpts)`. Charts export as native, editable charts.
+`lib/pptxExport.js` builds a `pptxgenjs` deck entirely client-side, with one builder per layout. Each slide exports in the colour scheme the canvas renders it in (`SCHEMES`/`schemeFor`; the deck theme only supplies the accent), filed under a PowerPoint section per deck section. The export loop creates each slide (section + background) and passes it to a per-layout builder that only draws; the background class is single-sourced with the canvas via `lib/slideScheme.js` (`slideBgClass`) — a new dark layout goes there. Charts export as native, editable charts.
 
 `lib/pptxImport.js` is the inbound half: it parses a `.pptx` (JSZip + DOMParser) into a deck whose slides are all `blank` + `elements`, and returns `warnings` for anything it can't represent. Tests build packages with `src/test/pptxFixture.js`. PowerPoint parity status and roadmap: `docs/POWERPOINT-PARITY.md`.
 
