@@ -985,3 +985,34 @@ describe('importPptx — Codex review fixes (round 16)', () => {
     expect(warnings.join(' ')).toMatch(/tiled/i);
   });
 });
+
+describe('importPptx — Codex review fixes (round 17)', () => {
+  const frame = (cNvPrKids, uri, data) => `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="6" name="F">${cNvPrKids}</p:cNvPr><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>
+    <p:xfrm><a:off x="0" y="0"/><a:ext cx="${200 * PX}" cy="${100 * PX}"/></p:xfrm>
+    <a:graphic><a:graphicData uri="${uri}">${data}</a:graphicData></a:graphic></p:graphicFrame>`;
+  const CHART = ['http://schemas.openxmlformats.org/drawingml/2006/chart', '<c:chart xmlns:c="c" r:id="rId9"/>'];
+
+  it('warns about click/hover links on graphic frames (tables, charts)', async () => {
+    const tbl = '<a:tbl><a:tblGrid><a:gridCol w="1270000"/></a:tblGrid><a:tr h="635000"><a:tc><a:txBody><a:bodyPr/><a:p><a:r><a:t>A</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc></a:tr></a:tbl>';
+    const linked = await one(frame('<a:hlinkClick r:id="rIdH"/>', 'http://schemas.openxmlformats.org/drawingml/2006/table', tbl));
+    expect(linked.warnings.join(' ')).toMatch(/links on shapes/i);
+    expect((await one(frame('', ...CHART))).warnings.join(' ')).not.toMatch(/links on shapes/i);
+  });
+
+  it('groups an unsupported-object placeholder with its label', async () => {
+    const { slide } = await one(frame('', ...CHART));
+    const [box, label] = slide.elements;
+    expect(box.groupId).toBeTruthy();
+    expect(label.groupId).toBe(box.groupId);
+  });
+
+  it('keeps picture transparency (a:alphaModFix) as opacity', async () => {
+    const pic = (blipKids) => `<p:pic><p:nvPicPr><p:cNvPr id="4" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId10">${blipKids}</a:blip><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrm(0, 0, 30, 10)}</p:spPr></p:pic>`;
+    const opts = { slide: { extraRels: [['rId10', 'image', '../media/p.png']] } };
+    const pkg = { media: { 'p.png': PNG } };
+    const { slide } = await one(pic('<a:alphaModFix amt="50000"/>'), opts, pkg);
+    expect(slide.elements[0].opacity).toBe(50);
+    expect(sanitizeSlidePatch({ elements: slide.elements }, 'blank').elements[0].opacity).toBe(50);
+    expect((await one(pic(''), opts, pkg)).slide.elements[0].opacity).toBeUndefined();
+  });
+});

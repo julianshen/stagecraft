@@ -593,10 +593,11 @@ class SlideReader {
     }
   }
 
-  // A click/hover link on a shape or picture itself (on its cNvPr) can't be
+  // A click/hover link on a shape, picture or frame itself (on its cNvPr) can't be
   // represented yet — report it rather than leave a silently inert button.
   noteShapeLinks(node) {
-    const cNvPr = desc(kid(node, 'nvSpPr') ?? kid(node, 'nvPicPr') ?? kid(node, 'nvCxnSpPr'), 'cNvPr');
+    const nv = kid(node, 'nvSpPr') ?? kid(node, 'nvPicPr') ?? kid(node, 'nvCxnSpPr') ?? kid(node, 'nvGraphicFramePr');
+    const cNvPr = desc(nv, 'cNvPr');
     if (kid(cNvPr, 'hlinkClick') || kid(cNvPr, 'hlinkHover')) this.warn('Click/hover links on shapes were not imported.');
   }
 
@@ -743,13 +744,19 @@ class SlideReader {
     const srcRect = path(pic, 'blipFill', 'srcRect');
     if (srcRect && [...srcRect.attributes].some((a) => Number(a.value))) this.warn('Cropped pictures import uncropped (stretched to their frame).');
     if (path(pic, 'blipFill', 'tile')) this.warn(TILE_WARNING);
-    const rId = blipRel(path(pic, 'blipFill', 'blip'));
-    const src = await imageData(this.pkg, rels[rId], this.warn);
+    const blip = path(pic, 'blipFill', 'blip');
+    const src = await imageData(this.pkg, rels[blipRel(blip)], this.warn);
+    // Picture transparency is the blip's alphaModFix (amt in 100000ths).
+    const amt = clamp01(numAttr(kid(blip, 'alphaModFix'), 'amt', 100000) / 100000);
     // PowerPoint stretches a picture to its frame (a:stretch) — keep that, not cover.
-    if (src) this.push({ type: 'image', ...toPx(box, this.ctx.fit), src, fit: 'stretch' }, groupId);
+    if (src) {
+      this.push({ type: 'image', ...toPx(box, this.ctx.fit), src, fit: 'stretch',
+        ...(amt < 1 ? { opacity: Math.round(amt * 100) } : {}) }, groupId);
+    }
   }
 
   frame(gf, groupT, groupId) {
+    this.noteShapeLinks(gf);
     const box = xfrmBox(kid(gf, 'xfrm'), groupT);
     const data = path(gf, 'graphic', 'graphicData');
     const tbl = kid(data, 'tbl');
@@ -759,9 +766,10 @@ class SlideReader {
     this.warn(`A ${what} can't be imported yet — a labelled placeholder was added.`);
     if (box) {
       const geo = toPx(box, this.ctx.fit);
-      this.push({ type: 'rect', ...geo, fill: '#F2F2F2', stroke: '#BFBFBF', strokeWidth: 2, strokeDash: 'dashed' }, groupId);
+      const gid = groupId || this.id('grp'); // backing box + label move together
+      this.push({ type: 'rect', ...geo, fill: '#F2F2F2', stroke: '#BFBFBF', strokeWidth: 2, strokeDash: 'dashed' }, gid);
       this.push({ type: 'text', ...geo, content: `[${what} — not imported]`, fill: '#7F7F7F',
-        fontSize: 24, align: 'center', valign: 'middle' }, groupId);
+        fontSize: 24, align: 'center', valign: 'middle' }, gid);
     }
   }
 
