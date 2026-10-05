@@ -340,7 +340,12 @@ Colours stay hex unless F-DES-1 says otherwise. Lengths are canvas px (1920 wide
 - **Model:** `deck.assets: {[id]: {src, mime, w, h, bytes}}`. Image elements and backgrounds reference `assetId` instead of embedding a data URL. Inline `src` stays valid for back-compat.
 - **Sync:** assets are pushed once (`PUT /api/deck` diff or `/api/assets`), not per keystroke.
 - **Import:** dedupe by part path and hash, so master art on 40 slides is stored once. This removes the "repeated pictures" warning.
-- **Export:** embed each asset once.
+- **Export:** pptxgenjs 3.12 dedupes media only *within a slide*. `addImage` looks up the current slide's `_relsMedia` and otherwise writes a new slide-specific media target ([gen-objects.ts L431–466](https://github.com/gitbrent/PptxGenJS/blob/v3.12.0/src/gen-objects.ts#L431-L466)), so the API alone still writes a 40-slide logo 40 times. A **media-dedupe patch** in `pptxPost.js` (F-EXP-1) fixes this:
+  1. hash every `ppt/media/*` part;
+  2. keep one part per hash;
+  3. rewrite each `ppt/slides/_rels/slideN.xml.rels` (and layout/master rels) `Target` to the survivor;
+  4. delete the duplicates and their `[Content_Types].xml` overrides.
+  - The acceptance test exports an asset used on 40 slides and asserts exactly one `ppt/media` part, with every slide rel pointing at it.
 - **Acceptance criteria:** importing a 40-slide deck with a logo master stores one copy, and undo history does not duplicate images.
 
 ### 3.3 Slides & show — `F-SLD`
@@ -360,13 +365,16 @@ Colours stay hex unless F-DES-1 says otherwise. Lengths are canvas px (1920 wide
 - **Import:** slide-level `ftr`/`dt`/`sldNum` placeholders map to the model (removing the warning). Layout-only ones stay templates.
 
 **F-SLD-3 · Slide size.**
-- **Model:** `deck.size {w:1920, h}` — the authoring width stays 1920, so all existing geometry stays valid. `h` is 1080 for 16:9, 1440 for 4:3, or a custom aspect ratio.
+- **Model:** `deck.size {w:1920, h, physical: {cx, cy}}`.
+  - The *authoring* space keeps width 1920, so all existing geometry stays valid. `h = round(1920 · cy / cx)`: 1080 for 16:9, 1440 for 4:3, or any custom ratio.
+  - `physical` is the slide's real size in **EMU**, kept separately because decks with the same aspect ratio differ physically. For example, PowerPoint's 4:3 is 10 × 7.5 in (9144000 × 6858000), not 13.333 × 10 in; the importer's existing 10 × 7.5 in fixture is one such deck.
+  - Presets set both fields: 16:9 = 12192000 × 6858000, 4:3 = 9144000 × 6858000. Imported decks keep the source `p:sldSz` exactly.
 - **Code:** `SLIDE_W`/`SLIDE_H` become per-deck reads (`slideDims(deck)`).
 - **UI:** Design ▸ Slide size, with "Scale content / Don't scale", as in PowerPoint.
 - **Export:** pptxgenjs 3.12's `defineLayout` only *registers* a layout. The export must:
-  1. call `pptx.defineLayout({name: 'STAGECRAFT', width: 1920 / 144, height: h / 144})` — sizes in inches (1 in = 144 canvas px), so 16:9 is 13.333 × 7.5 in and 4:3 is 13.333 × 10 in;
+  1. call `pptx.defineLayout({name: 'STAGECRAFT', width: physical.cx / 914400, height: physical.cy / 914400})` — sizes in inches, from the stored physical size and not from the authoring px. Element geometry scales by `physical.cx / 1920` EMU per px.
   2. then **select** it with `pptx.layout = 'STAGECRAFT'`. Without this step the file silently stays at the default size.
-  - A round-trip test asserts `ppt/presentation.xml` `p:sldSz` matches `deck.size`.
+  - A round-trip test asserts `ppt/presentation.xml` `p:sldSz` equals `deck.size.physical` exactly, including a 10 × 7.5 in source.
 - **Import:** use the source `sldSz` instead of letterboxing, removing the warning.
 
 **F-SLD-4 · Slide show.**
@@ -514,9 +522,14 @@ Patches:
 - `gradFill` on shapes and backgrounds (removes the "gradient blended to a solid" loss);
 - `grpSp` grouping for `groupId` (groups survive in PowerPoint);
 - comments (F-REV-1);
+- media dedupe across slides (F-OBJ-6);
 - scheme colours (F-DES-1 v2).
 
-The patches are applied by element id → pptxgenjs object name: export sets `objectName = el.id`, and the patcher finds the `p:cNvPr name`.
+The patches find their targets through pptxgenjs object names: export sets `objectName`, and the patcher matches the `p:cNvPr name`. Every exported object that a patch may target gets a stable name:
+- **Elements:** `objectName = el.id`.
+- **Template fields** (semantic-layout text such as a cover title or a list item): `objectName = "<slideId>:<fieldKey>"`, using the same `fieldKey` paths as `slide.fmt` (`title`, `items.2`, `kpis.0.val`, …). Each layout builder in `pptxExport.js` passes it on every `addText`/`addShape` it emits for a field.
+
+The patcher resolves a target, e.g. an F-MOT-2 animation's `target: elementId | fieldKey`, by looking up `el.id` or `"<slideId>:<fieldKey>"` on that slide. An unresolved target fails loudly in tests and is warned at export. A builder test asserts every field-bearing object carries its name.
 
 ---
 
@@ -546,7 +559,7 @@ The order is driven by dependencies:
 | B2 | **F-TXT-3 rich text**: `richText.js` + contenteditable + unified text toolbar + bullets/numbering + export/import runs | L | B1 |
 | B3 | **F-OBJ-1 table element** + Table tab + import/export | L | B2 (cell text) |
 | B4 | **F-OBJ-2 chart element** + Chart tab + `c:chartSpace` import | M–L | A3 |
-| B5 | **F-OBJ-6 asset store** + import dedupe + sync | M | — |
+| B5 | **F-OBJ-6 asset store** + import dedupe + sync + export media-dedupe patch | M | A4 |
 | B6 | **F-UI-2 insert objects** (toolbar Table/Chart/Text insert elements) | S | B3, B4 |
 
 ### Phase C — Formatting & arrange parity
