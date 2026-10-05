@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, IconButton, Menu } from '../ui/Primitives.jsx';
 import { flattenDeck } from '../../lib/deckOrder.js';
@@ -13,6 +13,8 @@ import { useToasts } from '../../hooks/useToasts.js';
 import { clampElement, GRID } from '../../lib/elements.js';
 import { readImageFile } from '../../lib/imageFile.js';
 import { isTextEntryTarget } from '../../lib/domEvents.js';
+import { commandById, findKeyCommand, formatKeys, menuItems, paletteCommands } from '../../lib/commands.js';
+import CommandPalette from '../ui/CommandPalette.jsx';
 import ShapeMenu, { SHAPE_TOOLS } from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
 import TableSizePicker from './menus/TableSizePicker.jsx';
@@ -26,16 +28,25 @@ import FloatingInspector from './inspector/FloatingInspector.jsx';
 import TimelineDrawer from './drawers/TimelineDrawer.jsx';
 import DefaultAIDrawer from './drawers/DefaultAIDrawer.jsx';
 
+// A toolbar tooltip naming the command's real, bound shortcut (from the registry).
+const tip = (label, commandId) => {
+  const keys = formatKeys(commandById(commandId));
+  return keys ? `${label} · ${keys}` : label;
+};
+
 const DEFAULT_TOOLS = [
-  { id:'select', icon:'cursor',  title:'Select · V' },
+  { id:'select', icon:'cursor',  title: tip('Select', 'tool.select') },
 ];
 
 const PEN_TOOLS = [
-  { id:'pen',    icon:'pen',     title:'Pen · P' },
+  { id:'pen',    icon:'pen',     title: tip('Pen', 'tool.pen') },
 ];
 
-// Arrow key → unit nudge direction for the selection.
-const NUDGE_DIR = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+// Right-click menus, as registry command ids ('-' = separator). The canvas menu
+// adds the layout/theme drill-in choosers between the edit and slide groups.
+const ELEMENT_MENU = ['edit.cut', 'edit.copy', 'edit.paste', 'edit.duplicate', 'edit.delete', '-',
+  'arrange.front', 'arrange.back', '-', 'arrange.group', 'arrange.ungroup'];
+const SLIDE_MENU = ['slide.new', 'slide.duplicate', 'slide.delete'];
 
 // Tool ids that draw an element on the canvas (the shape tools + the pen). When
 // one is the active tool, a canvas gesture draws (a shape box, or a freehand pen
@@ -127,58 +138,19 @@ export default function SlideEditor(props) {
     return applied;
   };
 
-  // Delete/Backspace removes the selected element (unless typing in a field).
-  // Callbacks go through a ref so the listener isn't re-bound every render (the
-  // `callbacks` object is a fresh literal each parent render).
+  // Callbacks go through a ref so the key listener isn't re-bound every render
+  // (the `callbacks` object is a fresh literal each parent render).
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
-  useEffect(() => {
-    function onKey(e) {
-      if (isTextEntryTarget(e.target)) return;
-      const cb = callbacksRef.current;
-      const cmd = e.metaKey || e.ctrlKey;
-      const plain = cmd && !e.shiftKey && !e.altKey; // exact ⌘/Ctrl-<key>
-      // Paste acts on the clipboard, so it needs no current selection.
-      if (plain && (e.key === 'v' || e.key === 'V') && cb.onPasteElements) {
-        e.preventDefault(); pasteElements(); return; // also exits draw mode (pasted elements are selected)
-      }
-      if (!props.selectedElementCount) return; // the rest act on the selection
-      if ((e.key === 'Delete' || e.key === 'Backspace') && cb.onDeleteElements) {
-        e.preventDefault(); cb.onDeleteElements(); return;
-      }
-      if (plain && (e.key === 'd' || e.key === 'D') && cb.onDuplicateElements) {
-        e.preventDefault(); duplicateElements(); return; // exits draw mode; don't swallow Ctrl+Shift+D etc.
-      }
-      if (plain && (e.key === 'c' || e.key === 'C') && cb.onCopyElements) {
-        e.preventDefault(); cb.onCopyElements(); return;
-      }
-      if (plain && (e.key === 'x' || e.key === 'X') && cb.onCutElements) {
-        e.preventDefault(); cb.onCutElements(); return;
-      }
-      // ⌘/Ctrl-G groups (needs 2+ to be meaningful); ⌘/Ctrl-Shift-G ungroups.
-      if (plain && (e.key === 'g' || e.key === 'G') && props.selectedElementCount >= 2 && cb.onGroupElements) {
-        e.preventDefault(); cb.onGroupElements(); return;
-      }
-      if (cmd && e.shiftKey && !e.altKey && (e.key === 'g' || e.key === 'G') && cb.onUngroupElements) {
-        e.preventDefault(); cb.onUngroupElements(); return;
-      }
-      if (NUDGE_DIR[e.key] && !cmd && cb.onNudgeElements) {
-        e.preventDefault();
-        const [sx, sy] = NUDGE_DIR[e.key];
-        const step = e.shiftKey ? GRID * 5 : GRID; // shift = larger nudge; both grid-aligned
-        cb.onNudgeElements(sx * step, sy * step);
-      }
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [props.selectedElementCount]);
 
   const [tool, setTool] = useState('select');
   const [inspectorTab, setInspectorTab] = useState('design');
   const [zoom, setZoom] = useState(62);
   const [showAI, setShowAI] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
+  // Open right-click menu: { x, y, kind: 'canvas' | 'element' | 'slide', fixed? }.
   const [ctxMenu, setCtxMenu] = useState(null);
+  const [showPalette, setShowPalette] = useState(false);
   // Drill-in chooser for the context menu's "Change layout" / "Apply theme":
   // { x, y, kind } — the shared Menu closes on every item click, so we open a
   // second Menu at the same spot rather than nesting.
@@ -213,6 +185,87 @@ export default function SlideEditor(props) {
   const canDistribute = selCount >= 3;
   const canArrange = selCount === 1; // z-order moves one element through the stack
 
+  // The command context (lib/commands.js): what's selected, and the editor
+  // actions commands invoke. An action is present only when its callback is
+  // wired, so commands for unwired actions never show or fire.
+  const cb = callbacks;
+  const goToSlide = (delta) => {
+    const next = flat[curIdx + delta];
+    if (curIdx >= 0 && next) setCurId(next.id);
+  };
+  const cmdCtx = {
+    sel: selCount,
+    els: cur?.elements?.length || 0,
+    act: {
+      ...(cb.onCutElements && { cut: cb.onCutElements }),
+      ...(cb.onCopyElements && { copy: cb.onCopyElements }),
+      ...(cb.onPasteElements && { paste: pasteElements }),
+      ...(cb.onDuplicateElements && { duplicate: duplicateElements }),
+      ...(cb.onDeleteElements && { deleteSelection: cb.onDeleteElements }),
+      ...(cb.onMarqueeSelect && { selectAll: () => cb.onMarqueeSelect((cur?.elements || []).map((e) => e.id)) }),
+      ...(cb.onArrangeElement && { front: () => cb.onArrangeElement('front'), back: () => cb.onArrangeElement('back') }),
+      ...(cb.onGroupElements && { group: cb.onGroupElements }),
+      ...(cb.onUngroupElements && { ungroup: cb.onUngroupElements }),
+      ...(cb.onNudgeElements && {
+        // Shift = a larger nudge; both grid-aligned.
+        nudge: (dx, dy, e) => { const step = e?.shiftKey ? GRID * 5 : GRID; cb.onNudgeElements(dx * step, dy * step); },
+      }),
+      ...(cb.onNewSlide && { newSlide: cb.onNewSlide }),
+      ...(cb.onDuplicateSlide && { duplicateSlide: cb.onDuplicateSlide }),
+      ...(cb.onDeleteSlide && { deleteSlide: () => cb.onDeleteSlide(curId) }),
+      selectTool: () => setTool('select'),
+      penTool: () => setTool('pen'),
+      insertTextBox: () => insertElement('text'),
+      insertImage: () => imageInputRef.current?.click(),
+      copilot: () => setShowAI(true),
+      palette: () => setShowPalette(true),
+      prevSlide: () => goToSlide(-1),
+      nextSlide: () => goToSlide(1),
+    },
+  };
+  const cmdCtxRef = useRef(cmdCtx);
+  cmdCtxRef.current = cmdCtx;
+
+  // One key handler for every editor shortcut, dispatched through the registry
+  // (ignored while typing in a field, and while the palette is open).
+  useEffect(() => {
+    function onKey(e) {
+      if (isTextEntryTarget(e.target)) return;
+      const ctx = cmdCtxRef.current;
+      const cmd = findKeyCommand(e, ctx);
+      if (!cmd) return;
+      e.preventDefault();
+      cmd.run(ctx, e);
+    }
+    if (showPalette) return undefined;
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showPalette]);
+
+  // A thumbnail right-click makes that slide current and opens the slide menu
+  // at the pointer (fixed-positioned: the thumbs pane is outside the canvas).
+  // Stable identity so the memoized thumbs don't re-render.
+  const onThumbContextMenu = useCallback((e, slideId) => {
+    e.preventDefault();
+    if (props.onCurrentSlideChange) props.onCurrentSlideChange(slideId);
+    if (!props.currentSlideId) setInternalCurId(slideId);
+    setSubMenu(null);
+    setCtxMenu({ x: e.clientX, y: e.clientY, kind: 'slide', fixed: true });
+  }, [props.onCurrentSlideChange, props.currentSlideId]);
+
+  const menuFor = (kind) => {
+    if (kind === 'element') return menuItems(ELEMENT_MENU, cmdCtx);
+    if (kind === 'slide') return menuItems([{ header: 'Slide' }, ...SLIDE_MENU], cmdCtx);
+    return menuItems([
+      { header: 'Canvas' }, 'edit.paste', 'edit.selectAll', 'copilot.open', '-',
+      // Drill in: the shared Menu auto-closes on click, so reopen a chooser
+      // submenu at the same spot (see subMenu state).
+      { icon:'layers', label:'Change layout', onClick: () => setSubMenu({ x: ctxMenu.x, y: ctxMenu.y, kind: 'layout' }) },
+      { icon:'palette', label:'Apply theme', onClick: () => setSubMenu({ x: ctxMenu.x, y: ctxMenu.y, kind: 'theme' }) },
+      '-', ...SLIDE_MENU,
+    ], cmdCtx);
+  };
+
   const deckCtx = useMemo(() => ({
     deck,
     sectionName: cur?.sectionName,
@@ -244,7 +297,7 @@ export default function SlideEditor(props) {
           <IconButton name="text" title="Text box" onClick={() => insertElement('text')}/>
           {/* Image is an insert action (like Text), not a tool toggle — it opens
               the file picker and adds the picked file as an element. */}
-          <IconButton name="image" title="Image · I" onClick={() => imageInputRef.current?.click()}/>
+          <IconButton name="image" title={tip('Image', 'insert.image')} onClick={() => imageInputRef.current?.click()}/>
           {PEN_TOOLS.map(t => (
             <IconButton
               key={t.id}
@@ -283,8 +336,8 @@ export default function SlideEditor(props) {
           <IconButton name="align-middle" title="Align middle" disabled={!canAlign} onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('vmiddle')}/>
           <IconButton name="align-bottom" title="Align bottom" disabled={!canAlign} onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('bottom')}/>
           <IconButton name="logic" title="Distribute" disabled={!canDistribute} onClick={() => callbacks.onDistributeElements && callbacks.onDistributeElements()}/>
-          <IconButton name="chevron-up" title="Bring to front" disabled={!canArrange} onClick={() => callbacks.onArrangeElement && callbacks.onArrangeElement('front')}/>
-          <IconButton name="chevron-down" title="Send to back" disabled={!canArrange} onClick={() => callbacks.onArrangeElement && callbacks.onArrangeElement('back')}/>
+          <IconButton name="chevron-up" title={tip('Bring to front', 'arrange.front')} disabled={!canArrange} onClick={() => callbacks.onArrangeElement && callbacks.onArrangeElement('front')}/>
+          <IconButton name="chevron-down" title={tip('Send to back', 'arrange.back')} disabled={!canArrange} onClick={() => callbacks.onArrangeElement && callbacks.onArrangeElement('back')}/>
         </div>
 
         <div className="group">
@@ -324,6 +377,8 @@ export default function SlideEditor(props) {
             deckCtx={deckCtx}
             comments={comments}
             onNewSlide={callbacks.onNewSlide}
+            newSlideTitle={tip('New slide', 'slide.new')}
+            onThumbContextMenu={onThumbContextMenu}
             onAddSection={callbacks.onAddSection}
             onRenameSection={callbacks.onRenameSection}
             onDeleteSection={callbacks.onDeleteSection}
@@ -337,8 +392,12 @@ export default function SlideEditor(props) {
           // dismissal is handled by the document listener above.)
           e.preventDefault();
           const r = e.currentTarget.getBoundingClientRect();
+          // On an element: select it (unless it's already part of the
+          // selection, so a multi-selection survives) and offer element commands.
+          const elId = e.target.closest?.('[data-el-id]')?.getAttribute('data-el-id');
+          if (elId && !(props.selectedElementIds || []).includes(elId)) onSelectElement(elId);
           setSubMenu(null);
-          setCtxMenu({ x: e.clientX - r.left, y: e.clientY - r.top });
+          setCtxMenu({ x: e.clientX - r.left, y: e.clientY - r.top, kind: elId ? 'element' : 'canvas' });
         }}>
           <Ruler/>
           <div className="canvas-inner">
@@ -366,21 +425,9 @@ export default function SlideEditor(props) {
           {showAI && (slots.aiDrawer || <DefaultAIDrawer onClose={()=>setShowAI(false)} slideNum={curIdx+1} slide={cur} onApplyPatch={callbacks.onApplyAIPatch} />)}
           {ctxMenu && (
             <Menu
-              style={{ left: ctxMenu.x, top: ctxMenu.y }}
+              style={{ left: ctxMenu.x, top: ctxMenu.y, ...(ctxMenu.fixed && { position: 'fixed' }) }}
               onClose={()=>setCtxMenu(null)}
-              items={[
-                { header: 'Canvas' },
-                { icon:'frame', label:'Paste', kbd:'⌘V', onClick: pasteElements },
-                { icon:'magic', label:'Generate with AI', kbd:'⌘K', onClick: () => setShowAI(true) },
-                '-',
-                // Drill in: the shared Menu auto-closes on click, so reopen a
-                // chooser submenu at the same spot (see subMenu state).
-                { icon:'layers', label:'Change layout', onClick: () => setSubMenu({ x: ctxMenu.x, y: ctxMenu.y, kind: 'layout' }) },
-                { icon:'palette', label:'Apply theme', onClick: () => setSubMenu({ x: ctxMenu.x, y: ctxMenu.y, kind: 'theme' }) },
-                '-',
-                { icon:'copy', label:'Duplicate slide', kbd:'⌘D', onClick: callbacks.onDuplicateSlide },
-                { icon:'trash', label:'Delete slide', kbd:'⌫', onClick: () => callbacks.onDeleteSlide && callbacks.onDeleteSlide(curId) },
-              ]}
+              items={menuFor(ctxMenu.kind)}
             />
           )}
           {subMenu && (
@@ -428,6 +475,12 @@ export default function SlideEditor(props) {
           />
         )}
       </div>
+      {showPalette && (
+        <CommandPalette
+          getCommands={(q) => paletteCommands(cmdCtx, q)}
+          onClose={() => setShowPalette(false)}
+        />
+      )}
       <Toaster toasts={toasts} onDismiss={dismiss} />
     </>
   );

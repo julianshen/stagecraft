@@ -56,3 +56,13 @@ describe('TemplatePicker — search', () => {
     expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 't6', name: 'Ledger' }));
   });
 });
+
+describe('TemplatePicker — search shortcut', () => {
+  it('shows the platform shortcut and Ctrl+F focuses the search box', () => {
+    const { getByLabelText } = render(<TemplatePicker onClose={vi.fn()} onPick={vi.fn()} />);
+    const input = getByLabelText('Search templates');
+    expect(input.parentElement.querySelector('.kbd').textContent).toBe('Ctrl+F');
+    fireEvent.keyDown(window, { key: 'f', ctrlKey: true });
+    expect(document.activeElement).toBe(input);
+  });
+});

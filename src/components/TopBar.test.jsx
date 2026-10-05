@@ -129,3 +129,19 @@ describe('sync status states', () => {
     expect(screen.getByText('Saving…')).toBeInTheDocument();
   });
 });
+
+describe('home search shortcut', () => {
+  it('shows the platform shortcut and Ctrl+K focuses the search box', () => {
+    render(<TopBar {...base} view="home" searchQuery="" onSearchChange={vi.fn()} />);
+    const input = screen.getByPlaceholderText('Search decks and slides…');
+    expect(input.parentElement.querySelector('.kbd').textContent).toBe('Ctrl+K');
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('does not grab Ctrl+K outside the home view', () => {
+    render(<TopBar {...base} view="editor" />);
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    expect(document.activeElement).toBe(document.body);
+  });
+});

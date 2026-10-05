@@ -15,6 +15,7 @@ import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
 import { useDeckSync } from './hooks/useDeckSync.js';
 import { useDeckHistory } from './hooks/useDeckHistory.js';
 import { isTextEditingTarget } from './lib/domEvents.js';
+import { matchesCombo } from './lib/commands.js';
 import { listDecks, createDeck, openDeck, renameDeck, deleteDeck } from './lib/decksApi.js';
 import { templateDeck } from './lib/templateDeck.js';
 import { importPptx } from './lib/pptxImport.js';
@@ -190,19 +191,18 @@ export default function App() {
   // ---- keyboard shortcuts ----
   useEffect(() => {
     function onKey(e) {
-      if (e.metaKey && e.key === 'Enter') { setPresenting(true); }
+      if (matchesCombo(e, 'Mod+Enter')) { setPresenting(true); } // ⌘⏎ / Ctrl+Enter (lib/commands.js show.present)
       if (e.key === 'Escape') { setModal(null); setPresenting(false); }
       // Undo/redo. While editing text, defer to the browser's native text undo
       // rather than reverting the deck (but let it through on non-text controls
       // like dropdowns/checkboxes, which have no native undo of their own).
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
+      // Bindings mirror edit.undo / edit.redo in lib/commands.js.
+      const isUndo = matchesCombo(e, 'Mod+Z');
+      const isRedo = matchesCombo(e, 'Mod+Shift+Z') || matchesCombo(e, 'Mod+Y');
+      if (isUndo || isRedo) {
         if (isTextEditingTarget(e.target)) return;
         e.preventDefault();
-        if (e.shiftKey) redo(); else undo();          // ⌘Z / ⌘⇧Z
-      } else if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) {
-        if (isTextEditingTarget(e.target)) return;
-        e.preventDefault();
-        redo();                                        // ⌘Y / Ctrl+Y (Windows/Linux redo)
+        if (isRedo) redo(); else undo();
       }
     }
     window.addEventListener('keydown', onKey);

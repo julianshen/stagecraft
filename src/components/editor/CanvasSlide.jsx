@@ -596,6 +596,7 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
           return (
             <div
               key={el.id}
+              data-el-id={el.id}
               className={`el-hit${selectedSet.has(el.id) ? ' selected' : ''}`}
               style={{
                 position: 'absolute',

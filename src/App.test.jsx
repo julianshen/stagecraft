@@ -190,3 +190,19 @@ describe('App — Import PowerPoint (open failure)', () => {
     expect(store.get('stagecraft.view')).toBe('home');
   });
 });
+
+describe('App — slide-show shortcut', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('Ctrl+Enter starts the slide show (not just ⌘), and Escape ends it', async () => {
+    store.set('stagecraft.view', 'editor');
+    vi.stubGlobal('fetch', makeServer().fetchFn);
+    render(<App />);
+    await flush();
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true });
+    expect(screen.getByText(/NOW PRESENTING/i)).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByText(/NOW PRESENTING/i)).not.toBeInTheDocument();
+  });
+});
