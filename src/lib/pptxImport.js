@@ -922,6 +922,10 @@ async function encodeImage(pkg, target, warn) {
 // gives bgColor; a picture fill becomes a full-bleed image element underneath.
 // Tiling has no image-element equivalent; the picture stretches to its frame instead.
 const TILE_WARNING = 'Tiled picture fills were imported as a single stretched picture.';
+// A background colour is an opaque hex: a translucent one shows the (white)
+// slide base through it, so blend it over white.
+const overWhite = ({ hex, alpha }) => (alpha < 1
+  ? `#${rgbHex(hexToRgb(hex.slice(1)).map((c) => c * alpha + (1 - alpha)))}` : hex);
 async function backgroundOf(pkg, ctx, parts, warn) {
   for (const { root, rels } of parts) {
     const bg = path(root, 'cSld', 'bg');
@@ -935,10 +939,10 @@ async function backgroundOf(pkg, ctx, parts, warn) {
         if (src) return { image: src, alpha: blipAlpha(blip) };
       }
       const f = fillOf(bgPr, ctx, warn);
-      if (f?.color) return { color: f.color.hex };
+      if (f?.color) return { color: overWhite(f.color) };
     }
     const ref = colorIn(kid(bg, 'bgRef'), ctx);
-    if (ref) return { color: ref.hex };
+    if (ref) return { color: overWhite(ref) };
   }
   return { color: schemeColor(ctx, 'bg1')?.hex || '#FFFFFF' };
 }
@@ -974,9 +978,11 @@ const plainText = (sp) => kids(kid(sp, 'txBody'), 'p')
 function themeOf(themeRoot) {
   const scheme = {};
   const clr = desc(themeRoot, 'clrScheme');
+  // Each slot is a colour choice in any form (srgb / scrgb / hsl / sys / preset);
+  // slots can't reference the scheme themselves, so an empty context resolves them.
   for (const c of clr ? clr.children : []) {
-    const v = kid(c, 'srgbClr') ? attr(kid(c, 'srgbClr'), 'val') : attr(kid(c, 'sysClr'), 'lastClr');
-    if (v) scheme[c.localName] = v.toUpperCase();
+    const v = colorIn(c, { scheme: {}, clrMap: {} });
+    if (v) scheme[c.localName] = v.hex.slice(1);
   }
   const fonts = {
     major: attr(path(desc(themeRoot, 'majorFont'), 'latin'), 'typeface') || undefined,

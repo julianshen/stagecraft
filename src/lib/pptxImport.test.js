@@ -4,13 +4,15 @@ import { importPptx } from './pptxImport.js';
 import { sanitizeSlidePatch } from './deckUtils.js';
 import { flattenDeck } from './deckOrder.js';
 import {
-  buildPptx, slideXml, textBox, para, shape, xfrm, tree, NS, PX, DEFAULT_MASTER,
+  buildPptx, slideXml, textBox, para, shape, xfrm, tree, NS, PX, DEFAULT_MASTER, DEFAULT_THEME,
 } from '../test/pptxFixture.js';
 
 const one = async (inner, opts = {}, pkg = {}) => {
   const { deck, warnings } = await importPptx(await buildPptx({ slides: [{ xml: slideXml(inner, opts), ...(opts.slide || {}) }], ...pkg }));
   return { slide: deck.slides[0], deck, warnings };
 };
+// DEFAULT_THEME with its accent1/accent2 slots replaced by `slots`.
+const DEFAULT_THEME_WITH = (slots) => DEFAULT_THEME.replace(/<a:accent1>[\s\S]*<\/a:accent2>/, slots);
 const els = (slide, type) => slide.elements.filter((e) => e.type === type);
 // 1×1 transparent PNG.
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
@@ -1105,5 +1107,22 @@ describe('importPptx — Codex review fixes (round 20)', () => {
     const bg = '<p:bg><p:bgPr><a:blipFill><a:blip r:embed="rId10"><a:alphaModFix amt="60000"/></a:blip><a:stretch/></a:blipFill><a:effectLst/></p:bgPr></p:bg>';
     const { slide } = await one('', { bg, slide: { extraRels: [['rId10', 'image', '../media/p.png']] } }, { media: { 'p.png': PNG } });
     expect(els(slide, 'image')[0].opacity).toBe(60);
+  });
+});
+
+describe('importPptx — Codex review fixes (round 21)', () => {
+  it('resolves theme slots written as scRGB, HSL or preset colours', async () => {
+    const theme = DEFAULT_THEME_WITH(`<a:accent1><a:prstClr val="red"/></a:accent1><a:accent2><a:hslClr hue="7200000" sat="100000" lum="50000"/></a:accent2>
+      <a:accent3><a:scrgbClr r="0" g="0" b="100000"/></a:accent3>`);
+    const fills = ['accent1', 'accent2', 'accent3'].map((k, i) => shape(2 + i, 'rect', 0, 0, 10, 10, `<a:solidFill><a:schemeClr val="${k}"/></a:solidFill>`));
+    const { slide } = await one(fills.join(''), {}, { theme });
+    expect(slide.elements.map((e) => e.fill)).toEqual(['#FF0000', '#00FF00', '#0000FF']);
+  });
+
+  it('blends a translucent background colour over white (the slide base)', async () => {
+    const bg = '<p:bg><p:bgPr><a:solidFill><a:srgbClr val="000000"><a:alpha val="50000"/></a:srgbClr></a:solidFill><a:effectLst/></p:bgPr></p:bg>';
+    expect((await one('', { bg })).slide.bgColor).toBe('#808080');
+    const opaque = '<p:bg><p:bgPr><a:solidFill><a:srgbClr val="123456"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>';
+    expect((await one('', { bg: opaque })).slide.bgColor).toBe('#123456');
   });
 });
