@@ -1140,10 +1140,11 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   color: var(--ink-2);
   cursor: pointer;
 }
-.ctx-item:hover { background: var(--accent); color: white; }
-.ctx-item:hover .kbd { color: white; border-color: transparent; background: rgba(255,255,255,0.15); }
+/* .active = keyboard highlight (the ⌘K palette's rows reuse this item style). */
+.ctx-item:hover, .ctx-item.active { background: var(--accent); color: white; }
+.ctx-item:hover .kbd, .ctx-item.active .kbd { color: white; border-color: transparent; background: rgba(255,255,255,0.15); }
 .ctx-item .ico { width: 14px; color: var(--ink-3); }
-.ctx-item:hover .ico { color: white; }
+.ctx-item:hover .ico, .ctx-item.active .ico { color: white; }
 .ctx-item .lbl { flex: 1; }
 .ctx-item .kbd { margin-left: 12px; }
 .ctx-sep {
@@ -1161,30 +1162,11 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
 }
 
 /* ============================================================
-   ⌘K command palette (components/ui/CommandPalette.jsx)
+   ⌘K command palette (components/ui/CommandPalette.jsx) — a .modal.small on
+   a .modal-backdrop with .ctx-item rows; only its placement differs.
    ============================================================ */
-.palette-backdrop {
-  position: fixed;
-  inset: 0;
-  background: oklch(0 0 0 / 0.25);
-  z-index: 160;
-  display: flex;
-  justify-content: center;
-  padding-top: 14vh;
-}
-.palette {
-  width: 520px;
-  max-width: calc(100vw - 32px);
-  max-height: 60vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--panel);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-l);
-  box-shadow: var(--shadow-3);
-  overflow: hidden;
-  align-self: flex-start;
-}
+.palette-backdrop { place-items: start center; padding-top: 14vh; backdrop-filter: none; z-index: 160; }
+.palette { max-height: 60vh; }
 .palette-search {
   display: flex;
   align-items: center;
@@ -1193,30 +1175,8 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   border-bottom: 1px solid var(--line);
   color: var(--ink-3);
 }
-.palette-search input {
-  flex: 1;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  font: inherit;
-  font-size: 14px;
-  color: var(--ink);
-}
+.palette-search input { flex: 1; border: 0; outline: 0; background: transparent; font: inherit; font-size: 14px; color: var(--ink); }
 .palette-list { list-style: none; margin: 0; padding: 4px; overflow-y: auto; font-size: 12.5px; }
-.palette-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: var(--radius-s);
-  color: var(--ink-2);
-  cursor: pointer;
-}
-.palette-item .ico { width: 14px; color: var(--ink-3); }
-.palette-item .lbl { flex: 1; }
-.palette-item.active { background: var(--accent); color: white; }
-.palette-item.active .ico { color: white; }
-.palette-item.active .kbd { color: white; border-color: transparent; background: rgba(255,255,255,0.15); }
 .palette-empty { padding: 10px 8px; color: var(--ink-4); }
 
 /* ============================================================

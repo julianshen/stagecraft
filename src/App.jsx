@@ -15,7 +15,7 @@ import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
 import { useDeckSync } from './hooks/useDeckSync.js';
 import { useDeckHistory } from './hooks/useDeckHistory.js';
 import { isTextEditingTarget } from './lib/domEvents.js';
-import { matchesCombo } from './lib/commands.js';
+import { dispatchKey } from './lib/commands.js';
 import { listDecks, createDeck, openDeck, renameDeck, deleteDeck } from './lib/decksApi.js';
 import { templateDeck } from './lib/templateDeck.js';
 import { importPptx } from './lib/pptxImport.js';
@@ -191,19 +191,16 @@ export default function App() {
   // ---- keyboard shortcuts ----
   useEffect(() => {
     function onKey(e) {
-      if (matchesCombo(e, 'Mod+Enter')) { setPresenting(true); } // ⌘⏎ / Ctrl+Enter (lib/commands.js show.present)
       if (e.key === 'Escape') { setModal(null); setPresenting(false); }
-      // Undo/redo. While editing text, defer to the browser's native text undo
-      // rather than reverting the deck (but let it through on non-text controls
-      // like dropdowns/checkboxes, which have no native undo of their own).
-      // Bindings mirror edit.undo / edit.redo in lib/commands.js.
-      const isUndo = matchesCombo(e, 'Mod+Z');
-      const isRedo = matchesCombo(e, 'Mod+Shift+Z') || matchesCombo(e, 'Mod+Y');
-      if (isUndo || isRedo) {
-        if (isTextEditingTarget(e.target)) return;
-        e.preventDefault();
-        if (isRedo) redo(); else undo();
-      }
+      // App-scope commands (lib/commands.js): present, undo, redo. While editing
+      // text, undo/redo defer to the browser's native text undo (their `when`),
+      // but still fire on non-text controls like dropdowns/checkboxes, which
+      // have no native undo of their own.
+      dispatchKey(e, {
+        scope: 'app',
+        textEditing: isTextEditingTarget(e.target),
+        act: { present: () => setPresenting(true), undo, redo },
+      });
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

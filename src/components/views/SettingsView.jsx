@@ -4,7 +4,7 @@ import SoonTag from '../ui/SoonTag.jsx';
 import { Button, Seg, FieldRow } from '../ui/Primitives.jsx';
 import { ACCENTS } from '../../data/deck.js';
 import { callLLM, describeLLMError, LOCAL_DEFAULT_BASE } from '../../lib/llmClient.js';
-import { shortcutGroups } from '../../lib/commands.js';
+import { shortcutGroups, formatKeys, commandById } from '../../lib/commands.js';
 import { GENERAL_STORAGE_KEY, readGeneralSettings } from '../../lib/generalSettings.js';
 
 // ---- provider + model catalog ----
@@ -449,7 +449,7 @@ function ShortcutSettings() {
   const groups = shortcutGroups();
   return (
     <div className="settings-scroll">
-      <SettingsHeader title="Keyboard shortcuts" sub="Every bound shortcut. Commands also live in the right-click menus and the ⌘K / Ctrl+K command palette."/>
+      <SettingsHeader title="Keyboard shortcuts" sub={`Every bound shortcut. Commands also live in the right-click menus and the command palette (${formatKeys(commandById('view.palette'))}).`}/>
       {groups.map(grp => (
         <Section key={grp.g} label={grp.g}>
           <div className="shortcut-grid">

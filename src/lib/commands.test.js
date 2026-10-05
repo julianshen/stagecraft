@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   COMMANDS, commandById, parseCombo, matchesCombo, formatCombo, formatKeys,
-  findKeyCommand, menuItems, paletteCommands, shortcutGroups, isMacPlatform,
+  findKeyCommand, dispatchKey, runCommand, tooltip, menuItems, paletteCommands, shortcutGroups, isMacPlatform,
 } from './commands.js';
 
 const key = (k, mods = {}) => ({ key: k, code: '', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...mods });
@@ -10,7 +10,7 @@ const key = (k, mods = {}) => ({ key: k, code: '', metaKey: false, ctrlKey: fals
 // `els` elements on the slide.
 const ctxWith = ({ sel = 0, els = 3 } = {}) => {
   const act = new Proxy({}, { get: (t, p) => (t[p] ??= vi.fn()) });
-  return { sel, els, act };
+  return { scope: 'editor', sel, els, act };
 };
 
 describe('parseCombo / matchesCombo', () => {
@@ -83,12 +83,13 @@ describe('registry integrity', () => {
     for (const c of COMMANDS) expect(c.label).toBeTruthy();
   });
 
-  it('no two editor commands share a key combo', () => {
+  it('no two commands in one scope share a key combo', () => {
     const seen = new Map();
-    for (const c of COMMANDS.filter((x) => x.scope === 'editor')) {
+    for (const c of COMMANDS) {
       for (const k of c.keys || []) {
-        expect(seen.get(k), `${k} bound by ${seen.get(k)} and ${c.id}`).toBeUndefined();
-        seen.set(k, c.id);
+        const slot = `${c.scope}:${k}`;
+        expect(seen.get(slot), `${slot} bound by ${seen.get(slot)} and ${c.id}`).toBeUndefined();
+        seen.set(slot, c.id);
       }
     }
   });
@@ -118,16 +119,47 @@ describe('findKeyCommand', () => {
     expect(findKeyCommand(key('m', { metaKey: true }), { sel: 0, els: 0, act: {} })).toBeNull();
   });
 
-  it('ignores app- and presenter-scope keys (handled by their own surfaces)', () => {
-    expect(findKeyCommand(key('Enter', { metaKey: true }), ctxWith())).toBeNull();
-    expect(findKeyCommand(key('b'), ctxWith())).toBeNull();
+  it('only fires commands of the dispatching scope (editor by default)', () => {
+    expect(findKeyCommand(key('Enter', { metaKey: true }), ctxWith())).toBeNull(); // app scope
+    expect(findKeyCommand(key('b'), ctxWith())).toBeNull(); // presenter scope
+    const app = { scope: 'app', textEditing: false, act: { present: vi.fn(), undo: vi.fn(), redo: vi.fn() } };
+    expect(findKeyCommand(key('Enter', { ctrlKey: true }), app)?.id).toBe('show.present');
+    expect(findKeyCommand(key('y', { ctrlKey: true }), app)?.id).toBe('edit.redo');
+    expect(findKeyCommand(key('k', { ctrlKey: true }), { scope: 'home', act: { focusSearch: vi.fn() } })?.id).toBe('home.search');
   });
 
-  it('running a nudge command passes the event (Shift = bigger step)', () => {
+  it('undo/redo defer to native text undo while editing text (when)', () => {
+    const app = { scope: 'app', textEditing: true, act: { undo: vi.fn() } };
+    expect(findKeyCommand(key('z', { metaKey: true }), app)).toBeNull();
+  });
+
+  it('a noRepeat command ignores key auto-repeat', () => {
+    const show = { scope: 'presenter', act: { blackout: vi.fn() } };
+    expect(findKeyCommand(key('b'), show)?.id).toBe('show.blackout');
+    expect(findKeyCommand({ ...key('b'), repeat: true }, show)).toBeNull();
+  });
+
+  it('runCommand passes the event to the nudge (direction from the arrow key)', () => {
     const ctx = ctxWith({ sel: 1 });
     const e = key('ArrowLeft', { shiftKey: true });
-    findKeyCommand(e, ctx).run(ctx, e);
+    runCommand(findKeyCommand(e, ctx), ctx, e);
     expect(ctx.act.nudge).toHaveBeenCalledWith(-1, 0, e);
+  });
+
+  it('dispatchKey runs the bound command and consumes the event; false when none', () => {
+    const ctx = ctxWith({ sel: 1 });
+    const e = { ...key('c', { ctrlKey: true }), preventDefault: vi.fn() };
+    expect(dispatchKey(e, ctx)).toBe(true);
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(ctx.act.copy).toHaveBeenCalled();
+    const miss = { ...key('q'), preventDefault: vi.fn() };
+    expect(dispatchKey(miss, ctx)).toBe(false);
+    expect(miss.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('tooltip names the bound shortcut, or just the label when unbound', () => {
+    expect(tooltip('Pen', 'tool.pen', { mac: true })).toBe('Pen · P');
+    expect(tooltip('Dup', 'slide.duplicate', { mac: true })).toBe('Dup');
   });
 });
 
@@ -166,6 +198,7 @@ describe('paletteCommands', () => {
     expect(all.map((c) => c.id)).toContain('edit.duplicate');
     expect(all.map((c) => c.id)).not.toContain('view.palette'); // the palette doesn't list itself
     expect(all.every((c) => typeof c.run === 'function')).toBe(true);
+    expect(all.every((c) => !('group' in c))).toBe(true);
     const dup = paletteCommands(ctx, 'DUPL', { mac: true });
     expect(dup.map((c) => c.label)).toEqual(['Duplicate', 'Duplicate slide']);
     expect(dup[0].kbd).toBe('⌘D');
@@ -177,7 +210,7 @@ describe('paletteCommands', () => {
     expect(paletteCommands(ctxWith({ sel: 1 }), 'group', { mac: true }).map((c) => c.id)).toEqual(['arrange.ungroup']);
   });
 
-  it('omits hidden key-only commands (individual nudges)', () => {
+  it('omits palette:false commands (the nudge key family)', () => {
     expect(paletteCommands(ctxWith({ sel: 1 }), 'nudge', { mac: true })).toEqual([]);
   });
 });
@@ -192,7 +225,9 @@ describe('shortcutGroups', () => {
     expect(rows['Next slide (slide show)']).toBe('→ / Space');
     expect(rows['Nudge selection']).toBe('↑ ↓ ← → (⇧ ×5)');
     expect(Object.values(rows).every(Boolean)).toBe(true); // no unbound rows
-    expect(groups.map((g) => g.g)).toEqual(['Edit', 'Arrange', 'Insert & tools', 'Slides', 'Slide show']);
+    expect(rows['Command palette']).toBe('⌘K');
+    expect(rows['Search templates']).toBe('⌘F');
+    expect(groups.map((g) => g.g)).toEqual(['Edit', 'Arrange', 'Insert & tools', 'Slides', 'Slide show', 'Search']);
   });
 
   it('spells modifiers out off-Mac', () => {

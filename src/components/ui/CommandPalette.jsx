@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 
 // ⌘K command palette: a filterable list of the editor commands that apply
@@ -9,7 +9,8 @@ export default function CommandPalette({ getCommands, onClose }) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef(null);
-  const commands = getCommands(query);
+  // Recomputed per query, not per hover (hover only moves the highlight).
+  const commands = useMemo(() => getCommands(query), [getCommands, query]);
   const current = Math.min(active, Math.max(0, commands.length - 1));
 
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -23,8 +24,8 @@ export default function CommandPalette({ getCommands, onClose }) {
   };
 
   return (
-    <div className="palette-backdrop" onClick={onClose}>
-      <div className="palette" role="dialog" aria-label="Command palette" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop palette-backdrop" onClick={onClose}>
+      <div className="modal small palette" role="dialog" aria-label="Command palette" onClick={(e) => e.stopPropagation()}>
         <div className="palette-search">
           <Icon name="search" size={13} />
           <input
@@ -47,7 +48,7 @@ export default function CommandPalette({ getCommands, onClose }) {
               id={`palette-${c.id}`}
               role="option"
               aria-selected={i === current}
-              className={`palette-item${i === current ? ' active' : ''}`}
+              className={`ctx-item${i === current ? ' active' : ''}`}
               onMouseEnter={() => setActive(i)}
               onClick={() => run(c)}
             >

@@ -3,6 +3,7 @@ import { ScaledSlide } from '../ui/Primitives.jsx';
 import { Slide } from '../slides/SlideRenderer.jsx';
 import { resolveNotes } from '../../data/deck.js';
 import { transitionAnim } from '../../lib/transitions.js';
+import { dispatchKey } from '../../lib/commands.js';
 import LaserLayer from '../presenter/LaserLayer.jsx';
 import PresenterSidePanel from '../presenter/PresenterSidePanel.jsx';
 import PresenterControls from '../presenter/PresenterControls.jsx';
@@ -35,14 +36,20 @@ export default function PresenterView({ deck, onExit }) {
   }, []);
 
   useEffect(() => {
+    // Presenter-scope commands (lib/commands.js show.*). Combos match exactly,
+    // so a bare B blacks out but chords like Ctrl+Shift+B (bookmarks bar) or
+    // ⌘B pass through; show.blackout ignores key auto-repeat (noRepeat), which
+    // would flicker the toggle while held.
     function onKey(e) {
-      if (e.key === 'Escape') onExit();
-      if (e.key === 'ArrowRight' || e.key === ' ') setIdx(i => Math.min(flat.length - 1, i + 1));
-      if (e.key === 'ArrowLeft') setIdx(i => Math.max(0, i - 1));
-      // Bare B blacks out the audience screen — but not modifier chords like
-      // Ctrl+Shift+B (browser bookmarks bar) or Cmd+B, which aren't ours; and not
-      // key auto-repeat, which would flicker this persistent toggle while held.
-      if ((e.key === 'b' || e.key === 'B') && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) setBlackout(b => !b);
+      dispatchKey(e, {
+        scope: 'presenter',
+        act: {
+          exit: onExit,
+          next: () => setIdx(i => Math.min(flat.length - 1, i + 1)),
+          prev: () => setIdx(i => Math.max(0, i - 1)),
+          blackout: () => setBlackout(b => !b),
+        },
+      });
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

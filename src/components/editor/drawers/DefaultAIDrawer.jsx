@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Icon from '../../ui/Icon.jsx';
 import { IconButton } from '../../ui/Primitives.jsx';
 import { editSlide, describeLLMError } from '../../../lib/llmClient.js';
+import { matchesCombo } from '../../../lib/commands.js';
 
 export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch }) {
   const [prompt, setPrompt] = useState('');
@@ -75,7 +76,7 @@ export default function DefaultAIDrawer({ onClose, slideNum, slide, onApplyPatch
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
             placeholder="Ask Co-pilot or describe an edit…"
-            onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleSend(); }}
+            onKeyDown={e => { if (matchesCombo(e, 'Mod+Enter')) handleSend(); }}
           />
           <button
             style={{ padding: '0 8px', background: 'var(--accent)', color: 'white', borderRadius: 3, fontSize: 11, height: 24 }}

@@ -13,7 +13,7 @@ import { useToasts } from '../../hooks/useToasts.js';
 import { clampElement, GRID } from '../../lib/elements.js';
 import { readImageFile } from '../../lib/imageFile.js';
 import { isTextEntryTarget } from '../../lib/domEvents.js';
-import { commandById, findKeyCommand, formatKeys, menuItems, paletteCommands } from '../../lib/commands.js';
+import { dispatchKey, menuItems, paletteCommands, tooltip } from '../../lib/commands.js';
 import CommandPalette from '../ui/CommandPalette.jsx';
 import ShapeMenu, { SHAPE_TOOLS } from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
@@ -28,18 +28,20 @@ import FloatingInspector from './inspector/FloatingInspector.jsx';
 import TimelineDrawer from './drawers/TimelineDrawer.jsx';
 import DefaultAIDrawer from './drawers/DefaultAIDrawer.jsx';
 
-// A toolbar tooltip naming the command's real, bound shortcut (from the registry).
-const tip = (label, commandId) => {
-  const keys = formatKeys(commandById(commandId));
-  return keys ? `${label} · ${keys}` : label;
+// Toolbar tooltips naming each command's real, bound shortcut (from the registry).
+const TIPS = {
+  image: tooltip('Image', 'insert.image'),
+  front: tooltip('Bring to front', 'arrange.front'),
+  back: tooltip('Send to back', 'arrange.back'),
+  newSlide: tooltip('New slide', 'slide.new'),
 };
 
 const DEFAULT_TOOLS = [
-  { id:'select', icon:'cursor',  title: tip('Select', 'tool.select') },
+  { id:'select', icon:'cursor',  title: tooltip('Select', 'tool.select') },
 ];
 
 const PEN_TOOLS = [
-  { id:'pen',    icon:'pen',     title: tip('Pen', 'tool.pen') },
+  { id:'pen',    icon:'pen',     title: tooltip('Pen', 'tool.pen') },
 ];
 
 // Right-click menus, as registry command ids ('-' = separator). The canvas menu
@@ -138,11 +140,6 @@ export default function SlideEditor(props) {
     return applied;
   };
 
-  // Callbacks go through a ref so the key listener isn't re-bound every render
-  // (the `callbacks` object is a fresh literal each parent render).
-  const callbacksRef = useRef(callbacks);
-  callbacksRef.current = callbacks;
-
   const [tool, setTool] = useState('select');
   const [inspectorTab, setInspectorTab] = useState('design');
   const [zoom, setZoom] = useState(62);
@@ -172,9 +169,9 @@ export default function SlideEditor(props) {
   const insertElement = (type, opts) => { callbacks.onAddElement?.(type, opts); setTool('select'); };
   // Paste and duplicate also create a fresh selection, so they exit draw mode
   // too — otherwise the new elements sit under a hidden frame + disabled hit
-  // boxes. Via the ref so the keyboard handler stays current without re-binding.
-  const pasteElements = () => { callbacksRef.current.onPasteElements?.(); setTool('select'); };
-  const duplicateElements = () => { callbacksRef.current.onDuplicateElements?.(); setTool('select'); };
+  // boxes.
+  const pasteElements = () => { callbacks.onPasteElements?.(); setTool('select'); };
+  const duplicateElements = () => { callbacks.onDuplicateElements?.(); setTool('select'); };
 
   const curIdx = flat.findIndex(f => f.id === curId);
   const cur = flat[Math.max(0, curIdx)];
@@ -186,33 +183,35 @@ export default function SlideEditor(props) {
   const canArrange = selCount === 1; // z-order moves one element through the stack
 
   // The command context (lib/commands.js): what's selected, and the editor
-  // actions commands invoke. An action is present only when its callback is
-  // wired, so commands for unwired actions never show or fire.
+  // actions commands invoke. An action is a function only when its callback is
+  // wired, so commands for unwired actions never show or fire. Rebuilt each
+  // render and read through a ref, so the key listener binds once.
   const cb = callbacks;
+  const wired = (fn, action) => (fn ? action : undefined);
   const goToSlide = (delta) => {
     const next = flat[curIdx + delta];
     if (curIdx >= 0 && next) setCurId(next.id);
   };
   const cmdCtx = {
+    scope: 'editor',
     sel: selCount,
     els: cur?.elements?.length || 0,
     act: {
-      ...(cb.onCutElements && { cut: cb.onCutElements }),
-      ...(cb.onCopyElements && { copy: cb.onCopyElements }),
-      ...(cb.onPasteElements && { paste: pasteElements }),
-      ...(cb.onDuplicateElements && { duplicate: duplicateElements }),
-      ...(cb.onDeleteElements && { deleteSelection: cb.onDeleteElements }),
-      ...(cb.onMarqueeSelect && { selectAll: () => cb.onMarqueeSelect((cur?.elements || []).map((e) => e.id)) }),
-      ...(cb.onArrangeElement && { front: () => cb.onArrangeElement('front'), back: () => cb.onArrangeElement('back') }),
-      ...(cb.onGroupElements && { group: cb.onGroupElements }),
-      ...(cb.onUngroupElements && { ungroup: cb.onUngroupElements }),
-      ...(cb.onNudgeElements && {
-        // Shift = a larger nudge; both grid-aligned.
-        nudge: (dx, dy, e) => { const step = e?.shiftKey ? GRID * 5 : GRID; cb.onNudgeElements(dx * step, dy * step); },
-      }),
-      ...(cb.onNewSlide && { newSlide: cb.onNewSlide }),
-      ...(cb.onDuplicateSlide && { duplicateSlide: cb.onDuplicateSlide }),
-      ...(cb.onDeleteSlide && { deleteSlide: () => cb.onDeleteSlide(curId) }),
+      cut: cb.onCutElements,
+      copy: cb.onCopyElements,
+      paste: wired(cb.onPasteElements, pasteElements),
+      duplicate: wired(cb.onDuplicateElements, duplicateElements),
+      deleteSelection: cb.onDeleteElements,
+      selectAll: wired(cb.onMarqueeSelect, () => cb.onMarqueeSelect((cur?.elements || []).map((e) => e.id))),
+      front: wired(cb.onArrangeElement, () => cb.onArrangeElement('front')),
+      back: wired(cb.onArrangeElement, () => cb.onArrangeElement('back')),
+      group: cb.onGroupElements,
+      ungroup: cb.onUngroupElements,
+      // Shift = a larger nudge; both grid-aligned.
+      nudge: wired(cb.onNudgeElements, (dx, dy, e) => { const step = e?.shiftKey ? GRID * 5 : GRID; cb.onNudgeElements(dx * step, dy * step); }),
+      newSlide: cb.onNewSlide,
+      duplicateSlide: cb.onDuplicateSlide,
+      deleteSlide: wired(cb.onDeleteSlide, () => cb.onDeleteSlide(curId)),
       selectTool: () => setTool('select'),
       penTool: () => setTool('pen'),
       insertTextBox: () => insertElement('text'),
@@ -229,29 +228,24 @@ export default function SlideEditor(props) {
   // One key handler for every editor shortcut, dispatched through the registry
   // (ignored while typing in a field, and while the palette is open).
   useEffect(() => {
-    function onKey(e) {
-      if (isTextEntryTarget(e.target)) return;
-      const ctx = cmdCtxRef.current;
-      const cmd = findKeyCommand(e, ctx);
-      if (!cmd) return;
-      e.preventDefault();
-      cmd.run(ctx, e);
-    }
     if (showPalette) return undefined;
+    const onKey = (e) => { if (!isTextEntryTarget(e.target)) dispatchKey(e, cmdCtxRef.current); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [showPalette]);
 
   // A thumbnail right-click makes that slide current and opens the slide menu
   // at the pointer (fixed-positioned: the thumbs pane is outside the canvas).
-  // Stable identity so the memoized thumbs don't re-render.
-  const onThumbContextMenu = useCallback((e, slideId) => {
+  // The latest handler sits in a ref behind a stable wrapper, so the memoized
+  // thumbs never re-render for it.
+  const thumbMenuRef = useRef(null);
+  thumbMenuRef.current = (e, slideId) => {
     e.preventDefault();
-    if (props.onCurrentSlideChange) props.onCurrentSlideChange(slideId);
-    if (!props.currentSlideId) setInternalCurId(slideId);
+    setCurId(slideId);
     setSubMenu(null);
     setCtxMenu({ x: e.clientX, y: e.clientY, kind: 'slide', fixed: true });
-  }, [props.onCurrentSlideChange, props.currentSlideId]);
+  };
+  const onThumbContextMenu = useCallback((e, slideId) => thumbMenuRef.current(e, slideId), []);
 
   const menuFor = (kind) => {
     if (kind === 'element') return menuItems(ELEMENT_MENU, cmdCtx);
@@ -297,7 +291,7 @@ export default function SlideEditor(props) {
           <IconButton name="text" title="Text box" onClick={() => insertElement('text')}/>
           {/* Image is an insert action (like Text), not a tool toggle — it opens
               the file picker and adds the picked file as an element. */}
-          <IconButton name="image" title={tip('Image', 'insert.image')} onClick={() => imageInputRef.current?.click()}/>
+          <IconButton name="image" title={TIPS.image} onClick={() => imageInputRef.current?.click()}/>
           {PEN_TOOLS.map(t => (
             <IconButton
               key={t.id}
@@ -336,8 +330,8 @@ export default function SlideEditor(props) {
           <IconButton name="align-middle" title="Align middle" disabled={!canAlign} onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('vmiddle')}/>
           <IconButton name="align-bottom" title="Align bottom" disabled={!canAlign} onClick={() => callbacks.onAlignElements && callbacks.onAlignElements('bottom')}/>
           <IconButton name="logic" title="Distribute" disabled={!canDistribute} onClick={() => callbacks.onDistributeElements && callbacks.onDistributeElements()}/>
-          <IconButton name="chevron-up" title={tip('Bring to front', 'arrange.front')} disabled={!canArrange} onClick={() => callbacks.onArrangeElement && callbacks.onArrangeElement('front')}/>
-          <IconButton name="chevron-down" title={tip('Send to back', 'arrange.back')} disabled={!canArrange} onClick={() => callbacks.onArrangeElement && callbacks.onArrangeElement('back')}/>
+          <IconButton name="chevron-up" title={TIPS.front} disabled={!canArrange} onClick={() => callbacks.onArrangeElement && callbacks.onArrangeElement('front')}/>
+          <IconButton name="chevron-down" title={TIPS.back} disabled={!canArrange} onClick={() => callbacks.onArrangeElement && callbacks.onArrangeElement('back')}/>
         </div>
 
         <div className="group">
@@ -377,7 +371,7 @@ export default function SlideEditor(props) {
             deckCtx={deckCtx}
             comments={comments}
             onNewSlide={callbacks.onNewSlide}
-            newSlideTitle={tip('New slide', 'slide.new')}
+            newSlideTitle={TIPS.newSlide}
             onThumbContextMenu={onThumbContextMenu}
             onAddSection={callbacks.onAddSection}
             onRenameSection={callbacks.onRenameSection}

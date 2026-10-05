@@ -1,17 +1,17 @@
-// The command registry — one source for every editor action's label, icon and
-// key binding. The keyboard handler, context menus, ⌘K palette and the Settings
-// shortcut list all derive from it, so a surface can never advertise a shortcut
-// that isn't bound (docs/POWERPOINT-SPEC.md F-UI-1).
+// The command registry — one source for every action's label, icon and key
+// binding. The key handlers (editor, app, presenter, search boxes), context
+// menus, ⌘K palette, toolbar tooltips and the Settings shortcut list all derive
+// from it, so no surface can advertise a shortcut that isn't bound
+// (docs/POWERPOINT-SPEC.md F-UI-1).
 //
-// A command runs against a context the editor builds per render:
-//   { sel: selected-element count, els: elements on the slide, act: { [name]: fn } }
-// `act` names the editor action the command invokes. A command applies when its
-// action is wired and its selection rule (`need`) holds, plus an optional `when`.
+// A command runs against a context its surface builds:
+//   { scope, sel: selected-element count, els: elements on the slide, act: { [name]: fn } }
+// `scope` says which surface is dispatching (editor / app / presenter / home /
+// templates); a command only fires in its own scope. `act` names the action the
+// command invokes. A command applies when its action is wired (a function), its
+// selection rule `need` holds (default: none) and its optional `when(ctx)` holds.
 //
 // Combos are written `Mod+Shift+G`, where `Mod` is ⌘ on macOS and Ctrl elsewhere.
-// Scopes: `editor` commands are dispatched by the editor's key handler;
-// `app`/`presenter` commands are bound by App / PresenterView and listed here so
-// the Settings page can show them; `display` rows describe a family of keys.
 
 const NEED = {
   none: () => true,
@@ -21,50 +21,57 @@ const NEED = {
   elements: (ctx) => ctx.els >= 1,
 };
 
-const nudge = (id, label, key, dx, dy) => ({
-  id, label, group: 'Arrange', scope: 'editor', act: 'nudge', need: 'any', hidden: true,
-  keys: [key, `Shift+${key}`], run: (ctx, e) => ctx.act.nudge(dx, dy, e),
-});
+// Arrow key → unit nudge direction (arrange.nudge reads it from the event).
+const NUDGE_DIR = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+const ARROWS = Object.keys(NUDGE_DIR);
+
+// Undo/redo defer to the browser's native text undo while text is being edited.
+const notTextEditing = (ctx) => !ctx.textEditing;
 
 export const COMMANDS = [
   // ---- Edit ----
-  { id: 'edit.undo', label: 'Undo', icon: 'undo', group: 'Edit', scope: 'app', keys: ['Mod+Z'] },
-  { id: 'edit.redo', label: 'Redo', icon: 'redo', group: 'Edit', scope: 'app', keys: ['Mod+Shift+Z', 'Mod+Y'] },
+  { id: 'edit.undo', label: 'Undo', icon: 'undo', group: 'Edit', scope: 'app', act: 'undo', when: notTextEditing, keys: ['Mod+Z'] },
+  { id: 'edit.redo', label: 'Redo', icon: 'redo', group: 'Edit', scope: 'app', act: 'redo', when: notTextEditing, keys: ['Mod+Shift+Z', 'Mod+Y'] },
   { id: 'edit.cut', label: 'Cut', icon: 'copy', group: 'Edit', scope: 'editor', act: 'cut', need: 'any', keys: ['Mod+X'] },
   { id: 'edit.copy', label: 'Copy', icon: 'copy', group: 'Edit', scope: 'editor', act: 'copy', need: 'any', keys: ['Mod+C'] },
-  { id: 'edit.paste', label: 'Paste', icon: 'frame', group: 'Edit', scope: 'editor', act: 'paste', need: 'none', keys: ['Mod+V'] },
+  { id: 'edit.paste', label: 'Paste', icon: 'frame', group: 'Edit', scope: 'editor', act: 'paste', keys: ['Mod+V'] },
   { id: 'edit.duplicate', label: 'Duplicate', icon: 'copy', group: 'Edit', scope: 'editor', act: 'duplicate', need: 'any', keys: ['Mod+D'] },
   { id: 'edit.delete', label: 'Delete', icon: 'trash', group: 'Edit', scope: 'editor', act: 'deleteSelection', need: 'any', keys: ['Backspace', 'Delete'] },
   { id: 'edit.selectAll', label: 'Select all', icon: 'cursor', group: 'Edit', scope: 'editor', act: 'selectAll', need: 'elements', keys: ['Mod+A'] },
-  { id: 'view.palette', label: 'Command palette', icon: 'search', group: 'Edit', scope: 'editor', act: 'palette', need: 'none', keys: ['Mod+K'], hidden: true },
+  { id: 'view.palette', label: 'Command palette', icon: 'search', group: 'Edit', scope: 'editor', act: 'palette', palette: false, keys: ['Mod+K'] },
   // ---- Arrange ----
   { id: 'arrange.front', label: 'Bring to front', icon: 'chevron-up', group: 'Arrange', scope: 'editor', act: 'front', need: 'one', keys: ['Mod+Shift+]'] },
   { id: 'arrange.back', label: 'Send to back', icon: 'chevron-down', group: 'Arrange', scope: 'editor', act: 'back', need: 'one', keys: ['Mod+Shift+['] },
   { id: 'arrange.group', label: 'Group', icon: 'layers', group: 'Arrange', scope: 'editor', act: 'group', need: 'multi', keys: ['Mod+G'] },
   { id: 'arrange.ungroup', label: 'Ungroup', icon: 'layers', group: 'Arrange', scope: 'editor', act: 'ungroup', need: 'any', keys: ['Mod+Shift+G'] },
-  nudge('arrange.nudgeLeft', 'Nudge left', 'ArrowLeft', -1, 0),
-  nudge('arrange.nudgeRight', 'Nudge right', 'ArrowRight', 1, 0),
-  nudge('arrange.nudgeUp', 'Nudge up', 'ArrowUp', 0, -1),
-  nudge('arrange.nudgeDown', 'Nudge down', 'ArrowDown', 0, 1),
-  { id: 'arrange.nudge', label: 'Nudge selection', group: 'Arrange', scope: 'display', display: { mac: '↑ ↓ ← → (⇧ ×5)', other: '↑ ↓ ← → (Shift ×5)' } },
+  {
+    id: 'arrange.nudge', label: 'Nudge selection', group: 'Arrange', scope: 'editor', act: 'nudge', need: 'any', palette: false,
+    keys: [...ARROWS, ...ARROWS.map((k) => `Shift+${k}`)],
+    keysLabel: { mac: '↑ ↓ ← → (⇧ ×5)', other: '↑ ↓ ← → (Shift ×5)' },
+    run: (ctx, e) => ctx.act.nudge(...NUDGE_DIR[e.key], e),
+  },
   // ---- Insert & tools ----
-  { id: 'tool.select', label: 'Select tool', icon: 'cursor', group: 'Insert & tools', scope: 'editor', act: 'selectTool', need: 'none', keys: ['V'] },
-  { id: 'tool.pen', label: 'Pen tool', icon: 'pen', group: 'Insert & tools', scope: 'editor', act: 'penTool', need: 'none', keys: ['P'] },
-  { id: 'insert.textBox', label: 'Insert text box', icon: 'text', group: 'Insert & tools', scope: 'editor', act: 'insertTextBox', need: 'none' },
-  { id: 'insert.image', label: 'Insert image', icon: 'image', group: 'Insert & tools', scope: 'editor', act: 'insertImage', need: 'none', keys: ['I'] },
-  { id: 'copilot.open', label: 'Generate with AI', icon: 'magic', group: 'Insert & tools', scope: 'editor', act: 'copilot', need: 'none' },
+  { id: 'tool.select', label: 'Select tool', icon: 'cursor', group: 'Insert & tools', scope: 'editor', act: 'selectTool', keys: ['V'] },
+  { id: 'tool.pen', label: 'Pen tool', icon: 'pen', group: 'Insert & tools', scope: 'editor', act: 'penTool', keys: ['P'] },
+  { id: 'insert.textBox', label: 'Insert text box', icon: 'text', group: 'Insert & tools', scope: 'editor', act: 'insertTextBox' },
+  { id: 'insert.image', label: 'Insert image', icon: 'image', group: 'Insert & tools', scope: 'editor', act: 'insertImage', keys: ['I'] },
+  { id: 'copilot.open', label: 'Generate with AI', icon: 'magic', group: 'Insert & tools', scope: 'editor', act: 'copilot' },
   // ---- Slides ----
-  { id: 'slide.new', label: 'New slide', icon: 'plus', group: 'Slides', scope: 'editor', act: 'newSlide', need: 'none', keys: ['Mod+M'] },
-  { id: 'slide.duplicate', label: 'Duplicate slide', icon: 'copy', group: 'Slides', scope: 'editor', act: 'duplicateSlide', need: 'none' },
-  { id: 'slide.delete', label: 'Delete slide', icon: 'trash', group: 'Slides', scope: 'editor', act: 'deleteSlide', need: 'none' },
-  { id: 'slide.prev', label: 'Previous slide', icon: 'chevron-up', group: 'Slides', scope: 'editor', act: 'prevSlide', need: 'none', keys: ['PageUp'] },
-  { id: 'slide.next', label: 'Next slide', icon: 'chevron-down', group: 'Slides', scope: 'editor', act: 'nextSlide', need: 'none', keys: ['PageDown'] },
-  // ---- Slide show (bound by App / PresenterView) ----
-  { id: 'show.present', label: 'Present', icon: 'play', group: 'Slide show', scope: 'app', keys: ['Mod+Enter'] },
-  { id: 'show.next', label: 'Next slide (slide show)', group: 'Slide show', scope: 'presenter', keys: ['ArrowRight', 'Space'] },
-  { id: 'show.prev', label: 'Previous slide (slide show)', group: 'Slide show', scope: 'presenter', keys: ['ArrowLeft'] },
-  { id: 'show.blackout', label: 'Black screen', group: 'Slide show', scope: 'presenter', keys: ['B'] },
-  { id: 'show.exit', label: 'End slide show', group: 'Slide show', scope: 'presenter', keys: ['Escape'] },
+  { id: 'slide.new', label: 'New slide', icon: 'plus', group: 'Slides', scope: 'editor', act: 'newSlide', keys: ['Mod+M'] },
+  { id: 'slide.duplicate', label: 'Duplicate slide', icon: 'copy', group: 'Slides', scope: 'editor', act: 'duplicateSlide' },
+  { id: 'slide.delete', label: 'Delete slide', icon: 'trash', group: 'Slides', scope: 'editor', act: 'deleteSlide' },
+  { id: 'slide.prev', label: 'Previous slide', icon: 'chevron-up', group: 'Slides', scope: 'editor', act: 'prevSlide', keys: ['PageUp'] },
+  { id: 'slide.next', label: 'Next slide', icon: 'chevron-down', group: 'Slides', scope: 'editor', act: 'nextSlide', keys: ['PageDown'] },
+  // ---- Slide show ----
+  { id: 'show.present', label: 'Present', icon: 'play', group: 'Slide show', scope: 'app', act: 'present', keys: ['Mod+Enter'] },
+  { id: 'show.next', label: 'Next slide (slide show)', group: 'Slide show', scope: 'presenter', act: 'next', keys: ['ArrowRight', 'Space'] },
+  { id: 'show.prev', label: 'Previous slide (slide show)', group: 'Slide show', scope: 'presenter', act: 'prev', keys: ['ArrowLeft'] },
+  // A persistent toggle: key auto-repeat would make it flicker while held.
+  { id: 'show.blackout', label: 'Black screen', group: 'Slide show', scope: 'presenter', act: 'blackout', noRepeat: true, keys: ['B'] },
+  { id: 'show.exit', label: 'End slide show', group: 'Slide show', scope: 'presenter', act: 'exit', keys: ['Escape'] },
+  // ---- Search ----
+  { id: 'home.search', label: 'Search decks', group: 'Search', scope: 'home', act: 'focusSearch', keys: ['Mod+K'] },
+  { id: 'templates.search', label: 'Search templates', group: 'Search', scope: 'templates', act: 'focusSearch', keys: ['Mod+F'] },
 ];
 
 const BY_ID = new Map(COMMANDS.map((c) => [c.id, c]));
@@ -91,10 +98,8 @@ export function matchesCombo(e, combo) {
   return c.key.length === 1 ? e.key?.toLowerCase() === c.key.toLowerCase() : e.key === c.key;
 }
 
-const KEY_NAMES = {
-  mac: { Enter: '⏎', Backspace: '⌫', Delete: 'Del', Escape: 'Esc', PageUp: 'PgUp', PageDown: 'PgDn', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' },
-  other: { Delete: 'Del', Escape: 'Esc', PageUp: 'PgUp', PageDown: 'PgDn', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' },
-};
+const KEY_NAMES_COMMON = { Delete: 'Del', Escape: 'Esc', PageUp: 'PgUp', PageDown: 'PgDn', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' };
+const KEY_NAMES = { mac: { ...KEY_NAMES_COMMON, Enter: '⏎', Backspace: '⌫' }, other: KEY_NAMES_COMMON };
 
 export function formatCombo(combo, mac = IS_MAC) {
   const c = parseCombo(combo);
@@ -103,27 +108,41 @@ export function formatCombo(combo, mac = IS_MAC) {
   return [c.mod && 'Ctrl', c.alt && 'Alt', c.shift && 'Shift', name].filter(Boolean).join('+');
 }
 
-// A command's shortcut label: its first combo (menus), or all of them (Settings).
+// A command's shortcut label: its first combo (menus, tooltips), or all of them
+// (Settings). A key family (the nudge arrows) carries a summary `keysLabel`.
 export function formatKeys(cmd, { mac = IS_MAC, all = false } = {}) {
-  if (cmd?.display) return cmd.display[mac ? 'mac' : 'other'];
+  if (cmd?.keysLabel) return cmd.keysLabel[mac ? 'mac' : 'other'];
   const keys = cmd?.keys || [];
   return (all ? keys : keys.slice(0, 1)).map((k) => formatCombo(k, mac)).join(' / ');
 }
 
-// Is this editor command runnable in `ctx` now?
-const available = (cmd, ctx) => cmd.scope === 'editor' && !!cmd.act && typeof ctx.act?.[cmd.act] === 'function'
+// Is this command runnable in `ctx` (its own scope) now?
+const available = (cmd, ctx) => cmd.scope === (ctx.scope || 'editor')
+  && typeof ctx.act?.[cmd.act] === 'function'
   && NEED[cmd.need || 'none'](ctx) && (!cmd.when || cmd.when(ctx));
 
-const runner = (cmd) => cmd.run || ((ctx) => ctx.act[cmd.act]());
+export const runCommand = (cmd, ctx, e) => (cmd.run ? cmd.run(ctx, e) : ctx.act[cmd.act](e));
 
-// The editor command bound to this key event, if one applies now (else null).
+// The command in `ctx.scope` bound to this key event, if one applies now (else null).
 export function findKeyCommand(e, ctx) {
-  for (const cmd of COMMANDS) {
-    if (cmd.keys && available(cmd, ctx) && cmd.keys.some((k) => matchesCombo(e, k))) {
-      return { ...cmd, run: runner(cmd) };
-    }
-  }
-  return null;
+  return COMMANDS.find((cmd) => cmd.keys && !(cmd.noRepeat && e.repeat) && available(cmd, ctx)
+    && cmd.keys.some((k) => matchesCombo(e, k))) || null;
+}
+
+// Find and run the command for a key event; true when one ran (and the event
+// was consumed). The one dispatcher every surface's key handler calls.
+export function dispatchKey(e, ctx) {
+  const cmd = findKeyCommand(e, ctx);
+  if (!cmd) return false;
+  e.preventDefault();
+  runCommand(cmd, ctx, e);
+  return true;
+}
+
+// A tooltip naming the command's real, bound shortcut.
+export function tooltip(label, id, opts) {
+  const keys = formatKeys(commandById(id), opts);
+  return keys ? `${label} · ${keys}` : label;
 }
 
 // Menu items (for the shared <Menu>) from a list of command ids, '-' separators,
@@ -136,25 +155,25 @@ export function menuItems(entries, ctx, { mac = IS_MAC } = {}) {
     if (typeof entry !== 'string') { out.push(entry); continue; }
     const cmd = commandById(entry);
     if (!cmd || !available(cmd, ctx)) continue;
-    out.push({ icon: cmd.icon, label: cmd.label, kbd: formatKeys(cmd, { mac }) || undefined, onClick: () => runner(cmd)(ctx) });
+    out.push({ icon: cmd.icon, label: cmd.label, kbd: formatKeys(cmd, { mac }) || undefined, onClick: () => runCommand(cmd, ctx) });
   }
   if (out[out.length - 1] === '-') out.pop();
   return out;
 }
 
-// Commands the ⌘K palette offers: runnable now, not hidden, matching `query`.
+// Commands the ⌘K palette offers: runnable now, listable, matching `query`.
 export function paletteCommands(ctx, query = '', { mac = IS_MAC } = {}) {
   const q = query.trim().toLowerCase();
   return COMMANDS
-    .filter((c) => !c.hidden && available(c, ctx) && c.label.toLowerCase().includes(q))
-    .map((c) => ({ id: c.id, label: c.label, icon: c.icon, group: c.group, kbd: formatKeys(c, { mac }), run: () => runner(c)(ctx) }));
+    .filter((c) => c.palette !== false && available(c, ctx) && c.label.toLowerCase().includes(q))
+    .map((c) => ({ id: c.id, label: c.label, icon: c.icon, kbd: formatKeys(c, { mac }), run: () => runCommand(c, ctx) }));
 }
 
 // The Settings → Shortcuts page: every bound shortcut, grouped, in registry order.
 export function shortcutGroups({ mac = IS_MAC } = {}) {
   const groups = [];
   for (const c of COMMANDS) {
-    if ((!c.keys && !c.display) || (c.hidden && !c.display)) continue;
+    if (!c.keys) continue;
     let g = groups.find((x) => x.g === c.group);
     if (!g) groups.push(g = { g: c.group, rows: [] });
     g.rows.push([c.label, formatKeys(c, { mac, all: true })]);
