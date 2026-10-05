@@ -66,8 +66,11 @@ what survives the `.pptx` boundary in each direction.
 | Import | 14 | 14 | 9 | 8 |
 | Export | 17 | 6 | 13 | 9 |
 
-The editor covers about half of the checklist fully. The `.pptx` boundary is now honest:
-everything the importer can't represent is warned about, never silently dropped. The largest
+The editor covers about half of the checklist fully. The `.pptx` boundary is mostly honest:
+everything the importer *detects* as unrepresentable is warned about, with a placeholder where it
+took space. Detection isn't complete yet. Shape **effects** (`a:effectLst`: shadow, glow, soft
+edges, reflection) and **3-D** (`a:scene3d`/`a:sp3d`) are still ignored without a warning. Closing
+that is the "Unsupported-feature sweep" quick win in `POWERPOINT-SPEC.md` §4. The largest
 remaining gaps cluster in four places, which phase 2–3 target:
 1. **Text model:** a single style per text box (#8), no insets or autofit (#13), no hyperlinks.
 2. **Template model:** no data-driven masters, themes or slide sizes (#7, #9).

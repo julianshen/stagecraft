@@ -400,18 +400,23 @@ Colours stay hex unless F-DES-1 says otherwise. Lengths are canvas px (1920 wide
 - **Import:** keep the source theme (today it is resolved and discarded) and keep scheme refs on imported fills and text.
 
 **F-DES-2 · Masters & layouts as data.**
-- **Model:** `deck.masters[{id, name, background, elements[] (furniture), placeholders[{type, idx, x,y,w,h, textDefaults}], layouts[{id, name, background?, elements[], placeholders[]}]}]`.
+- **Model:** `deck.masters[{id, name, themeId, clrMap, background, elements[] (furniture), placeholders[{type, idx, x,y,w,h, textDefaults}], layouts[{id, name, background?, clrMapOvr?, showMasterShapes, elements[], placeholders[]}]}]`.
+  - **Themes per master.** F-DES-1's theme object lives in `deck.themes: {[id]: Theme}`, and each master points at one with `themeId`. `deck.theme` becomes the id of the default theme, used by semantic-layout slides and new masters. Scheme refs resolve through the slide's master, its `clrMap`, and the layout's or slide's `clrMapOvr`, exactly as the importer resolves colours today. Importing a deck whose masters use different themes keeps every palette and font pair.
+  - **Master-shape visibility.** `layouts[].showMasterShapes` and `slide.showMasterShapes` (default true) carry PowerPoint's `showMasterSp`:
+    - A slide with `false` hides both master and layout furniture ("Hide background graphics").
+    - A layout with `false` hides the master's furniture on its slides.
+    - The renderer, the export (v1: the furniture baked per layout is omitted; v2: `showMasterSp="0"` is written) and import all honour it, with a round-trip test. Without it, logos the importer hides today would reappear once D4 links masters.
   - A slide may set `layoutRef: {masterId, layoutId}`. Its placeholder-backed text elements carry `ph: {type, idx}` and inherit geometry and text style until overridden, as PowerPoint does.
   - The 13 semantic layouts stay as Stagecraft's opinionated components; masters govern free-form slides.
 - **UI:** View ▸ **Edit master**: a master/layout editor using the same canvas, which edits `deck.masters`. Slide ▸ Layout lists master layouts. "Reset slide" re-applies the placeholder geometry.
 - **Export:** pptxgenjs 3.12 writes a **single** `ppt/slideMasters/slideMaster1.xml`. Each `defineSlideMaster` call becomes a *layout* under that one master ([pptxgen.ts L495–508](https://github.com/gitbrent/PptxGenJS/blob/v3.12.0/src/pptxgen.ts#L495-L508)), so the master hierarchy can't be expressed through its API. Delivery is staged:
   - **v1 (D4):**
     - Export one master. Every layout of every `deck.masters[]` entry goes through `defineSlideMaster` (background, objects, placeholders), and slides use `addSlide({masterName})`.
-    - Slides keep their own layout, so what's on each slide survives. The *master grouping* collapses: per-master backgrounds and furniture are baked into each of its layouts, and the theme is the first master's.
+    - Slides keep their own layout, so what's on each slide survives. The *master grouping* collapses: per-master backgrounds and furniture are baked into each of its layouts, scheme colours are exported resolved through each master's own theme (so nothing is recoloured), and the package's single theme part carries the default theme.
     - Import keeps all masters in the model.
     - Export **warns** "This deck has N slide masters; they are saved as layouts under one master" when `deck.masters.length > 1`. There is no silent collapse.
   - **v2 (D5, after D4):** `pptxPost.js` (F-EXP-1) rebuilds a true multi-master package:
-    - writes `slideMasterN.xml` (+ rels, its own `themeN.xml`) per `deck.masters[]` entry;
+    - writes `slideMasterN.xml` (+ rels, and a `themeN.xml` from that master's `deck.themes[themeId]`, with its `clrMap`) per `deck.masters[]` entry;
     - re-parents each `slideLayout` to its master;
     - updates `p:sldMasterIdLst`, `[Content_Types].xml` and the presentation rels.
   - **Acceptance criteria:**
@@ -593,6 +598,13 @@ The order is driven by dependencies:
 Long-tail features remain out of scope: SmartArt editing, equations, media playback, 3D, WordArt, macros.
 
 **Import-only quick wins** (can ride any phase):
+- **Unsupported-feature sweep:** warn on the visible formatting the importer still ignores silently:
+  - shape effects (`a:effectLst`: shadow, glow, soft edge, reflection);
+  - `a:scene3d`/`a:sp3d`;
+  - text effects (`a:effectLst` in `rPr`);
+  - shape-level `a:pattFill` on lines.
+
+  The outer shadow could map onto the existing element `shadow` field instead of only warning.
 - **SmartArt** via its pre-rendered drawing part (`ppt/diagrams/drawing*.xml`, `dsp:` shapes): import as a grouped set of shapes instead of a placeholder.
 - **Equations and other `mc:AlternateContent`** via the Fallback picture.
 
