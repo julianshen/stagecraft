@@ -860,3 +860,15 @@ describe('ElementsLayer — sharp rect', () => {
     expect(['0', '0px']).toContain(container.firstChild.firstChild.style.borderRadius);
   });
 });
+
+describe('ElementsLayer — image fit', () => {
+  const img = (fit) => ({ id: 'i', type: 'image', x: 0, y: 0, w: 30, h: 10, src: 'data:image/png;base64,AA==', ...(fit ? { fit } : {}) });
+  it('stretches an image with fit "stretch" (imported PowerPoint pictures)', () => {
+    const { container } = render(<ElementsLayer elements={[img('stretch')]} />);
+    expect(container.querySelector('img').style.objectFit).toBe('fill');
+  });
+  it('keeps cover for images without a fit (the existing behaviour)', () => {
+    const { container } = render(<ElementsLayer elements={[img()]} />);
+    expect(container.querySelector('img').style.objectFit).toBe('cover');
+  });
+});

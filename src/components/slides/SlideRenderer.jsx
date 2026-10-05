@@ -453,7 +453,7 @@ function ElementView({ el }) {
     // empty image is still visible/selectable on the canvas. draggable=false
     // keeps the native image drag from hijacking the canvas drag.
     return el.src
-      ? <img src={el.src} alt="" draggable={false} style={{ ...base, objectFit: 'cover' }} />
+      ? <img src={el.src} alt="" draggable={false} style={{ ...base, objectFit: el.fit === 'stretch' ? 'fill' : 'cover' }} />
       : <div style={{ ...base, display: 'grid', placeItems: 'center', background: '#eceae4', color: '#9a978f', fontFamily: 'var(--f-mono)', fontSize: 18 }}>No image</div>;
   }
   if (el.type === 'path') {

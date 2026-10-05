@@ -821,3 +821,21 @@ describe('importPptx — Codex review fixes (round 9)', () => {
     expect((await one('')).warnings.join(' ')).not.toMatch(/animations/i);
   });
 });
+
+describe('importPptx — Codex review fixes (round 10)', () => {
+  it('imports pictures with stretch fit (PowerPoint\'s default a:stretch), not cover', async () => {
+    const pic = `<p:pic><p:nvPicPr><p:cNvPr id="4" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId10"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrm(0, 0, 30, 10)}</p:spPr></p:pic>`;
+    const { slide } = await one(pic, { slide: { extraRels: [['rId10', 'image', '../media/p.png']] } }, { media: { 'p.png': PNG } });
+    expect(slide.elements[0].fit).toBe('stretch');
+    expect(sanitizeSlidePatch({ elements: slide.elements }, 'blank').elements).toHaveLength(1);
+  });
+
+  it('inherits shape style references (fillRef/lnRef/fontRef) from the layout placeholder', async () => {
+    const style = '<p:style><a:lnRef idx="1"><a:srgbClr val="FF0000"/></a:lnRef><a:fillRef idx="1"><a:srgbClr val="0000FF"/></a:fillRef><a:effectRef idx="0"><a:srgbClr val="000000"/></a:effectRef><a:fontRef idx="minor"><a:srgbClr val="FFFFFF"/></a:fontRef></p:style>';
+    const layout = `<p:sldLayout ${NS}>${tree(`<p:sp><p:nvSpPr><p:cNvPr id="2" name="B"/><p:cNvSpPr/><p:nvPr><p:ph idx="1"/></p:nvPr></p:nvSpPr><p:spPr>${xfrm(0, 0, 100, 50)}<a:prstGeom prst="rect"/></p:spPr>${style}</p:sp>`)}</p:sldLayout>`;
+    const ph = `<p:sp><p:nvSpPr><p:cNvPr id="3" name="B"/><p:cNvSpPr/><p:nvPr><p:ph idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/>${para('Styled')}</p:txBody></p:sp>`;
+    const [box, text] = (await one(ph, {}, { layout })).slide.elements;
+    expect(box).toMatchObject({ type: 'rect', fill: '#0000FF', stroke: '#FF0000' });
+    expect(text.fill).toBe('#FFFFFF');
+  });
+});

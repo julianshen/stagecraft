@@ -204,6 +204,10 @@ export const lineSpacingOf = (el) => (Number.isFinite(el.lineSpacing) && el.line
 export const TEXT_VALIGNS = Object.freeze(['top', 'middle', 'bottom']);
 export const valignOf = (el) => (TEXT_VALIGNS.includes(el.valign) ? el.valign : 'middle');
 
+// How an image fills its box: 'cover' crops to fill (the default) or 'stretch'
+// distorts to fit exactly — PowerPoint's a:stretch, set on imported pictures.
+export const IMAGE_FITS = Object.freeze(['cover', 'stretch']);
+
 // A text element's CSS font-family stack. Imported PowerPoint text names Office
 // fonts the browser often lacks, so the authored family is followed by its
 // metric-compatible open substitute (same widths → same line breaks) and the

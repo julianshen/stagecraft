@@ -162,3 +162,31 @@ describe('App — Import PowerPoint', () => {
     expect(store.get('stagecraft.view')).toBe('home');
   });
 });
+
+describe('App — Import PowerPoint (open failure)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => { vi.useRealTimers(); vi.mocked(importPptx).mockReset(); });
+
+  it('reports a failure when the created deck cannot be opened, instead of claiming success', async () => {
+    store.set('stagecraft.view', 'home');
+    const imported = { title: 'X', theme: 'slate', sections: [{ id: 's', name: 'S', slides: [] }], slides: [] };
+    vi.mocked(importPptx).mockResolvedValue({ deck: imported, warnings: [] });
+    const srv = makeServer();
+    const base = srv.fetchFn.getMockImplementation();
+    srv.fetchFn.mockImplementation((url, init) => (String(url) === '/api/decks' && init?.method === 'POST'
+      ? Promise.resolve({ ok: true, json: async () => ({ id: 'x1' }) })
+      : String(url) === '/api/decks/x1/activate' ? Promise.resolve({ ok: false, status: 500, json: async () => ({}) })
+        : base(url, init)));
+    vi.stubGlobal('fetch', srv.fetchFn);
+    render(<App />);
+    await flush();
+    const f = new File(['zip'], 'X.pptx');
+    f.arrayBuffer = async () => new ArrayBuffer(3);
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [f] } });
+    await flush();
+    const msgs = [...document.querySelectorAll('.toast-msg')].map((n) => n.textContent);
+    expect(msgs.join(' ')).toMatch(/Couldn't import X\.pptx/);
+    expect(msgs.join(' ')).not.toMatch(/^Imported/);
+    expect(store.get('stagecraft.view')).toBe('home');
+  });
+});

@@ -470,6 +470,8 @@ class SlideReader {
     const ph = phOf(sp);
     const lay = ph ? findPh(this.layoutTree, ph) : null;
     const mas = ph ? findPh(this.masterTree, ph, false) : null;
+    // Shape style refs (fill/line/font) inherit like the rest: slide → layout → master.
+    const style = kid(sp, 'style') ?? kid(lay, 'style') ?? kid(mas, 'style');
     const txStyles = this.ctx.txStyles;
     const cat = ph ? phCategory(ph.type) : 'other';
     return {
@@ -478,7 +480,8 @@ class SlideReader {
       txBodies: [lay, mas].map((s) => kid(s, 'txBody')).filter(Boolean),
       txStyle: kid(txStyles, `${cat}Style`),
       spPrs: [kid(lay, 'spPr'), kid(mas, 'spPr')].filter(Boolean),
-      fontRefColor: colorIn(path(sp, 'style', 'fontRef'), this.ctx),
+      style,
+      fontRefColor: colorIn(kid(style, 'fontRef'), this.ctx),
     };
   }
 
@@ -534,7 +537,7 @@ class SlideReader {
     // Geometry may be inherited from the layout/master placeholder.
     const prst = firstOf([spPr, ...inh.spPrs], (p) => attr(kid(p, 'prstGeom'), 'prst') ?? (kid(p, 'custGeom') ? 'custGeom' : null));
     if (prst === 'custGeom') this.warn('Freeform (custom-geometry) shapes were imported as rectangles.');
-    const style = kid(sp, 'style');
+    const { style } = inh;
     // A shape style's fill/line refs (idx 0 = "no style fill/line").
     const styleRef = (name) => (numAttr(kid(style, name), 'idx', 0) > 0 ? colorIn(kid(style, name), this.ctx) : null);
     const styleFill = styleRef('fillRef');
@@ -645,7 +648,8 @@ class SlideReader {
     if (srcRect && [...srcRect.attributes].some((a) => Number(a.value))) this.warn('Cropped pictures import uncropped (stretched to their frame).');
     const rId = blipRel(path(pic, 'blipFill', 'blip'));
     const src = await imageData(this.pkg, rels[rId], this.warn);
-    if (src) this.push({ type: 'image', ...toPx(box, this.ctx.fit), src }, groupId);
+    // PowerPoint stretches a picture to its frame (a:stretch) — keep that, not cover.
+    if (src) this.push({ type: 'image', ...toPx(box, this.ctx.fit), src, fit: 'stretch' }, groupId);
   }
 
   frame(gf, groupT, groupId) {
@@ -891,7 +895,7 @@ export async function importPptx(data, { fileName = '' } = {}) {
     const bg = await backgroundOf(pkg, ctx, [
       { root, rels }, { root: layoutRoot, rels: layoutRels }, { root: master.root, rels: master.rels },
     ], warn);
-    if (bg.image) reader.push({ type: 'image', x: round2(fit.ox), y: round2(fit.oy), w: round2(fit.w), h: round2(fit.h), src: bg.image });
+    if (bg.image) reader.push({ type: 'image', x: round2(fit.ox), y: round2(fit.oy), w: round2(fit.w), h: round2(fit.h), src: bg.image, fit: 'stretch' });
     // Non-placeholder art on the layout/master (logos, bars) shows on the slide
     // unless the slide/layout hides master shapes (showMasterSp="0").
     if (boolAttr(root, 'showMasterSp', true)) {
