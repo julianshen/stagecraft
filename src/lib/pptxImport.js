@@ -264,6 +264,8 @@ function fillOf(props, ctx, warn) {
   return null;
 }
 
+const opacityOf = (alpha) => (alpha < 1 ? { opacity: Math.round(alpha * 100) } : {});
+
 // ---- geometry ----
 // The source slide (cx×cy EMU) fits the 1920×1080 canvas uniformly, centred —
 // a 4:3 deck letterboxes rather than stretching.
@@ -509,7 +511,7 @@ function textOf(sp, ctx, inh) {
     content,
     fontSize: Math.max(1, round2(px)),
     fill: color.hex,
-    ...(color.alpha < 1 ? { opacity: Math.round(color.alpha * 100) } : {}),
+    ...opacityOf(color.alpha),
     ...(isOn('b') ? { bold: true } : {}),
     ...(isOn('i') ? { italic: true } : {}),
     ...(u && u !== 'none' ? { underline: true } : {}),
@@ -614,6 +616,21 @@ class SlideReader {
     else this.warn(`Skipped an element that could not be represented (${el.type}).`);
   }
 
+  // A filled element with an optional outline. Element `opacity` fades the
+  // whole element, so a fill and outline at different alphas split into the
+  // filled body plus a grouped outline path, each with its own opacity.
+  // `group()` supplies the group id (only needed for the split).
+  pushPainted(el, fillAlpha, stroke, strokeAlpha, outline, group) {
+    if (!stroke || fillAlpha === strokeAlpha) {
+      this.push({ ...el, ...stroke, ...opacityOf(fillAlpha) }, group());
+      return;
+    }
+    const gid = group(true);
+    this.push({ ...el, ...opacityOf(fillAlpha) }, gid);
+    this.push({ type: 'path', x: el.x, y: el.y, w: el.w, h: el.h, ...(el.rot ? { rot: el.rot } : {}),
+      points: outlinePoints(outline), ...stroke, ...opacityOf(strokeAlpha) }, gid);
+  }
+
   shape(sp, groupT, groupId) {
     const inh = this.inherit(sp);
     this.noteShapeLinks(sp);
@@ -659,7 +676,7 @@ class SlideReader {
     // local group keeps them moving together, unless a PowerPoint group already does.
     const text = this.text(sp, inh);
     let gid = groupId;
-    const pairUp = () => { gid = gid || (text ? this.id('grp') : undefined); return gid; };
+    const pairUp = (split) => { gid = gid || (text || split ? this.id('grp') : undefined); return gid; };
     if (type) {
       const fill = fillOf(spPr, this.ctx, this.warn) || firstOf(inh.spPrs, (p) => fillOf(p, this.ctx, this.warn))
         || (styleFill ? { kind: 'solid', color: styleFill } : { kind: 'none' });
@@ -668,11 +685,10 @@ class SlideReader {
         ...(ln.dash ? { strokeDash: ln.dash } : {}),
       } : {};
       if (fill.color) {
-        this.push({
-          type, ...geo, fill: fill.color.hex, ...stroke,
-          ...(fill.color.alpha < 1 ? { opacity: Math.round(fill.color.alpha * 100) } : {}),
+        this.pushPainted({
+          type, ...geo, fill: fill.color.hex,
           ...(fill.kind === 'grad' ? { gradient: { from: fill.from.hex, to: fill.to.hex, angle: fill.angle } } : {}),
-        }, pairUp());
+        }, fill.color.alpha, ln && stroke, ln?.color.alpha, type, pairUp);
       } else if (ln) {
         // Outline-only shape → a closed stroked path (fills are always solid).
         this.push({ type: 'path', ...geo, points: outlinePoints(type), ...stroke }, pairUp());
@@ -686,7 +702,7 @@ class SlideReader {
   line(box, ln, groupId) {
     const { fit } = this.ctx;
     const thick = Math.max(MIN_LINE_THICKNESS, round2(ln.w * fit.k));
-    const alpha = ln.color.alpha < 1 ? { opacity: Math.round(ln.color.alpha * 100) } : {};
+    const alpha = opacityOf(ln.color.alpha);
     // A dashed/dotted connector → a stroked two-point path (a `line` element is
     // a solid bar). A degenerate axis (a horizontal/vertical connector) gets a
     // `thick`-wide box centred on the line so the path has room to draw.
@@ -727,7 +743,7 @@ class SlideReader {
       type: 'path', ...toPx(box, fit),
       points: [[0, 0], [0.5, 0], [0.5, 1], [1, 1]].map(([x, y]) => [fx(x), fy(y)]),
       stroke: ln.color.hex, strokeWidth: thick, ...(ln.dash ? { strokeDash: ln.dash } : {}),
-      ...(ln.color.alpha < 1 ? { opacity: Math.round(ln.color.alpha * 100) } : {}),
+      ...opacityOf(ln.color.alpha),
     }, groupId);
   }
 
@@ -828,7 +844,8 @@ class SlideReader {
           if (fill?.kind === 'none') {
             if (border) this.push({ type: 'path', ...geo, points: outlinePoints('rect'), ...border }, gid);
           } else {
-            this.push({ type: 'rect', ...geo, fill: fill?.color ? fill.color.hex : '#FFFFFF', ...(border || {}) }, gid);
+            this.pushPainted({ type: 'rect', ...geo, fill: fill?.color ? fill.color.hex : '#FFFFFF' },
+              fill?.color?.alpha ?? 1, border, 1, 'rect', () => gid);
           }
           const text = this.text(tc, { txBodies: [], txStyle: kid(this.ctx.txStyles, 'otherStyle') });
           const anchor = ANCHOR[attr(kid(tc, 'tcPr'), 'anchor')];

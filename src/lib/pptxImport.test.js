@@ -1016,3 +1016,45 @@ describe('importPptx — Codex review fixes (round 17)', () => {
     expect((await one(pic(''), opts, pkg)).slide.elements[0].opacity).toBeUndefined();
   });
 });
+
+describe('importPptx — Codex review fixes (round 18)', () => {
+  const fill = (a) => `<a:solidFill><a:srgbClr val="FF0000">${a ? `<a:alpha val="${a}"/>` : ''}</a:srgbClr></a:solidFill>`;
+  const ln = (a) => `<a:ln w="${4 * PX}"><a:solidFill><a:srgbClr val="0000FF">${a ? `<a:alpha val="${a}"/>` : ''}</a:srgbClr></a:solidFill></a:ln>`;
+
+  it('keeps an opaque outline opaque around a translucent fill (fill + outline split, grouped)', async () => {
+    const { slide } = await one(shape(2, 'rect', 0, 0, 100, 50, fill(50000) + ln()));
+    const [body, outline] = slide.elements;
+    expect(body).toMatchObject({ type: 'rect', fill: '#FF0000', opacity: 50 });
+    expect(body.stroke).toBeUndefined();
+    expect(outline).toMatchObject({ type: 'path', stroke: '#0000FF' });
+    expect(outline.opacity).toBeUndefined();
+    expect(outline.groupId).toBeTruthy();
+    expect(outline.groupId).toBe(body.groupId);
+    expect(sanitizeSlidePatch({ elements: slide.elements }, 'blank').elements).toHaveLength(2);
+  });
+
+  it('keeps one element when fill and outline share an opacity', async () => {
+    const same = (await one(shape(2, 'rect', 0, 0, 100, 50, fill(50000) + ln(50000)))).slide.elements;
+    expect(same).toHaveLength(1);
+    expect(same[0]).toMatchObject({ fill: '#FF0000', stroke: '#0000FF', opacity: 50 });
+    const opaque = (await one(shape(2, 'rect', 0, 0, 100, 50, fill() + ln()))).slide.elements;
+    expect(opaque).toHaveLength(1);
+    expect(opaque[0].opacity).toBeUndefined();
+  });
+
+  it('carries table-cell fill transparency, keeping the cell border opaque', async () => {
+    const tbl = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="6" name="T"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>
+      <p:xfrm><a:off x="0" y="0"/><a:ext cx="${100 * PX}" cy="${50 * PX}"/></p:xfrm>
+      <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblGrid><a:gridCol w="${100 * PX}"/></a:tblGrid>
+        <a:tr h="${50 * PX}"><a:tc><a:txBody><a:bodyPr/><a:p/></a:txBody><a:tcPr>${fill(40000)}</a:tcPr></a:tc></a:tr>
+      </a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+    const { slide } = await one(tbl);
+    const cell = els(slide, 'rect')[0];
+    expect(cell).toMatchObject({ fill: '#FF0000', opacity: 40 });
+    expect(cell.stroke).toBeUndefined();
+    const border = els(slide, 'path')[0];
+    expect(border).toMatchObject({ stroke: '#BFBFBF' });
+    expect(border.opacity).toBeUndefined();
+    expect(border.groupId).toBe(cell.groupId);
+  });
+});
