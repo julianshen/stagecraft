@@ -363,7 +363,10 @@ Colours stay hex unless F-DES-1 says otherwise. Lengths are canvas px (1920 wide
 - **Model:** `deck.size {w:1920, h}` — the authoring width stays 1920, so all existing geometry stays valid. `h` is 1080 for 16:9, 1440 for 4:3, or a custom aspect ratio.
 - **Code:** `SLIDE_W`/`SLIDE_H` become per-deck reads (`slideDims(deck)`).
 - **UI:** Design ▸ Slide size, with "Scale content / Don't scale", as in PowerPoint.
-- **Export:** `pptx.defineLayout({width, height})`.
+- **Export:** pptxgenjs 3.12's `defineLayout` only *registers* a layout. The export must:
+  1. call `pptx.defineLayout({name: 'STAGECRAFT', width: 1920 / 144, height: h / 144})` — sizes in inches (1 in = 144 canvas px), so 16:9 is 13.333 × 7.5 in and 4:3 is 13.333 × 10 in;
+  2. then **select** it with `pptx.layout = 'STAGECRAFT'`. Without this step the file silently stays at the default size.
+  - A round-trip test asserts `ppt/presentation.xml` `p:sldSz` matches `deck.size`.
 - **Import:** use the source `sldSz` instead of letterboxing, removing the warning.
 
 **F-SLD-4 · Slide show.**
@@ -401,7 +404,19 @@ Colours stay hex unless F-DES-1 says otherwise. Lengths are canvas px (1920 wide
   - A slide may set `layoutRef: {masterId, layoutId}`. Its placeholder-backed text elements carry `ph: {type, idx}` and inherit geometry and text style until overridden, as PowerPoint does.
   - The 13 semantic layouts stay as Stagecraft's opinionated components; masters govern free-form slides.
 - **UI:** View ▸ **Edit master**: a master/layout editor using the same canvas, which edits `deck.masters`. Slide ▸ Layout lists master layouts. "Reset slide" re-applies the placeholder geometry.
-- **Export:** `pptx.defineSlideMaster` per layout (background, objects, placeholders); slides use `addSlide({masterName})`.
+- **Export:** pptxgenjs 3.12 writes a **single** `ppt/slideMasters/slideMaster1.xml`. Each `defineSlideMaster` call becomes a *layout* under that one master ([pptxgen.ts L495–508](https://github.com/gitbrent/PptxGenJS/blob/v3.12.0/src/pptxgen.ts#L495-L508)), so the master hierarchy can't be expressed through its API. Delivery is staged:
+  - **v1 (D4):**
+    - Export one master. Every layout of every `deck.masters[]` entry goes through `defineSlideMaster` (background, objects, placeholders), and slides use `addSlide({masterName})`.
+    - Slides keep their own layout, so what's on each slide survives. The *master grouping* collapses: per-master backgrounds and furniture are baked into each of its layouts, and the theme is the first master's.
+    - Import keeps all masters in the model.
+    - Export **warns** "This deck has N slide masters; they are saved as layouts under one master" when `deck.masters.length > 1`. There is no silent collapse.
+  - **v2 (D5, after D4):** `pptxPost.js` (F-EXP-1) rebuilds a true multi-master package:
+    - writes `slideMasterN.xml` (+ rels, its own `themeN.xml`) per `deck.masters[]` entry;
+    - re-parents each `slideLayout` to its master;
+    - updates `p:sldMasterIdLst`, `[Content_Types].xml` and the presentation rels.
+  - **Acceptance criteria:**
+    - v1: a 2-master corporate deck re-exports with every slide's layout and look intact, and the warning shown.
+    - v2: PowerPoint's Slide Master view shows both masters.
 - **Import:** keep masters and layouts instead of baking furniture into every slide. Placeholders become `ph`-linked elements. This also removes most of the asset duplication.
 - **`.potx`:** the same parts as a `.pptx`. "From template" accepts `.potx` (and `.pptx`) and creates a deck with its masters and no slides.
 
@@ -545,7 +560,8 @@ The order is driven by dependencies:
 | D1 | **F-DES-1 theme object** + scheme colour refs + Design-tab colour/font editors | L | B2 |
 | D2 | **F-DES-3 Format background** (solid/gradient/picture, apply to all) | S–M | A4, B5 |
 | D3 | **F-SLD-3 slide size** | M | — |
-| D4 | **F-DES-2 masters & layouts as data** + master editor + import keeps masters + `.potx` templates + Reset slide + **F-SLD-5** | L | D1, B1 |
+| D4 | **F-DES-2 masters & layouts as data** + master editor + import keeps masters + `.potx` templates + Reset slide + **F-SLD-5**; export v1 = one master (multi-master warned) | L | D1, B1 |
+| D5 | **F-DES-2 export v2**: true multi-master packages via `pptxPost.js` | M | D4, A4 |
 
 ### Phase E — Motion
 | M | Scope | Size | Depends |
@@ -598,6 +614,8 @@ Long-tail features remain out of scope: SmartArt editing, equations, media playb
   - Fallback: adopt a small, maintained editor core (e.g. ProseMirror) behind the same `paragraphs` schema, decided at B2 kick-off.
 - **pptxgenjs gaps.** Transitions, timing, groups, gradients and comments have no API, and `pptxPost.js` depends on object-name stability across pptxgenjs versions.
   - Mitigation: pin the version, and add a post-processor test that runs on real pptxgenjs output in CI.
+- **pptxgenjs structural limits.** Its single-master package and the `defineLayout`/`layout` two-step are known; others may surface.
+  - Mitigation: each export feature's acceptance test asserts the generated **XML parts** (`p:sldSz`, `p:sldMasterIdLst`, …), not just the absence of errors.
 - **Payload growth.** Rich text and assets grow the synced deck. B5 (asset store) lands before the heavy-content features, and sync diffs by asset.
 - **Scope creep from "PowerPoint has it".** Each milestone ships only its F-ids. New asks go into this doc first.
 
