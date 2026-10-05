@@ -1,6 +1,6 @@
 # PowerPoint compatibility & feature parity — design review
 
-> Status: review + phase-1 implementation (this change). Companion to `SPEC.md` (per-feature
+> Status: review + phase 1, shipped in #112 (matrix re-audited against `master` after merge). Companion to `SPEC.md` (per-feature
 > status tags), `PRODUCT-SPEC.md` (vision/UX) and `design.md` (tokens).
 
 ## 1. Verdict
@@ -58,6 +58,22 @@ missing · **P2** less common or polish. ✅ = fixed in this change.
 Legend: 🟢 supported · 🟡 partial/approximated · 🔴 missing · — n/a. "Import"/"Export" is
 what survives the `.pptx` boundary in each direction.
 
+**Scorecard** (45 PowerPoint features below):
+
+| Surface | 🟢 supported | 🟡 partial | 🔴 missing | — n/a |
+|---|---|---|---|---|
+| Editor | 24 | 9 | 12 | 0 |
+| Import | 14 | 14 | 9 | 8 |
+| Export | 17 | 6 | 13 | 9 |
+
+The editor covers about half of the checklist fully. The `.pptx` boundary is now honest:
+everything the importer can't represent is warned about, never silently dropped. The largest
+remaining gaps cluster in four places, which phase 2–3 target:
+1. **Text model:** a single style per text box (#8), no insets or autofit (#13), no hyperlinks.
+2. **Template model:** no data-driven masters, themes or slide sizes (#7, #9).
+3. **Object types:** charts and tables don't import as editable objects (#10, #11).
+4. **Export post-processing:** transitions, gradients, groups and flips (#12).
+
 | Area | PowerPoint feature | Editor | Import | Export | Next |
 |---|---|---|---|---|---|
 | **File** | Open .pptx | 🟢 | 🟢 | — | — |
@@ -70,32 +86,32 @@ what survives the `.pptx` boundary in each direction.
 | | Sections | 🟢 | 🟢 | 🟢 | — |
 | | Layouts (Title, Title+Content, Blank…) | 🟡 12 semantic + Blank | 🟡 → Blank | 🟢 | #7 |
 | | Slide masters / themes | 🔴 (deck theme = accent only) | 🟡 resolved, not kept | 🔴 | #7 |
-| | Background (solid / picture / gradient) | 🟡 solid on Blank | 🟢 (gradient → first stop) | 🟡 | gradient bg |
+| | Background (solid / picture / gradient) | 🟡 solid on Blank | 🟢 solid / picture (incl. transparency); gradient → first stop; translucent colour blended over white; pattern/tiled warned | 🟡 | gradient bg |
 | | Hide slide | 🔴 | 🟡 imported as visible (warned) | 🔴 | P2 |
-| | Slide number / footer / date | 🟡 chrome on templates | 🔴 dropped | 🔴 | P2 |
+| | Slide number / footer / date | 🟡 chrome on templates | 🟡 dropped, warned when the slide shows them | 🔴 | P2 |
 | | Speaker notes | 🟢 | 🟢 | 🟢 | rich notes |
 | **Text** | Text boxes, placeholders | 🟢 | 🟢 (geometry + style inheritance) | 🟢 | — |
 | | Font family / size / B / I / U / colour | 🟢 per element | 🟡 first run | 🟢 | #8 |
 | | Per-run mixed formatting | 🔴 | 🟡 flattened | 🔴 | #8 |
-| | Bullets & levels | 🟡 list layout | 🟡 as text glyphs | 🟡 | #8 |
+| | Bullets & levels | 🟡 list layout | 🟡 as text glyphs (bullets + auto-numbering per level) | 🟡 | #8 |
 | | Alignment H / V | 🟢 | 🟢 | 🟢 | — |
 | | Line spacing | 🟢 | 🟢 | 🟢 | — |
 | | Autofit / insets / columns | 🔴 | 🟡 fontScale applied | 🔴 | #13 |
-| | Hyperlinks | 🔴 | 🔴 | 🔴 | P2 |
-| **Shapes** | Preset shapes | 🟡 10 presets | 🟡 common presets mapped, rest → rect (warned) | 🟢 | more presets |
-| | Fill solid / gradient / transparency | 🟢 | 🟢 | 🟡 gradient blended | #12 |
+| | Hyperlinks | 🔴 | 🟡 plain text / inert shape (warned) | 🔴 | P2 |
+| **Shapes** | Preset shapes | 🟡 11 presets | 🟡 common presets mapped (rounded outlines kept), rest → rect (warned) | 🟢 | more presets |
+| | Fill solid / gradient / transparency | 🟢 | 🟢 every colour form; fill and outline alpha kept separately; radial and per-stop alpha approximated (warned) | 🟡 gradient blended | #12 |
 | | Outline colour / width / dash | 🟢 | 🟢 | 🟢 | — |
 | | Shadow | 🟢 | 🔴 | 🟢 | effectLst import |
-| | Lines / connectors | 🟡 straight | 🟢 straight, bent → straight | 🟢 | arrowheads |
+| | Lines / connectors | 🟡 straight | 🟢 straight, dashed, elbow; curved → elbow and arrowheads dropped (both warned) | 🟢 | arrowheads |
 | | Freeform / pen | 🟢 | 🔴 custGeom → rect | 🟢 | custGeom paths |
 | | Group / ungroup | 🟢 | 🟢 | 🟡 flattened | grpSp export |
-| | Rotate / flip | 🟡 rotate | 🟡 rotate incl. rotated groups; flips only on lines (others warned) | 🟡 | flip |
+| | Rotate / flip | 🟡 rotate only | 🟡 rotate incl. rotated groups and tables; flips on lines, pictures/shapes warned | 🟡 rotate only | flip |
 | | Align / distribute / z-order | 🟢 | — | — | — |
-| **Images** | Insert / move / resize | 🟢 | 🟢 PNG/JPEG/GIF/SVG/WebP | 🟢 | — |
+| **Images** | Insert / move / resize / transparency | 🟢 | 🟢 PNG/JPEG/GIF/SVG/WebP, stretch fit, transparency; tiled → stretched (warned) | 🟢 | — |
 | | Crop | 🔴 | 🔴 imported uncropped (warned) | 🔴 | P2 |
 | | EMF/WMF | 🔴 | 🔴 skipped (warned) | — | rasterise |
 | **Tables** | Insert / edit cells / rows / cols | 🟢 table layout | 🟡 as cell grid | 🟢 native | #11 |
-| | Table styles / merged cells | 🔴 | 🟡 spans kept, styles dropped (warned) | 🔴 | #11 |
+| | Table styles / merged cells | 🔴 | 🟡 spans, cell fills/borders (incl. transparency) kept; styles dropped (warned) | 🔴 | #11 |
 | **Charts** | Bar / line / area / pie-donut | 🟢 | 🔴 placeholder (warned) | 🟢 native, editable | #10 |
 | **SmartArt / equations / media** | — | 🔴 | 🔴 placeholder (warned) | 🔴 | later |
 | **Transitions** | Fade / push / morph… | 🟢 fade / slide / morph (presenter) | 🟢 mapped | 🔴 | #12 |
@@ -104,6 +120,7 @@ what survives the `.pptx` boundary in each direction.
 | **Review** | Comments | 🔴 (planned) | 🔴 | 🔴 | P2 |
 | **View** | Sorter, rulers, grid/snap, zoom | 🟢 | — | — | — |
 | **Automation** | (VBA) | 🟢 MCP / REST + Co-pilot | — | — | — |
+| **Editing** | Find & replace, format painter, smart guides | 🔴 | — | — | phase 3 |
 
 ## 4. What phase 1 ships (this change)
 
