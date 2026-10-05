@@ -158,6 +158,8 @@ rendering both in LibreOffice Impress side by side.
 
 ## 5. Roadmap
 
+> Superseded in detail by [`POWERPOINT-SPEC.md`](POWERPOINT-SPEC.md), which has the UI review, the per-feature spec (data model, UI, canvas, export, import, acceptance criteria) and the phased delivery plan (milestones A1–F4). The summary below is kept for orientation.
+
 **Phase 2 — round-trip fidelity** (makes "open → edit → save" lossless for typical decks)
 1. Rich text runs/paragraphs (#8) — the biggest remaining fidelity gap.
 2. Chart import into the native `chart` model (#10).

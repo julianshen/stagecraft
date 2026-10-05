@@ -108,3 +108,4 @@ A new `layout` must be wired in up to four places:
 - `SPEC.md` — full feature spec with per-feature implementation status.
 - `PRODUCT-SPEC.md` — product vision, personas, information architecture, user journeys, and screen-by-screen UX behavior.
 - `design.md` — design tokens (typography, color, spacing, shadows, layouts, MCP API).
+- `docs/POWERPOINT-PARITY.md` — PowerPoint parity review + feature matrix/scorecard; `docs/POWERPOINT-SPEC.md` — UI review, per-feature PowerPoint-compatibility spec and phased delivery plan.
