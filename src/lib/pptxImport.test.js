@@ -430,7 +430,7 @@ describe('importPptx — OOXML edge cases', () => {
       <a:p><a:r><a:t> </a:t></a:r></a:p>
       <a:p><a:pPr><a:buChar/></a:pPr><a:r><a:rPr><a:latin typeface="+mn-lt"/></a:rPr><a:t>Item</a:t></a:r><a:r><a:t/></a:r></a:p>`;
     const { slide } = await one(textBox(2, 0, 0, 100, 100, body));
-    expect(slide.elements[0]).toMatchObject({ content: '• 7\n \n• Item', align: 'right', bold: true, valign: 'top' });
+    expect(slide.elements[0]).toMatchObject({ content: '1. 7\n \n• Item', align: 'right', bold: true, valign: 'top' });
     expect(slide.elements[0].underline).toBeUndefined();
     expect(slide.elements[0].fontFamily).toBeUndefined(); // the element takes its first run's (the field's) font — none
   });
@@ -837,5 +837,22 @@ describe('importPptx — Codex review fixes (round 10)', () => {
     const [box, text] = (await one(ph, {}, { layout })).slide.elements;
     expect(box).toMatchObject({ type: 'rect', fill: '#0000FF', stroke: '#FF0000' });
     expect(text.fill).toBe('#FFFFFF');
+  });
+});
+
+describe('importPptx — Codex review fixes (round 11)', () => {
+  it('uses the theme typeface a shape style fontRef selects', async () => {
+    const style = '<p:style><a:lnRef idx="0"><a:srgbClr val="000000"/></a:lnRef><a:fillRef idx="0"><a:srgbClr val="000000"/></a:fillRef><a:effectRef idx="0"><a:srgbClr val="000000"/></a:effectRef><a:fontRef idx="major"><a:srgbClr val="000000"/></a:fontRef></p:style>';
+    const { slide } = await one(shape(2, 'rect', 0, 0, 50, 50, '<a:noFill/>', style + `<p:txBody><a:bodyPr/>${para('Heading font')}</p:txBody>`));
+    expect(slide.elements.find((e) => e.type === 'text').fontFamily).toBe('Georgia');
+  });
+
+  it('materializes auto-numbered lists (type + startAt), restarting after an interruption', async () => {
+    const num = (t, type = 'arabicPeriod', extra = '') => para(t, { pPr: `<a:pPr><a:buAutoNum type="${type}"${extra}/></a:pPr>` });
+    const body = num('One') + num('Two') + para('Break', { pPr: '<a:pPr><a:buNone/></a:pPr>' })
+      + num('Alpha', 'alphaLcParenR') + num('Beta', 'alphaLcParenR')
+      + num('Ten', 'arabicPeriod', ' startAt="10"') + num('Roman', 'romanUcPeriod', ' startAt="4"');
+    const { slide } = await one(textBox(2, 0, 0, 100, 100, body));
+    expect(slide.elements[0].content).toBe('1. One\n2. Two\nBreak\na) Alpha\nb) Beta\n10. Ten\nIV. Roman');
   });
 });

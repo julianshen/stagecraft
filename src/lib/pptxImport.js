@@ -361,6 +361,18 @@ const firstOf = (chain, get) => {
   return null;
 };
 
+// An auto-number's label: arabic / alpha / roman numbering in PowerPoint's
+// period, paren-right or paren-both forms (unknown schemes fall back to "n.").
+function autoNumber(type, n) {
+  const roman = (v) => [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']]
+    .reduce((acc, [k, r]) => { while (v >= k) { acc += r; v -= k; } return acc; }, '');
+  const alpha = (v) => { let out = ''; for (; v > 0; v = Math.floor((v - 1) / 26)) out = String.fromCharCode(97 + ((v - 1) % 26)) + out; return out; };
+  const m = /^(arabic|alphaLc|alphaUc|romanLc|romanUc)(Period|ParenR|ParenBoth)$/.exec(type);
+  if (!m) return `${n}.`;
+  const core = { arabic: String(n), alphaLc: alpha(n), alphaUc: alpha(n).toUpperCase(), romanLc: roman(n), romanUc: roman(n).toUpperCase() }[m[1]];
+  return m[2] === 'Period' ? `${core}.` : m[2] === 'ParenR' ? `${core})` : `(${core})`;
+}
+
 function textOf(sp, ctx, inh) {
   const txBody = kid(sp, 'txBody');
   if (!txBody) return null;
@@ -371,6 +383,7 @@ function textOf(sp, ctx, inh) {
   const localFor = (p) => [txBody, ...inh.txBodies].map((tb) => path(tb, 'lstStyle', lvlName(p)));
   const masterFor = (p) => kid(inh.txStyle, lvlName(p));
   const lines = [];
+  const counters = {}; // auto-number state per indent level
   let firstRun = null, firstPara = null;
   for (const p of kids(txBody, 'p')) {
     let t = '';
@@ -383,12 +396,22 @@ function textOf(sp, ctx, inh) {
     }
     if (!t.trim()) { lines.push(t); continue; }
     const pPr = kid(p, 'pPr');
-    // Bullets: the nearest buNone / buChar / buAutoNum in the chain decides.
-    const bullet = firstOf([pPr, ...localFor(p), masterFor(p)], (el) => (kid(el, 'buNone') ? 'none'
-      : kid(el, 'buChar') ? (attr(kid(el, 'buChar'), 'char') || '•')
-        : kid(el, 'buAutoNum') ? '•' : null));
-    const indent = '  '.repeat(numAttr(pPr, 'lvl', 0));
-    lines.push(bullet && bullet !== 'none' ? `${indent}${bullet} ${t}` : t);
+    const lvl = numAttr(pPr, 'lvl', 0);
+    // Bullets: the nearest buNone / buChar / buAutoNum in the chain decides; an
+    // auto-number is materialized (its type + startAt, counted per level and
+    // restarting after a differently-bulleted paragraph at that level).
+    const bu = firstOf([pPr, ...localFor(p), masterFor(p)], (el) => kid(el, 'buNone') ?? kid(el, 'buChar') ?? kid(el, 'buAutoNum'));
+    let bullet = null;
+    if (bu?.localName === 'buChar') bullet = attr(bu, 'char') || '•';
+    else if (bu?.localName === 'buAutoNum') {
+      const type = attr(bu, 'type') || 'arabicPeriod';
+      const prev = counters[lvl];
+      const n = prev && prev.type === type ? prev.n + 1 : numAttr(bu, 'startAt', 1);
+      counters[lvl] = { type, n };
+      bullet = autoNumber(type, n);
+    }
+    if (bu?.localName !== 'buAutoNum') delete counters[lvl];
+    lines.push(bullet ? `${'  '.repeat(lvl)}${bullet} ${t}` : t);
   }
   // Trim leading/trailing blank paragraphs; keep interior blank lines.
   while (lines.length && !lines[0].trim()) lines.shift();
@@ -419,6 +442,9 @@ function textOf(sp, ctx, inh) {
     || schemeColor(ctx, 'tx1')
     || { hex: '#000000', alpha: 1 };
   let face = attr(kid(rPr, 'latin'), 'typeface') ?? firstOf(chain, (el) => attr(kid(defRPr(el), 'latin'), 'typeface'));
+  // A shape style's fontRef (major/minor) picks the theme face when no list
+  // style names one.
+  face ??= { major: '+mj-lt', minor: '+mn-lt' }[inh.fontRefIdx];
   if (face === '+mj-lt') face = ctx.fonts.major;
   else if (face === '+mn-lt') face = ctx.fonts.minor;
   const algn = firstOf(chain, (el) => attr(el, 'algn'));
@@ -482,6 +508,7 @@ class SlideReader {
       spPrs: [kid(lay, 'spPr'), kid(mas, 'spPr')].filter(Boolean),
       style,
       fontRefColor: colorIn(kid(style, 'fontRef'), this.ctx),
+      fontRefIdx: attr(kid(style, 'fontRef'), 'idx'),
     };
   }
 
