@@ -266,6 +266,8 @@ function fillOf(props, ctx, warn) {
   return null;
 }
 
+// Picture transparency is the blip's alphaModFix (amt in 100000ths).
+const blipAlpha = (blip) => clamp01(numAttr(kid(blip, 'alphaModFix'), 'amt', 100000) / 100000);
 const opacityOf = (alpha) => (alpha < 1 ? { opacity: Math.round(alpha * 100) } : {});
 
 // ---- geometry ----
@@ -352,9 +354,21 @@ const PRST_TYPE = {
 };
 // An outline-only (no fill) shape becomes a stroked closed `path` — the element
 // model's fills are always solid, but a path is stroke-only. Its points follow
-// the shape: a sampled ellipse, the clip polygon, or the box.
-function outlinePoints(type) {
+// the shape: a sampled ellipse, a rounded box, the clip polygon, or the box.
+function outlinePoints(type, w, h) {
   const def = shapeDef(type);
+  // A rounded box: its CSS border-radius (px) as quarter-arc corners, scaled to
+  // this element's size so the outline matches the filled shape's render.
+  if (def?.radius > 0 && w > 0 && h > 0) {
+    const r = Math.min(def.radius, w / 2, h / 2);
+    const rx = r / w, ry = r / h;
+    const corners = [[1 - rx, ry], [1 - rx, 1 - ry], [rx, 1 - ry], [rx, ry]];
+    const pts = corners.flatMap(([cx, cy], k) => Array.from({ length: 7 }, (_, i) => {
+      const a = (k - 1 + i / 6) * (Math.PI / 2);
+      return [round2(cx + rx * Math.cos(a)), round2(cy + ry * Math.sin(a))];
+    }));
+    return [...pts, pts[0]];
+  }
   if (def?.round) {
     return Array.from({ length: 33 }, (_, i) => {
       const a = (i / 32) * Math.PI * 2;
@@ -630,7 +644,7 @@ class SlideReader {
     const gid = group(true);
     this.push({ ...el, ...opacityOf(fillAlpha) }, gid);
     this.push({ type: 'path', x: el.x, y: el.y, w: el.w, h: el.h, ...(el.rot ? { rot: el.rot } : {}),
-      points: outlinePoints(outline), ...stroke, ...opacityOf(strokeAlpha) }, gid);
+      points: outlinePoints(outline, el.w, el.h), ...stroke, ...opacityOf(strokeAlpha) }, gid);
   }
 
   shape(sp, groupT, groupId) {
@@ -693,7 +707,7 @@ class SlideReader {
         }, fill.color.alpha, ln && stroke, ln?.color.alpha, type, pairUp);
       } else if (ln) {
         // Outline-only shape → a closed stroked path (fills are always solid).
-        this.push({ type: 'path', ...geo, points: outlinePoints(type), ...stroke, ...opacityOf(ln.color.alpha) }, pairUp());
+        this.push({ type: 'path', ...geo, points: outlinePoints(type, geo.w, geo.h), ...stroke, ...opacityOf(ln.color.alpha) }, pairUp());
       }
     }
     if (text) this.push({ type: 'text', ...geo, ...text }, gid);
@@ -764,8 +778,7 @@ class SlideReader {
     if (path(pic, 'blipFill', 'tile')) this.warn(TILE_WARNING);
     const blip = path(pic, 'blipFill', 'blip');
     const src = await imageData(this.pkg, rels[blipRel(blip)], this.warn);
-    // Picture transparency is the blip's alphaModFix (amt in 100000ths).
-    const amt = clamp01(numAttr(kid(blip, 'alphaModFix'), 'amt', 100000) / 100000);
+    const amt = blipAlpha(blip);
     // PowerPoint stretches a picture to its frame (a:stretch) — keep that, not cover.
     if (src) {
       this.push({ type: 'image', ...toPx(box, this.ctx.fit), src, fit: 'stretch',
@@ -800,10 +813,10 @@ class SlideReader {
     if (!sides.some(Boolean)) return DEFAULT;
     const toStroke = (ln) => {
       const l = ln && lineOf(ln, this.ctx, null);
-      return l ? { stroke: l.color.hex, strokeWidth: Math.max(1, round2(l.w * this.ctx.fit.k)), ...(l.dash ? { strokeDash: l.dash } : {}) } : null;
+      return l ? { stroke: l.color.hex, strokeWidth: Math.max(1, round2(l.w * this.ctx.fit.k)), ...(l.dash ? { strokeDash: l.dash } : {}), ...opacityOf(l.color.alpha) } : null;
     };
     const strokes = sides.map((ln) => (ln ? toStroke(ln) : undefined));
-    const key = (st) => (st ? `${st.stroke}|${st.strokeWidth}|${st.strokeDash || ''}` : 'none');
+    const key = (st) => (st ? `${st.stroke}|${st.strokeWidth}|${st.strokeDash || ''}|${st.opacity ?? 100}` : 'none');
     if (strokes.every((st) => st !== undefined) && new Set(strokes.map(key)).size === 1) return strokes[0];
     this.warn('Table cell borders were approximated (per-side borders are not supported).');
     return strokes.find(Boolean) ?? null;
@@ -846,8 +859,9 @@ class SlideReader {
           if (fill?.kind === 'none') {
             if (border) this.push({ type: 'path', ...geo, points: outlinePoints('rect'), ...border }, gid);
           } else {
+            const { opacity: borderOpacity = 100, ...borderStroke } = border || {};
             this.pushPainted({ type: 'rect', ...geo, fill: fill?.color ? fill.color.hex : '#FFFFFF' },
-              fill?.color?.alpha ?? 1, border, 1, 'rect', () => gid);
+              fill?.color?.alpha ?? 1, border && borderStroke, borderOpacity / 100, 'rect', () => gid);
           }
           const text = this.text(tc, { txBodies: [], txStyle: kid(this.ctx.txStyles, 'otherStyle') });
           const anchor = ANCHOR[attr(kid(tc, 'tcPr'), 'anchor')];
@@ -918,7 +932,7 @@ async function backgroundOf(pkg, ctx, parts, warn) {
       if (blip) {
         if (path(bgPr, 'blipFill', 'tile')) warn(TILE_WARNING);
         const src = await imageData(pkg, rels[blipRel(blip)], warn);
-        if (src) return { image: src };
+        if (src) return { image: src, alpha: blipAlpha(blip) };
       }
       const f = fillOf(bgPr, ctx, warn);
       if (f?.color) return { color: f.color.hex };
@@ -1041,7 +1055,7 @@ export async function importPptx(data, { fileName = '' } = {}) {
     const bg = await backgroundOf(pkg, ctx, [
       { root, rels }, { root: layoutRoot, rels: layoutRels }, { root: master.root, rels: master.rels },
     ], warn);
-    if (bg.image) reader.push({ type: 'image', x: round2(fit.ox), y: round2(fit.oy), w: round2(fit.w), h: round2(fit.h), src: bg.image, fit: 'stretch' });
+    if (bg.image) reader.push({ type: 'image', x: round2(fit.ox), y: round2(fit.oy), w: round2(fit.w), h: round2(fit.h), src: bg.image, fit: 'stretch', ...opacityOf(bg.alpha) });
     // Non-placeholder art on the layout/master (logos, bars) shows on the slide
     // unless the slide/layout hides master shapes (showMasterSp="0").
     if (boolAttr(root, 'showMasterSp', true)) {

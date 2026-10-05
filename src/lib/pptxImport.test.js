@@ -1072,3 +1072,38 @@ describe('importPptx — Codex review fixes (round 19)', () => {
     expect((await one(shape(2, 'rect', 0, 0, 10, 10, grad(50000, 50000)))).warnings.join(' ')).not.toMatch(/gradient transparency/i);
   });
 });
+
+describe('importPptx — Codex review fixes (round 20)', () => {
+  it('keeps rounded corners on outline-only rounded rectangles', async () => {
+    const ln = `<a:ln w="${4 * PX}"><a:solidFill><a:srgbClr val="0000FF"/></a:solidFill></a:ln>`;
+    const { slide } = await one(shape(2, 'roundRect', 0, 0, 280, 140, `<a:noFill/>${ln}`));
+    const { points } = slide.elements[0];
+    expect(slide.elements[0].type).toBe('path');
+    expect(points).not.toContainEqual([0, 0]); // the corner is cut by an arc
+    expect(points.length).toBeGreaterThan(8);
+    expect(points.every(([x, y]) => x >= 0 && x <= 1 && y >= 0 && y <= 1)).toBe(true);
+    // The arc starts radius-px in from the corner (28px on a 280px-wide box = 0.1).
+    expect(points).toContainEqual([0.1, 0]);
+  });
+
+  it('carries table-cell border alpha into the outline', async () => {
+    const lnX = (n) => `<a:${n} w="${2 * PX}"><a:solidFill><a:srgbClr val="000000"><a:alpha val="40000"/></a:srgbClr></a:solidFill></a:${n}>`;
+    const borders = ['lnL', 'lnR', 'lnT', 'lnB'].map(lnX).join('');
+    const tbl = (fill) => `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="6" name="T"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>
+      <p:xfrm><a:off x="0" y="0"/><a:ext cx="${100 * PX}" cy="${50 * PX}"/></p:xfrm>
+      <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblGrid><a:gridCol w="${100 * PX}"/></a:tblGrid>
+        <a:tr h="${50 * PX}"><a:tc><a:txBody><a:bodyPr/><a:p/></a:txBody><a:tcPr>${borders}${fill}</a:tcPr></a:tc></a:tr>
+      </a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+    const filled = (await one(tbl('<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>'))).slide;
+    expect(els(filled, 'rect')[0].opacity).toBeUndefined();
+    expect(els(filled, 'path')[0]).toMatchObject({ stroke: '#000000', opacity: 40 });
+    const clear = (await one(tbl('<a:noFill/>'))).slide;
+    expect(els(clear, 'path')[0]).toMatchObject({ stroke: '#000000', opacity: 40 });
+  });
+
+  it('keeps picture-background transparency (alphaModFix) as image opacity', async () => {
+    const bg = '<p:bg><p:bgPr><a:blipFill><a:blip r:embed="rId10"><a:alphaModFix amt="60000"/></a:blip><a:stretch/></a:blipFill><a:effectLst/></p:bgPr></p:bg>';
+    const { slide } = await one('', { bg, slide: { extraRels: [['rId10', 'image', '../media/p.png']] } }, { media: { 'p.png': PNG } });
+    expect(els(slide, 'image')[0].opacity).toBe(60);
+  });
+});
