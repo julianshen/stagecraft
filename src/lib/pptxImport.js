@@ -943,6 +943,11 @@ async function backgroundOf(pkg, ctx, parts, warn) {
     }
     const ref = colorIn(kid(bg, 'bgRef'), ctx);
     if (ref) return { color: overWhite(ref) };
+    // A part's own <p:bg> is authoritative: one we can't represent (a pattern,
+    // an unloadable picture) falls back to the plain slide colour rather than
+    // inheriting a different background from the layout/master.
+    warn("A slide background couldn't be imported — the theme background colour was used instead.");
+    break;
   }
   return { color: schemeColor(ctx, 'bg1')?.hex || '#FFFFFF' };
 }

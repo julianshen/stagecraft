@@ -476,12 +476,15 @@ describe('importPptx — OOXML edge cases', () => {
     expect(slide.elements[0]).toMatchObject({ fill: '#000000', fontSize: 36 });
   });
 
-  it('reads gradient + layout backgrounds, and falls through an unresolvable one', async () => {
+  it('reads gradient backgrounds, and does not inherit past an unresolvable slide background', async () => {
     const grad = '<p:bg><p:bgPr><a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="0000AA"/></a:gs></a:gsLst></a:gradFill></p:bgPr></p:bg>';
     expect((await one('', { bg: grad })).slide.bgColor).toBe('#0000AA');
     const layout = `<p:sldLayout ${NS}>${tree('').replace('<p:cSld>', '<p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="00AA00"/></a:solidFill></p:bgPr></p:bg>')}</p:sldLayout>`;
     const broken = '<p:bg><p:bgPr><a:blipFill><a:blip r:embed="rIdNone"/></a:blipFill></p:bgPr></p:bg>';
-    expect((await one('', { bg: broken }, { layout })).slide.bgColor).toBe('#00AA00');
+    const res = await one('', { bg: broken }, { layout });
+    expect(res.slide.bgColor).toBe('#FFFFFF'); // the slide's own (broken) bg wins over the layout's
+    expect(res.warnings.join(' ')).toMatch(/background/i);
+    expect((await one('', {}, { layout })).slide.bgColor).toBe('#00AA00');
   });
 
   it('labels SmartArt / other objects, and warns even without a frame position', async () => {
@@ -1124,5 +1127,17 @@ describe('importPptx — Codex review fixes (round 21)', () => {
     expect((await one('', { bg })).slide.bgColor).toBe('#808080');
     const opaque = '<p:bg><p:bgPr><a:solidFill><a:srgbClr val="123456"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>';
     expect((await one('', { bg: opaque })).slide.bgColor).toBe('#123456');
+  });
+});
+
+describe('importPptx — Codex review fixes (round 22)', () => {
+  it("stops background inheritance at the slide's own background, warning when it can't be represented", async () => {
+    const layout = `<p:sldLayout ${NS}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld></p:sldLayout>`;
+    const patt = '<p:bg><p:bgPr><a:pattFill prst="dkDnDiag"><a:fgClr><a:srgbClr val="000000"/></a:fgClr><a:bgClr><a:srgbClr val="00FF00"/></a:bgClr></a:pattFill><a:effectLst/></p:bgPr></p:bg>';
+    const { slide, warnings } = await one('', { bg: patt }, { layout });
+    expect(slide.bgColor).not.toBe('#FF0000');
+    expect(warnings.join(' ')).toMatch(/background/i);
+    // With no slide background, the layout's still applies.
+    expect((await one('', {}, { layout })).slide.bgColor).toBe('#FF0000');
   });
 });
