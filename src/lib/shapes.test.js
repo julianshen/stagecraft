@@ -5,8 +5,8 @@ describe('shapeDef', () => {
   it('resolves the menu rectangle type to a rect with a border radius', () => {
     expect(shapeDef('shape')).toMatchObject({ pptx: 'rect', radius: 8 });
   });
-  it('resolves model aliases (rect→shape, ellipse→circle)', () => {
-    expect(shapeDef('rect')).toBe(SHAPES.shape);
+  it('resolves rect to the sharp rectangle and the ellipse alias to circle', () => {
+    expect(shapeDef('rect')).toMatchObject({ pptx: 'rect', radius: 0 });
     expect(shapeDef('ellipse')).toBe(SHAPES.circle);
   });
   it('marks the full-ellipse and rounded shapes', () => {

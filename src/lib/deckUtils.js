@@ -1,7 +1,7 @@
 import { isFormattableKey, isFmtRecord } from './slideFmt.js';
 import { shapeDef } from './shapes.js';
 import { isHexColor } from './color.js';
-import { STROKE_DASHES } from './elements.js';
+import { STROKE_DASHES, TEXT_VALIGNS, IMAGE_FITS } from './elements.js';
 
 export function getFlatSlideIds(deck) {
   if (!deck) return [];
@@ -43,6 +43,9 @@ const UNSAFE_PATCH_KEYS = new Set(['id', '__proto__', 'constructor', 'prototype'
 export const SLIDE_LAYOUTS = new Set([
   'cover', 'agenda', 'divider', 'kpi', 'chart', 'split',
   'table', 'text', 'roadmap', 'risks', 'list', 'thanks',
+  // PowerPoint's "Blank": no template — only the elements overlay (+ bgColor).
+  // Imported .pptx slides land here (lib/pptxImport.js).
+  'blank',
 ]);
 // Slide-transition kinds the Animate panel offers ('none' = an instant cut). A
 // transition is { type, duration(ms) } — the presenter plays it on advance
@@ -57,7 +60,7 @@ export const BUILD_TYPES = new Set(['fadeIn', 'riseIn', 'zoomIn']);
 // so it can't persist and be falsely reported as applied while nothing renders.
 const SLIDE_FIELDS = new Set([
   'layout', 'title', 'subtitle', 'sub', 'body', 'eyebrow', 'kicker',
-  'chapter', 'note', 'notes', 'bg', 'chartType',
+  'chapter', 'note', 'notes', 'bg', 'bgColor', 'chartType',
   'items', 'kpis', 'stats', 'rows', 'columns',
   'chart', 'lanes', 'months', 'todayIndex', 'fmt', 'elements', 'transition', 'builds',
 ]);
@@ -201,6 +204,10 @@ const ELEMENT_FIELD_OK = {
   // back to left); constrain it so canvas and export agree. fontFamily is
   // open-ended (both surfaces fall back per-font, like the browser).
   align: (v) => v === 'left' || v === 'center' || v === 'right', fontFamily: isStr,
+  // Vertical text anchor (PowerPoint's top/middle/bottom); absent = middle.
+  valign: (v) => TEXT_VALIGNS.includes(v),
+  // An image's fit mode (absent = cover).
+  fit: (v) => IMAGE_FITS.includes(v),
 };
 // Own-guarded lookup into the element-field table (see ownValidate) — a
 // JSON-parsed patch can carry an own `__proto__`/`constructor` key that must
@@ -214,7 +221,7 @@ const ownFieldOk = (k, v) => ownValidate(ELEMENT_FIELD_OK, k, v);
 // and path is stroked, not filled. Exported so the inspector's Fill control and
 // this gate share one rule (single-sourced, like the shape predicates).
 export const requiresFill = (type) => isKnownElementType(type) && type !== 'image' && type !== 'path';
-const isValidElement = (el) => isPlainObject(el)
+export const isValidElement = (el) => isPlainObject(el)
   && isStr(el.id)                                                 // id required — every consumer keys/selects by it
   && isKnownElementType(el.type)                                  // type present + known
   && isFinite_(el.x) && isFinite_(el.y) && isFinite_(el.w) && isFinite_(el.h) // geometry present + finite
@@ -246,6 +253,8 @@ function fieldOk(key, value, layout) {
   // roadmapModel only honors finite numbers (explicit null = "no marker");
   // a string "3" would pass as a primitive but silently render nothing.
   if (key === 'todayIndex') return layout === 'roadmap' && (value === null || Number.isFinite(value));
+  // A blank slide's solid background (canvas == export) — hex only.
+  if (key === 'bgColor') return layout === 'blank' && isHexColor(value);
   // fmt is layout-agnostic — any template field on any layout can be formatted.
   if (key === 'fmt') return isFmtMap(value);
   // elements overlay any layout; the whole array is replaced, so reject it

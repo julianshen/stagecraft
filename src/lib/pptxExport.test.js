@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Record everything the export draws onto a mocked pptxgenjs, so we can assert
 // the roadmap builder emits a real timeline instead of a placeholder.
-const rec = vi.hoisted(() => ({ slides: [] }));
+const rec = vi.hoisted(() => ({ slides: [], sections: [] }));
 vi.mock('pptxgenjs', () => {
   class FakePptx {
     constructor() {
@@ -14,8 +14,10 @@ vi.mock('pptxgenjs', () => {
         custGeom: 'custGeom', // freeform geometry — real pptxgen 3.12 enum value (pptxgen.cjs.js:242)
       };
     }
-    addSlide() {
+    addSection(o) { rec.sections.push(o); }
+    addSlide(opts) {
       const s = {
+        opts,
         texts: [], shapes: [], charts: [], images: [], tables: [], background: null, notes: null,
         addText(t, o) { this.texts.push({ t, o }); },
         addShape(type, o) { this.shapes.push({ type, o }); },
@@ -57,7 +59,7 @@ const deckWith = (slide) => ({
   slides: [slide],
 });
 
-beforeEach(() => { rec.slides.length = 0; });
+beforeEach(() => { rec.slides.length = 0; rec.sections.length = 0; });
 
 describe('exportToPPTX — font-size parity (text layout)', () => {
   // Canvas defaults (SlideRenderer text layout): title 84px, body 32px.
@@ -828,7 +830,7 @@ describe('per-field / per-item formatting (slide.fmt)', () => {
     // colour the export can't convert; rather than toHex's indigo fallback,
     // leave the field's template colour.
     await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Body', fmt: { body: { color: 'red' } } }));
-    expect(optsOf(last(), 'Body').color).toBe('CCCCCC'); // base body colour — NOT indigo
+    expect(optsOf(last(), 'Body').color).toBe('333333'); // base body colour — NOT indigo
   });
 
   it('ignores a malformed fmt entry (non-object) without crashing or formatting', async () => {
@@ -892,5 +894,123 @@ describe('exportToPPTX — deck heading scale (titles)', () => {
     expect(optsOf(last(), 'Hero').fontSize).toBe(70.4); // 44 × 1.6
     await exportToPPTX(scaledDeck(coverSlide(), NaN));  // non-finite → default 1
     expect(optsOf(last(), 'Hero').fontSize).toBe(44);
+  });
+});
+
+describe('exportToPPTX — blank layout', () => {
+  it('exports only the background colour + elements — no template text', async () => {
+    await exportToPPTX(deckWith({
+      id: 'b', layout: 'blank', title: 'Outline only', bgColor: '#112233',
+      elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 192, h: 96, content: 'Hello', fill: '#FFFFFF', fontSize: 48 }],
+    }));
+    expect(last().background).toEqual({ color: '112233' });
+    expect(textsOf(last())).toEqual(['Hello']);
+  });
+
+  it('falls back to white for a missing / non-hex bgColor', async () => {
+    await exportToPPTX(deckWith({ id: 'b', layout: 'blank', bgColor: 'nope' }));
+    expect(last().background).toEqual({ color: 'FFFFFF' });
+    expect(last().texts).toEqual([]);
+  });
+});
+
+describe('exportToPPTX — text element valign', () => {
+  const deck = (valign) => deckWith({ id: 'b', layout: 'blank', elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 100, h: 100, content: 'V', fill: '#000000', ...(valign ? { valign } : {}) }] });
+  it('maps top/bottom to pptx valign', async () => {
+    await exportToPPTX(deck('top'));
+    expect(optsOf(last(), 'V').valign).toBe('top');
+    await exportToPPTX(deck('bottom'));
+    expect(optsOf(last(), 'V').valign).toBe('bottom');
+  });
+  it('defaults to middle', async () => {
+    await exportToPPTX(deck());
+    expect(optsOf(last(), 'V').valign).toBe('middle');
+  });
+});
+
+describe('exportToPPTX — PowerPoint sections', () => {
+  const deck = {
+    title: 'D', theme: 'indigo',
+    sections: [
+      { id: 'a', name: 'Intro', slides: ['1', '2'] },
+      { id: 'b', name: '', slides: ['3'] },
+      { id: 'c', name: 'Intro', slides: ['4'] }, // duplicate name
+      { id: 'd', name: 'Empty', slides: [] },
+    ],
+    slides: ['1', '2', '3', '4'].map((id) => ({ id, layout: id === '2' ? 'blank' : 'text', title: `T${id}` })),
+  };
+
+  it('emits one PowerPoint section per deck section that has slides, uniquely titled', async () => {
+    await exportToPPTX(deck);
+    expect(rec.sections.map((x) => x.title)).toEqual(['Intro', 'Section 2', 'Intro (2)']);
+  });
+
+  it('files every slide (every builder) under its section', async () => {
+    await exportToPPTX(deck);
+    expect(rec.slides.map((x) => x.opts?.sectionTitle)).toEqual(['Intro', 'Intro', 'Section 2', 'Intro (2)']);
+  });
+
+  it('never reuses a title, even against a section literally named like a suffix', async () => {
+    await exportToPPTX({ ...deck, sections: [
+      { id: 'x', name: 'A', slides: ['1'] }, { id: 'y', name: 'A (2)', slides: ['2'] }, { id: 'z', name: 'A', slides: ['3'] },
+    ] });
+    expect(rec.sections.map((x) => x.title)).toEqual(['A', 'A (2)', 'A (3)']);
+  });
+
+  it('only emits the sections a range keeps', async () => {
+    await exportToPPTX(deck, { range: { from: 3, to: 3 } });
+    expect(rec.sections.map((x) => x.title)).toEqual(['Section 2']);
+    expect(rec.slides[0].opts.sectionTitle).toBe('Section 2');
+  });
+});
+
+describe('exportToPPTX — canvas colour-scheme parity', () => {
+  // The canvas draws content layouts on white with near-black ink, and only the
+  // cover (ink/accent bg), divider and thanks slides dark — the export matches.
+  const exp = async (slide) => { await exportToPPTX(deckWith({ id: 's', ...slide })); return last(); };
+
+  it.each(['agenda', 'kpi', 'chart', 'split', 'table', 'text', 'list', 'roadmap', 'risks'])(
+    'exports a %s slide light: white background, near-black title',
+    async (layout) => {
+      const s = await exp({ layout, title: 'Heading', body: 'b', columns: ['c'], rows: [['r']] });
+      expect(s.background).toEqual({ color: 'FFFFFF' });
+      expect(optsOf(s, 'Heading').color).toBe('0A0A0B');
+    },
+  );
+
+  it('exports body copy in the canvas grey, not the dark-scheme light grey', async () => {
+    const s = await exp({ layout: 'text', title: 'T', body: 'Body copy' });
+    expect(optsOf(s, 'Body copy').color).toBe('333333');
+  });
+
+  it('exports the cover light by default, ink / accent when the cover asks for them', async () => {
+    expect((await exp({ layout: 'cover', title: 'C' })).background).toEqual({ color: 'FFFFFF' });
+    const ink = await exp({ layout: 'cover', title: 'C', bg: 'ink' });
+    expect(ink.background).toEqual({ color: '15171C' });
+    expect(optsOf(ink, 'C').color).toBe('F8F8F6');
+    expect((await exp({ layout: 'cover', title: 'C', bg: 'accent' })).background).toEqual({ color: '7C5FDC' });
+  });
+
+  it('maps the cover\'s other canvas classes (dark / cream) and falls back to light for an unknown one', async () => {
+    expect((await exp({ layout: 'cover', title: 'C', bg: 'dark' })).background).toEqual({ color: '0C0E12' });
+    expect((await exp({ layout: 'cover', title: 'C', bg: 'cream' })).background).toEqual({ color: 'F5F1EA' });
+    expect((await exp({ layout: 'cover', title: 'C', bg: 'constructor' })).background).toEqual({ color: 'FFFFFF' });
+  });
+
+  it('exports divider and thanks slides dark, like the canvas', async () => {
+    expect((await exp({ layout: 'divider', chapter: '01', title: 'D' })).background).toEqual({ color: '15171C' });
+    expect((await exp({ layout: 'thanks', title: 'Bye' })).background).toEqual({ color: '15171C' });
+  });
+
+  it('draws table/KPI panels in light tones on a light slide', async () => {
+    const t = await exp({ layout: 'table', title: 'T', columns: ['Col'], rows: [['Cell']] });
+    expect(t.tables[0].rows[0][0].options.fill.color).not.toBe('1A1A2E');
+    expect(t.tables[0].rows[1][0].options.color).toBe('333333');
+  });
+});
+
+describe('exportToPPTX — malformed decks', () => {
+  it('exports a deck without a sections array (nothing to place) instead of throwing', async () => {
+    await expect(exportToPPTX({ title: 'x', slides: [] })).resolves.toBe('x.pptx');
   });
 });

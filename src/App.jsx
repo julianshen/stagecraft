@@ -17,6 +17,9 @@ import { useDeckHistory } from './hooks/useDeckHistory.js';
 import { isTextEditingTarget } from './lib/domEvents.js';
 import { listDecks, createDeck, openDeck, renameDeck, deleteDeck } from './lib/decksApi.js';
 import { templateDeck } from './lib/templateDeck.js';
+import { importPptx } from './lib/pptxImport.js';
+import { useToasts } from './hooks/useToasts.js';
+import Toaster from './components/ui/Toaster.jsx';
 
 const VIEW_LABELS = { home: 'Home', editor: 'Editor', sorter: 'Sorter', settings: 'Settings' };
 const VIEW_ORDER = ['home', 'editor', 'sorter', 'settings'];
@@ -96,14 +99,17 @@ export default function App() {
 
   // Open a saved deck: activate it server-side, adopt its content, go to the
   // editor. Stay on Home if the request fails.
+  // Resolves true once the deck is open (false = stayed on Home), so callers
+  // like the import can tell a failed open from a successful one.
   const handleOpenDeck = async (id) => {
     try {
       const { deck: opened, rev } = await openDeck(id);
-      if (!opened) return;          // no content — stay on Home rather than show a stale deck
+      if (!opened) return false;    // no content — stay on Home rather than show a stale deck
       adoptDeck(opened, rev, id);   // tag subsequent writes for this deck
       setActiveDeckId(id);
       setView('editor');
-    } catch { /* server error — stay on Home */ }
+      return true;
+    } catch { return false; /* server error — stay on Home */ }
   };
   // Create a blank deck (server creates + activates it), then open it.
   const handleNewDeck = async () => {
@@ -122,6 +128,26 @@ export default function App() {
       setModal(null);
       await handleOpenDeck(meta.id);
     } catch { /* server error — leave the picker open */ }
+  };
+  // Import a PowerPoint file: parse it client-side, save it as a new library
+  // deck, open it, and say what was (and couldn't be) brought across. App-level
+  // toasts so the notice survives the switch from Home to the editor.
+  const { toasts, notify, dismiss } = useToasts();
+  const handleImportPptx = async (file) => {
+    try {
+      const { deck: imported, warnings } = await importPptx(await file.arrayBuffer(), { fileName: file.name });
+      const meta = await createDeck(imported.title, imported);
+      if (!meta?.id) throw new Error('The deck library did not accept the import.');
+      if (!(await handleOpenDeck(meta.id))) throw new Error('The deck was saved to your library but could not be opened.');
+      // One toast for the result + every warning: the toast stack is capped, so
+      // separate warnings could evict the result (or each other).
+      const n = imported.slides.length;
+      const done = `Imported ${n} slide${n === 1 ? '' : 's'} from ${file.name}.`;
+      notify(warnings.length ? `${done} Not everything came across: ${warnings.join(' ')}` : done,
+        { tone: warnings.length ? 'warn' : 'info' });
+    } catch (err) {
+      notify(`Couldn't import ${file.name}: ${err?.message || 'unknown error'}`, { tone: 'error' });
+    }
   };
   const handleRenameDeck = async (id, name) => {
     try { await renameDeck(id, name); await refreshDecks(); } catch { /* ignore */ }
@@ -210,6 +236,7 @@ export default function App() {
           onRenameDeck={handleRenameDeck}
           onDeleteDeck={handleDeleteDeck}
           onOpenTemplates={() => setModal('templates')}
+          onImportPptx={handleImportPptx}
           searchQuery={searchQuery}
         />
       )}
@@ -252,6 +279,7 @@ export default function App() {
 
       {/* ---- tweaks panel (activated via postMessage) ---- */}
       <TweaksPanel state={tw} setState={setTw}/>
+      <Toaster toasts={toasts} onDismiss={dismiss}/>
     </div>
   );
 }

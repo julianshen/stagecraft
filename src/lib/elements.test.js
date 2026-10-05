@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, autoArrangeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, pathFromStroke, dashArray, dashType, borderStyle, STROKE_DASHES, lineSpacingOf, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
+import { fontStack } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -1120,5 +1121,24 @@ describe('element grouping', () => {
       const input = [{ id: 'a', x: 0, y: 0, w: 1, h: 1 }, { id: 'b', x: 0, y: 0, w: 1, h: 1 }]; // both ungrouped
       expect(ungroupElements(input, ['a', 'b'])).toBe(input); // no grouped member → unchanged ref (like reorderElement)
     });
+  });
+});
+
+describe('fontStack (Office font fallbacks on the canvas)', () => {
+  it('follows an Office font with its metric-compatible substitute and a sans fallback', () => {
+    expect(fontStack('Calibri')).toBe('"Calibri", "Carlito", var(--f-sans), sans-serif');
+  });
+  it('falls back to serif for serif families and monospace for mono ones', () => {
+    expect(fontStack('Cambria')).toBe('"Cambria", "Caladea", serif');
+    expect(fontStack('Georgia')).toBe('"Georgia", serif');
+    expect(fontStack('Consolas')).toBe('"Consolas", monospace');
+  });
+  it('keeps an unknown family first with the app sans behind it', () => {
+    expect(fontStack('Brand Sans')).toBe('"Brand Sans", var(--f-sans), sans-serif');
+  });
+  it('returns undefined for no family, and strips quotes that would break the stack', () => {
+    expect(fontStack(undefined)).toBeUndefined();
+    expect(fontStack('')).toBeUndefined();
+    expect(fontStack('Evil", x')).toBe('"Evil, x", var(--f-sans), sans-serif');
   });
 });

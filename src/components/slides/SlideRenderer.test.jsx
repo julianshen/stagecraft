@@ -209,9 +209,9 @@ describe('ElementsLayer', () => {
     const shadow = { color: '#112233', blur: 16, x: 4, y: 8 };
     const { container } = render(
       <ElementsLayer elements={[
-        { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff', shadow },
+        { id: 'r', type: 'shape', x: 0, y: 0, w: 100, h: 100, fill: '#fff', shadow },
         { id: 't', type: 'triangle', x: 0, y: 0, w: 100, h: 100, fill: '#fff', shadow },
-        { id: 'p', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#fff' }, // no shadow
+        { id: 'p', type: 'shape', x: 0, y: 0, w: 100, h: 100, fill: '#fff' }, // no shadow
       ]} />
     );
     const boxes = [...container.querySelectorAll('div > div')];
@@ -603,7 +603,7 @@ describe('ElementsLayer text typography', () => {
     expect(el.style.fontStyle).toBe('italic');
     expect(el.style.textDecoration).toContain('underline');
     expect(el.style.textAlign).toBe('center');
-    expect(el.style.fontFamily).toBe('Georgia');
+    expect(el.style.fontFamily).toBe('"Georgia", serif'); // with a generic fallback (fontStack)
     expect(el.style.whiteSpace).toBe('pre-wrap'); // preserves newlines/spaces from the textarea
   });
 
@@ -815,5 +815,60 @@ describe('Slide inline editing (editable)', () => {
     target.textContent = '40';
     fireEvent.blur(target);
     expect(onEditField).toHaveBeenCalledWith(['rows', 1, 1], '40');
+  });
+});
+
+describe('Slide — blank layout (PowerPoint "Blank")', () => {
+  it('renders no template chrome or title — only the element overlay', () => {
+    const slide = {
+      id: 'b', layout: 'blank', title: 'Outline-only title',
+      elements: [{ id: 'e1', type: 'text', x: 10, y: 10, w: 100, h: 40, content: 'Imported box', fill: '#000000' }],
+    };
+    const { container } = render(<Slide slide={slide} deck={{ title: 'Demo', author: 'Me' }} sectionName="S" num={1} total={1} />);
+    expect(screen.getByText('Imported box')).toBeInTheDocument();
+    expect(screen.queryByText('Outline-only title')).toBeNull();
+    expect(container.querySelector('.slide-chrome')).toBeNull();
+    expect(container.querySelector('.slide-foot')).toBeNull();
+  });
+
+  it('paints a hex bgColor as the slide background', () => {
+    const { container } = render(<Slide slide={{ id: 'b', layout: 'blank', bgColor: '#112233' }} deck={{ title: 'D' }} num={1} total={1} />);
+    expect(container.querySelector('.slide').style.background).toBe('rgb(17, 34, 51)');
+  });
+
+  it('ignores a non-hex bgColor (gate-bypassing write) and keeps the default white', () => {
+    const { container } = render(<Slide slide={{ id: 'b', layout: 'blank', bgColor: 'url(x)' }} deck={{ title: 'D' }} num={1} total={1} />);
+    expect(container.querySelector('.slide').style.background).toBe('');
+  });
+});
+
+describe('ElementsLayer — text valign', () => {
+  const el = (valign) => ({ id: 'e', type: 'text', x: 0, y: 0, w: 100, h: 100, content: 'V', fill: '#000000', ...(valign ? { valign } : {}) });
+  const box = (c) => c.firstChild.firstChild; // layer → element
+  it('anchors top / bottom via flex alignItems', () => {
+    expect(box(render(<ElementsLayer elements={[el('top')]} />).container).style.alignItems).toBe('flex-start');
+    expect(box(render(<ElementsLayer elements={[el('bottom')]} />).container).style.alignItems).toBe('flex-end');
+  });
+  it('defaults to middle (the pre-existing behaviour)', () => {
+    expect(box(render(<ElementsLayer elements={[el()]} />).container).style.alignItems).toBe('center');
+  });
+});
+
+describe('ElementsLayer — sharp rect', () => {
+  it('draws the rect type with square corners (PowerPoint rectangle), unlike the rounded shape', () => {
+    const { container } = render(<ElementsLayer elements={[{ id: 'r', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000' }]} />);
+    expect(['0', '0px']).toContain(container.firstChild.firstChild.style.borderRadius);
+  });
+});
+
+describe('ElementsLayer — image fit', () => {
+  const img = (fit) => ({ id: 'i', type: 'image', x: 0, y: 0, w: 30, h: 10, src: 'data:image/png;base64,AA==', ...(fit ? { fit } : {}) });
+  it('stretches an image with fit "stretch" (imported PowerPoint pictures)', () => {
+    const { container } = render(<ElementsLayer elements={[img('stretch')]} />);
+    expect(container.querySelector('img').style.objectFit).toBe('fill');
+  });
+  it('keeps cover for images without a fit (the existing behaviour)', () => {
+    const { container } = render(<ElementsLayer elements={[img()]} />);
+    expect(container.querySelector('img').style.objectFit).toBe('cover');
   });
 });

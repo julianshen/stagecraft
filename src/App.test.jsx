@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { render, screen, act, fireEvent, within } from '@testing-library/react';
 import App from './App.jsx';
+import { importPptx } from './lib/pptxImport.js';
+
+// The .pptx parser is unit-tested on its own (lib/pptxImport.test.js); here it's
+// stubbed so the App test pins only the wiring: parse → create → open → notify.
+vi.mock('./lib/pptxImport.js', () => ({ importPptx: vi.fn() }));
 import { stubLocalStorage } from './test/localStorage.js';
 
 // App-level wiring smoke: the real <App/> (TopBar + Editor + useDeckSync) over
@@ -75,5 +80,113 @@ describe('App wiring smoke', () => {
     await flush(300);
     expect(topbar.getByText(/^Saved/)).toBeInTheDocument();
     expect(srv.state.deck.theme).toBe('emerald');
+  });
+});
+
+describe('App — Import PowerPoint', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => { vi.useRealTimers(); vi.mocked(importPptx).mockReset(); });
+
+  const pick = (file) => fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [file] } });
+  const pptxFile = () => {
+    const f = new File(['zip'], 'Board.pptx');
+    f.arrayBuffer = async () => new ArrayBuffer(3); // jsdom's File lacks arrayBuffer()
+    return f;
+  };
+
+  it('parses the file, saves it as a library deck, opens it, and toasts any warnings', async () => {
+    store.set('stagecraft.view', 'home');
+    const imported = { title: 'Board', theme: 'slate', sections: [{ id: 's', name: 'Slides', slides: ['p1'] }], slides: [{ id: 'p1', layout: 'blank', title: 'One', bgColor: '#FFFFFF', elements: [] }] };
+    vi.mocked(importPptx).mockResolvedValue({ deck: imported, warnings: ['A chart can\'t be imported yet.'] });
+    const srv = makeServer();
+    const created = [];
+    const base = srv.fetchFn.getMockImplementation();
+    srv.fetchFn.mockImplementation((url, init) => {
+      const path = String(url).split('?')[0];
+      if (path === '/api/decks' && init?.method === 'POST') {
+        created.push(JSON.parse(init.body));
+        return Promise.resolve({ ok: true, json: async () => ({ id: 'imp1', name: 'Board' }) });
+      }
+      if (path === '/api/decks/imp1/activate') {
+        return Promise.resolve({ ok: true, json: async () => ({ deck: imported, rev: 5 }) });
+      }
+      return base(url, init);
+    });
+    vi.stubGlobal('fetch', srv.fetchFn);
+
+    render(<App />);
+    await flush();
+    pick(pptxFile());
+    await flush();
+
+    expect(importPptx).toHaveBeenCalledWith(expect.any(ArrayBuffer), { fileName: 'Board.pptx' });
+    expect(created).toEqual([{ name: 'Board', deck: imported }]);
+    expect(store.get('stagecraft.view')).toBe('editor');
+    expect(screen.getByText(/Imported 1 slide from Board\.pptx/)).toBeInTheDocument();
+    expect(screen.getByText(/A chart can't be imported yet/)).toBeInTheDocument();
+  });
+
+  it('folds the result and every warning into one toast, so none is evicted', async () => {
+    store.set('stagecraft.view', 'home');
+    const imported = { title: 'Big', theme: 'slate', sections: [{ id: 's', name: 'S', slides: [] }], slides: [] };
+    const warnings = ['w1.', 'w2.', 'w3.', 'w4.', 'w5.'];
+    vi.mocked(importPptx).mockResolvedValue({ deck: imported, warnings });
+    const srv = makeServer();
+    const base = srv.fetchFn.getMockImplementation();
+    srv.fetchFn.mockImplementation((url, init) => (String(url) === '/api/decks' && init?.method === 'POST'
+      ? Promise.resolve({ ok: true, json: async () => ({ id: 'b1' }) })
+      : String(url) === '/api/decks/b1/activate' ? Promise.resolve({ ok: true, json: async () => ({ deck: imported, rev: 1 }) })
+        : base(url, init)));
+    vi.stubGlobal('fetch', srv.fetchFn);
+    render(<App />);
+    await flush();
+    pick(pptxFile());
+    await flush();
+    const msgs = [...document.querySelectorAll('.toast-msg')].map((n) => n.textContent);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatch(/Imported 0 slides from Board\.pptx/);
+    for (const w of warnings) expect(msgs[0]).toContain(w);
+  });
+
+  it('stays on Home and shows the parser error when the file is not a presentation', async () => {
+    store.set('stagecraft.view', 'home');
+    vi.mocked(importPptx).mockRejectedValue(new Error('Not a valid .pptx file (could not unzip it).'));
+    vi.stubGlobal('fetch', makeServer().fetchFn);
+
+    render(<App />);
+    await flush();
+    pick(pptxFile());
+    await flush();
+
+    expect(screen.getByText(/Not a valid \.pptx file/)).toBeInTheDocument();
+    expect(store.get('stagecraft.view')).toBe('home');
+  });
+});
+
+describe('App — Import PowerPoint (open failure)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => { vi.useRealTimers(); vi.mocked(importPptx).mockReset(); });
+
+  it('reports a failure when the created deck cannot be opened, instead of claiming success', async () => {
+    store.set('stagecraft.view', 'home');
+    const imported = { title: 'X', theme: 'slate', sections: [{ id: 's', name: 'S', slides: [] }], slides: [] };
+    vi.mocked(importPptx).mockResolvedValue({ deck: imported, warnings: [] });
+    const srv = makeServer();
+    const base = srv.fetchFn.getMockImplementation();
+    srv.fetchFn.mockImplementation((url, init) => (String(url) === '/api/decks' && init?.method === 'POST'
+      ? Promise.resolve({ ok: true, json: async () => ({ id: 'x1' }) })
+      : String(url) === '/api/decks/x1/activate' ? Promise.resolve({ ok: false, status: 500, json: async () => ({}) })
+        : base(url, init)));
+    vi.stubGlobal('fetch', srv.fetchFn);
+    render(<App />);
+    await flush();
+    const f = new File(['zip'], 'X.pptx');
+    f.arrayBuffer = async () => new ArrayBuffer(3);
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [f] } });
+    await flush();
+    const msgs = [...document.querySelectorAll('.toast-msg')].map((n) => n.textContent);
+    expect(msgs.join(' ')).toMatch(/Couldn't import X\.pptx/);
+    expect(msgs.join(' ')).not.toMatch(/^Imported/);
+    expect(store.get('stagecraft.view')).toBe('home');
   });
 });

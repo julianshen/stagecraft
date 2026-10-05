@@ -30,13 +30,28 @@ function DeckCover({ deck }) {
   );
 }
 
-export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemplates, onRenameDeck, onDeleteDeck, searchQuery = '' }) {
+export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemplates, onImportPptx, onRenameDeck, onDeleteDeck, searchQuery = '' }) {
   const [sortDir, setSortDir] = useState(null); // null = incoming order · 'desc' | 'asc' by edited time
   const [view, setView] = useState('grid');
   const [menuId, setMenuId] = useState(null);   // card whose actions menu is open
   const [confirmingDelete, setConfirmingDelete] = useState(false); // delete armed in the open menu
   const [renaming, setRenaming] = useState(null); // card being renamed inline
   const [renameValue, setRenameValue] = useState('');
+
+  // The Import card opens a native .pptx picker; the chosen file goes to the App
+  // (which parses, saves and opens it). The value is reset so picking the same
+  // file again still fires `change`.
+  const fileRef = useRef(null);
+  const onPickFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) onImportPptx?.(file);
+  };
+  const onNewCard = (id) => {
+    if (id === 'tmpl') onOpenTemplates();
+    else if (id === 'import') fileRef.current?.click();
+    else onNewDeck(id);
+  };
 
   const toggleMenu = (id) => { setMenuId(menuId === id ? null : id); setConfirmingDelete(false); };
 
@@ -76,7 +91,7 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
     { id: 'blank',  title: 'Blank deck',    meta: '16:9 · 1920×1080', ico: 'plus',     primary: true },
     { id: 'ai',     title: 'Start with AI', meta: 'From a prompt',     ico: 'ai' },
     { id: 'tmpl',   title: 'From template', meta: '30+ templates',     ico: 'template' },
-    { id: 'import', title: 'Import',        meta: '.pptx · .key',      ico: 'upload' },
+    { id: 'import', title: 'Import PowerPoint', meta: '.pptx',         ico: 'upload' },
   ];
 
   return (
@@ -103,12 +118,16 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
         <h1>Good afternoon.</h1>
         <p className="home-sub">You have <b>{decks.length} {decks.length === 1 ? 'deck' : 'decks'}</b> in your library.</p>
 
+        <input
+          ref={fileRef} type="file" hidden onChange={onPickFile}
+          accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        />
         <div className="home-actions">
           {newCards.map(c => (
             <div
               key={c.id}
               className={`new-card ${c.primary ? 'primary' : ''}`}
-              onClick={() => c.id === 'tmpl' ? onOpenTemplates() : onNewDeck(c.id)}
+              onClick={() => onNewCard(c.id)}
             >
               <div className="preview">
                 {c.primary

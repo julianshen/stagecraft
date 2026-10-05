@@ -229,3 +229,18 @@ describe('PropsPanel', () => {
     expect(setSelected.mock.calls.at(-1)[0].strokeDash).toBeUndefined(); // solid → cleared, not stored
   });
 });
+
+describe('PropsPanel — imported text typography', () => {
+  it('shows an imported font family that is not in the preset list', () => {
+    render(<PropsPanel selected={{ ...el, fontFamily: 'Segoe UI' }} setSelected={vi.fn()} />);
+    expect(screen.getByLabelText('Font family').value).toBe('Segoe UI');
+  });
+
+  it('sets the vertical anchor (top / middle / bottom), defaulting to middle', () => {
+    const setSelected = vi.fn();
+    render(<PropsPanel selected={el} setSelected={setSelected} />);
+    expect(screen.getByTitle('Anchor middle').className).toContain('active');
+    fireEvent.click(screen.getByTitle('Anchor top'));
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ valign: 'top' }));
+  });
+});

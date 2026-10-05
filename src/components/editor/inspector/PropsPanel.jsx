@@ -3,12 +3,13 @@ import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup, Seg } from '../../ui/Primitives.jsx';
 import { toHex } from '../../../lib/color.js';
 import { isStrokeableShape, isFillableShape } from '../../../lib/shapes.js';
-import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, borderStyle } from '../../../lib/elements.js';
+import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, borderStyle, valignOf } from '../../../lib/elements.js';
 import { requiresFill } from '../../../lib/deckUtils.js';
 
 // Line-spacing presets for the dropdown (the field itself is a continuous
 // multiplier — the gate accepts any positive, a non-preset value is shown too).
 const LINE_SPACINGS = Object.freeze([1, 1.15, 1.2, 1.5, 2, 2.5, 3]);
+const FONT_FAMILIES = Object.freeze(['Inter', 'Georgia', 'JetBrains Mono', 'Courier New', 'Arial', 'Calibri']);
 
 export default function PropsPanel({ selected, setSelected, count = 0 }) {
   if (count > 1) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{count} elements selected — drag to move them together, or align via the toolbar.</div>;
@@ -17,6 +18,9 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
   // non-preset (a continuous field) so the control reflects it rather than blanking.
   const sp = selected.lineSpacing ?? 1.2;
   const spOpts = LINE_SPACINGS.includes(sp) ? LINE_SPACINGS : [...LINE_SPACINGS, sp].sort((a, b) => a - b);
+  // Like spacing: an imported family (e.g. PowerPoint's Calibri) joins the list.
+  const fam = selected.fontFamily ?? 'Inter';
+  const famOpts = FONT_FAMILIES.includes(fam) ? FONT_FAMILIES : [...FONT_FAMILIES, fam];
   return (
     <>
       <div className="pane-section">
@@ -173,8 +177,8 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
           <h4>Type</h4>
           <FieldRow label="FAMILY">
             <div className="input-group">
-              <select aria-label="Font family" value={selected.fontFamily ?? 'Inter'} onChange={e => setSelected({ ...selected, fontFamily: e.target.value })}>
-                {['Inter', 'Georgia', 'JetBrains Mono', 'Courier New', 'Arial'].map(f => <option key={f} value={f}>{f}</option>)}
+              <select aria-label="Font family" value={fam} onChange={e => setSelected({ ...selected, fontFamily: e.target.value })}>
+                {famOpts.map(f => <option key={f} value={f}>{f}</option>)}
               </select>
               <Icon name="chevron-down" size={11} />
             </div>
@@ -191,6 +195,10 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
           <FieldRow label="ALIGN">
             <Seg value={selected.align ?? 'left'} onChange={a => setSelected({ ...selected, align: a })}
               options={[{ v: 'left', ico: 'align-left', title: 'Align left' }, { v: 'center', ico: 'align-center', title: 'Align center' }, { v: 'right', ico: 'align-right', title: 'Align right' }]} />
+          </FieldRow>
+          <FieldRow label="ANCHOR">
+            <Seg value={valignOf(selected)} onChange={v => setSelected({ ...selected, valign: v })}
+              options={[{ v: 'top', ico: 'align-top', title: 'Anchor top' }, { v: 'middle', ico: 'align-middle', title: 'Anchor middle' }, { v: 'bottom', ico: 'align-bottom', title: 'Anchor bottom' }]} />
           </FieldRow>
           <FieldRow label="STYLE">
             <div className="seg">

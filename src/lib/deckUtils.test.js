@@ -617,3 +617,33 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect({}.polluted).toBeUndefined(); // and nothing was polluted
   });
 });
+
+describe('sanitizeSlidePatch — blank layout + bgColor', () => {
+  it('accepts the blank layout', () => {
+    expect(sanitizeSlidePatch({ layout: 'blank' }, 'text')).toEqual({ layout: 'blank' });
+  });
+
+  it('accepts a hex bgColor on a blank slide', () => {
+    expect(sanitizeSlidePatch({ bgColor: '#FFEEDD' }, 'blank')).toEqual({ bgColor: '#FFEEDD' });
+  });
+
+  it('rejects a non-hex bgColor', () => {
+    expect(sanitizeSlidePatch({ bgColor: 'red' }, 'blank')).toEqual({});
+  });
+
+  it('rejects bgColor on a templated layout (nothing would render it)', () => {
+    expect(sanitizeSlidePatch({ bgColor: '#FFEEDD' }, 'text')).toEqual({});
+  });
+});
+
+describe('sanitizeSlidePatch — text element valign', () => {
+  const t = (extra) => ({ id: 'e', type: 'text', x: 0, y: 0, w: 10, h: 10, content: 'x', fill: '#000000', ...extra });
+  it('accepts top / middle / bottom', () => {
+    for (const valign of ['top', 'middle', 'bottom']) {
+      expect(sanitizeSlidePatch({ elements: [t({ valign })] }, 'blank').elements[0].valign).toBe(valign);
+    }
+  });
+  it('rejects any other value (the whole elements array, like every element field)', () => {
+    expect(sanitizeSlidePatch({ elements: [t({ valign: 'center' })] }, 'blank')).toEqual({});
+  });
+});

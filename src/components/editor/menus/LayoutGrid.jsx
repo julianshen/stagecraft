@@ -16,6 +16,7 @@ export const LAYOUT_OPTIONS = Object.freeze([
   { id: 'roadmap', icon: 'timeline', label: 'Roadmap' },
   { id: 'risks', icon: 'flag', label: 'Risks' },
   { id: 'thanks', icon: 'frame', label: 'Closing' },
+  { id: 'blank', icon: 'aspect', label: 'Blank' },
 ].map(Object.freeze));
 
 // id → display label, derived from LAYOUT_OPTIONS so the two can't drift. The toolbar

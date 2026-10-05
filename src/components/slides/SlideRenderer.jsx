@@ -9,7 +9,9 @@ import { fmtKey, fmtStyle, isFormattablePath } from '../../lib/slideFmt.js';
 import { CANVAS_BASELINE_PX } from '../../lib/fontBaselines.js';
 import { headingPx } from '../../lib/headingScale.js';
 import { shapeDef, hasVisibleStroke, clipPoints } from '../../lib/shapes.js';
-import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf } from '../../lib/elements.js';
+import { isHexColor } from '../../lib/color.js';
+import { slideBgClass } from '../../lib/slideScheme.js';
+import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf, fontStack, valignOf } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider fallbacks,
 // plus `headingScale`, which sizes every title via headingPx). This is the memo
@@ -411,6 +413,8 @@ function StrokeSvg({ points, closed = false, style, stroke, strokeWidth, strokeD
   );
 }
 
+const FLEX_FOR_VALIGN = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
+
 function ElementView({ el }) {
   const base = {
     position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h,
@@ -426,14 +430,15 @@ function ElementView({ el }) {
     const align = el.align || 'left';
     return (
       <div style={{
-        ...base, display: 'flex', alignItems: 'center',
+        ...base, display: 'flex',
+        alignItems: FLEX_FOR_VALIGN[valignOf(el)],
         justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start',
         fontSize: el.fontSize ?? 48,
         fontWeight: el.bold ? 700 : 500,
         fontStyle: el.italic ? 'italic' : 'normal',
         textDecoration: el.underline ? 'underline' : 'none',
         textAlign: align,
-        fontFamily: el.fontFamily || undefined,
+        fontFamily: fontStack(el.fontFamily),
         // Preserve newlines/spaces typed into the Properties Content textarea
         // (HTML collapses them by default).
         whiteSpace: 'pre-wrap',
@@ -448,7 +453,7 @@ function ElementView({ el }) {
     // empty image is still visible/selectable on the canvas. draggable=false
     // keeps the native image drag from hijacking the canvas drag.
     return el.src
-      ? <img src={el.src} alt="" draggable={false} style={{ ...base, objectFit: 'cover' }} />
+      ? <img src={el.src} alt="" draggable={false} style={{ ...base, objectFit: el.fit === 'stretch' ? 'fill' : 'cover' }} />
       : <div style={{ ...base, display: 'grid', placeItems: 'center', background: '#eceae4', color: '#9a978f', fontFamily: 'var(--f-mono)', fontSize: 18 }}>No image</div>;
   }
   if (el.type === 'path') {
@@ -570,7 +575,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
   switch (slide.layout) {
     case 'cover':
       return (
-        <div className={`slide ${slide.bg || ''}`}>
+        <div className={`slide ${slideBgClass(slide)}`}>
           <div style={{ position:'absolute', top:60, left:80, right:80, display:'flex', justifyContent:'space-between', fontFamily:'var(--f-mono)', fontSize:18, opacity:0.5 }}>
             <span>{(deck?.title || 'DECK').toUpperCase()}</span>
             {E(['kicker'], slide.kicker || 'CONFIDENTIAL', { as: 'span' })}
@@ -613,7 +618,7 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
       );
     case 'divider':
       return (
-        <div className={`slide ${slide.bg || 'ink'}`}>
+        <div className={`slide ${slideBgClass(slide)}`}>
           <div style={{ position:'absolute', top:60, left:80, right:80, display:'flex', justifyContent:'space-between', fontFamily:'var(--f-mono)', fontSize:18, opacity:0.5 }}>
             <span>CHAPTER {slide.chapter}</span>
             <span>{String(deck?.title || '').toUpperCase()}</span>
@@ -802,9 +807,15 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
           </div>
         </div>
       );
+    case 'blank':
+      // PowerPoint's Blank layout: no chrome, no template text — the elements
+      // overlay is the whole slide. `title` is outline metadata only (sorter,
+      // export). A non-hex bgColor (gate-bypassing write) keeps the CSS white,
+      // matching the export's fallback.
+      return <div className="slide" style={isHexColor(slide.bgColor) ? { background: slide.bgColor } : undefined} />;
     case 'thanks':
       return (
-        <div className="slide ink">
+        <div className={`slide ${slideBgClass(slide)}`}>
           <div style={{ position:'absolute', left:80, top:'50%', transform:'translateY(-50%)' }}>
             {E(['eyebrow'], slide.eyebrow || 'END OF REVIEW', { as: 'div', style: { fontFamily:'var(--f-mono)', fontSize:20, letterSpacing:'0.2em', opacity:0.5, marginBottom:40 } })}
             <h1 style={{ fontSize:h1, fontWeight:600, letterSpacing:'-0.05em', margin:0, lineHeight:0.9 }}>

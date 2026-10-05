@@ -198,6 +198,36 @@ export const borderStyle = (dash) => (dash === 'dashed' || dash === 'dotted' ? d
 // agree, and a degenerate 0/negative value falls back rather than overlapping text.
 export const lineSpacingOf = (el) => (Number.isFinite(el.lineSpacing) && el.lineSpacing > 0 ? el.lineSpacing : 1.2);
 
+// A text element's vertical anchor (PowerPoint top/middle/bottom). Absent or
+// malformed → middle, the canvas's original centring — single-sourced so the gate,
+// the canvas flex alignment, the export valign and the Properties control agree.
+export const TEXT_VALIGNS = Object.freeze(['top', 'middle', 'bottom']);
+export const valignOf = (el) => (TEXT_VALIGNS.includes(el.valign) ? el.valign : 'middle');
+
+// How an image fills its box: 'cover' crops to fill (the default) or 'stretch'
+// distorts to fit exactly — PowerPoint's a:stretch, set on imported pictures.
+export const IMAGE_FITS = Object.freeze(['cover', 'stretch']);
+
+// A text element's CSS font-family stack. Imported PowerPoint text names Office
+// fonts the browser often lacks, so the authored family is followed by its
+// metric-compatible open substitute (same widths → same line breaks) and the
+// right generic family — never the browser's default serif for a sans font.
+// The export writes the bare family (PowerPoint resolves it natively).
+const FONT_SUBSTITUTE = {
+  calibri: 'Carlito', cambria: 'Caladea', arial: 'Arimo', helvetica: 'Arimo',
+  'times new roman': 'Tinos', 'courier new': 'Cousine',
+};
+const SERIF_FONTS = new Set(['cambria', 'georgia', 'times new roman', 'times', 'garamond', 'palatino linotype', 'book antiqua', 'constantia']);
+const MONO_FONTS = new Set(['consolas', 'courier new', 'courier', 'lucida console', 'menlo', 'monaco']);
+export function fontStack(family) {
+  const name = typeof family === 'string' ? family.replace(/["\\]/g, '').trim() : '';
+  if (!name) return undefined;
+  const key = name.toLowerCase();
+  const generic = SERIF_FONTS.has(key) ? 'serif' : MONO_FONTS.has(key) ? 'monospace' : 'var(--f-sans), sans-serif';
+  const sub = FONT_SUBSTITUTE[key];
+  return [`"${name}"`, ...(sub ? [`"${sub}"`] : []), generic].join(', ');
+}
+
 // Move an element by (dx, dy), snapped to the grid and clamped to the slide.
 export function moveElement(el, dx, dy, { grid = GRID, bounds = { w: SLIDE_W, h: SLIDE_H } } = {}) {
   return {
