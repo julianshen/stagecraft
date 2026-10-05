@@ -809,3 +809,15 @@ describe('importPptx — Codex review fixes (round 8)', () => {
     expect((await one(ph)).warnings.join(' ')).toMatch(/slide numbers/i);
   });
 });
+
+describe('importPptx — Codex review fixes (round 9)', () => {
+  it('maps a PowerPoint cut transition to no transition', async () => {
+    expect((await one('', { after: '<p:transition><p:cut/></p:transition>' })).slide.transition).toEqual({ type: 'none', duration: 750 });
+  });
+
+  it('warns that slide animations (p:timing) are not imported', async () => {
+    const { warnings } = await one('', { after: '<p:timing><p:tnLst><p:par/></p:tnLst></p:timing>' });
+    expect(warnings.join(' ')).toMatch(/animations/i);
+    expect((await one('')).warnings.join(' ')).not.toMatch(/animations/i);
+  });
+});

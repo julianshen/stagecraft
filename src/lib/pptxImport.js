@@ -797,7 +797,7 @@ function transitionOf(root) {
   if (!tr) return null;
   // The effect is the transition's first child that isn't a sound/extension.
   const kind = [...tr.children].find((e) => !['sndAc', 'extLst'].includes(e.localName))?.localName;
-  const type = !kind ? 'fade' : kind === 'morph' ? 'morph'
+  const type = !kind ? 'fade' : kind === 'morph' ? 'morph' : kind === 'cut' ? 'none'
     : ['push', 'wipe', 'cover', 'pull', 'split', 'reveal', 'pan'].includes(kind) ? 'slide' : 'fade';
   const dur = numAttr(tr, 'dur') ?? SPEED_MS[attr(tr, 'spd')] ?? 750;
   return { type, duration: dur > 0 ? dur : 750 };
@@ -914,6 +914,7 @@ export async function importPptx(data, { fileName = '' } = {}) {
     if (notes) slide.notes = notes;
     const transition = transitionOf(root);
     if (transition) slide.transition = transition;
+    if (kid(root, 'timing')) warn('Slide animations were not imported (only slide transitions).');
     if (!boolAttr(root, 'show', true)) warn('Hidden slides were imported as normal slides.');
     slides.push(slide);
     bySldId.set(entry.sldId, id);
