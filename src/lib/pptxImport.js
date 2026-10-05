@@ -742,6 +742,7 @@ class SlideReader {
     if (box.flipH || box.flipV) this.warn(FLIP_WARNING);
     const srcRect = path(pic, 'blipFill', 'srcRect');
     if (srcRect && [...srcRect.attributes].some((a) => Number(a.value))) this.warn('Cropped pictures import uncropped (stretched to their frame).');
+    if (path(pic, 'blipFill', 'tile')) this.warn(TILE_WARNING);
     const rId = blipRel(path(pic, 'blipFill', 'blip'));
     const src = await imageData(this.pkg, rels[rId], this.warn);
     // PowerPoint stretches a picture to its frame (a:stretch) — keep that, not cover.
@@ -878,6 +879,8 @@ async function encodeImage(pkg, target, warn) {
 
 // Background: slide → layout → master; a solid/gradient fill or a theme bgRef
 // gives bgColor; a picture fill becomes a full-bleed image element underneath.
+// Tiling has no image-element equivalent; the picture stretches to its frame instead.
+const TILE_WARNING = 'Tiled picture fills were imported as a single stretched picture.';
 async function backgroundOf(pkg, ctx, parts, warn) {
   for (const { root, rels } of parts) {
     const bg = path(root, 'cSld', 'bg');
@@ -886,6 +889,7 @@ async function backgroundOf(pkg, ctx, parts, warn) {
     if (bgPr) {
       const blip = path(bgPr, 'blipFill', 'blip');
       if (blip) {
+        if (path(bgPr, 'blipFill', 'tile')) warn(TILE_WARNING);
         const src = await imageData(pkg, rels[blipRel(blip)], warn);
         if (src) return { image: src };
       }

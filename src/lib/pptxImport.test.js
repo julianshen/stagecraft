@@ -966,3 +966,22 @@ describe('importPptx — Codex review fixes (round 15)', () => {
     expect((await one(shape(2, 'rect', 0, 0, 10, 10, grad('<a:lin ang="0"/>')))).warnings.join(' ')).not.toMatch(/radial/i);
   });
 });
+
+describe('importPptx — Codex review fixes (round 16)', () => {
+  const rels = { slide: { extraRels: [['rId10', 'image', '../media/p.png']] } };
+  const media = { media: { 'p.png': PNG } };
+
+  it('warns that tiled pictures are imported stretched to their frame', async () => {
+    const pic = (mode) => `<p:pic><p:nvPicPr><p:cNvPr id="4" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId10"/>${mode}</p:blipFill><p:spPr>${xfrm(0, 0, 30, 10)}</p:spPr></p:pic>`;
+    const tiled = await one(pic('<a:tile tx="0" ty="0" sx="100000" sy="100000" algn="tl"/>'), rels, media);
+    expect(tiled.slide.elements[0].fit).toBe('stretch');
+    expect(tiled.warnings.join(' ')).toMatch(/tiled/i);
+    expect((await one(pic('<a:stretch><a:fillRect/></a:stretch>'), rels, media)).warnings.join(' ')).not.toMatch(/tiled/i);
+  });
+
+  it('warns that a tiled background picture is imported stretched', async () => {
+    const bg = '<p:bg><p:bgPr><a:blipFill><a:blip r:embed="rId10"/><a:tile/></a:blipFill><a:effectLst/></p:bgPr></p:bg>';
+    const { warnings } = await one('', { ...rels, bg }, media);
+    expect(warnings.join(' ')).toMatch(/tiled/i);
+  });
+});
