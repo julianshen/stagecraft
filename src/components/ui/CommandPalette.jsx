@@ -5,7 +5,7 @@ import Icon from './Icon.jsx';
 // right now (from lib/commands.js). ↑/↓ move the highlight, Enter or a click
 // runs the command and closes, Escape or a backdrop click closes.
 // `getCommands(query)` returns [{ id, label, icon, kbd, run }].
-export default function CommandPalette({ getCommands, onClose }) {
+export function CommandPalette({ getCommands, onClose }) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef(null);
@@ -17,7 +17,7 @@ export default function CommandPalette({ getCommands, onClose }) {
 
   const run = (cmd) => { onClose(); cmd.run(); };
   const onKeyDown = (e) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(current + 1, commands.length - 1)); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.max(0, Math.min(current + 1, commands.length - 1))); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(current - 1, 0)); }
     else if (e.key === 'Enter') { e.preventDefault(); if (commands[current]) run(commands[current]); }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }

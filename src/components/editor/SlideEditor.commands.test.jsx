@@ -65,11 +65,11 @@ describe('editor keyboard commands', () => {
     expect(onMarqueeSelect).toHaveBeenCalledWith(['a', 'b']);
   });
 
-  it('Ctrl+Shift+] / [ bring the single selected element to front / back', () => {
+  it('Ctrl+Shift+↑ / ↓ bring the single selected element to front / back', () => {
     const onArrangeElement = vi.fn();
     renderEditor({ onArrangeElement }, { sel: ['a'] });
-    fireEvent.keyDown(document.body, { key: '}', code: 'BracketRight', ctrlKey: true, shiftKey: true });
-    fireEvent.keyDown(document.body, { key: '{', code: 'BracketLeft', ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(document.body, { key: 'ArrowUp', ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(document.body, { key: 'ArrowDown', ctrlKey: true, shiftKey: true });
     expect(onArrangeElement.mock.calls).toEqual([['front'], ['back']]);
   });
 
@@ -89,7 +89,7 @@ describe('editor keyboard commands', () => {
     expect(getByTitle('Select · V')).toBeTruthy();
     expect(getByTitle('Pen · P')).toBeTruthy();
     expect(getByTitle('Image · I')).toBeTruthy();
-    expect(getByTitle('Bring to front · Ctrl+Shift+]')).toBeTruthy();
+    expect(getByTitle('Bring to front · Ctrl+Shift+↑')).toBeTruthy();
   });
 
   it('nudges with arrows (Shift = 5× grid)', () => {
@@ -215,5 +215,44 @@ describe('⌘K command palette', () => {
     fireEvent.change(within(dlg).getByRole('combobox'), { target: { value: 'generate' } });
     fireEvent.keyDown(within(dlg).getByRole('combobox'), { key: 'Enter' });
     expect(queryByPlaceholderText(/Ask Co-pilot/i)).not.toBeNull();
+  });
+});
+
+describe('code-review fixes (editor)', () => {
+  it('keysEnabled={false} (a modal is open over the editor) silences editor shortcuts', () => {
+    const onDeleteElements = vi.fn();
+    const onNewSlide = vi.fn();
+    renderEditor({ onDeleteElements, onNewSlide }, { sel: ['a'], keysEnabled: false });
+    fireEvent.keyDown(document.body, { key: 'Backspace' });
+    fireEvent.keyDown(document.body, { key: 'm', ctrlKey: true });
+    expect(onDeleteElements).not.toHaveBeenCalled();
+    expect(onNewSlide).not.toHaveBeenCalled();
+  });
+
+  it('the palette also offers app commands (Undo / Present) when wired', () => {
+    const onUndo = vi.fn();
+    const { getByRole } = renderEditor({ onUndo, onPresent: vi.fn() }, { canUndo: true });
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    const dlg = getByRole('dialog', { name: 'Command palette' });
+    fireEvent.change(within(dlg).getByRole('combobox'), { target: { value: 'undo' } });
+    fireEvent.keyDown(within(dlg).getByRole('combobox'), { key: 'Enter' });
+    expect(onUndo).toHaveBeenCalled();
+  });
+
+  it('does not open an empty menu when nothing in it is wired', () => {
+    const { container } = renderEditor({});
+    fireEvent.contextMenu(container.querySelector('[data-sid="sl2"]'));
+    expect(container.querySelector('.ctx')).toBeNull();
+  });
+
+  it('palette: ↓ on an empty result list keeps the highlight at the top', () => {
+    const { getByRole } = renderEditor({ onNewSlide: vi.fn(), onDuplicateSlide: vi.fn() });
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    const dlg = getByRole('dialog', { name: 'Command palette' });
+    const input = within(dlg).getByRole('combobox');
+    fireEvent.change(input, { target: { value: 'zzz' } });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.change(input, { target: { value: 'slide' } });
+    expect(within(dlg).getAllByRole('option')[0].getAttribute('aria-selected')).toBe('true');
   });
 });

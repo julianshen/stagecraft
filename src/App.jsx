@@ -241,6 +241,7 @@ export default function App() {
       {view === 'editor' && (
         <Editor
           deck={deck}
+          keysEnabled={!modal}
           onDeckChange={handleDeckChange}
           accent={tw.accent}
           layoutVariant={tw.layout}

@@ -14,7 +14,7 @@ import { clampElement, GRID } from '../../lib/elements.js';
 import { readImageFile } from '../../lib/imageFile.js';
 import { isTextEntryTarget } from '../../lib/domEvents.js';
 import { dispatchKey, menuItems, paletteCommands, tooltip } from '../../lib/commands.js';
-import CommandPalette from '../ui/CommandPalette.jsx';
+import { CommandPalette } from '../ui/CommandPalette.jsx';
 import ShapeMenu, { SHAPE_TOOLS } from './menus/ShapeMenu.jsx';
 import TextMenu from './menus/TextMenu.jsx';
 import TableSizePicker from './menus/TableSizePicker.jsx';
@@ -84,6 +84,9 @@ export default function SlideEditor(props) {
     callbacks = {},
     canUndo = false,
     canRedo = false,
+    // False while something modal sits over the editor (Export, Templates):
+    // editor shortcuts must not act on the hidden canvas.
+    keysEnabled = true,
     theme = {},
   } = props;
 
@@ -197,6 +200,10 @@ export default function SlideEditor(props) {
     sel: selCount,
     els: cur?.elements?.length || 0,
     act: {
+      // App-scope actions, for the palette (their keys are bound by App).
+      undo: canUndo ? cb.onUndo : undefined,
+      redo: canRedo ? cb.onRedo : undefined,
+      present: cb.onPresent,
       cut: cb.onCutElements,
       copy: cb.onCopyElements,
       paste: wired(cb.onPasteElements, pasteElements),
@@ -228,11 +235,11 @@ export default function SlideEditor(props) {
   // One key handler for every editor shortcut, dispatched through the registry
   // (ignored while typing in a field, and while the palette is open).
   useEffect(() => {
-    if (showPalette) return undefined;
+    if (showPalette || !keysEnabled) return undefined;
     const onKey = (e) => { if (!isTextEntryTarget(e.target)) dispatchKey(e, cmdCtxRef.current); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showPalette]);
+  }, [showPalette, keysEnabled]);
 
   // A thumbnail right-click makes that slide current and opens the slide menu
   // at the pointer (fixed-positioned: the thumbs pane is outside the canvas).
@@ -240,8 +247,10 @@ export default function SlideEditor(props) {
   // thumbs never re-render for it.
   const thumbMenuRef = useRef(null);
   thumbMenuRef.current = (e, slideId) => {
-    e.preventDefault();
     setCurId(slideId);
+    // Nothing wired to offer → leave the browser's own menu alone.
+    if (!menuItems(SLIDE_MENU, cmdCtx).length) return;
+    e.preventDefault();
     setSubMenu(null);
     setCtxMenu({ x: e.clientX, y: e.clientY, kind: 'slide', fixed: true });
   };
@@ -471,7 +480,7 @@ export default function SlideEditor(props) {
       </div>
       {showPalette && (
         <CommandPalette
-          getCommands={(q) => paletteCommands(cmdCtx, q)}
+          getCommands={(q) => paletteCommands(cmdCtx, q, { scopes: ['editor', 'app'] })}
           onClose={() => setShowPalette(false)}
         />
       )}

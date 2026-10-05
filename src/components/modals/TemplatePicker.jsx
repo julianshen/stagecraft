@@ -2,9 +2,6 @@ import { useState, useRef } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { Button, IconButton } from '../ui/Primitives.jsx';
 import { TEMPLATES } from '../../data/deck.js';
-import { formatKeys, commandById } from '../../lib/commands.js';
-
-const SEARCH_KEYS = formatKeys(commandById('templates.search'));
 import { useFocusShortcut } from '../../hooks/useFocusShortcut.js';
 
 function TemplatePreview({ vibe }) {
@@ -68,7 +65,7 @@ export default function TemplatePicker({ onClose, onPick }) {
   const [cat, setCat] = useState('All');
   const [query, setQuery] = useState('');
   const searchRef = useRef(null);
-  useFocusShortcut('templates.search', searchRef);
+  const searchKeys = useFocusShortcut('templates.search', searchRef);
   const cats = ['All', ...Array.from(new Set(TEMPLATES.map(t => t.cat)))];
   // Filter by the active category AND a case-insensitive name match (trimmed).
   const trimmed = query.trim();
@@ -87,7 +84,7 @@ export default function TemplatePicker({ onClose, onPick }) {
             <div className="input-group" style={{ width: 240 }}>
               <span className="ico"><Icon name="search" size={12}/></span>
               <input ref={searchRef} placeholder="Search templates" aria-label="Search templates" value={query} onChange={e => setQuery(e.target.value)}/>
-              <span className="kbd">{SEARCH_KEYS}</span>
+              <span className="kbd">{searchKeys}</span>
             </div>
             <IconButton name="x" onClick={onClose}/>
           </div>

@@ -206,3 +206,20 @@ describe('App — slide-show shortcut', () => {
     expect(screen.queryByText(/NOW PRESENTING/i)).not.toBeInTheDocument();
   });
 });
+
+describe('App — present shortcut vs text fields', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('Ctrl+Enter inside a text field does not start the slide show', async () => {
+    store.set('stagecraft.view', 'editor');
+    vi.stubGlobal('fetch', makeServer().fetchFn);
+    render(<App />);
+    await flush();
+    const ta = document.createElement('textarea');
+    document.body.appendChild(ta);
+    fireEvent.keyDown(ta, { key: 'Enter', ctrlKey: true });
+    expect(screen.queryByText(/NOW PRESENTING/i)).not.toBeInTheDocument();
+    ta.remove();
+  });
+});

@@ -224,6 +224,9 @@ export default function CanvasSlide({ slide, deckCtx, renderSlide, zoom, selecte
   }
 
   function startMove(e, el) {
+    // Primary button only — a right-press belongs to the context menu (which
+    // selects the element itself), not to a drag or a shift-toggle.
+    if (e.button !== 0) return;
     const inSelection = selectedSet.has(el.id);
     const additive = !!e.shiftKey;
     // Select on pointer-down so a drag has the right targets. Shift-removing an

@@ -15,8 +15,8 @@ const ctxWith = ({ sel = 0, els = 3 } = {}) => {
 
 describe('parseCombo / matchesCombo', () => {
   it('parses modifiers and the key', () => {
-    expect(parseCombo('Mod+Shift+G')).toEqual({ mod: true, shift: true, alt: false, key: 'G' });
-    expect(parseCombo('PageDown')).toEqual({ mod: false, shift: false, alt: false, key: 'PageDown' });
+    expect(parseCombo('Mod+Shift+G')).toEqual({ mod: true, ctrl: false, shift: true, alt: false, key: 'G' });
+    expect(parseCombo('PageDown')).toEqual({ mod: false, ctrl: false, shift: false, alt: false, key: 'PageDown' });
   });
 
   it('Mod matches ⌘ or Ctrl (so Windows/Linux get every shortcut)', () => {
@@ -107,7 +107,7 @@ describe('findKeyCommand', () => {
     expect(findKeyCommand(key('g', { ctrlKey: true }), ctxWith({ sel: 2 }))?.id).toBe('arrange.group');
     expect(findKeyCommand(key('v', { metaKey: true }), ctxWith({ sel: 0 }))?.id).toBe('edit.paste');
     expect(findKeyCommand(key('PageDown'), ctxWith())?.id).toBe('slide.next');
-    expect(findKeyCommand({ ...key('}', { metaKey: true, shiftKey: true }), code: 'BracketRight' }, ctxWith({ sel: 1 }))?.id).toBe('arrange.front');
+    expect(findKeyCommand(key('ArrowUp', { metaKey: true, shiftKey: true }), ctxWith({ sel: 1 }))?.id).toBe('arrange.front');
   });
 
   it('select-all needs elements on the slide', () => {
@@ -232,6 +232,44 @@ describe('shortcutGroups', () => {
 
   it('spells modifiers out off-Mac', () => {
     const rows = Object.fromEntries(shortcutGroups({ mac: false }).flatMap((g) => g.rows));
-    expect(rows['Bring to front']).toBe('Ctrl+Shift+]');
+    expect(rows['Bring to front']).toBe('Ctrl+Shift+↑');
+  });
+});
+
+describe('code-review fixes', () => {
+  it('Ctrl is a literal Control modifier (⌃ on Mac), distinct from Mod', () => {
+    expect(matchesCombo(key('m', { ctrlKey: true }), 'Ctrl+M')).toBe(true);
+    expect(matchesCombo(key('m', { metaKey: true }), 'Ctrl+M')).toBe(false); // ⌘M = minimize on macOS
+    expect(formatCombo('Ctrl+M', true)).toBe('⌃M');
+    expect(formatCombo('Ctrl+M', false)).toBe('Ctrl+M');
+  });
+
+  it('avoids browser/OS-reserved Mac chords (⌘M minimize, ⌘⇧[ ] tab switching)', () => {
+    expect(formatKeys(commandById('slide.new'), { mac: true })).toBe('⌃M');
+    expect(formatKeys(commandById('arrange.front'), { mac: true })).toBe('⌘⇧↑');
+    expect(formatKeys(commandById('arrange.back'), { mac: false })).toBe('Ctrl+Shift+↓');
+    const reserved = ['Mod+M', 'Mod+Shift+]', 'Mod+Shift+[', 'Mod+W', 'Mod+T', 'Mod+Q', 'Mod+N'];
+    for (const c of COMMANDS) for (const k of c.keys || []) expect(reserved).not.toContain(k);
+  });
+
+  it('ignores key auto-repeat unless the command opts in (nudge, navigation, undo)', () => {
+    const ctx = ctxWith({ sel: 1 });
+    expect(findKeyCommand({ ...key('d', { metaKey: true }), repeat: true }, ctx)).toBeNull();
+    expect(findKeyCommand({ ...key('m', { ctrlKey: true }), repeat: true }, ctx)).toBeNull();
+    expect(findKeyCommand({ ...key('ArrowLeft'), repeat: true }, ctx)?.id).toBe('arrange.nudge');
+    expect(findKeyCommand({ ...key('PageDown'), repeat: true }, ctx)?.id).toBe('slide.next');
+    expect(findKeyCommand({ ...key('z', { metaKey: true }), repeat: true }, { scope: 'app', act: { undo: vi.fn() } })?.id).toBe('edit.undo');
+  });
+
+  it('Present does not fire while editing text (Ctrl/⌘+Enter sends in text fields)', () => {
+    const app = { scope: 'app', textEditing: true, act: { present: vi.fn() } };
+    expect(findKeyCommand(key('Enter', { ctrlKey: true }), app)).toBeNull();
+  });
+
+  it('the palette can list other scopes’ commands (app: undo/redo/present)', () => {
+    const ctx = { scope: 'editor', sel: 1, els: 1, act: { duplicate: vi.fn(), undo: vi.fn(), present: vi.fn() } };
+    expect(paletteCommands(ctx, 'undo', { mac: true })).toEqual([]); // editor scope only by default
+    const both = paletteCommands(ctx, '', { mac: true, scopes: ['editor', 'app'] }).map((c) => c.id);
+    expect(both).toEqual(expect.arrayContaining(['edit.undo', 'show.present', 'edit.duplicate']));
   });
 });

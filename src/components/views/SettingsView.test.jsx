@@ -331,7 +331,7 @@ describe('SettingsView — shortcuts page', () => {
     render(<SettingsView tw={{ theme: 'light', accent: 'indigo', density: 'regular', layout: 'default' }} setTw={vi.fn()} />);
     fireEvent.click(screen.getByText('Shortcuts'));
     const row = (name) => screen.getByText(name).parentElement.querySelector('.kbd').textContent;
-    expect(row('Bring to front')).toBe('Ctrl+Shift+]');
+    expect(row('Bring to front')).toBe('Ctrl+Shift+↑');
     expect(row('Present')).toBe('Ctrl+Enter');
     expect(row('New slide')).toBe('Ctrl+M');
     expect(screen.queryByText('Slide sorter')).toBeNull(); // ⌘2 was never bound

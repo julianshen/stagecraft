@@ -170,12 +170,19 @@ Every shortcut comes from one **command registry** (`lib/commands.js`, PowerPoin
   - `Mod+X/C/V/D` — cut / copy / paste / duplicate; `⌫`/`Del` — delete.
   - `Mod+A` — select all.
   - `Mod+G` / `Mod+Shift+G` — group / ungroup.
-  - `Mod+Shift+]` / `[` — bring to front / send to back.
+  - `Mod+Shift+↑` / `↓` — bring to front / send to back.
   - Arrows nudge (Shift ×5).
   - `V` / `P` / `I` — select / pen / insert image.
-  - `Mod+M` — new slide; `PgUp`/`PgDn` — previous / next slide.
+  - `Ctrl+M` (⌃M on a Mac, where ⌘M minimizes) — new slide; `PgUp`/`PgDn` — previous / next slide.
   - `Mod+K` — palette.
 - `Mod+K` (Home) and `Mod+F` (Templates) focus their search boxes (`hooks/useFocusShortcut.js`).
+- Dispatch rules:
+  - Each surface dispatches only its own scope: editor, app, presenter, home, templates.
+  - Editor shortcuts are silenced while a modal is open over the editor (`keysEnabled`).
+  - Chords macOS or the browser reserve (⌘M, ⌘⇧[ ], ⌘N/T/W/Q) are never bound.
+  - Key auto-repeat is ignored except for nudges, slide navigation and undo/redo.
+  - Present doesn't fire while editing text, where Mod+Enter sends.
+  - The palette also lists app commands (Undo / Redo / Present).
 - `⌘/Ctrl+Enter` → enter Presenter.
 - `Esc` → close modal / exit Presenter.
 - 🟢 `⌘/Ctrl+Z` → **undo**, `⌘/Ctrl+Shift+Z` / `⌘/Ctrl+Y` → **redo** — app-wide deck undo/redo (`useDeckHistory`, see §11.7). Suppressed while editing text (text inputs / textareas / contentEditable) so the browser's native text undo still works; still fires on non-text controls (dropdowns, checkboxes) where there's no native undo.

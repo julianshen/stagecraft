@@ -1,9 +1,6 @@
 import { useReducer, useEffect, useRef } from 'react';
 import Icon from './ui/Icon.jsx';
 import { Button } from './ui/Primitives.jsx';
-import { formatKeys, commandById } from '../lib/commands.js';
-
-const SEARCH_KEYS = formatKeys(commandById('home.search'));
 import { useFocusShortcut } from '../hooks/useFocusShortcut.js';
 
 function savedAgo(ts, now = Date.now()) {
@@ -29,7 +26,7 @@ function SaveBadge({ syncStatus, agoLabel }) {
 export default function TopBar({ view, setView, deckTitle, setModal, onPresent, syncStatus, savedAt, searchQuery, onSearchChange }) {
   const [, tick] = useReducer(n => n + 1, 0);
   const searchRef = useRef(null);
-  useFocusShortcut('home.search', searchRef, view === 'home');
+  const searchKeys = useFocusShortcut('home.search', searchRef, view === 'home');
   useEffect(() => {
     // The ago label only exists on a settled save; other states are static text.
     if (syncStatus !== 'saved' || !savedAt || view === 'home' || view === 'settings') return;
@@ -66,7 +63,7 @@ export default function TopBar({ view, setView, deckTitle, setModal, onPresent, 
               value={searchQuery ?? ''}
               onChange={(e) => onSearchChange?.(e.target.value)}
             />
-            <span className="kbd">{SEARCH_KEYS}</span>
+            <span className="kbd">{searchKeys}</span>
           </div>
         ) : view === 'settings' ? (
           <span style={{ fontSize: 12.5, color: 'var(--ink-2)', fontWeight: 500 }}>Settings</span>
