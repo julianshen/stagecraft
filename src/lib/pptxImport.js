@@ -165,7 +165,7 @@ function applyMods(hex, clrEl) {
     else if (m.localName === 'tint') rgb = rgb.map((c) => c + (1 - c) * (1 - v));
     else if (m.localName === 'alpha') alpha = clamp01(v);
   }
-  return { hex: `#${rgb.map(hex2).join('')}`, alpha };
+  return { hex: `#${rgbHex(rgb)}`, alpha };
 }
 
 // DrawingML preset colours (a:prstClr) are the CSS named colours, written in
@@ -207,13 +207,20 @@ const schemeColor = (ctx, key) => {
   return v ? { hex: `#${v}`, alpha: 1 } : null;
 };
 
-// Resolve a colour-choice element (srgbClr / schemeClr / sysClr / prstClr) to
-// { hex: '#RRGGBB', alpha } — or null when it can't be resolved (phClr etc.).
+// scRGB channels are linear-light percentages (100000ths); gamma-encode to sRGB.
+const linearToSrgb = (v) => (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055);
+const rgbHex = (rgb) => rgb.map(hex2).join('');
+
+// Resolve a colour-choice element (srgbClr / scrgbClr / hslClr / schemeClr /
+// sysClr / prstClr) to { hex: '#RRGGBB', alpha } — or null when it can't be
+// resolved (phClr etc.).
 function colorOf(clrEl, ctx) {
   if (!clrEl) return null;
   let base = null;
   switch (clrEl.localName) {
     case 'srgbClr': base = attr(clrEl, 'val'); break;
+    case 'scrgbClr': base = rgbHex(['r', 'g', 'b'].map((k) => linearToSrgb(clamp01(numAttr(clrEl, k, 0) / 100000)))); break;
+    case 'hslClr': base = rgbHex(hslToRgb([numAttr(clrEl, 'hue', 0) / 21600000, clamp01(numAttr(clrEl, 'sat', 0) / 100000), clamp01(numAttr(clrEl, 'lum', 0) / 100000)])); break;
     case 'sysClr': base = attr(clrEl, 'lastClr') || (attr(clrEl, 'val') === 'window' ? 'FFFFFF' : '000000'); break;
     case 'prstClr': base = presetHex(attr(clrEl, 'val')); break;
     case 'schemeClr': base = schemeHex(ctx, attr(clrEl, 'val')); break;
@@ -223,7 +230,7 @@ function colorOf(clrEl, ctx) {
   return applyMods(base.toUpperCase(), clrEl);
 }
 // The colour inside a fill-ish parent (solidFill / bgRef / fontRef / …).
-const COLOR_TAGS = ['srgbClr', 'schemeClr', 'sysClr', 'prstClr'];
+const COLOR_TAGS = ['srgbClr', 'scrgbClr', 'hslClr', 'schemeClr', 'sysClr', 'prstClr'];
 const colorIn = (parent, ctx) => {
   const c = parent && [...parent.children].find((x) => COLOR_TAGS.includes(x.localName));
   return c ? colorOf(c, ctx) : null;
@@ -232,7 +239,9 @@ const colorIn = (parent, ctx) => {
 // A shape-properties fill → { kind: 'none' } | { kind: 'solid', color } |
 // { kind: 'grad', color, from, to, angle } | null (unspecified → inherit/style).
 // `color` is the fill's representative solid (a gradient's first stop).
-function fillOf(props, ctx) {
+// Path (radial / rectangular / shape) gradients have no CSS-linear equivalent
+// here, so they import as linear with a warning.
+function fillOf(props, ctx, warn) {
   if (!props) return null;
   if (kid(props, 'noFill')) return { kind: 'none' };
   const solid = kid(props, 'solidFill');
@@ -247,6 +256,7 @@ function fillOf(props, ctx) {
       .filter((s) => s.color)
       .sort((a, b) => a.pos - b.pos);
     if (!stops.length) return null;
+    if (kid(grad, 'path')) warn?.('Radial and path gradients were imported as linear gradients.');
     // OOXML lin ang is clockwise from →, in 60000ths; CSS 0deg is ↑ → +90.
     const ang = numAttr(kid(grad, 'lin'), 'ang', 0) / 60000;
     return { kind: 'grad', color: stops[0].color, from: stops[0].color, to: stops[stops.length - 1].color, angle: Math.round((ang + 90) % 360) };
@@ -650,7 +660,7 @@ class SlideReader {
     let gid = groupId;
     const pairUp = () => { gid = gid || (text ? this.id('grp') : undefined); return gid; };
     if (type) {
-      const fill = fillOf(spPr, this.ctx) || firstOf(inh.spPrs, (p) => fillOf(p, this.ctx))
+      const fill = fillOf(spPr, this.ctx, this.warn) || firstOf(inh.spPrs, (p) => fillOf(p, this.ctx, this.warn))
         || (styleFill ? { kind: 'solid', color: styleFill } : { kind: 'none' });
       const stroke = ln ? {
         stroke: ln.color.hex, strokeWidth: Math.max(1, round2(ln.w * this.ctx.fit.k)),
@@ -802,7 +812,7 @@ class SlideReader {
           const my = box.flipV ? 2 * box.y + box.h - y - ch : y;
           const cellBox = { ...turnAbout({ x: mx, y: my, w: cw, h: ch }, box.x + box.w / 2, box.y + box.h / 2, box.rot), rot: box.rot };
           const geo = toPx(cellBox, this.ctx.fit);
-          const fill = fillOf(kid(tc, 'tcPr'), this.ctx);
+          const fill = fillOf(kid(tc, 'tcPr'), this.ctx, this.warn);
           // An explicitly transparent cell keeps only its grid outline; an
           // unspecified one (table style decides) falls back to white.
           const border = this.cellBorder(kid(tc, 'tcPr'));
@@ -879,7 +889,7 @@ async function backgroundOf(pkg, ctx, parts, warn) {
         const src = await imageData(pkg, rels[blipRel(blip)], warn);
         if (src) return { image: src };
       }
-      const f = fillOf(bgPr, ctx);
+      const f = fillOf(bgPr, ctx, warn);
       if (f?.color) return { color: f.color.hex };
     }
     const ref = colorIn(kid(bg, 'bgRef'), ctx);

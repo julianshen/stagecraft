@@ -343,8 +343,7 @@ describe('importPptx — OOXML edge cases', () => {
   });
 
   it('skips a shape whose fill colour cannot be resolved and that has no outline', async () => {
-    expect(await fillOfShape('<a:hslClr hue="0" sat="0" lum="0"/>')).toBeUndefined();
-    expect(await fillOfShape('<a:schemeClr val="phClr"/>')).toBeUndefined();
+        expect(await fillOfShape('<a:schemeClr val="phClr"/>')).toBeUndefined();
     expect(await fillOfShape('<a:prstClr val="notAColour"/>')).toBeUndefined();
     const noStops = '<a:gradFill><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"/></a:gs></a:gsLst></a:gradFill>';
     expect((await one(shape(2, 'rect', 0, 0, 10, 10, noStops))).slide.elements).toEqual([]);
@@ -946,5 +945,24 @@ describe('importPptx — Codex review fixes (round 14)', () => {
       expect(els(slide, 'rect')[0].stroke).toBe('#FF0000');
       expect(warnings.join(' ')).toMatch(/cell borders/i);
     });
+  });
+});
+
+describe('importPptx — Codex review fixes (round 15)', () => {
+  const fillOfShape = async (clr) => (await one(shape(2, 'rect', 0, 0, 10, 10, `<a:solidFill>${clr}</a:solidFill>`))).slide.elements[0]?.fill;
+
+  it('converts scRGB (linear, percent) and HSL colours to sRGB hex', async () => {
+    expect(await fillOfShape('<a:scrgbClr r="100000" g="0" b="0"/>')).toBe('#FF0000');
+    expect(await fillOfShape('<a:scrgbClr r="21586" g="21586" b="21586"/>')).toBe('#808080'); // linear 0.2159 = sRGB 128/255
+    expect(await fillOfShape('<a:hslClr hue="7200000" sat="100000" lum="50000"/>')).toBe('#00FF00'); // 120°
+    expect(await fillOfShape('<a:hslClr hue="0" sat="0" lum="0"/>')).toBe('#000000');
+  });
+
+  it('warns that path (radial / rectangular) gradients are imported as linear', async () => {
+    const grad = (shade) => `<a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="000000"/></a:gs><a:gs pos="100000"><a:srgbClr val="FFFFFF"/></a:gs></a:gsLst>${shade}</a:gradFill>`;
+    const radial = await one(shape(2, 'rect', 0, 0, 10, 10, grad('<a:path path="circle"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path>')));
+    expect(radial.slide.elements[0].gradient).toBeTruthy();
+    expect(radial.warnings.join(' ')).toMatch(/radial/i);
+    expect((await one(shape(2, 'rect', 0, 0, 10, 10, grad('<a:lin ang="0"/>')))).warnings.join(' ')).not.toMatch(/radial/i);
   });
 });
