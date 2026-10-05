@@ -256,6 +256,8 @@ function fillOf(props, ctx, warn) {
       .filter((s) => s.color)
       .sort((a, b) => a.pos - b.pos);
     if (!stops.length) return null;
+    // Opacity is per element, not per stop: the first stop's alpha stands in.
+    if (new Set(stops.map((s) => s.color.alpha)).size > 1) warn?.('Gradient transparency was approximated (per-stop transparency is not supported).');
     if (kid(grad, 'path')) warn?.('Radial and path gradients were imported as linear gradients.');
     // OOXML lin ang is clockwise from →, in 60000ths; CSS 0deg is ↑ → +90.
     const ang = numAttr(kid(grad, 'lin'), 'ang', 0) / 60000;
@@ -691,7 +693,7 @@ class SlideReader {
         }, fill.color.alpha, ln && stroke, ln?.color.alpha, type, pairUp);
       } else if (ln) {
         // Outline-only shape → a closed stroked path (fills are always solid).
-        this.push({ type: 'path', ...geo, points: outlinePoints(type), ...stroke }, pairUp());
+        this.push({ type: 'path', ...geo, points: outlinePoints(type), ...stroke, ...opacityOf(ln.color.alpha) }, pairUp());
       }
     }
     if (text) this.push({ type: 'text', ...geo, ...text }, gid);

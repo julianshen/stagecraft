@@ -1058,3 +1058,17 @@ describe('importPptx — Codex review fixes (round 18)', () => {
     expect(border.groupId).toBe(cell.groupId);
   });
 });
+
+describe('importPptx — Codex review fixes (round 19)', () => {
+  it('keeps outline alpha on outline-only (noFill) shapes', async () => {
+    const ln = `<a:ln w="${4 * PX}"><a:solidFill><a:srgbClr val="0000FF"><a:alpha val="30000"/></a:srgbClr></a:solidFill></a:ln>`;
+    const { slide } = await one(shape(2, 'ellipse', 0, 0, 100, 50, `<a:noFill/>${ln}`));
+    expect(slide.elements[0]).toMatchObject({ type: 'path', stroke: '#0000FF', opacity: 30 });
+  });
+
+  it('warns when gradient stops differ in transparency', async () => {
+    const grad = (a0, a1) => `<a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="000000"><a:alpha val="${a0}"/></a:srgbClr></a:gs><a:gs pos="100000"><a:srgbClr val="FFFFFF"><a:alpha val="${a1}"/></a:srgbClr></a:gs></a:gsLst><a:lin ang="0"/></a:gradFill>`;
+    expect((await one(shape(2, 'rect', 0, 0, 10, 10, grad(0, 100000)))).warnings.join(' ')).toMatch(/gradient transparency/i);
+    expect((await one(shape(2, 'rect', 0, 0, 10, 10, grad(50000, 50000)))).warnings.join(' ')).not.toMatch(/gradient transparency/i);
+  });
+});
