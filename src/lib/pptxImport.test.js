@@ -345,7 +345,7 @@ describe('importPptx — OOXML edge cases', () => {
   it('skips a shape whose fill colour cannot be resolved and that has no outline', async () => {
     expect(await fillOfShape('<a:hslClr hue="0" sat="0" lum="0"/>')).toBeUndefined();
     expect(await fillOfShape('<a:schemeClr val="phClr"/>')).toBeUndefined();
-    expect(await fillOfShape('<a:prstClr val="papayaWhip"/>')).toBeUndefined();
+    expect(await fillOfShape('<a:prstClr val="notAColour"/>')).toBeUndefined();
     const noStops = '<a:gradFill><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"/></a:gs></a:gsLst></a:gradFill>';
     expect((await one(shape(2, 'rect', 0, 0, 10, 10, noStops))).slide.elements).toEqual([]);
   });
@@ -895,5 +895,56 @@ describe('importPptx — Codex review fixes (round 13)', () => {
   it('warns about click/hover links on shapes', async () => {
     const sp = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Btn"><a:hlinkClick r:id="rIdH"/></p:cNvPr><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(0, 0, 10, 10)}<a:prstGeom prst="rect"/><a:solidFill><a:srgbClr val="000000"/></a:solidFill></p:spPr></p:sp>`;
     expect((await one(sp)).warnings.join(' ')).toMatch(/links on shapes/i);
+  });
+});
+
+describe('importPptx — Codex review fixes (round 14)', () => {
+  const fillOfShape = async (clr) => (await one(shape(2, 'rect', 0, 0, 10, 10, `<a:solidFill>${clr}</a:solidFill>`))).slide.elements[0]?.fill;
+
+  it('resolves the full DrawingML preset-colour vocabulary (incl. dk/lt/med abbreviations)', async () => {
+    expect(await fillOfShape('<a:prstClr val="orange"/>')).toBe('#FFA500');
+    expect(await fillOfShape('<a:prstClr val="papayaWhip"/>')).toBe('#FFEFD5');
+    expect(await fillOfShape('<a:prstClr val="dkGoldenrod"/>')).toBe('#B8860B');
+    expect(await fillOfShape('<a:prstClr val="ltSlateGray"/>')).toBe('#778899');
+    expect(await fillOfShape('<a:prstClr val="medSeaGreen"/>')).toBe('#3CB371');
+  });
+
+  it('lets an explicit noAutofit / spAutoFit stop an inherited normAutofit scale', async () => {
+    const layout = `<p:sldLayout ${NS}>${tree(`<p:sp><p:nvSpPr><p:cNvPr id="2" name="B"/><p:cNvSpPr/><p:nvPr><p:ph idx="1"/></p:nvPr></p:nvSpPr><p:spPr>${xfrm(0, 0, 100, 50)}</p:spPr><p:txBody><a:bodyPr><a:normAutofit fontScale="50000"/></a:bodyPr><a:lstStyle/><a:p/></p:txBody></p:sp>`)}</p:sldLayout>`;
+    const ph = (bodyPr) => `<p:sp><p:nvSpPr><p:cNvPr id="3" name="B"/><p:cNvSpPr/><p:nvPr><p:ph idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody>${bodyPr}${para('T', { rPr: ' sz="2000"' })}</p:txBody></p:sp>`;
+    expect((await one(ph('<a:bodyPr/>'), {}, { layout })).slide.elements[0].fontSize).toBe(20); // inherited 50%
+    expect((await one(ph('<a:bodyPr><a:noAutofit/></a:bodyPr>'), {}, { layout })).slide.elements[0].fontSize).toBe(40);
+    expect((await one(ph('<a:bodyPr><a:spAutoFit/></a:bodyPr>'), {}, { layout })).slide.elements[0].fontSize).toBe(40);
+  });
+
+  describe('table cell borders', () => {
+    const cellTbl = (tcPr) => `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="6" name="T"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>
+      <p:xfrm><a:off x="0" y="0"/><a:ext cx="${100 * PX}" cy="${50 * PX}"/></p:xfrm>
+      <a:graphic><a:graphicData uri="t"><a:tbl><a:tblGrid><a:gridCol w="${100 * PX}"/></a:tblGrid>
+        <a:tr h="${50 * PX}"><a:tc><a:txBody><a:bodyPr/>${para('C')}</a:txBody><a:tcPr>${tcPr}</a:tcPr></a:tc></a:tr>
+      </a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+    const side = (n, inner) => `<a:${n}>${inner}</a:${n}>`;
+    const all = (inner) => ['lnL', 'lnR', 'lnT', 'lnB'].map((n) => side(n, inner)).join('');
+    const fill = '<a:solidFill><a:srgbClr val="EEEEEE"/></a:solidFill>';
+
+    it('uses uniform explicit borders (colour / width / dash)', async () => {
+      const { slide } = await one(cellTbl(all('<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill><a:prstDash val="dash"/>').replace(/<a:ln(.)>/g, '<a:ln$1 w="25400">') + fill));
+      expect(els(slide, 'rect')[0]).toMatchObject({ stroke: '#FF0000', strokeWidth: 4, strokeDash: 'dashed' });
+    });
+
+    it('drops the grid for explicitly borderless cells (filled and transparent)', async () => {
+      const filled = (await one(cellTbl(all('<a:noFill/>') + fill))).slide;
+      expect(els(filled, 'rect')[0].stroke).toBeUndefined();
+      const clear = (await one(cellTbl(all('<a:noFill/>') + '<a:noFill/>'))).slide;
+      expect(els(clear, 'rect')).toEqual([]);
+      expect(els(clear, 'path')).toEqual([]);
+    });
+
+    it('approximates mixed borders with a warning', async () => {
+      const mixed = side('lnL', '<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>') + side('lnR', '<a:noFill/>');
+      const { slide, warnings } = await one(cellTbl(mixed + fill));
+      expect(els(slide, 'rect')[0].stroke).toBe('#FF0000');
+      expect(warnings.join(' ')).toMatch(/cell borders/i);
+    });
   });
 });
