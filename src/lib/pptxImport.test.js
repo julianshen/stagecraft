@@ -872,3 +872,28 @@ describe('importPptx — Codex review fixes (round 12)', () => {
     expect(slide.elements[0].content).toBe('5. A\n6. B\n1. C\n2. D');
   });
 });
+
+describe('importPptx — Codex review fixes (round 13)', () => {
+  it('restarts numbering after an empty buNone separator paragraph', async () => {
+    const num = (t) => para(t, { pPr: '<a:pPr><a:buAutoNum type="arabicPeriod"/></a:pPr>' });
+    const body = num('A') + num('B') + '<a:p><a:pPr><a:buNone/></a:pPr></a:p>' + num('C');
+    expect((await one(textBox(2, 0, 0, 100, 100, body))).slide.elements[0].content).toBe('1. A\n2. B\n\n1. C');
+  });
+
+  it('warns when a video/audio picture is reduced to its poster image', async () => {
+    const pic = `<p:pic><p:nvPicPr><p:cNvPr id="4" name="V"/><p:cNvPicPr/><p:nvPr><a:videoFile r:link="rIdV"/></p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="rId10"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic>`;
+    const { slide, warnings } = await one(pic, { slide: { extraRels: [['rId10', 'image', '../media/p.png']] } }, { media: { 'p.png': PNG } });
+    expect(slide.elements[0].type).toBe('image');
+    expect(warnings.join(' ')).toMatch(/video and audio/i);
+  });
+
+  it('warns that slide comments are not imported', async () => {
+    const { warnings } = await one('', { slide: { extraRels: [['rIdC', 'comments', '../comments/comment1.xml']] } });
+    expect(warnings.join(' ')).toMatch(/comments/i);
+  });
+
+  it('warns about click/hover links on shapes', async () => {
+    const sp = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Btn"><a:hlinkClick r:id="rIdH"/></p:cNvPr><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(0, 0, 10, 10)}<a:prstGeom prst="rect"/><a:solidFill><a:srgbClr val="000000"/></a:solidFill></p:spPr></p:sp>`;
+    expect((await one(sp)).warnings.join(' ')).toMatch(/links on shapes/i);
+  });
+});

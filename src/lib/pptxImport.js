@@ -394,7 +394,14 @@ function textOf(sp, ctx, inh) {
         if (!firstRun && run.trim()) { firstRun = c; firstPara = p; }
       } else if (c.localName === 'br') t += '\n';
     }
-    if (!t.trim()) { lines.push(t); continue; }
+    if (!t.trim()) {
+      // A blank paragraph keeps numbering going, unless it explicitly sets a
+      // non-numbered bullet (a separator between two lists) — that restarts it.
+      const own = kid(p, 'pPr');
+      if (kid(own, 'buNone') || kid(own, 'buChar')) delete counters[numAttr(own, 'lvl', 0)];
+      lines.push(t);
+      continue;
+    }
     const pPr = kid(p, 'pPr');
     const lvl = numAttr(pPr, 'lvl', 0);
     // Bullets: the nearest buNone / buChar / buAutoNum in the chain decides; an
@@ -543,6 +550,13 @@ class SlideReader {
     }
   }
 
+  // A click/hover link on a shape or picture itself (on its cNvPr) can't be
+  // represented yet — report it rather than leave a silently inert button.
+  noteShapeLinks(node) {
+    const cNvPr = desc(kid(node, 'nvSpPr') ?? kid(node, 'nvPicPr') ?? kid(node, 'nvCxnSpPr'), 'cNvPr');
+    if (kid(cNvPr, 'hlinkClick') || kid(cNvPr, 'hlinkHover')) this.warn('Click/hover links on shapes were not imported.');
+  }
+
   // A text body's element fields (textOf), reporting what text can't carry yet.
   text(sp, inh) {
     const body = kid(sp, 'txBody');
@@ -558,6 +572,7 @@ class SlideReader {
 
   shape(sp, groupT, groupId) {
     const inh = this.inherit(sp);
+    this.noteShapeLinks(sp);
     // Slide-number / date / footer placeholders are master furniture.
     if (inh.ph && ['sldNum', 'dt', 'ftr'].includes(inh.ph.type)) {
       this.warn('Slide numbers, dates and footers were not imported.');
@@ -674,6 +689,11 @@ class SlideReader {
 
   async picture(pic, groupT, groupId, rels) {
     const inh = this.inherit(pic);
+    this.noteShapeLinks(pic);
+    const nvPr = path(pic, 'nvPicPr', 'nvPr');
+    if (['videoFile', 'audioFile', 'quickTimeFile', 'wavAudioFile'].some((m) => desc(nvPr, m))) {
+      this.warn('Video and audio were imported as their poster image (playback is not supported).');
+    }
     const box = xfrmBox(inh.xfrm, groupT);
     if (!box) return;
     if (box.flipH || box.flipV) this.warn(FLIP_WARNING);
@@ -951,6 +971,7 @@ export async function importPptx(data, { fileName = '' } = {}) {
     if (notes) slide.notes = notes;
     const transition = transitionOf(root);
     if (transition) slide.transition = transition;
+    if (relOfType(rels, 'comments')) warn('Slide comments were not imported.');
     if (kid(root, 'timing')) warn('Slide animations were not imported (only slide transitions).');
     if (!boolAttr(root, 'show', true)) warn('Hidden slides were imported as normal slides.');
     slides.push(slide);
