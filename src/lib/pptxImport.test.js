@@ -856,3 +856,19 @@ describe('importPptx — Codex review fixes (round 11)', () => {
     expect(slide.elements[0].content).toBe('1. One\n2. Two\nBreak\na) Alpha\nb) Beta\n10. Ten\nIV. Roman');
   });
 });
+
+describe('importPptx — Codex review fixes (round 12)', () => {
+  it('takes an idx-only placeholder\'s type (and so its title text style) from the matched layout placeholder', async () => {
+    const layout = `<p:sldLayout ${NS}>${tree(`<p:sp><p:nvSpPr><p:cNvPr id="2" name="T"/><p:cNvSpPr/><p:nvPr><p:ph type="title" idx="5"/></p:nvPr></p:nvSpPr><p:spPr>${xfrm(0, 0, 100, 50)}</p:spPr></p:sp>`)}</p:sldLayout>`;
+    const ph = `<p:sp><p:nvSpPr><p:cNvPr id="3" name="T"/><p:cNvSpPr/><p:nvPr><p:ph idx="5"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/>${para('Heading')}</p:txBody></p:sp>`;
+    const { slide } = await one(ph, {}, { layout });
+    // titleStyle: 44pt Georgia (+mj-lt) and no bullet — not bodyStyle's 28pt Arial "•".
+    expect(slide.elements[0]).toMatchObject({ content: 'Heading', fontSize: 88, fontFamily: 'Georgia' });
+  });
+
+  it('continues numbering across items that repeat the list\'s startAt, and restarts when startAt changes', async () => {
+    const num = (t, start) => para(t, { pPr: `<a:pPr><a:buAutoNum type="arabicPeriod"${start ? ` startAt="${start}"` : ''}/></a:pPr>` });
+    const { slide } = await one(textBox(2, 0, 0, 100, 100, num('A', 5) + num('B', 5) + num('C', 1) + num('D', 1)));
+    expect(slide.elements[0].content).toBe('5. A\n6. B\n1. C\n2. D');
+  });
+});

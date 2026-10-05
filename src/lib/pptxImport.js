@@ -404,10 +404,13 @@ function textOf(sp, ctx, inh) {
     let bullet = null;
     if (bu?.localName === 'buChar') bullet = attr(bu, 'char') || '•';
     else if (bu?.localName === 'buAutoNum') {
+      // PowerPoint repeats a list's startAt on every item, so the count only
+      // restarts when the scheme or the startAt value changes.
       const type = attr(bu, 'type') || 'arabicPeriod';
+      const start = numAttr(bu, 'startAt', 1);
       const prev = counters[lvl];
-      const n = prev && prev.type === type ? prev.n + 1 : numAttr(bu, 'startAt', 1);
-      counters[lvl] = { type, n };
+      const n = prev && prev.type === type && prev.start === start ? prev.n + 1 : start;
+      counters[lvl] = { type, start, n };
       bullet = autoNumber(type, n);
     }
     if (bu?.localName !== 'buAutoNum') delete counters[lvl];
@@ -493,8 +496,11 @@ class SlideReader {
 
   // Inheritance sources for a placeholder: its layout + master counterparts.
   inherit(sp) {
-    const ph = phOf(sp);
-    const lay = ph ? findPh(this.layoutTree, ph) : null;
+    const own = phOf(sp);
+    const lay = own ? findPh(this.layoutTree, own) : null;
+    // An idx-only placeholder takes its effective type from the matched layout
+    // slot, which then picks the master placeholder and the text style.
+    const ph = own && own.type == null && lay ? { ...own, type: phOf(lay).type } : own;
     const mas = ph ? findPh(this.masterTree, ph, false) : null;
     // Shape style refs (fill/line/font) inherit like the rest: slide → layout → master.
     const style = kid(sp, 'style') ?? kid(lay, 'style') ?? kid(mas, 'style');
