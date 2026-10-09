@@ -332,3 +332,14 @@ describe('new section', () => {
     expect(() => fireEvent.click(screen.getByText('New section'))).not.toThrow();
   });
 });
+
+describe('ThumbsPane header honesty (A2)', () => {
+  it('marks the unbuilt Outline and More buttons as coming soon and disabled', () => {
+    renderPane(() => {});
+    for (const name of ['Outline view', 'More']) {
+      const btn = screen.getByTitle(`${name} — coming soon`);
+      expect(btn).toBeDisabled();
+      expect(btn.className).toContain('is-soon');
+    }
+  });
+});

@@ -139,15 +139,15 @@ A label can never claim a shortcut that isn't bound.
 - **Shared `Select` primitive** with one chevron (fixes U11).
 - **Controls for model-only fields:** image fit (Fit / Fill / Stretch), chart type, background (F-DES-3).
 
-### 2.5 F-UI-4 — Honesty pass 2
+### 2.5 F-UI-4 — Honesty pass 2 ✅ (A2, except the K-owned items marked below)
 
 Every control in U8 is either wired or hidden behind the shared `SoonTag`:
-- Presenter clock starts at 0, with **Reset**. The target is optional and set in Settings.
+- ✅ Presenter clock starts at 0, with **Reset**. The target is optional and set in Settings.
 - **Fit** computes the zoom from the viewport. *(Delivered by K5, the canvas stage.)*
 - The 92% zoom cap is removed (the canvas scrolls). *(K5.)*
-- Status-bar values bind to the real settings.
-- Export shows a real size estimate (the byte length after generation) or none.
-- **Start with AI** opens the Co-pilot with a "make a deck about…" prompt, which produces an outline and then slides.
+- ✅ Status-bar values bind to the real settings.
+- ✅ Export shows no invented size; its footer states the format and slide count. Export defaults (format, notes) are wired; the rest are `SoonTag`ged.
+- ✅ **Start with AI** opens a "make a deck about…" dialog that drafts an outline (reviewable) and then generates the slides into a new deck.
 - Home cards render slide 1 through `<SlideCanvas>`. *(Delivered by K4.)*
 
 ---
@@ -553,7 +553,7 @@ Order: **A → K → B → C → D → E → F**. A3 lands **before K1**, becaus
 | M | Scope | Size | Depends |
 |---|---|---|---|
 | A1 ✅ | **F-UI-1 command registry**: context-aware element/thumbnail/canvas menus, truthful shortcuts, Ctrl parity, ⌘K palette, generated Shortcuts page, editor PgUp/PgDn | M | — |
-| A2 | **F-UI-4 honesty pass 2**: presenter clock/reset, status bar binds, real export size, hide/wire remaining mocks, Start with AI. *Fit/zoom > 92% moves to K5 and Home slide-1 thumbnails to K4: both are rewritten by the canvas engine.* | S | — |
+| A2 ✅ | **F-UI-4 honesty pass 2**: presenter clock/reset, status bar binds, real export size, hide/wire remaining mocks, Start with AI. *Fit/zoom > 92% moves to K5 and Home slide-1 thumbnails to K4: both are rewritten by the canvas engine.* | S | — |
 | A3 | **F-UI-3 inspector correctness**: Select primitive (single chevron), text-colour labelling + `fill`→`color` migration, image fit control, chart-type control | S | — |
 | A4 | **F-EXP-1 `pptxPost.js` scaffold** + first patches: `grpSp` groups, shape/background `gradFill`, element flips | M | — |
 

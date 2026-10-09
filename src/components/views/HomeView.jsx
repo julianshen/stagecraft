@@ -30,7 +30,15 @@ function DeckCover({ deck }) {
   );
 }
 
-export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemplates, onImportPptx, onRenameDeck, onDeleteDeck, searchQuery = '' }) {
+// Greet by the local time of day: morning 5–11, afternoon 12–17, else evening.
+function greeting(now) {
+  const h = now.getHours();
+  if (h >= 5 && h < 12) return 'Good morning.';
+  if (h >= 12 && h < 18) return 'Good afternoon.';
+  return 'Good evening.';
+}
+
+export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemplates, onStartWithAI, onImportPptx, onRenameDeck, onDeleteDeck, searchQuery = '' }) {
   const [sortDir, setSortDir] = useState(null); // null = incoming order · 'desc' | 'asc' by edited time
   const [view, setView] = useState('grid');
   const [menuId, setMenuId] = useState(null);   // card whose actions menu is open
@@ -49,6 +57,7 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
   };
   const onNewCard = (id) => {
     if (id === 'tmpl') onOpenTemplates();
+    else if (id === 'ai') onStartWithAI?.();
     else if (id === 'import') fileRef.current?.click();
     else onNewDeck(id);
   };
@@ -115,7 +124,7 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
       </aside>
 
       <main className="home-main">
-        <h1>Good afternoon.</h1>
+        <h1>{greeting(new Date())}</h1>
         <p className="home-sub">You have <b>{decks.length} {decks.length === 1 ? 'deck' : 'decks'}</b> in your library.</p>
 
         <input

@@ -23,9 +23,17 @@ export function Button({ children, variant = 'ghost', size, icon, kbd, style, cl
   );
 }
 
-export function IconButton({ name, active, title, size = 14, onClick, style, disabled }) {
+// `soon` marks a visible-but-unbuilt control (honest UI): disabled, dimmed via
+// `.is-soon`, and its tooltip says so.
+export function IconButton({ name, active, title, size = 14, onClick, style, disabled, soon = false }) {
   return (
-    <button className={`iconbtn${active ? ' active' : ''}`} onClick={onClick} title={title} style={style} disabled={disabled}>
+    <button
+      className={`iconbtn${active ? ' active' : ''}${soon ? ' is-soon' : ''}`}
+      onClick={soon ? undefined : onClick}
+      title={soon ? `${title} — coming soon` : title}
+      style={style}
+      disabled={disabled || soon}
+    >
       <Icon name={name} size={size} />
     </button>
   );
