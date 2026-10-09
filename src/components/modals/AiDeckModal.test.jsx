@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import AiDeckModal from './AiDeckModal.jsx';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { AiDeckModal } from './AiDeckModal.jsx';
 
 const draftOutline = vi.hoisted(() => vi.fn());
 const buildDeck = vi.hoisted(() => vi.fn());
@@ -56,10 +56,10 @@ describe('AiDeckModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Draft outline/ }));
     fireEvent.click(await screen.findByRole('button', { name: /Generate 3 slides/ }));
     await waitFor(() => expect(buildDeck).toHaveBeenCalled());
-    progress(1, 3);
+    act(() => progress(1, 3));
     expect(await screen.findByText(/Generating slide 2 of 3/)).toBeInTheDocument();
     const deck = { title: 'Q3 Review', slides: [] };
-    finish(deck);
+    act(() => finish(deck));
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(deck));
   });
 
@@ -103,5 +103,53 @@ describe('AiDeckModal', () => {
     expect(screen.getByLabelText('Deck topic')).toHaveValue('launch plan');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('keeps the generated deck when saving fails, and retries only the save', async () => {
+    draftOutline.mockResolvedValue(outline);
+    const deck = { title: 'Q3 Review', slides: [] };
+    buildDeck.mockResolvedValue(deck);
+    const onCreate = vi.fn().mockRejectedValueOnce(new Error('The deck library did not accept the new deck.')).mockResolvedValueOnce();
+    render(<AiDeckModal onClose={vi.fn()} onCreate={onCreate} />);
+    typeTopic();
+    fireEvent.click(screen.getByRole('button', { name: /Draft outline/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Generate 3 slides/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('did not accept the new deck');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry save' }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(2));
+    expect(buildDeck).toHaveBeenCalledTimes(1);
+    expect(onCreate).toHaveBeenLastCalledWith(deck);
+  });
+
+  it('resumes generation from the slides that already succeeded', async () => {
+    draftOutline.mockResolvedValue(outline);
+    const done = [{ id: 'a' }, { id: 'b' }];
+    buildDeck
+      .mockRejectedValueOnce(Object.assign(new Error('x'), { reason: 'rate-limit', partial: done }))
+      .mockResolvedValueOnce({ slides: [] });
+    render(<AiDeckModal onClose={vi.fn()} onCreate={vi.fn(async () => {})} />);
+    typeTopic();
+    fireEvent.click(screen.getByRole('button', { name: /Draft outline/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Generate 3 slides/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/rate-limiting/);
+    // the outline is frozen once slides exist, so the resume stays aligned
+    expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Resume (2 of 3 done)' }));
+    await waitFor(() => expect(buildDeck).toHaveBeenCalledTimes(2));
+    expect(buildDeck.mock.calls[1][1].done).toBe(done);
+  });
+
+  it('does not discard a drafted outline on a stray backdrop click', async () => {
+    draftOutline.mockResolvedValue(outline);
+    const onClose = vi.fn();
+    const { container } = render(<AiDeckModal onClose={onClose} onCreate={vi.fn()} />);
+    fireEvent.click(container.querySelector('.modal-backdrop'));
+    expect(onClose).toHaveBeenCalledTimes(1); // an empty topic step may close on backdrop
+    onClose.mockClear();
+    typeTopic();
+    fireEvent.click(screen.getByRole('button', { name: /Draft outline/ }));
+    await screen.findByText('Numbers');
+    fireEvent.click(container.querySelector('.modal-backdrop'));
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

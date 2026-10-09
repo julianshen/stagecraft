@@ -10,7 +10,7 @@ import PresenterView from './components/views/PresenterView.jsx';
 
 import ExportModal  from './components/modals/ExportModal.jsx';
 import TemplatePicker from './components/modals/TemplatePicker.jsx';
-import AiDeckModal from './components/modals/AiDeckModal.jsx';
+import { AiDeckModal } from './components/modals/AiDeckModal.jsx';
 
 import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
 import { useDeckSync } from './hooks/useDeckSync.js';
@@ -136,8 +136,8 @@ export default function App() {
   const handleCreateAiDeck = async (generated) => {
     const meta = await createDeck(generated.title, generated);
     if (!meta?.id) throw new Error('The deck library did not accept the new deck.');
+    if (!(await handleOpenDeck(meta.id))) throw new Error('The deck was saved to your library but could not be opened.');
     setModal(null);
-    await handleOpenDeck(meta.id);
   };
   // Import a PowerPoint file: parse it client-side, save it as a new library
   // deck, open it, and say what was (and couldn't be) brought across. App-level

@@ -56,6 +56,8 @@ export default defineConfig({
         'src/components/editor/FormatToolbar.jsx',
         'src/components/TopBar.jsx',
         'src/components/editor/ThumbsPane.jsx',
+        'src/components/editor/StatusBar.jsx',
+        'src/components/modals/AiDeckModal.jsx',
         'src/components/ui/EditableText.jsx',
         'src/components/ui/Toaster.jsx',
         'src/components/slides/SlideRenderer.jsx',

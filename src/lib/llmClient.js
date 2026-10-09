@@ -10,7 +10,9 @@ import { SHAPES } from './shapes.js';
 
 /**
  * A classified LLM failure — `reason` keys into LLM_ERROR_MESSAGES below.
- * Reasons are minted by the /api/llm proxy (see api.js), except 'network'.
+ * Reasons are minted by the /api/llm proxy (see api.js), except the client-side
+ * 'network' (proxy unreachable) and 'outline' (the model answered, but not with
+ * a usable deck outline — lib/aiDeck.js).
  */
 export class LLMError extends Error {
   constructor(reason, message) {

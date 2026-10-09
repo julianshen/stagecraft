@@ -5,11 +5,15 @@ import { describeLLMError } from '../../lib/llmClient.js';
 
 // "Start with AI": describe a topic → review the drafted outline (drop slides
 // you don't want) → generate the slides with live progress → `onCreate(deck)`,
-// which saves and opens it. Errors keep the dialog open on the step that failed.
-export default function AiDeckModal({ onClose, onCreate }) {
+// which saves and opens it. Errors keep the dialog open on the step that failed,
+// and nothing already paid for is thrown away: a generation failure resumes
+// after the slides that succeeded, a save failure retries only the save.
+export function AiDeckModal({ onClose, onCreate }) {
   const [step, setStep] = useState('topic'); // 'topic' | 'drafting' | 'outline' | 'building'
   const [topic, setTopic] = useState('');
   const [outline, setOutline] = useState(null);
+  const [partial, setPartial] = useState([]);  // slides generated before a failure
+  const [built, setBuilt] = useState(null);    // the finished deck, if only the save failed
   const [done, setDone] = useState(0);
   const [error, setError] = useState(null);
 
@@ -25,26 +29,57 @@ export default function AiDeckModal({ onClose, onCreate }) {
     }
   }
 
-  async function generate() {
-    setStep('building');
-    setDone(0);
-    setError(null);
+  async function save(deck) {
     try {
-      const deck = await buildDeck(outline, { onProgress: (n) => setDone(n) });
       await onCreate(deck);
     } catch (err) {
-      setError(describeLLMError(err));
+      setBuilt(deck);
+      setError(err?.message || 'Couldn’t save the deck — try again.');
       setStep('outline');
     }
+  }
+
+  async function generate() {
+    setStep('building');
+    setDone(partial.length);
+    setError(null);
+    let deck;
+    try {
+      deck = await buildDeck(outline, { onProgress: (n) => setDone(n), done: partial });
+    } catch (err) {
+      setPartial(err?.partial || partial);
+      setError(describeLLMError(err));
+      setStep('outline');
+      return;
+    }
+    await save(deck);
+  }
+
+  function retrySave() {
+    setStep('building');
+    setError(null);
+    save(built);
+  }
+
+  // Back to the topic discards the outline and anything generated from it.
+  function back() {
+    setStep('topic');
+    setError(null);
+    setPartial([]);
+    setBuilt(null);
   }
 
   const remove = (i) => setOutline((o) => ({ ...o, slides: o.slides.filter((_, j) => j !== i) }));
   const count = outline?.slides.length || 0;
   const locked = step === 'drafting' || step === 'building'; // a request is in flight
   const editingTopic = step === 'topic' || step === 'drafting';
+  // Once slides exist the outline is frozen, so a resume stays aligned with it.
+  const editable = step === 'outline' && !partial.length && !built;
 
+  // Only the topic step closes on a backdrop click — a stray click must not
+  // discard a drafted outline or generated slides (Cancel / × still close).
   return (
-    <div className="modal-backdrop" onClick={locked ? undefined : onClose}>
+    <div className="modal-backdrop" onClick={step === 'topic' ? onClose : undefined}>
       <div className="modal medium" role="dialog" aria-label="Start with AI" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h3>Start with AI</h3>
@@ -72,7 +107,7 @@ export default function AiDeckModal({ onClose, onCreate }) {
                     <span className="layout">{s.layout}</span>
                     <span className="t">{s.title}</span>
                     {s.brief && <span className="b">{s.brief}</span>}
-                    {step === 'outline' && count > 1 && (
+                    {editable && count > 1 && (
                       <IconButton name="x" size={11} title={`Remove ${s.title}`} onClick={() => remove(i)}/>
                     )}
                   </li>
@@ -83,7 +118,7 @@ export default function AiDeckModal({ onClose, onCreate }) {
         </div>
         <div className="modal-foot">
           <span className="ai-deck-status" role={error ? 'alert' : 'status'}>
-            {error || (step === 'building' ? `Generating slide ${Math.min(done + 1, count)} of ${count}…` : '')}
+            {error || (step === 'building' ? (done >= count ? 'Saving…' : `Generating slide ${done + 1} of ${count}…`) : '')}
           </span>
           {editingTopic && (
             <>
@@ -95,10 +130,16 @@ export default function AiDeckModal({ onClose, onCreate }) {
           )}
           {step === 'outline' && (
             <>
-              <Button variant="ghost" onClick={() => { setStep('topic'); setError(null); }}>Back</Button>
-              <Button variant="accent" icon="ai" onClick={generate}>
-                {`Generate ${count} ${count === 1 ? 'slide' : 'slides'}`}
-              </Button>
+              <Button variant="ghost" onClick={back}>Back</Button>
+              {built
+                ? <Button variant="accent" onClick={retrySave}>Retry save</Button>
+                : (
+                  <Button variant="accent" icon="ai" onClick={generate}>
+                    {partial.length
+                      ? `Resume (${partial.length} of ${count} done)`
+                      : `Generate ${count} ${count === 1 ? 'slide' : 'slides'}`}
+                  </Button>
+                )}
             </>
           )}
         </div>

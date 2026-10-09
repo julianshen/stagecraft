@@ -5,7 +5,7 @@
 
 import { callLLM, generateSlide, parseJsonReply, LLMError } from './llmClient.js';
 import { SLIDE_LAYOUTS, sanitizeSlidePatch } from './deckUtils.js';
-import { newId } from './slideFactories.js';
+import { newId, createComponentSlide } from './slideFactories.js';
 
 export const MAX_OUTLINE_SLIDES = 15;
 
@@ -54,19 +54,29 @@ Valid layouts: ${OUTLINE_LAYOUTS.join(', ')}.
 }
 
 /**
- * Generate every outline slide in order (sequentially, so progress is real and
- * a failure stops early) and assemble a one-section deck. Rethrows the first
- * failure. `onProgress(done, total)` fires after each slide.
+ * Generate the outline's slides in order (sequentially, so progress is real, a
+ * failure stops early, and a rate-limited provider isn't hammered) and assemble
+ * a one-section deck. Each slide starts from its layout's template defaults, the
+ * model's schema-valid fields merge over them, and the reviewed outline's
+ * layout + title always win. `done` resumes after slides already generated; on
+ * failure the error carries them as `err.partial`. `onProgress(done, total)`
+ * fires after each slide.
  */
-export async function buildDeck(outline, { generate = generateSlide, onProgress } = {}) {
-  const slides = [];
-  for (const item of outline.slides) {
-    const raw = await generate(
-      `${item.title} — ${item.brief || item.title}. Use the "${item.layout}" layout.`,
-      { deckTitle: outline.title },
-    );
+export async function buildDeck(outline, { generate = generateSlide, onProgress, done = [] } = {}) {
+  const slides = [...done];
+  for (const item of outline.slides.slice(done.length)) {
+    let raw;
+    try {
+      raw = await generate(
+        `${item.title} — ${item.brief || item.title}. Use the "${item.layout}" layout.`,
+        { deckTitle: outline.title },
+      );
+    } catch (err) {
+      err.partial = slides;
+      throw err;
+    }
     const safe = sanitizeSlidePatch(raw, item.layout);
-    slides.push({ layout: item.layout, title: item.title, ...safe, id: newId('ai') });
+    slides.push({ ...createComponentSlide(item.layout), ...safe, layout: item.layout, title: item.title, id: newId('ai') });
     onProgress?.(slides.length, outline.slides.length);
   }
   return {

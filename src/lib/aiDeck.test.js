@@ -100,9 +100,24 @@ describe('buildDeck', () => {
     const s = deck.slides[1];
     expect(s.id).not.toBe('evil');
     expect(s).not.toHaveProperty('speakerNotes');
-    expect(s).not.toHaveProperty('kpis');
+    expect(s.kpis).not.toBe('nope'); // the invalid value is dropped (the template's kpis remain)
     expect(s.subtitle).toBe('ok');
-    expect(s.title).toBe('Numbers'); // the outline's title wins when the model omits a valid one
+    expect(s.title).toBe('Numbers');
+  });
+
+  it('keeps the reviewed outline title and layout over the model reply (incl. the unparseable-reply fallback)', async () => {
+    const generate = vi.fn(async (prompt) => ({ layout: 'text', title: prompt, body: 'raw reply' }));
+    const deck = await buildDeck(outline, { generate });
+    expect(deck.slides.map((s) => [s.layout, s.title])).toEqual([
+      ['cover', 'Q3 Review'], ['kpi', 'Numbers'], ['thanks', 'Thanks'],
+    ]);
+  });
+
+  it('starts each slide from its layout template, so a rejected field keeps the template default', async () => {
+    const generate = vi.fn(async () => ({ kpis: 'not an array' }));
+    const deck = await buildDeck(outline, { generate });
+    expect(Array.isArray(deck.slides[1].kpis)).toBe(true);
+    expect(deck.slides[1].kpis.length).toBeGreaterThan(0);
   });
 
   it('falls back to the outline layout when the model switches to an invalid one', async () => {
@@ -111,9 +126,23 @@ describe('buildDeck', () => {
     expect(deck.slides.map((s) => s.layout)).toEqual(['cover', 'kpi', 'thanks']);
   });
 
-  it('stops and rethrows when a slide fails, so the caller can report it', async () => {
+  it('stops at a failure and hands back the slides already generated', async () => {
     const generate = vi.fn().mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('rate limited'));
-    await expect(buildDeck(outline, { generate })).rejects.toThrow('rate limited');
+    let err;
+    try { await buildDeck(outline, { generate }); } catch (e) { err = e; }
+    expect(err.message).toBe('rate limited');
+    expect(err.partial.map((s) => s.title)).toEqual(['Q3 Review']);
     expect(generate).toHaveBeenCalledTimes(2);
+  });
+
+  it('resumes after the slides already generated', async () => {
+    const generate = vi.fn(async () => ({}));
+    const onProgress = vi.fn();
+    const first = { id: 'kept', layout: 'cover', title: 'Q3 Review' };
+    const deck = await buildDeck(outline, { generate, onProgress, done: [first] });
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate.mock.calls[0][0]).toContain('Numbers');
+    expect(deck.slides[0]).toBe(first);
+    expect(onProgress.mock.calls.map((c) => c[0])).toEqual([2, 3]);
   });
 });

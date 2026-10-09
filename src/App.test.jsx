@@ -285,4 +285,32 @@ describe('Start with AI', () => {
     expect(store.get('stagecraft.view')).toBe('editor');
     expect(screen.queryByRole('dialog', { name: 'Start with AI' })).toBeNull();
   });
+
+  it('keeps the dialog open with an error when the new deck cannot be opened', async () => {
+    store.set('stagecraft.view', 'home');
+    vi.mocked(draftOutline).mockResolvedValue({ title: 'Q3', slides: [{ layout: 'cover', title: 'Q3', brief: '' }] });
+    vi.mocked(buildDeck).mockResolvedValue({ title: 'Q3', sections: [], slides: [] });
+    const srv = makeServer();
+    const base = srv.fetchFn.getMockImplementation();
+    srv.fetchFn.mockImplementation((url, init) => {
+      const path = String(url).split('?')[0];
+      if (path === '/api/decks' && init?.method === 'POST') return Promise.resolve({ ok: true, json: async () => ({ id: 'x1' }) });
+      if (path === '/api/decks/x1/activate') return Promise.resolve({ ok: true, json: async () => ({}) });
+      return base(url, init);
+    });
+    vi.stubGlobal('fetch', srv.fetchFn);
+
+    render(<App />);
+    await flush();
+    fireEvent.click(screen.getByText('Start with AI'));
+    const dialog = screen.getByRole('dialog', { name: 'Start with AI' });
+    fireEvent.change(within(dialog).getByLabelText('Deck topic'), { target: { value: 'Q3' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Draft outline/ }));
+    await flush();
+    fireEvent.click(within(dialog).getByRole('button', { name: /Generate 1 slide/ }));
+    await flush();
+
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(/saved to your library but could not be opened/);
+    expect(store.get('stagecraft.view')).toBe('home');
+  });
 });
