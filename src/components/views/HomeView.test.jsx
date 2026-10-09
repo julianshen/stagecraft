@@ -412,3 +412,30 @@ describe('HomeView — Import .pptx', () => {
     expect(onImportPptx).not.toHaveBeenCalled();
   });
 });
+
+describe('HomeView greeting (A2)', () => {
+  it.each([
+    [6, 'Good morning.'],
+    [13, 'Good afternoon.'],
+    [20, 'Good evening.'],
+    [2, 'Good evening.'],
+  ])('greets by the local time of day (%i:00 → %s)', (hour, text) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 0, 5, hour, 0, 0));
+    try {
+      render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={noop} onOpenTemplates={noop} />);
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(text);
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe('HomeView Start with AI (A2)', () => {
+  it('opens the AI flow instead of creating a blank deck', () => {
+    const onStartWithAI = vi.fn();
+    const onNewDeck = vi.fn();
+    render(<HomeView decks={decks} onOpenDeck={noop} onNewDeck={onNewDeck} onOpenTemplates={noop} onStartWithAI={onStartWithAI} />);
+    fireEvent.click(screen.getByText('Start with AI'));
+    expect(onStartWithAI).toHaveBeenCalledTimes(1);
+    expect(onNewDeck).not.toHaveBeenCalled();
+  });
+});

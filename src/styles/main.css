@@ -848,11 +848,6 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   font-size: 10.5px;
   color: var(--ink-3);
 }
-.statusbar .dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  display: inline-block;
-  margin-right: 5px;
-}
 .statusbar .spacer { flex: 1; }
 .statusbar .zoom { display: flex; align-items: center; gap: 2px; }
 .statusbar .zoom button {
@@ -1039,82 +1034,6 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   flex-direction: column;
   box-shadow: var(--shadow-2);
   z-index: 20;
-}
-
-/* ============================================================
-   timeline drawer (animation)
-   ============================================================ */
-.timeline {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: 160px;
-  background: var(--bg-2);
-  border-top: 1px solid var(--line);
-  box-shadow: 0 -4px 16px oklch(0 0 0 / 0.04);
-  display: flex; flex-direction: column;
-  z-index: 15;
-}
-.timeline-head {
-  height: 30px;
-  padding: 0 10px;
-  display: flex; align-items: center; gap: 8px;
-  border-bottom: 1px solid var(--line);
-  font-size: 11.5px;
-}
-.timeline-tracks {
-  flex: 1;
-  overflow: auto;
-  position: relative;
-}
-.track {
-  display: grid;
-  grid-template-columns: 140px 1fr;
-  border-bottom: 1px solid var(--line);
-  height: 28px;
-  font-size: 11.5px;
-}
-.track .label {
-  padding: 0 10px;
-  display: flex; align-items: center; gap: 6px;
-  color: var(--ink-2);
-  border-right: 1px solid var(--line);
-}
-.track .lane {
-  position: relative;
-  background: var(--bg);
-}
-.keyframe {
-  position: absolute;
-  top: 8px;
-  width: 12px; height: 12px;
-  background: var(--accent);
-  border: 1.5px solid var(--bg);
-  transform: rotate(45deg);
-  border-radius: 1px;
-  cursor: pointer;
-}
-.kf-bar {
-  position: absolute;
-  top: 10px;
-  height: 8px;
-  background: var(--accent-wash);
-  border: 1px solid var(--accent);
-  border-radius: 3px;
-}
-.playhead {
-  position: absolute;
-  top: 0; bottom: 0;
-  width: 1px;
-  background: var(--danger);
-  z-index: 2;
-}
-.playhead::before {
-  content: '';
-  position: absolute;
-  top: -5px; left: -5px;
-  width: 11px; height: 11px;
-  background: var(--danger);
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
 
 /* ============================================================
@@ -1647,6 +1566,7 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   font-family: var(--f-mono);
   font-weight: 500;
 }
+.presenter-bar .clock.over { color: var(--warn); }
 .presenter-bar .muted { color: rgba(255,255,255,0.45); }
 .presenter-bar button {
   padding: 4px 10px;
@@ -2288,3 +2208,30 @@ input.range::-moz-range-thumb {
 }
 
 .toast-x:hover { background: var(--bg-3); color: var(--ink); }
+
+/* ============================================================
+   Start with AI dialog
+   ============================================================ */
+.ai-deck-topic {
+  width: 100%;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.ai-deck-title { margin: 0 0 10px; font-size: 15px; }
+.ai-deck-outline { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.ai-deck-outline li { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
+.ai-deck-outline .layout {
+  font-family: var(--f-mono); font-size: 10px; text-transform: uppercase;
+  color: var(--ink-3); min-width: 56px;
+}
+.ai-deck-outline .t { font-weight: 500; }
+.ai-deck-outline .b { color: var(--ink-3); flex: 1; }
+.ai-deck-outline .iconbtn { margin-left: auto; }
+.ai-deck-status { flex: 1; font-size: 12px; font-family: var(--f-mono); color: var(--ink-3); }
+.ai-deck-status[role='alert'] { color: var(--danger); }

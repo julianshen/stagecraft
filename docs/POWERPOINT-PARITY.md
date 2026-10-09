@@ -51,7 +51,7 @@ missing · **P2** less common or polish. ✅ = fixed in this change.
 | 13 | P2 | Text insets / autofit not modelled (imported text sits flush to its box edge) | `ElementView`, import | `inset` on text elements (PowerPoint default 0.1″ / 0.05″), honoured on both surfaces |
 | 14 | P2 | Hidden slides, slide numbers/footers/date, hyperlinks, comments, media, SmartArt, equations not modelled | — | See matrix §3; import warns rather than drops silently |
 | 16 | P1 | **No shared asset store.** Every image element carries its own data URL, so a master logo/background imported onto 40 slides is stored 40× in the deck JSON (re-PUT on every sync, kept in undo history). Import decodes once and warns | `elements` model, `pptxImport.js` | A deck-level `assets` map (id → data URL) referenced by image elements / slide backgrounds; export embeds each once |
-| 15 | P2 | Home "Start with AI" card also creates a plain blank deck (same honesty issue as #1) | `HomeView.jsx` | Route it to the Co-pilot (generate an outline → deck) or mark it "Soon" like other unbuilt controls |
+| 15 | P2 | Home "Start with AI" card also creates a plain blank deck (same honesty issue as #1) | `HomeView.jsx` | ✅ A2: a "make a deck about…" dialog drafts a reviewable outline, then generates the slides into a new deck (`lib/aiDeck.js`, `AiDeckModal`) |
 
 ## 3. Feature matrix vs PowerPoint
 

@@ -18,8 +18,8 @@ export default function SorterToolbar({ mode, setMode, onBack, onAddSection, onR
         </div>
       </div>
       <div className="group">
-        <Button variant="ghost" icon="filter">All sections</Button>
-        <Button variant="ghost" icon="sort">By order</Button>
+        <Button variant="ghost" icon="filter" soon>All sections</Button>
+        <Button variant="ghost" icon="sort" soon>By order</Button>
       </div>
       <div className="spacer"/>
       <div className="group" style={{ border: 0 }}>

@@ -370,3 +370,15 @@ describe('SlideEditor draw tools', () => {
     expect(getByTitle('Select · V').className).toContain('active');
   });
 });
+
+describe('SlideEditor toolbar honesty (A2)', () => {
+  it('marks Version history and the Animation timeline as coming soon (no mock drawer opens)', () => {
+    const { getByTitle, container } = renderEditor({}, 0);
+    for (const name of ['Version history', 'Animation timeline']) {
+      const btn = getByTitle(`${name} — coming soon`);
+      expect(btn).toBeDisabled();
+      fireEvent.click(btn);
+    }
+    expect(container.querySelector('.timeline')).toBeNull();
+  });
+});

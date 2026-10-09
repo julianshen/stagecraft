@@ -7,7 +7,7 @@ function renderControls(overrides = {}) {
     idx: 0, total: 5, elapsed: 0,
     laser: false, setLaser: vi.fn(),
     blackout: false, setBlackout: vi.fn(),
-    onPrev: vi.fn(), onNext: vi.fn(), onExit: vi.fn(),
+    onPrev: vi.fn(), onNext: vi.fn(), onExit: vi.fn(), onResetClock: vi.fn(),
     ...overrides,
   };
   return { ...render(<PresenterControls {...props} />), props };
@@ -33,5 +33,27 @@ describe('PresenterControls', () => {
     fireEvent.click(getByText(/Laser/).closest('button'));
     expect(props.setLaser).toHaveBeenCalledTimes(1);
     expect(props.setLaser.mock.calls[0][0](false)).toBe(true);
+  });
+
+  it('shows the elapsed clock with no invented target when none is set', () => {
+    const { getByText, queryByText } = renderControls({ elapsed: 65 });
+    expect(getByText('01:05')).toBeInTheDocument();
+    expect(queryByText(/target/)).toBeNull();
+  });
+
+  it('shows the talk target when one is set', () => {
+    const { getByText } = renderControls({ elapsed: 0, target: 40 });
+    expect(getByText(/target 40:00/)).toBeInTheDocument();
+  });
+
+  it('flags the clock once the target is exceeded', () => {
+    const { getByText } = renderControls({ elapsed: 41 * 60, target: 40 });
+    expect(getByText('41:00').className).toContain('over');
+  });
+
+  it('resets the clock from the Reset button', () => {
+    const { getByRole, props } = renderControls({ elapsed: 30 });
+    fireEvent.click(getByRole('button', { name: /reset/i }));
+    expect(props.onResetClock).toHaveBeenCalledTimes(1);
   });
 });

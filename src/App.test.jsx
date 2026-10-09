@@ -6,6 +6,10 @@ import { importPptx } from './lib/pptxImport.js';
 // The .pptx parser is unit-tested on its own (lib/pptxImport.test.js); here it's
 // stubbed so the App test pins only the wiring: parse → create → open → notify.
 vi.mock('./lib/pptxImport.js', () => ({ importPptx: vi.fn() }));
+// The AI deck builder is unit-tested in lib/aiDeck.test.js; stubbed here to pin
+// the Home → dialog → create → open wiring.
+vi.mock('./lib/aiDeck.js', () => ({ draftOutline: vi.fn(), buildDeck: vi.fn() }));
+import { draftOutline, buildDeck } from './lib/aiDeck.js';
 import { stubLocalStorage } from './test/localStorage.js';
 
 // App-level wiring smoke: the real <App/> (TopBar + Editor + useDeckSync) over
@@ -238,5 +242,112 @@ describe('App — present shortcut vs modals', () => {
     fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true });
     expect(screen.queryByText(/NOW PRESENTING/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Export ·/)).toBeInTheDocument(); // the modal (and its choices) stays
+  });
+});
+
+describe('Start with AI', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('opens the AI dialog from Home, then saves and opens the generated deck', async () => {
+    store.set('stagecraft.view', 'home');
+    const outline = { title: 'Q3', slides: [{ layout: 'cover', title: 'Q3', brief: '' }] };
+    const generated = { title: 'Q3', theme: 'indigo', sections: [{ id: 's', name: 'Section 1', slides: ['ai1'] }], slides: [{ id: 'ai1', layout: 'cover', title: 'Q3' }] };
+    vi.mocked(draftOutline).mockResolvedValue(outline);
+    vi.mocked(buildDeck).mockResolvedValue(generated);
+    const srv = makeServer();
+    const created = [];
+    const base = srv.fetchFn.getMockImplementation();
+    srv.fetchFn.mockImplementation((url, init) => {
+      const path = String(url).split('?')[0];
+      if (path === '/api/decks' && init?.method === 'POST') {
+        created.push(JSON.parse(init.body));
+        return Promise.resolve({ ok: true, json: async () => ({ id: 'ai-deck', name: 'Q3' }) });
+      }
+      if (path === '/api/decks/ai-deck/activate') {
+        return Promise.resolve({ ok: true, json: async () => ({ deck: generated, rev: 3 }) });
+      }
+      return base(url, init);
+    });
+    vi.stubGlobal('fetch', srv.fetchFn);
+
+    render(<App />);
+    await flush();
+    fireEvent.click(screen.getByText('Start with AI'));
+    const dialog = screen.getByRole('dialog', { name: 'Start with AI' });
+    fireEvent.change(within(dialog).getByLabelText('Deck topic'), { target: { value: 'Q3 results' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Draft outline/ }));
+    await flush();
+    fireEvent.click(within(dialog).getByRole('button', { name: /Generate 1 slide/ }));
+    await flush();
+
+    expect(created).toEqual([{ name: 'Q3', deck: generated }]);
+    expect(store.get('stagecraft.view')).toBe('editor');
+    expect(screen.queryByRole('dialog', { name: 'Start with AI' })).toBeNull();
+  });
+
+  it('keeps the dialog open with an error when the new deck cannot be opened', async () => {
+    store.set('stagecraft.view', 'home');
+    vi.mocked(draftOutline).mockResolvedValue({ title: 'Q3', slides: [{ layout: 'cover', title: 'Q3', brief: '' }] });
+    vi.mocked(buildDeck).mockResolvedValue({ title: 'Q3', sections: [], slides: [] });
+    const srv = makeServer();
+    const base = srv.fetchFn.getMockImplementation();
+    srv.fetchFn.mockImplementation((url, init) => {
+      const path = String(url).split('?')[0];
+      if (path === '/api/decks' && init?.method === 'POST') return Promise.resolve({ ok: true, json: async () => ({ id: 'x1' }) });
+      if (path === '/api/decks/x1/activate') return Promise.resolve({ ok: true, json: async () => ({}) });
+      return base(url, init);
+    });
+    vi.stubGlobal('fetch', srv.fetchFn);
+
+    render(<App />);
+    await flush();
+    fireEvent.click(screen.getByText('Start with AI'));
+    const dialog = screen.getByRole('dialog', { name: 'Start with AI' });
+    fireEvent.change(within(dialog).getByLabelText('Deck topic'), { target: { value: 'Q3' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Draft outline/ }));
+    await flush();
+    fireEvent.click(within(dialog).getByRole('button', { name: /Generate 1 slide/ }));
+    await flush();
+
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(/saved to your library but could not be opened/);
+    expect(store.get('stagecraft.view')).toBe('home');
+  });
+
+  it('retrying after an open failure reopens the saved deck instead of creating a duplicate', async () => {
+    store.set('stagecraft.view', 'home');
+    const generated = { title: 'Q3', sections: [], slides: [] };
+    vi.mocked(draftOutline).mockResolvedValue({ title: 'Q3', slides: [{ layout: 'cover', title: 'Q3', brief: '' }] });
+    vi.mocked(buildDeck).mockResolvedValue(generated);
+    const srv = makeServer();
+    const base = srv.fetchFn.getMockImplementation();
+    let creates = 0;
+    let activations = 0;
+    srv.fetchFn.mockImplementation((url, init) => {
+      const path = String(url).split('?')[0];
+      if (path === '/api/decks' && init?.method === 'POST') { creates += 1; return Promise.resolve({ ok: true, json: async () => ({ id: 'x2' }) }); }
+      if (path === '/api/decks/x2/activate') {
+        activations += 1;
+        return Promise.resolve({ ok: true, json: async () => (activations === 1 ? {} : { deck: generated, rev: 2 }) });
+      }
+      return base(url, init);
+    });
+    vi.stubGlobal('fetch', srv.fetchFn);
+
+    render(<App />);
+    await flush();
+    fireEvent.click(screen.getByText('Start with AI'));
+    const dialog = screen.getByRole('dialog', { name: 'Start with AI' });
+    fireEvent.change(within(dialog).getByLabelText('Deck topic'), { target: { value: 'Q3' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Draft outline/ }));
+    await flush();
+    fireEvent.click(within(dialog).getByRole('button', { name: /Generate 1 slide/ }));
+    await flush();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Retry save' }));
+    await flush();
+
+    expect(creates).toBe(1);
+    expect(activations).toBe(2);
+    expect(store.get('stagecraft.view')).toBe('editor');
   });
 });

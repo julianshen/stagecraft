@@ -4,6 +4,7 @@ import { Slide } from '../slides/SlideRenderer.jsx';
 import { resolveNotes } from '../../data/deck.js';
 import { transitionAnim } from '../../lib/transitions.js';
 import { dispatchKey } from '../../lib/commands.js';
+import { readGeneralSettings } from '../../lib/generalSettings.js';
 import LaserLayer from '../presenter/LaserLayer.jsx';
 import PresenterSidePanel from '../presenter/PresenterSidePanel.jsx';
 import PresenterControls from '../presenter/PresenterControls.jsx';
@@ -26,7 +27,8 @@ export default function PresenterView({ deck, onExit }) {
   // Start on the first slide — for a freshly created deck that's the cover.
   // (Previously a demo deep-link to slide 4, tuned to the sample deck.)
   const [idx, setIdx] = useState(0);
-  const [elapsed, setElapsed] = useState(412); // seconds
+  const [elapsed, setElapsed] = useState(0); // seconds since the show started (or the last reset)
+  const [{ presentTarget }] = useState(readGeneralSettings);
   const [laser, setLaser] = useState(false);
   const [blackout, setBlackout] = useState(false);
 
@@ -94,6 +96,8 @@ export default function PresenterView({ deck, onExit }) {
         idx={idx}
         total={flat.length}
         elapsed={elapsed}
+        target={presentTarget}
+        onResetClock={() => setElapsed(0)}
         laser={laser}
         setLaser={setLaser}
         blackout={blackout}

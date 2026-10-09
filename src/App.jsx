@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ACCENTS, SAMPLE_DECK } from './data/deck.js';
 import TopBar from './components/TopBar.jsx';
 
@@ -10,6 +10,7 @@ import PresenterView from './components/views/PresenterView.jsx';
 
 import ExportModal  from './components/modals/ExportModal.jsx';
 import TemplatePicker from './components/modals/TemplatePicker.jsx';
+import { AiDeckModal } from './components/modals/AiDeckModal.jsx';
 
 import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
 import { useDeckSync } from './hooks/useDeckSync.js';
@@ -130,6 +131,22 @@ export default function App() {
       await handleOpenDeck(meta.id);
     } catch { /* server error — leave the picker open */ }
   };
+  // Start with AI: save the generated deck to the library and open it. A failure
+  // throws back to the dialog, which stays open and shows it.
+  // A retry of the same generated deck (after an open failure) reopens the deck
+  // already saved rather than creating a duplicate.
+  const aiDeckIds = useRef(new WeakMap());
+  const handleCreateAiDeck = async (generated) => {
+    let id = aiDeckIds.current.get(generated);
+    if (!id) {
+      const meta = await createDeck(generated.title, generated);
+      if (!meta?.id) throw new Error('The deck library did not accept the new deck.');
+      id = meta.id;
+      aiDeckIds.current.set(generated, id);
+    }
+    if (!(await handleOpenDeck(id))) throw new Error('The deck was saved to your library but could not be opened.');
+    setModal(null);
+  };
   // Import a PowerPoint file: parse it client-side, save it as a new library
   // deck, open it, and say what was (and couldn't be) brought across. App-level
   // toasts so the notice survives the switch from Home to the editor.
@@ -234,6 +251,7 @@ export default function App() {
           onRenameDeck={handleRenameDeck}
           onDeleteDeck={handleDeleteDeck}
           onOpenTemplates={() => setModal('templates')}
+          onStartWithAI={() => setModal('ai-deck')}
           onImportPptx={handleImportPptx}
           searchQuery={searchQuery}
         />
@@ -270,6 +288,10 @@ export default function App() {
           onClose={() => setModal(null)}
           onPick={handlePickTemplate}
         />
+      )}
+
+      {modal === 'ai-deck' && (
+        <AiDeckModal onClose={() => setModal(null)} onCreate={handleCreateAiDeck}/>
       )}
 
       {modal === 'export' && (

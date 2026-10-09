@@ -9,18 +9,30 @@ describe('readGeneralSettings', () => {
     expect(GENERAL_STORAGE_KEY).toBe('stagecraft.general');
   });
 
-  it('defaults both toggles to true when nothing is stored', () => {
-    expect(readGeneralSettings()).toEqual({ snapToGrid: true, showRulers: true });
+  it('defaults both toggles to true and no talk target when nothing is stored', () => {
+    expect(readGeneralSettings()).toEqual({ snapToGrid: true, showRulers: true, presentTarget: 0 });
+  });
+
+  it('returns a stored talk target in whole minutes', () => {
+    store.set(GENERAL_STORAGE_KEY, JSON.stringify({ presentTarget: 40 }));
+    expect(readGeneralSettings().presentTarget).toBe(40);
+  });
+
+  it('rejects a talk target that is not a sane whole number of minutes', () => {
+    for (const bad of [-5, 1.5, 'forty', 100000, NaN, null, true]) {
+      store.set(GENERAL_STORAGE_KEY, JSON.stringify({ presentTarget: bad }));
+      expect(readGeneralSettings().presentTarget).toBe(0);
+    }
   });
 
   it('returns stored false values', () => {
     store.set(GENERAL_STORAGE_KEY, JSON.stringify({ snapToGrid: false, showRulers: false }));
-    expect(readGeneralSettings()).toEqual({ snapToGrid: false, showRulers: false });
+    expect(readGeneralSettings()).toEqual({ snapToGrid: false, showRulers: false, presentTarget: 0 });
   });
 
   it('defaults a key missing from a partial stored object', () => {
     store.set(GENERAL_STORAGE_KEY, JSON.stringify({ showRulers: false }));
-    expect(readGeneralSettings()).toEqual({ snapToGrid: true, showRulers: false });
+    expect(readGeneralSettings()).toEqual({ snapToGrid: true, showRulers: false, presentTarget: 0 });
   });
 
   it('falls back to the defaults on malformed JSON', () => {
@@ -35,12 +47,12 @@ describe('readGeneralSettings', () => {
 
   it('treats a non-boolean stored value as absent (defaults true)', () => {
     store.set(GENERAL_STORAGE_KEY, JSON.stringify({ snapToGrid: 'no', showRulers: 0 }));
-    expect(readGeneralSettings()).toEqual({ snapToGrid: true, showRulers: true });
+    expect(readGeneralSettings()).toEqual({ snapToGrid: true, showRulers: true, presentTarget: 0 });
   });
 
   it('returns only the live keys (legacy inert keys are dropped)', () => {
     store.set(GENERAL_STORAGE_KEY, JSON.stringify({ snapToGrid: false, autosave: false, language: 'fr-FR' }));
-    expect(readGeneralSettings()).toEqual({ snapToGrid: false, showRulers: true });
+    expect(readGeneralSettings()).toEqual({ snapToGrid: false, showRulers: true, presentTarget: 0 });
   });
 
   it('falls back to the defaults when storage itself throws', () => {

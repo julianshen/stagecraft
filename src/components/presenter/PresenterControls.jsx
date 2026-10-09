@@ -4,10 +4,15 @@ import { formatKeys, commandById, tooltip } from '../../lib/commands.js';
 const BLACKOUT_TIP = tooltip('Blackout', 'show.blackout');
 const EXIT_KEYS = formatKeys(commandById('show.exit'));
 
+const pad2 = (n) => String(n).padStart(2, '0');
+const formatClock = (secs) => `${pad2(Math.floor(secs / 60))}:${pad2(secs % 60)}`;
+
 export default function PresenterControls({
   idx,
   total,
   elapsed,
+  target = 0,
+  onResetClock,
   laser,
   setLaser,
   blackout,
@@ -16,20 +21,24 @@ export default function PresenterControls({
   onNext,
   onExit,
 }) {
-  const mm = Math.floor(elapsed / 60);
-  const ss = elapsed % 60;
-  const clock = `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  const clock = formatClock(elapsed);
+  const over = target > 0 && elapsed > target * 60;
 
   return (
     <div className="presenter-bar">
       <div>
-        <div className="clock">{clock}</div>
-        <div className="muted" style={{ marginTop: 2 }}>elapsed · target 40:00</div>
+        <div className={`clock${over ? ' over' : ''}`}>{clock}</div>
+        <div className="muted" style={{ marginTop: 2 }}>
+          elapsed{target > 0 && ` · target ${formatClock(target * 60)}`}
+        </div>
       </div>
+      <button onClick={onResetClock} title="Reset the clock" aria-label="Reset clock">
+        <Icon name="refresh" size={13}/>
+      </button>
       <div style={{ width: 1, height: 32, background: 'rgba(255,255,255,0.15)' }}/>
       <div>
         <div style={{ fontSize: 22, fontFamily: 'var(--f-mono)', color: 'white', fontWeight: 500 }}>
-          {String(idx + 1).padStart(2, '0')} <span style={{ color: 'rgba(255,255,255,0.3)' }}>/ {String(total).padStart(2, '0')}</span>
+          {pad2(idx + 1)} <span style={{ color: 'rgba(255,255,255,0.3)' }}>/ {pad2(total)}</span>
         </div>
         <div className="muted" style={{ marginTop: 2 }}>slide · → next · ← prev</div>
       </div>

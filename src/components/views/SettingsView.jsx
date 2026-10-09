@@ -5,7 +5,8 @@ import { Button, Seg, FieldRow } from '../ui/Primitives.jsx';
 import { ACCENTS } from '../../data/deck.js';
 import { callLLM, describeLLMError, LOCAL_DEFAULT_BASE } from '../../lib/llmClient.js';
 import { shortcutGroups, formatKeys, commandById } from '../../lib/commands.js';
-import { GENERAL_STORAGE_KEY, readGeneralSettings } from '../../lib/generalSettings.js';
+import { generalSettings, MAX_PRESENT_TARGET, toTargetMinutes } from '../../lib/generalSettings.js';
+import { exportSettings } from '../../lib/exportSettings.js';
 
 // ---- provider + model catalog ----
 const PROVIDERS = [
@@ -357,20 +358,20 @@ function AppearanceSettings({ tw, setTw }) {
 }
 
 // ---- general settings ----
-// Only keys something actually reads are persisted (both consumed by the
-// canvas via Task 5); the storage key, defaults, and reader are single-sourced
+// Only keys something actually reads are persisted (the two toggles by the
+// canvas, the talk target by the presenter); the storage key, defaults, and reader are single-sourced
 // in lib/generalSettings.js so this writer and the canvas readers agree. Slide
 // size / language / autosave / spell check are deliberately inert-and-disabled
 // below — no state, no storage.
 function GeneralSettings() {
   // readGeneralSettings picks only the live keys, so legacy inert values are
   // dropped, not carried.
-  const [settings, setSettings] = useState(readGeneralSettings);
+  const [settings, setSettings] = useState(generalSettings.read);
 
   function save(patch) {
     const next = { ...settings, ...patch };
     setSettings(next);
-    try { localStorage.setItem(GENERAL_STORAGE_KEY, JSON.stringify(next)); } catch {}
+    generalSettings.write(next);
   }
 
   return (
@@ -405,12 +406,41 @@ function GeneralSettings() {
         <ToggleRow title="Show rulers" sub="Pixel rulers on the canvas edges." on={settings.showRulers} onChange={v => save({ showRulers: v })}/>
         <ToggleRow title="Spell check" sub="Underline misspellings while typing." disabled tag={<SoonTag/>}/>
       </Section>
+      <Section label="Presenting">
+        <div className="set-row">
+          <div className="set-row-label">
+            <div className="srl-title">Talk target</div>
+            <div className="srl-sub">Shown next to the presenter clock, which turns amber once it's passed. Leave empty for none.</div>
+          </div>
+          <div className="set-row-control">
+            <div className="input-group" style={{ width: 120 }}>
+              <input
+                type="number" min={0} max={MAX_PRESENT_TARGET} step={1}
+                aria-label="Talk target (minutes)"
+                placeholder="None"
+                value={settings.presentTarget || ''}
+                onChange={e => save({ presentTarget: toTargetMinutes(e.target.value) })}
+              />
+              <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>min</span>
+            </div>
+          </div>
+        </div>
+      </Section>
     </div>
   );
 }
 
 // ---- export settings ----
+// Persists only what the export dialog honors (lib/exportSettings.js): the
+// default format among the ones it can produce, and speaker notes. The rest is
+// visible-but-Soon.
 function ExportSettings() {
+  const [settings, setSettings] = useState(exportSettings.read);
+  function save(patch) {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    exportSettings.write(next);
+  }
   return (
     <div className="settings-scroll">
       <SettingsHeader title="Export defaults" sub="Preselected options in the export dialog."/>
@@ -419,24 +449,27 @@ function ExportSettings() {
           <div className="set-row-label"><div className="srl-title">Default format</div></div>
           <div className="set-row-control">
             <div className="select">
-              <select defaultValue="PowerPoint (.pptx)">
-                <option>PowerPoint (.pptx)</option><option>PDF</option><option>Keynote (.key)</option><option>PNG sequence</option>
+              <select aria-label="Default format" value={settings.format} onChange={e => save({ format: e.target.value })}>
+                <option value="pptx">PowerPoint (.pptx)</option>
+                <option value="pdf">PDF</option>
+                <option value="key" disabled>Keynote (.key) — soon</option>
+                <option value="png" disabled>PNG sequence — soon</option>
               </select>
               <Icon name="chevron-down" size={11} className="chev"/>
             </div>
           </div>
         </div>
         <div className="set-row">
-          <div className="set-row-label"><div className="srl-title">Quality</div></div>
+          <div className="set-row-label"><div className="srl-title">Quality <SoonTag/></div></div>
           <div className="set-row-control">
-            <Seg value="high" onChange={() => {}} options={[{ v: 'std', l: 'Standard' }, { v: 'high', l: 'High' }, { v: 'max', l: 'Max' }]}/>
+            <Seg value="high" disabled onChange={() => {}} options={[{ v: 'std', l: 'Standard' }, { v: 'high', l: 'High' }, { v: 'max', l: 'Max' }]}/>
           </div>
         </div>
       </Section>
       <Section label="Include">
-        <ToggleRow title="Speaker notes" sub="Attach notes to each slide." on/>
-        <ToggleRow title="Live data snapshot" sub="Freeze bound tables at export time." on/>
-        <ToggleRow title="Slide numbers" sub="Burn page numbers into the footer." on/>
+        <ToggleRow title="Speaker notes" sub="Attach notes to each slide (PowerPoint)." on={settings.includeNotes} onChange={v => save({ includeNotes: v })}/>
+        <ToggleRow title="Live data snapshot" sub="Freeze bound tables at export time." disabled tag={<SoonTag/>}/>
+        <ToggleRow title="Slide numbers" sub="Burn page numbers into the footer." disabled tag={<SoonTag/>}/>
       </Section>
     </div>
   );

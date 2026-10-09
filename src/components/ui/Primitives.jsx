@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import Icon from './Icon.jsx';
+import SoonTag from './SoonTag.jsx';
 
 // ---------------- Avatar ----------------
 export function Avatar({ name, color, size = 22, initials }) {
@@ -12,20 +13,30 @@ export function Avatar({ name, color, size = 22, initials }) {
 }
 
 // ---------------- Button / IconButton ----------------
-export function Button({ children, variant = 'ghost', size, icon, kbd, style, className, ...rest }) {
-  const cls = `btn ${variant}${size === 'lg' ? ' lg' : ''}${className ? ` ${className}` : ''}`;
+// `soon` marks a visible-but-unbuilt control (honest UI) on both buttons:
+// disabled and dimmed via `.is-soon`; a Button also shows the Soon pill, an
+// IconButton (no room for it) says so in its tooltip.
+export function Button({ children, variant = 'ghost', size, icon, kbd, style, className, soon = false, disabled, ...rest }) {
+  const cls = `btn ${variant}${size === 'lg' ? ' lg' : ''}${soon ? ' is-soon' : ''}${className ? ` ${className}` : ''}`;
   return (
-    <button className={cls} style={style} {...rest}>
+    <button className={cls} style={style} disabled={disabled || soon} {...rest}>
       {icon && <Icon name={icon} size={14} />}
       {children}
+      {soon && <SoonTag/>}
       {kbd && <span className="kbd">{kbd}</span>}
     </button>
   );
 }
 
-export function IconButton({ name, active, title, size = 14, onClick, style, disabled }) {
+export function IconButton({ name, active, title, size = 14, onClick, style, disabled, soon = false }) {
   return (
-    <button className={`iconbtn${active ? ' active' : ''}`} onClick={onClick} title={title} style={style} disabled={disabled}>
+    <button
+      className={`iconbtn${active ? ' active' : ''}${soon ? ' is-soon' : ''}`}
+      onClick={onClick}
+      title={soon ? `${title} — coming soon` : title}
+      style={style}
+      disabled={disabled || soon}
+    >
       <Icon name={name} size={size} />
     </button>
   );
