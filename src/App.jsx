@@ -199,12 +199,13 @@ export default function App() {
       dispatchKey(e, {
         scope: 'app',
         textEditing: isTextEditingTarget(e.target),
-        act: { present: () => setPresenting(true), undo, redo },
+        // No presenting over a modal: it would unmount it (losing its choices).
+        act: { present: modal ? undefined : () => setPresenting(true), undo, redo },
       });
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo]);
+  }, [undo, redo, modal]);
 
   if (presenting) {
     return <PresenterView deck={deck} onExit={() => setPresenting(false)}/>;

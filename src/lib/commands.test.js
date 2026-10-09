@@ -70,6 +70,7 @@ describe('formatCombo / formatKeys', () => {
 
   it('detects macOS from the platform string', () => {
     expect(isMacPlatform('MacIntel')).toBe(true);
+    expect(isMacPlatform('macOS')).toBe(true); // navigator.userAgentData.platform on Chromium
     expect(isMacPlatform('iPad')).toBe(true);
     expect(isMacPlatform('Win32')).toBe(false);
     expect(isMacPlatform(undefined)).toBe(false);

@@ -223,3 +223,20 @@ describe('App — present shortcut vs text fields', () => {
     ta.remove();
   });
 });
+
+describe('App — present shortcut vs modals', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('Ctrl+Enter does not start the slide show while a modal is open', async () => {
+    store.set('stagecraft.view', 'editor');
+    vi.stubGlobal('fetch', makeServer().fetchFn);
+    render(<App />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    expect(screen.getByText(/Export ·/)).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true });
+    expect(screen.queryByText(/NOW PRESENTING/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Export ·/)).toBeInTheDocument(); // the modal (and its choices) stays
+  });
+});

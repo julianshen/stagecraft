@@ -83,7 +83,8 @@ export const COMMANDS = [
 const BY_ID = new Map(COMMANDS.map((c) => [c.id, c]));
 export const commandById = (id) => BY_ID.get(id);
 
-export const isMacPlatform = (platform) => /Mac|iPhone|iPad|iPod/.test(platform || '');
+// Case-insensitive: Chromium's navigator.userAgentData.platform reports 'macOS'.
+export const isMacPlatform = (platform) => /Mac|iPhone|iPad|iPod/i.test(platform || '');
 const IS_MAC = typeof navigator !== 'undefined'
   && isMacPlatform(navigator.userAgentData?.platform || navigator.platform);
 
