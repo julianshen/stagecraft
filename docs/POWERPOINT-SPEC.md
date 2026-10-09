@@ -563,10 +563,10 @@ Full design, options and test strategy: [`CANVAS-EDITOR.md`](CANVAS-EDITOR.md). 
 | M | Scope | Size | Depends |
 |---|---|---|---|
 | K0 | Spike + decision record: officeview `drawing` subpath export (or vendoring), `konva` + `react-konva@18`, Vitest `paint` + `browser` projects, perf budget | S–M | — |
-| K1 | Drawing core: scene builder for elements, preset geometry, fills/gradients/lines/arrows, images, `paintSlide`, `<SlideCanvas>` (DPR), `ensureAssets` (fonts + image decode; exports await it) | M | K0, A3 |
+| K1 | Drawing core: scene builder for elements (slide height read from the deck, never hard-coded, so D3 slide size needs no canvas refactor), preset geometry, fills/gradients/lines/arrows, images, `paintSlide`, `<SlideCanvas>` (DPR), `ensureAssets` (fonts + image decode; exports await it) | M | K0, A3 |
 | K2 | Text engine (officeview layout + measurer, font epochs, layout cache, insets/anchors/**autofit**/bullets) **+ F-TXT-3 model**: `paragraphs`/runs schema, validator, `normalizeDeck` migration, MCP schema, export/import of runs | L | K1 |
 | K3 | Layouts and content as scenes: 12 layout compilers, chart painter (from `chartSpec.js`), roadmap/risks painters, table grid painter; **PPTX layout builders export from the compiled scene** (one geometry source) | L | K2 |
-| K4 | Read-only surfaces on canvas: thumbnails/sorter (bitmap cache), presenter, **Home slide-1 cards (U13)**, PDF export via canvas | M | K3 |
+| K4 | Read-only surfaces on canvas: thumbnails/sorter (bitmap cache keyed by a render key that includes deck-wide inputs), presenter, **Home slide-1 cards (U13)**, PDF export via canvas | M | K3 |
 | K5 | Konva editor stage: select/drag/guides/Transformer/marquee/draw/pen/context-menu/collab, **zoom + Fit + pan (U8)**; text via DOM overlay | L | K4 |
 | K6 | Canvas-native text editing: caret map, hidden-textarea input + IME, selection, `lib/richText.js` edit operations, rich-run editing (F-TXT-1, editing half of F-TXT-3) | L | K5 |
 | K7 | Cut-over: remove DOM renderer, overlay, `modern-screenshot`, flags; update SPEC/CLAUDE.md | S | K6 |
