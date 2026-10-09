@@ -5,6 +5,8 @@
 > - a code inventory of every toolbar, panel, menu and shortcut;
 > - the parity matrix in [`POWERPOINT-PARITY.md`](POWERPOINT-PARITY.md).
 >
+> Rendering and editing move to `<canvas>` in **Phase K**; that design lives in [`CANVAS-EDITOR.md`](CANVAS-EDITOR.md).
+>
 > Companions:
 > - [`SPEC.md`](../SPEC.md) — per-feature status;
 > - [`PRODUCT-SPEC.md`](../PRODUCT-SPEC.md) — vision, personas, UX;
@@ -141,12 +143,12 @@ A label can never claim a shortcut that isn't bound.
 
 Every control in U8 is either wired or hidden behind the shared `SoonTag`:
 - Presenter clock starts at 0, with **Reset**. The target is optional and set in Settings.
-- **Fit** computes the zoom from the viewport.
-- The 92% zoom cap is removed (the canvas scrolls).
+- **Fit** computes the zoom from the viewport. *(Delivered by K5, the canvas stage.)*
+- The 92% zoom cap is removed (the canvas scrolls). *(K5.)*
 - Status-bar values bind to the real settings.
 - Export shows a real size estimate (the byte length after generation) or none.
 - **Start with AI** opens the Co-pilot with a "make a deck about…" prompt, which produces an outline and then slides.
-- Home cards render slide 1 through `ScaledSlide`.
+- Home cards render slide 1 through `<SlideCanvas>`. *(Delivered by K4.)*
 
 ---
 
@@ -221,7 +223,7 @@ Colours stay hex unless F-DES-1 says otherwise. Lengths are canvas px (1920 wide
   - `toPlain`
   - Ranges are `{start:{p,o}, end:{p,o}}`. All functions are unit-tested and contain no DOM.
 - **Editing:**
-  - A contenteditable surface maps DOM selection ↔ range, and every edit goes through `richText.js` and then the gate.
+  - The canvas caret adapter (K6) maps pointer/keyboard/IME input ↔ range, and every edit goes through `richText.js` and then the gate.
   - The FormatToolbar becomes the single text toolbar for **both** template fields and elements. It adds:
     - font family;
     - strike, sub/superscript;
@@ -231,7 +233,7 @@ Colours stay hex unless F-DES-1 says otherwise. Lengths are canvas px (1920 wide
     - align;
     - clear formatting.
   - Template fields' `slide.fmt` stays per field. Rich runs are scoped to elements, and template fields can adopt them later.
-- **Canvas:** render `<p>`/`<span>` with per-run styles. Bullets/numbers use the PowerPoint auto-number schemes, with the counter logic shared with the importer's `autoNumber`.
+- **Canvas:** laid out and painted by the Phase K text engine (officeview `layoutTextBody`) and edited on canvas (K6, [`CANVAS-EDITOR.md`](CANVAS-EDITOR.md) §7). Bullets/numbers use the PowerPoint auto-number schemes, with the counter logic shared with the importer's `autoNumber`.
 - **Export:** pptxgenjs `addText([{text, options}])` per run, with `bullet`, `indentLevel`, `paraSpaceBefore`/`After`, `hyperlink`, `superscript`/`subscript`, `strike`, `highlight`, `charSpacing`.
 - **Import:** keep runs and paragraph props instead of flattening, and remove the "first run" approximation. Bullets become real bullet props instead of text glyphs.
 - **Acceptance criteria:**
@@ -541,31 +543,50 @@ Size: **S** ≤ 1 day · **M** 2–4 days · **L** 1–2 weeks of focused work.
 
 The order is driven by dependencies:
 - The command registry unblocks every UI surface.
+- **The canvas engine (Phase K, [`CANVAS-EDITOR.md`](CANVAS-EDITOR.md)) comes before the object-model work.** Text in shapes, rich text, tables, charts and preset shapes are built once, on the canvas painter, instead of first in DOM/CSS and then again on canvas.
 - Text in shapes and rich text unblock tables, charts, links and find.
 - The post-processor unblocks motion, gradients and groups in export.
+
+Order: **A → K → B → C → D → E → F**. A3 lands **before K1**, because its `fill` → `color` migration changes the element contract the scene builder reads. A4 doesn't touch the render path and may run in parallel with K.
 
 ### Phase A — UX honesty & foundations (unblocks everything)
 | M | Scope | Size | Depends |
 |---|---|---|---|
 | A1 ✅ | **F-UI-1 command registry**: context-aware element/thumbnail/canvas menus, truthful shortcuts, Ctrl parity, ⌘K palette, generated Shortcuts page, editor PgUp/PgDn | M | — |
-| A2 | **F-UI-4 honesty pass 2**: presenter clock/reset, computed Fit + zoom > 92%, status bar binds, real export size, hide/wire remaining mocks, Home slide-1 thumbnails | S–M | — |
+| A2 | **F-UI-4 honesty pass 2**: presenter clock/reset, status bar binds, real export size, hide/wire remaining mocks, Start with AI. *Fit/zoom > 92% moves to K5 and Home slide-1 thumbnails to K4: both are rewritten by the canvas engine.* | S | — |
 | A3 | **F-UI-3 inspector correctness**: Select primitive (single chevron), text-colour labelling + `fill`→`color` migration, image fit control, chart-type control | S | — |
 | A4 | **F-EXP-1 `pptxPost.js` scaffold** + first patches: `grpSp` groups, shape/background `gradFill`, element flips | M | — |
 
-### Phase B — Object model fidelity (round-trip for typical decks)
+### Phase K — Canvas engine (re-platform rendering and editing)
+Full design, options and test strategy: [`CANVAS-EDITOR.md`](CANVAS-EDITOR.md). Konva stage for interaction, officeview's drawing engine (preset geometry, Office gradients, line ends, rich-text layout) for pixels, one framework-free `paintSlide()` for every non-editing surface. Each milestone ships behind a setting until K7.
+
 | M | Scope | Size | Depends |
 |---|---|---|---|
-| B1 | **F-TXT-1 + F-TXT-2**: in-place text-box editing; text inside shapes; insets; autofit; import as one object | M | A3 |
-| B2 | **F-TXT-3 rich text**: `richText.js` + contenteditable + unified text toolbar + bullets/numbering + export/import runs | L | B1 |
-| B3 | **F-OBJ-1 table element** + Table tab + import/export | L | B2 (cell text) |
-| B4 | **F-OBJ-2 chart element** + Chart tab + `c:chartSpace` import | M–L | A3 |
+| K0 | Spike + decision record: officeview `drawing` subpath export (or vendoring), `konva` + `react-konva@18`, Vitest `paint` + `browser` projects, perf budget | S–M | — |
+| K1 | Drawing core: scene builder for elements (slide height read from the deck, never hard-coded, so D3 slide size needs no canvas refactor), preset geometry, fills/gradients/lines/arrows, images (all A3 fit modes: `cover`, `contain`, `stretch`), `paintSlide`, `<SlideCanvas>` (DPR), `ensureAssets` (fonts + image decode; exports await it) | M | K0, A3 |
+| K2 | Text engine (officeview layout + measurer, font epochs, layout cache, insets/anchors/**autofit**/bullets) **+ F-TXT-3 model**: `paragraphs`/runs schema, validator, `normalizeDeck` migration, MCP schema, and canvas painting + PPTX export/import of **every** F-TXT-3 run and paragraph property (all run styles, align, level, bullets/numbering, indent/hanging, spacing, line spacing; `link` excepted, C5) | L | K1 |
+| K3 | Layouts and content as scenes: 12 layout compilers (`cover`, `agenda`, `divider`, `kpi`, `chart`, `split`, `table`, `text`, `list`, `roadmap`, `risks`, `thanks`; `blank` has no template content and is complete from K1, so all 13 layouts are covered), chart painter (from `chartSpec.js`), roadmap/risks painters, table grid painter; **PPTX layout builders export from the compiled scene** (one geometry source) | L | K2 |
+| K4 | Read-only surfaces on canvas: thumbnails/sorter (bitmap cache keyed by a render key that includes deck-wide inputs), presenter, **Home slide-1 cards (U13)**, PDF export via canvas | M | K3 |
+| K5 | Konva editor stage: select/drag/guides/Transformer/marquee/draw/pen/context-menu/collab, **zoom + Fit + pan (U8)**; text via DOM overlay for plain-string text only (multi-run text is read-only until K6, [`CANVAS-EDITOR.md`](CANVAS-EDITOR.md) §7) | L | K4 |
+| K6 | Canvas-native text editing: caret map, hidden-textarea input + IME, selection, `lib/richText.js` edit operations, rich-run editing (F-TXT-1, editing half of F-TXT-3) | L | K5 |
+| K7 | Cut-over: remove DOM renderer, overlay, `modern-screenshot`, flags; update SPEC/CLAUDE.md | S | K6 |
+
+### Phase B — Object model fidelity (round-trip for typical decks)
+All B milestones paint and edit through the Phase K engine. B1/B2 shrink because the rich-text model and its export/import (K2), autofit (K2) and in-place editing with `richText.js` (K6) land in Phase K; what remains is text-in-shapes and the full text toolbar.
+
+| M | Scope | Size | Depends |
+|---|---|---|---|
+| B1 | **F-TXT-2** text inside shapes (one object), insets UI, autofit UI; import as one object; export | S–M | A3, K6 |
+| B2 | **F-TXT-3 rich text**, rest: the editing UI only — unified text toolbar (family, strike, sub/sup, highlight, bullets/numbering, indent, clear) driving `richText.js`. No model or export/import work: K2 already owns every property these controls set | M | B1 |
+| B3 | **F-OBJ-1 table element** (K3 grid painter, cell text via K6) + Table tab + import/export | M–L | B2 (cell text) |
+| B4 | **F-OBJ-2 chart element** (K3 chart painter) + Chart tab + `c:chartSpace` import | M | A3, K3 |
 | B5 | **F-OBJ-6 asset store** + import dedupe + sync + export media-dedupe patch | M | A4 |
 | B6 | **F-UI-2 insert objects** (toolbar Table/Chart/Text insert elements) | S | B3, B4 |
 
 ### Phase C — Formatting & arrange parity
 | M | Scope | Size | Depends |
 |---|---|---|---|
-| C1 | **F-OBJ-4** flip UI + arrowheads + 20 more presets + `custGeom` import as paths | M | A4 |
+| C1 | **F-OBJ-4** flip UI + arrowheads + presets (all 187 paint via K1; expose the common ones + adjust handles as Konva anchors) + `custGeom` import as paths | M | A4, K5 |
 | C2 | **F-OBJ-3** crop / alt text / lock aspect + Picture tab | M | B5 |
 | C3 | **F-OBJ-5** forward/backward, align-to-slide, distribute H/V, Select all, Selection pane | M | A1 |
 | C4 | **F-TXT-4 find & replace** + **F-TXT-5 format painter** | M | B2 |
@@ -578,7 +599,7 @@ The order is driven by dependencies:
 | D1 | **F-DES-1 theme object** + scheme colour refs + Design-tab colour/font editors | L | B2 |
 | D2 | **F-DES-3 Format background** (solid/gradient/picture, apply to all) | S–M | A4, B5 |
 | D3 | **F-SLD-3 slide size** | M | — |
-| D4 | **F-DES-2 masters & layouts as data** + master editor + import keeps masters + `.potx` templates + Reset slide + **F-SLD-5**; export v1 = one master (multi-master warned) | L | D1, B1 |
+| D4 | **F-DES-2 masters & layouts as data** (K3's layout compilers become layout definitions) + master editor + import keeps masters + `.potx` templates + Reset slide + **F-SLD-5**; export v1 = one master (multi-master warned) | L | D1, B1, K3 |
 | D5 | **F-DES-2 export v2**: true multi-master packages via `pptxPost.js` | M | D4, A4 |
 
 ### Phase E — Motion
@@ -602,6 +623,7 @@ The order is driven by dependencies:
 |---|---|---|---|---|
 | today | 24 | 14 | 17 | — |
 | A | 24 | 14 | 19 | honest UI; groups and gradients survive export |
+| K | 24 | 14 | 19 | (fidelity, not new matrix rows) one canvas renderer everywhere: crisp zoom, real thumbnails, Office-accurate shapes/gradients/text wrap, better PDF |
 | B | 29 | 22 | 23 | typical decks round-trip text, tables, charts |
 | C | 35 | 27 | 29 | PowerPoint-grade formatting and arranging |
 | D | 39 | 31 | 32 | corporate templates and masters survive |
@@ -626,7 +648,7 @@ Long-tail features remain out of scope: SmartArt editing, equations, media playb
 ## 5. Definition of done, risks, open questions
 
 ### Definition of done (every milestone)
-1. **One gate, one model.** New fields land in `deckUtils.js` validators, `SlideRenderer`, `pptxExport.js` (and `pptxPost.js`), `pptxImport.js`, the MCP tool schemas and the Co-pilot prompts (`llmClient.js`) **in the same PR**.
+1. **One gate, one model.** New fields land in `deckUtils.js` validators, the canvas scene builder/painters (`SlideRenderer` until K7), `pptxExport.js` (and `pptxPost.js`), `pptxImport.js`, the MCP tool schemas and the Co-pilot prompts (`llmClient.js`) **in the same PR**.
 2. **Round-trip test.** model → export → import gives the same model, within geometry tolerance, for every new field (fixture-driven, `src/test/pptxFixture.js`).
 3. **TDD and coverage.** Red → green → refactor. New modules (`commands.js`, `richText.js`, `pptxPost.js`, …) are added to `coverage.include`, and the 90% gate holds.
 4. **Migration.** `normalizeDeck` upgrades persisted decks. Legacy shapes stay readable for one release.
@@ -634,9 +656,9 @@ Long-tail features remain out of scope: SmartArt editing, equations, media playb
 6. **Honesty.** No control ships without a handler. If it isn't ready it's hidden or `SoonTag`ged, and every shortcut it shows is bound.
 
 ### Risks
-- **Rich-text editing in contenteditable (B2)** is the hardest piece: selection mapping, IME, undo coalescing.
-  - Mitigation: a pure model library with exhaustive tests; a thin DOM adapter; edits on the model, never on the DOM.
-  - Fallback: adopt a small, maintained editor core (e.g. ProseMirror) behind the same `paragraphs` schema, decided at B2 kick-off.
+- **Canvas-native rich-text editing (K6)** is the hardest piece: caret mapping, IME, undo coalescing.
+  - Mitigation: a pure model library with exhaustive tests; caret geometry from the same layout that paints; edits on the model, never on the surface.
+  - Fallback: K5's DOM editing overlay ships until K6 is solid. See [`CANVAS-EDITOR.md`](CANVAS-EDITOR.md) §10 for the other canvas risks (fidelity ownership, memory, accessibility, test migration).
 - **pptxgenjs gaps.** Transitions, timing, groups, gradients and comments have no API, and `pptxPost.js` depends on object-name stability across pptxgenjs versions.
   - Mitigation: pin the version, and add a post-processor test that runs on real pptxgenjs output in CI.
 - **pptxgenjs structural limits.** Its single-master package and the `defineLayout`/`layout` two-step are known; others may surface.
