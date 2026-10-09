@@ -74,8 +74,8 @@ describe('AiDeckModal', () => {
     expect(screen.getByRole('button', { name: /Draft outline/ })).toBeEnabled(); // can retry
   });
 
-  it('reports a plain outline error (not an LLM failure) verbatim', async () => {
-    draftOutline.mockRejectedValue(new Error('The AI did not return a usable outline — try again.'));
+  it('reports an unusable outline in words', async () => {
+    draftOutline.mockRejectedValue(Object.assign(new Error('x'), { reason: 'outline' }));
     render(<AiDeckModal onClose={vi.fn()} onCreate={vi.fn()} />);
     typeTopic();
     fireEvent.click(screen.getByRole('button', { name: /Draft outline/ }));

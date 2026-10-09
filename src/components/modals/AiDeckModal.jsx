@@ -3,31 +3,26 @@ import { Button, IconButton } from '../ui/Primitives.jsx';
 import { draftOutline, buildDeck } from '../../lib/aiDeck.js';
 import { describeLLMError } from '../../lib/llmClient.js';
 
-// LLM failures carry a classified `reason` (describeLLMError words them for the
-// user); anything else — e.g. an unusable outline — already has a readable message.
-const errorText = (err) => (err?.reason ? describeLLMError(err) : err?.message || describeLLMError(err));
-
 // "Start with AI": describe a topic → review the drafted outline (drop slides
 // you don't want) → generate the slides with live progress → `onCreate(deck)`,
 // which saves and opens it. Errors keep the dialog open on the step that failed.
 export default function AiDeckModal({ onClose, onCreate }) {
-  const [step, setStep] = useState('topic'); // 'topic' | 'outline' | 'building'
+  const [step, setStep] = useState('topic'); // 'topic' | 'drafting' | 'outline' | 'building'
   const [topic, setTopic] = useState('');
   const [outline, setOutline] = useState(null);
-  const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(0);
   const [error, setError] = useState(null);
 
   async function draft() {
-    setBusy(true);
+    setStep('drafting');
     setError(null);
     try {
       setOutline(await draftOutline(topic));
       setStep('outline');
     } catch (err) {
-      setError(errorText(err));
+      setError(describeLLMError(err));
+      setStep('topic');
     }
-    setBusy(false);
   }
 
   async function generate() {
@@ -38,23 +33,25 @@ export default function AiDeckModal({ onClose, onCreate }) {
       const deck = await buildDeck(outline, { onProgress: (n) => setDone(n) });
       await onCreate(deck);
     } catch (err) {
-      setError(errorText(err));
+      setError(describeLLMError(err));
       setStep('outline');
     }
   }
 
   const remove = (i) => setOutline((o) => ({ ...o, slides: o.slides.filter((_, j) => j !== i) }));
   const count = outline?.slides.length || 0;
+  const locked = step === 'drafting' || step === 'building'; // a request is in flight
+  const editingTopic = step === 'topic' || step === 'drafting';
 
   return (
-    <div className="modal-backdrop" onClick={busy || step === 'building' ? undefined : onClose}>
+    <div className="modal-backdrop" onClick={locked ? undefined : onClose}>
       <div className="modal medium" role="dialog" aria-label="Start with AI" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h3>Start with AI</h3>
-          <IconButton name="x" title="Close" onClick={onClose} disabled={step === 'building'}/>
+          <IconButton name="x" title="Close" onClick={onClose} disabled={locked}/>
         </div>
         <div className="modal-body">
-          {step === 'topic' && (
+          {editingTopic && (
             <textarea
               aria-label="Deck topic"
               className="ai-deck-topic"
@@ -62,10 +59,11 @@ export default function AiDeckModal({ onClose, onCreate }) {
               rows={4}
               placeholder="Make a deck about… e.g. “Q3 results for the leadership team: revenue, churn, and next quarter's bets”"
               value={topic}
+              readOnly={locked}
               onChange={(e) => setTopic(e.target.value)}
             />
           )}
-          {step !== 'topic' && outline && (
+          {!editingTopic && (
             <>
               <h4 className="ai-deck-title">{outline.title}</h4>
               <ol className="ai-deck-outline">
@@ -87,11 +85,11 @@ export default function AiDeckModal({ onClose, onCreate }) {
           <span className="ai-deck-status" role={error ? 'alert' : 'status'}>
             {error || (step === 'building' ? `Generating slide ${Math.min(done + 1, count)} of ${count}…` : '')}
           </span>
-          {step === 'topic' && (
+          {editingTopic && (
             <>
-              <Button variant="ghost" onClick={onClose}>Cancel</Button>
-              <Button variant="accent" icon="ai" onClick={draft} disabled={busy || !topic.trim()}>
-                {busy ? 'Drafting…' : 'Draft outline'}
+              <Button variant="ghost" onClick={onClose} disabled={locked}>Cancel</Button>
+              <Button variant="accent" icon="ai" onClick={draft} disabled={locked || !topic.trim()}>
+                {locked ? 'Drafting…' : 'Draft outline'}
               </Button>
             </>
           )}

@@ -38,7 +38,7 @@ export default function PresenterControls({
       <div style={{ width: 1, height: 32, background: 'rgba(255,255,255,0.15)' }}/>
       <div>
         <div style={{ fontSize: 22, fontFamily: 'var(--f-mono)', color: 'white', fontWeight: 500 }}>
-          {String(idx + 1).padStart(2, '0')} <span style={{ color: 'rgba(255,255,255,0.3)' }}>/ {String(total).padStart(2, '0')}</span>
+          {pad2(idx + 1)} <span style={{ color: 'rgba(255,255,255,0.3)' }}>/ {pad2(total)}</span>
         </div>
         <div className="muted" style={{ marginTop: 2 }}>slide · → next · ← prev</div>
       </div>

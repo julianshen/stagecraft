@@ -160,7 +160,7 @@ export default function HomeView({ decks = [], onOpenDeck, onNewDeck, onOpenTemp
         <div className="section-head">
           <h2>Your decks · {cards.length}</h2>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <Button variant="ghost" icon="filter" disabled className="is-soon">Filter <SoonTag /></Button>
+            <Button variant="ghost" icon="filter" soon>Filter</Button>
             <Button
               variant="ghost"
               icon="sort"

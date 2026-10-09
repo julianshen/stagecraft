@@ -1,6 +1,5 @@
 import Icon from '../ui/Icon.jsx';
 import { Button } from '../ui/Primitives.jsx';
-import SoonTag from '../ui/SoonTag.jsx';
 
 export default function SorterToolbar({ mode, setMode, onBack, onAddSection, onRearrange, rearranging, rearrangeError }) {
   return (
@@ -19,8 +18,8 @@ export default function SorterToolbar({ mode, setMode, onBack, onAddSection, onR
         </div>
       </div>
       <div className="group">
-        <Button variant="ghost" icon="filter" disabled className="is-soon">All sections <SoonTag/></Button>
-        <Button variant="ghost" icon="sort" disabled className="is-soon">By order <SoonTag/></Button>
+        <Button variant="ghost" icon="filter" soon>All sections</Button>
+        <Button variant="ghost" icon="sort" soon>By order</Button>
       </div>
       <div className="spacer"/>
       <div className="group" style={{ border: 0 }}>

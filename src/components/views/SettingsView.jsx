@@ -5,8 +5,8 @@ import { Button, Seg, FieldRow } from '../ui/Primitives.jsx';
 import { ACCENTS } from '../../data/deck.js';
 import { callLLM, describeLLMError, LOCAL_DEFAULT_BASE } from '../../lib/llmClient.js';
 import { shortcutGroups, formatKeys, commandById } from '../../lib/commands.js';
-import { GENERAL_STORAGE_KEY, MAX_PRESENT_TARGET, readGeneralSettings } from '../../lib/generalSettings.js';
-import { EXPORT_STORAGE_KEY, readExportSettings } from '../../lib/exportSettings.js';
+import { generalSettings, MAX_PRESENT_TARGET, toTargetMinutes } from '../../lib/generalSettings.js';
+import { exportSettings } from '../../lib/exportSettings.js';
 
 // ---- provider + model catalog ----
 const PROVIDERS = [
@@ -363,22 +363,15 @@ function AppearanceSettings({ tw, setTw }) {
 // in lib/generalSettings.js so this writer and the canvas readers agree. Slide
 // size / language / autosave / spell check are deliberately inert-and-disabled
 // below — no state, no storage.
-// A typed talk target → whole minutes in [0, MAX_PRESENT_TARGET]; empty or
-// unparseable means none (0).
-function toTargetMinutes(raw) {
-  const n = Math.trunc(Number(raw));
-  return Number.isFinite(n) ? Math.min(MAX_PRESENT_TARGET, Math.max(0, n)) : 0;
-}
-
 function GeneralSettings() {
   // readGeneralSettings picks only the live keys, so legacy inert values are
   // dropped, not carried.
-  const [settings, setSettings] = useState(readGeneralSettings);
+  const [settings, setSettings] = useState(generalSettings.read);
 
   function save(patch) {
     const next = { ...settings, ...patch };
     setSettings(next);
-    try { localStorage.setItem(GENERAL_STORAGE_KEY, JSON.stringify(next)); } catch {}
+    generalSettings.write(next);
   }
 
   return (
@@ -442,11 +435,11 @@ function GeneralSettings() {
 // default format among the ones it can produce, and speaker notes. The rest is
 // visible-but-Soon.
 function ExportSettings() {
-  const [settings, setSettings] = useState(readExportSettings);
+  const [settings, setSettings] = useState(exportSettings.read);
   function save(patch) {
     const next = { ...settings, ...patch };
     setSettings(next);
-    try { localStorage.setItem(EXPORT_STORAGE_KEY, JSON.stringify(next)); } catch {}
+    exportSettings.write(next);
   }
   return (
     <div className="settings-scroll">

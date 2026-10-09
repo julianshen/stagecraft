@@ -848,11 +848,6 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   font-size: 10.5px;
   color: var(--ink-3);
 }
-.statusbar .dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  display: inline-block;
-  margin-right: 5px;
-}
 .statusbar .spacer { flex: 1; }
 .statusbar .zoom { display: flex; align-items: center; gap: 2px; }
 .statusbar .zoom button {

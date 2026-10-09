@@ -27,6 +27,8 @@ const LLM_ERROR_MESSAGES = {
   // network = our own /api/llm proxy was unreachable, not a provider failure
   network: 'Couldn’t reach the Stagecraft server — is the dev server running?',
   provider: 'The AI provider returned an error — try again.',
+  // minted by lib/aiDeck.js when the model's deck outline is unusable
+  outline: 'The AI did not return a usable outline — try again or rephrase the topic.',
 };
 
 /** User-facing message for any error thrown by an LLM call. */
@@ -127,7 +129,7 @@ export async function callLLM(messages, options = {}) {
 
 // Parse a model reply as JSON, tolerating surrounding whitespace and accidental
 // ```json code fences (which models often emit with leading newlines).
-function parseJsonReply(text) {
+export function parseJsonReply(text) {
   const clean = String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
   return JSON.parse(clean);
 }

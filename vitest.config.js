@@ -19,6 +19,7 @@ export default defineConfig({
         'src/lib/deckUtils.js',
         'src/lib/generalSettings.js',
         'src/lib/exportSettings.js',
+        'src/lib/storedSettings.js',
         'src/lib/aiDeck.js',
         'src/lib/elements.js',
         'src/lib/llmClient.js',

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseOutline, draftOutline, buildDeck, OUTLINE_LIMITS } from './aiDeck.js';
+import { parseOutline, draftOutline, buildDeck, MAX_OUTLINE_SLIDES } from './aiDeck.js';
+import { describeLLMError } from './llmClient.js';
 
 const outlineJson = {
   title: 'Q3 Review',
@@ -38,13 +39,16 @@ describe('parseOutline', () => {
 
   it('caps the outline at the maximum slide count', () => {
     const many = Array.from({ length: 40 }, (_, i) => ({ layout: 'text', title: `S${i}` }));
-    expect(parseOutline(JSON.stringify({ title: 'T', slides: many })).slides).toHaveLength(OUTLINE_LIMITS.max);
+    expect(parseOutline(JSON.stringify({ title: 'T', slides: many })).slides).toHaveLength(MAX_OUTLINE_SLIDES);
   });
 
-  it('rejects unusable replies with a readable error', () => {
-    expect(() => parseOutline('not json')).toThrow(/outline/i);
-    expect(() => parseOutline(JSON.stringify({ title: 'T', slides: [] }))).toThrow(/outline/i);
-    expect(() => parseOutline(JSON.stringify([1, 2]))).toThrow(/outline/i);
+  it('rejects unusable replies with a classified, readable error', () => {
+    for (const bad of ['not json', JSON.stringify({ title: 'T', slides: [] }), JSON.stringify([1, 2]), 'null']) {
+      let err;
+      try { parseOutline(bad); } catch (e) { err = e; }
+      expect(err?.reason).toBe('outline');
+      expect(describeLLMError(err)).toMatch(/usable outline/);
+    }
     expect(() => parseOutline(JSON.stringify({ slides: outlineJson.slides }))).not.toThrow(); // title falls back
   });
 
