@@ -313,4 +313,41 @@ describe('Start with AI', () => {
     expect(within(dialog).getByRole('alert')).toHaveTextContent(/saved to your library but could not be opened/);
     expect(store.get('stagecraft.view')).toBe('home');
   });
+
+  it('retrying after an open failure reopens the saved deck instead of creating a duplicate', async () => {
+    store.set('stagecraft.view', 'home');
+    const generated = { title: 'Q3', sections: [], slides: [] };
+    vi.mocked(draftOutline).mockResolvedValue({ title: 'Q3', slides: [{ layout: 'cover', title: 'Q3', brief: '' }] });
+    vi.mocked(buildDeck).mockResolvedValue(generated);
+    const srv = makeServer();
+    const base = srv.fetchFn.getMockImplementation();
+    let creates = 0;
+    let activations = 0;
+    srv.fetchFn.mockImplementation((url, init) => {
+      const path = String(url).split('?')[0];
+      if (path === '/api/decks' && init?.method === 'POST') { creates += 1; return Promise.resolve({ ok: true, json: async () => ({ id: 'x2' }) }); }
+      if (path === '/api/decks/x2/activate') {
+        activations += 1;
+        return Promise.resolve({ ok: true, json: async () => (activations === 1 ? {} : { deck: generated, rev: 2 }) });
+      }
+      return base(url, init);
+    });
+    vi.stubGlobal('fetch', srv.fetchFn);
+
+    render(<App />);
+    await flush();
+    fireEvent.click(screen.getByText('Start with AI'));
+    const dialog = screen.getByRole('dialog', { name: 'Start with AI' });
+    fireEvent.change(within(dialog).getByLabelText('Deck topic'), { target: { value: 'Q3' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Draft outline/ }));
+    await flush();
+    fireEvent.click(within(dialog).getByRole('button', { name: /Generate 1 slide/ }));
+    await flush();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Retry save' }));
+    await flush();
+
+    expect(creates).toBe(1);
+    expect(activations).toBe(2);
+    expect(store.get('stagecraft.view')).toBe('editor');
+  });
 });

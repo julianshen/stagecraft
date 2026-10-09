@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button, IconButton } from '../ui/Primitives.jsx';
 import { draftOutline, buildDeck } from '../../lib/aiDeck.js';
 import { describeLLMError } from '../../lib/llmClient.js';
@@ -17,6 +17,22 @@ export function AiDeckModal({ onClose, onCreate }) {
   const [done, setDone] = useState(0);
   const [error, setError] = useState(null);
 
+  // A request that settles after the dialog is gone (closed by the app, a view
+  // switch) must not create a deck the user no longer expects.
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+
+  // App closes any modal on Escape (window listener). Past the topic step that
+  // would discard a drafted outline or abandon an in-flight build, so swallow
+  // Escape here first (capture phase) — the explicit Cancel / × still close.
+  const guarded = step !== 'topic';
+  useEffect(() => {
+    if (!guarded) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') e.stopImmediatePropagation(); };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [guarded]);
+
   async function draft() {
     setStep('drafting');
     setError(null);
@@ -30,6 +46,7 @@ export function AiDeckModal({ onClose, onCreate }) {
   }
 
   async function save(deck) {
+    if (!alive.current) return;
     try {
       await onCreate(deck);
     } catch (err) {

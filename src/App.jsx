@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ACCENTS, SAMPLE_DECK } from './data/deck.js';
 import TopBar from './components/TopBar.jsx';
 
@@ -133,10 +133,18 @@ export default function App() {
   };
   // Start with AI: save the generated deck to the library and open it. A failure
   // throws back to the dialog, which stays open and shows it.
+  // A retry of the same generated deck (after an open failure) reopens the deck
+  // already saved rather than creating a duplicate.
+  const aiDeckIds = useRef(new WeakMap());
   const handleCreateAiDeck = async (generated) => {
-    const meta = await createDeck(generated.title, generated);
-    if (!meta?.id) throw new Error('The deck library did not accept the new deck.');
-    if (!(await handleOpenDeck(meta.id))) throw new Error('The deck was saved to your library but could not be opened.');
+    let id = aiDeckIds.current.get(generated);
+    if (!id) {
+      const meta = await createDeck(generated.title, generated);
+      if (!meta?.id) throw new Error('The deck library did not accept the new deck.');
+      id = meta.id;
+      aiDeckIds.current.set(generated, id);
+    }
+    if (!(await handleOpenDeck(id))) throw new Error('The deck was saved to your library but could not be opened.');
     setModal(null);
   };
   // Import a PowerPoint file: parse it client-side, save it as a new library

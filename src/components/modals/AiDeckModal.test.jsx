@@ -152,4 +152,42 @@ describe('AiDeckModal', () => {
     fireEvent.click(container.querySelector('.modal-backdrop'));
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it('swallows Escape while a request is in flight or an outline exists, so the app cannot close it', async () => {
+    draftOutline.mockResolvedValue(outline);
+    let finish;
+    buildDeck.mockImplementation(() => new Promise((r) => { finish = r; }));
+    const appEscape = vi.fn();
+    window.addEventListener('keydown', appEscape); // stands in for App's window listener
+    try {
+      render(<AiDeckModal onClose={vi.fn()} onCreate={vi.fn(async () => {})} />);
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(appEscape).toHaveBeenCalledTimes(1); // topic step: Escape may close
+      typeTopic();
+      fireEvent.click(screen.getByRole('button', { name: /Draft outline/ }));
+      await screen.findByText('Numbers');
+      fireEvent.keyDown(window, { key: 'Escape' });
+      fireEvent.click(screen.getByRole('button', { name: /Generate 3 slides/ }));
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(appEscape).toHaveBeenCalledTimes(1);
+      act(() => finish({ slides: [] }));
+    } finally {
+      window.removeEventListener('keydown', appEscape);
+    }
+  });
+
+  it('never creates a deck if it is unmounted while generating', async () => {
+    draftOutline.mockResolvedValue(outline);
+    let finish;
+    buildDeck.mockImplementation(() => new Promise((r) => { finish = r; }));
+    const onCreate = vi.fn(async () => {});
+    const { unmount } = render(<AiDeckModal onClose={vi.fn()} onCreate={onCreate} />);
+    typeTopic();
+    fireEvent.click(screen.getByRole('button', { name: /Draft outline/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Generate 3 slides/ }));
+    await waitFor(() => expect(buildDeck).toHaveBeenCalled());
+    unmount();
+    await act(async () => { finish({ slides: [] }); });
+    expect(onCreate).not.toHaveBeenCalled();
+  });
 });
