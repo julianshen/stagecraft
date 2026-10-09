@@ -868,3 +868,20 @@ describe('CanvasSlide pen tool', () => {
     expect(onDrawElement.mock.calls[0][1]).not.toHaveProperty('grid'); // pathFromStroke output passed through untouched
   });
 });
+
+describe('CanvasSlide — right button', () => {
+  it('a right-button press on an element neither selects nor drags it (the context menu handles it)', () => {
+    const onSelectElement = vi.fn();
+    const onUpdateElements = vi.fn();
+    const { container } = render(
+      <CanvasSlide slide={slide} renderSlide={renderSlide} deckCtx={{}}
+        selectedIds={[]} onSelectElement={onSelectElement} onUpdateElements={onUpdateElements} />,
+    );
+    const el = hits(container)[0];
+    fire(el, 'pointerdown', { clientX: 0, clientY: 0, button: 2 });
+    fire(window, 'pointermove', { clientX: 40, clientY: 40, button: 2 });
+    fire(window, 'pointerup', { clientX: 40, clientY: 40, button: 2 });
+    expect(onSelectElement).not.toHaveBeenCalled();
+    expect(onUpdateElements).not.toHaveBeenCalled();
+  });
+});

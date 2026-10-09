@@ -4,6 +4,7 @@ import SoonTag from '../ui/SoonTag.jsx';
 import { Button, Seg, FieldRow } from '../ui/Primitives.jsx';
 import { ACCENTS } from '../../data/deck.js';
 import { callLLM, describeLLMError, LOCAL_DEFAULT_BASE } from '../../lib/llmClient.js';
+import { shortcutGroups, formatKeys, commandById } from '../../lib/commands.js';
 import { GENERAL_STORAGE_KEY, readGeneralSettings } from '../../lib/generalSettings.js';
 
 // ---- provider + model catalog ----
@@ -442,15 +443,13 @@ function ExportSettings() {
 }
 
 // ---- shortcuts ----
+// Generated from the command registry (lib/commands.js), so it lists exactly
+// the shortcuts that are bound — in this platform's notation.
 function ShortcutSettings() {
-  const groups = [
-    { g: 'Editing',    rows: [['Present', '⌘ ⏎'], ['New slide', '⌘ N'], ['Duplicate', '⌘ D'], ['Delete slide', '⌫'], ['Co-pilot', '⌘ K']] },
-    { g: 'Navigation', rows: [['Search', '⌘ /'], ['Next slide', '→'], ['Prev slide', '←'], ['Slide sorter', '⌘ 2']] },
-    { g: 'Format',     rows: [['Bold', '⌘ B'], ['Italic', '⌘ I'], ['Align left', '⌘ ⇧ L'], ['Group', '⌘ G']] },
-  ];
+  const groups = shortcutGroups();
   return (
     <div className="settings-scroll">
-      <SettingsHeader title="Keyboard shortcuts" sub="The essentials. Most actions also live in the right-click menu."/>
+      <SettingsHeader title="Keyboard shortcuts" sub={`Every bound shortcut. Commands also live in the right-click menus and the command palette (${formatKeys(commandById('view.palette'))}).`}/>
       {groups.map(grp => (
         <Section key={grp.g} label={grp.g}>
           <div className="shortcut-grid">

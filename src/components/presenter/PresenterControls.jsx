@@ -1,4 +1,8 @@
 import Icon from '../ui/Icon.jsx';
+import { formatKeys, commandById, tooltip } from '../../lib/commands.js';
+
+const BLACKOUT_TIP = tooltip('Blackout', 'show.blackout');
+const EXIT_KEYS = formatKeys(commandById('show.exit'));
 
 export default function PresenterControls({
   idx,
@@ -44,10 +48,10 @@ export default function PresenterControls({
       <button className={laser ? 'active' : ''} onClick={() => setLaser(l => !l)}>
         <Icon name="dot" size={13}/> Laser
       </button>
-      <button className={blackout ? 'active' : ''} onClick={() => setBlackout(b => !b)} title="Blackout · B">
+      <button className={blackout ? 'active' : ''} onClick={() => setBlackout(b => !b)} title={BLACKOUT_TIP}>
         <Icon name="eye" size={13}/> Blackout
       </button>
-      <button onClick={onExit}><Icon name="x" size={13}/> End · Esc</button>
+      <button onClick={onExit}><Icon name="x" size={13}/> End · {EXIT_KEYS}</button>
     </div>
   );
 }

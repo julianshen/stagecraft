@@ -15,6 +15,7 @@ import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
 import { useDeckSync } from './hooks/useDeckSync.js';
 import { useDeckHistory } from './hooks/useDeckHistory.js';
 import { isTextEditingTarget } from './lib/domEvents.js';
+import { dispatchKey } from './lib/commands.js';
 import { listDecks, createDeck, openDeck, renameDeck, deleteDeck } from './lib/decksApi.js';
 import { templateDeck } from './lib/templateDeck.js';
 import { importPptx } from './lib/pptxImport.js';
@@ -190,24 +191,21 @@ export default function App() {
   // ---- keyboard shortcuts ----
   useEffect(() => {
     function onKey(e) {
-      if (e.metaKey && e.key === 'Enter') { setPresenting(true); }
       if (e.key === 'Escape') { setModal(null); setPresenting(false); }
-      // Undo/redo. While editing text, defer to the browser's native text undo
-      // rather than reverting the deck (but let it through on non-text controls
-      // like dropdowns/checkboxes, which have no native undo of their own).
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
-        if (isTextEditingTarget(e.target)) return;
-        e.preventDefault();
-        if (e.shiftKey) redo(); else undo();          // ⌘Z / ⌘⇧Z
-      } else if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) {
-        if (isTextEditingTarget(e.target)) return;
-        e.preventDefault();
-        redo();                                        // ⌘Y / Ctrl+Y (Windows/Linux redo)
-      }
+      // App-scope commands (lib/commands.js): present, undo, redo. While editing
+      // text, undo/redo defer to the browser's native text undo (their `when`),
+      // but still fire on non-text controls like dropdowns/checkboxes, which
+      // have no native undo of their own.
+      dispatchKey(e, {
+        scope: 'app',
+        textEditing: isTextEditingTarget(e.target),
+        // No presenting over a modal: it would unmount it (losing its choices).
+        act: { present: modal ? undefined : () => setPresenting(true), undo, redo },
+      });
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo]);
+  }, [undo, redo, modal]);
 
   if (presenting) {
     return <PresenterView deck={deck} onExit={() => setPresenting(false)}/>;
@@ -244,6 +242,7 @@ export default function App() {
       {view === 'editor' && (
         <Editor
           deck={deck}
+          keysEnabled={!modal}
           onDeckChange={handleDeckChange}
           accent={tw.accent}
           layoutVariant={tw.layout}

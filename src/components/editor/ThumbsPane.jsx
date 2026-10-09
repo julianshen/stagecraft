@@ -42,12 +42,13 @@ function thumbPropsEqual(prev, next) {
 // One thumbnail card. Memoized so a per-keystroke deck edit (Data tab,
 // Co-pilot) re-renders only the edited slide's thumb instead of all N —
 // each thumb is a full <Slide> render behind a ResizeObserver.
-const Thumb = React.memo(function Thumb({ slide, idx, total, isActive, nComments, deck, renderSlide, onPick, dragHandlers }) {
+const Thumb = React.memo(function Thumb({ slide, idx, total, isActive, nComments, deck, renderSlide, onPick, onContextMenu, dragHandlers }) {
   return (
     <div
       data-sid={slide.id}
       className={`thumb ${isActive ? 'active' : ''}`}
       onClick={() => onPick(slide.id)}
+      onContextMenu={onContextMenu ? (e) => onContextMenu(e, slide.id) : undefined}
       {...dragHandlers}
     >
       <div className="thumb-num">{String(idx + 1).padStart(2, '0')}</div>
@@ -61,7 +62,7 @@ const Thumb = React.memo(function Thumb({ slide, idx, total, isActive, nComments
   );
 }, thumbPropsEqual);
 
-export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx = {}, comments = [], onNewSlide, onReorder, onAddSection, onRenameSection, onDeleteSection }) {
+export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide, deckCtx = {}, comments = [], onNewSlide, newSlideTitle = 'New slide', onThumbContextMenu, onReorder, onAddSection, onRenameSection, onDeleteSection }) {
   const [collapsed, setCollapsed] = useState(new Set());
   function toggleSection(id) {
     setCollapsed(prev => {
@@ -85,7 +86,7 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
       <div className="pane-header">
         <span>Slides · {flat.length}</span>
         <div className="actions">
-          <IconButton name="plus" title="New slide · ⌘N" onClick={onNewSlide} />
+          <IconButton name="plus" title={newSlideTitle} onClick={onNewSlide} />
           <IconButton name="outline" title="Outline view" />
           <IconButton name="more-h" title="More" />
         </div>
@@ -144,6 +145,7 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
                   deck={deckCtx.deck}
                   renderSlide={renderSlide}
                   onPick={onPick}
+                  onContextMenu={onThumbContextMenu}
                   // Load-bearing: Thumb never reads secSlides, but the memo
                   // comparator does — its identity changes when this section is
                   // reordered, rebuilding the (skipped-identity) drag closure

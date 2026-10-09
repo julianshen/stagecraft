@@ -74,7 +74,7 @@ What works well and should be kept:
 | Right-click | Context-aware menus: element · multi-select · canvas · thumbnail · section |
 | (none) | **⌘K command palette**: every command, searchable — the Stagecraft answer to "Tell me what you want to do" |
 
-### 2.2 F-UI-1 — Command registry (foundation for every surface)
+### 2.2 F-UI-1 — Command registry (foundation for every surface) ✅ (A1)
 
 `lib/commands.js` exports a registry of commands. Each command has:
 - `id` — for example `element.duplicate`;
@@ -547,7 +547,7 @@ The order is driven by dependencies:
 ### Phase A — UX honesty & foundations (unblocks everything)
 | M | Scope | Size | Depends |
 |---|---|---|---|
-| A1 | **F-UI-1 command registry**: context-aware element/thumbnail/canvas menus, truthful shortcuts, Ctrl parity, ⌘K palette, generated Shortcuts page, editor PgUp/PgDn | M | — |
+| A1 ✅ | **F-UI-1 command registry**: context-aware element/thumbnail/canvas menus, truthful shortcuts, Ctrl parity, ⌘K palette, generated Shortcuts page, editor PgUp/PgDn | M | — |
 | A2 | **F-UI-4 honesty pass 2**: presenter clock/reset, computed Fit + zoom > 92%, status bar binds, real export size, hide/wire remaining mocks, Home slide-1 thumbnails | S–M | — |
 | A3 | **F-UI-3 inspector correctness**: Select primitive (single chevron), text-colour labelling + `fill`→`color` migration, image fit control, chart-type control | S | — |
 | A4 | **F-EXP-1 `pptxPost.js` scaffold** + first patches: `grpSp` groups, shape/background `gradFill`, element flips | M | — |

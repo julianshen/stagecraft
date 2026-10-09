@@ -77,18 +77,18 @@ describe('SlideEditor align toolbar', () => {
   it('the z-order buttons arrange the single selected element', () => {
     const onArrangeElement = vi.fn();
     const { getByTitle } = renderEditor({ onArrangeElement }, 1);
-    fireEvent.click(getByTitle('Bring to front'));
+    fireEvent.click(getByTitle(/^Bring to front/));
     expect(onArrangeElement).toHaveBeenCalledWith('front');
-    fireEvent.click(getByTitle('Send to back'));
+    fireEvent.click(getByTitle(/^Send to back/));
     expect(onArrangeElement).toHaveBeenCalledWith('back');
   });
 
   it('disables the z-order buttons unless exactly one element is selected', () => {
-    expect(renderEditor({}, 1).getByTitle('Bring to front')).not.toBeDisabled();
+    expect(renderEditor({}, 1).getByTitle(/^Bring to front/)).not.toBeDisabled();
     cleanup();
-    expect(renderEditor({}, 0).getByTitle('Bring to front')).toBeDisabled();
+    expect(renderEditor({}, 0).getByTitle(/^Bring to front/)).toBeDisabled();
     cleanup();
-    expect(renderEditor({}, 2).getByTitle('Send to back')).toBeDisabled();
+    expect(renderEditor({}, 2).getByTitle(/^Send to back/)).toBeDisabled();
   });
 });
 
@@ -305,7 +305,8 @@ describe('SlideEditor canvas context menu', () => {
   });
 
   it('closes the menu on a click outside it (e.g. the toolbar or inspector)', () => {
-    const { container, queryByText } = renderEditor({});
+    // Paste is listed only when wired (unwired commands never show).
+    const { container, queryByText } = renderEditor({ onPasteElements: vi.fn() });
     openCtx(container);
     expect(queryByText('Paste')).not.toBeNull(); // open
     fireEvent.click(document.body); // a click outside any .ctx menu
