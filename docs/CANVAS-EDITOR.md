@@ -30,7 +30,7 @@ The goal of the PowerPoint plan is that *what Stagecraft shows is what PowerPoin
 - **Export of images.** PDF export rasterizes the DOM with `modern-screenshot`, a third render path with its own bugs (fonts, filters).
 - **Zoom.** The DOM is scaled with `transform: scale()`, so zoom > 92% looks the same (U8) and text blurs at odd scales.
 
-A single canvas painter, fed by the deck model, drawn at the device's real resolution, used by the editor, thumbnails, sorter, presenter and PDF export — and modelled on OOXML semantics — removes the first, third and fifth problems and makes the second and fourth tractable.
+A single canvas painter, fed by the deck model, drawn at the device's real resolution, used by the editor, thumbnails, sorter, presenter and PDF export — and modelled on OOXML semantics — fixes the third and fifth problems and makes the second and fourth tractable. For the first, the PPTX exporter consumes the **same compiled scene** (positions, geometry, text runs) instead of re-deriving layout geometry (§6, decision 8). What stays inherently separate is the final *text wrap*: PowerPoint re-wraps text with its own engine on open. That residual drift is a tracked risk (§10) with parity tests, not something the canvas can remove.
 
 ## 2. What we have today
 
@@ -45,7 +45,7 @@ A single canvas painter, fed by the deck model, drawn at the device's real resol
 | Model | Flat `slides` pool; slide = `layout` (discriminated union) + optional `elements[]` (`text`, `image`, `line`, `path`, 11 shape types); groups are a `groupId` tag; no table/chart elements | `data/deck.js`, `lib/deckUtils.js`, `lib/elements.js`, `lib/shapes.js` |
 | Tests touching the DOM render/edit surface | ~300 tests (CanvasSlide ~65, SlideRenderer ~85, SlideEditor ~56, Thumbs/Sorter/Presenter ~62, FormatToolbar/EditableText ~21, pdfExport ~12) | |
 
-What carries over unchanged: the deck model and its validators, `lib/elements.js` geometry, `lib/align.js`, the command registry, menus, inspector, sync, PPTX export/import.
+What carries over unchanged: the deck model and its validators, `lib/elements.js` geometry, `lib/align.js`, the command registry, menus, inspector, sync, PPTX import. PPTX export keeps its pptxgenjs plumbing (sections, backgrounds, native charts), but its per-layout builders are re-pointed at the compiled scene in K3 (§6, decision 8).
 
 ## 3. What officeview gives us
 
@@ -127,9 +127,11 @@ painters (pure, ctx in, no React/Konva)                                src/canva
         │     L1 content: one Konva.Shape per node (sceneFunc → paintNode, hitFunc → geometry path)
         │     L2 overlay: Transformer, smart guides, marquee, pen preview, collab cursors, text caret
         │
-        └── Everything else: <SlideCanvas slide>  (plain <canvas>, DPR-aware)   src/components/ui/SlideCanvas.jsx
-              thumbnails/sorter (bitmap cache, optional worker), presenter, Home cards,
-              PDF export (canvas → jsPDF image; replaces modern-screenshot)
+        ├── Everything else: <SlideCanvas slide>  (plain <canvas>, DPR-aware)   src/components/ui/SlideCanvas.jsx
+        │     thumbnails/sorter (bitmap cache, optional worker), presenter, Home cards,
+        │     PDF export (canvas → jsPDF image; replaces modern-screenshot)
+        │
+        └── PPTX export: scene nodes → pptxgenjs shapes/text/charts      src/lib/pptxExport.js
 ```
 
 Key decisions:
@@ -138,9 +140,14 @@ Key decisions:
 2. **Scene is derived, never stored.** `buildScene` is pure and memoised per slide revision. The model remains the single source of truth; Konva node attributes are never read back except at gesture end (`dragend`/`transformend`), which commits through the existing `lib/elements.js` functions → `Editor.jsx` mutations → the gate → sync.
 3. **Template layouts become placeholder nodes.** Each of the 13 layouts gets a *layout compiler* that emits positioned text/shape/content nodes (title, eyebrow, KPI tiles, roadmap bars…), using the same positions the CSS uses today. This is the first half of F-DES-2 "layouts as data": the compilers later become master/layout definitions (D4). Template fields stay `slide.title`/`slide.fmt` in the model.
 4. **Charts and tables paint natively.** `lib/chartSpec.js` already computes chart geometry; a chart painter draws the same series/axes/labels on canvas (line, bar, area, donut). Tables get a cell-grid painter (ported from officeview's `paintTable`), which is also the table *element* painter for B3.
-5. **Fonts gate the paint.** `ensureFonts(deck)` resolves families used by the scene and awaits `document.fonts.load` before measuring; a late font load invalidates layout caches and repaints.
+5. **Assets gate the paint.** `ensureAssets(scene, env)` returns one promise for everything the scene needs before it can be drawn correctly:
+   - **fonts** — resolves the families used by the scene and awaits `document.fonts.load` before measuring; a late font load bumps the font epoch, invalidates layout caches and repaints;
+   - **images** — decodes every image source into an `ImageBitmap`/`HTMLImageElement` cache on the env (`img.decode()`; data URLs decode asynchronously too), keyed by source so thumbnails and the editor share decoded images.
+
+   Interactive surfaces paint immediately and repaint when the promise settles (a missing image draws its placeholder meanwhile). **Anything that serialises pixels — thumbnail bitmaps, PDF export, `toDataURL`/`toBlob` — must `await ensureAssets()` first**, so a cold export can never capture blank images or fallback fonts.
 6. **Layout caching.** Text layout results are cached per (node text, style, box w/h, font epoch) so a drag only repaints, never re-lays out.
 7. **Accessibility.** A visually hidden DOM mirror (slide title + text of each node, in reading order, with `aria-live` for edits) replaces what the DOM renderer gave screen readers for free; the presenter announces the slide text.
+8. **Export from the scene.** `pptxExport.js` stops re-implementing template geometry: each per-layout builder becomes a mapping from the compiled scene's nodes (frame, geometry preset, fill/line, text runs and box props, chart/table content) to pptxgenjs calls. Layout positions, shape geometry and run styles then have exactly one source — the layout compilers and scene builder — shared by canvas, PDF and PPTX. Parity tests assert that for every layout in `SAMPLE_DECK` the exported shapes' frames and text runs equal the scene's (within EMU rounding).
 
 ## 7. Text on canvas
 
@@ -150,7 +157,7 @@ Neither Konva nor officeview edits text. Two stages:
 
 **K6: canvas-native text editing.** Text is edited *on the canvas* with the officeview layout as the source of caret geometry, so what you edit is exactly what is drawn and exported:
 
-- **Model:** `paragraphs[{props, runs[{text, style}]}]` — the F-TXT-3 rich-text schema, unchanged — and the pure `lib/richText.js` operations already specified (`insertText`, `deleteRange`, `applyRunStyle`, `splitParagraph`, …).
+- **Model:** `paragraphs[{props, runs[{text, style}]}]` — the F-TXT-3 rich-text schema, which lands complete (validator, migration, export/import) in K2 — and the pure `lib/richText.js` operations already specified (`insertText`, `deleteRange`, `applyRunStyle`, `splitParagraph`, …).
 - **Layout → caret map:** extend the layout output with per-grapheme x-advances per line (officeview already records UTF-16 ranges and grapheme boundaries for search/selection), giving `caretAt(x, y)`, `rectsFor(range)` and up/down/home/end navigation.
 - **Input:** a hidden, focused `<textarea>` positioned at the caret receives keystrokes, paste and **IME composition** (`compositionstart/update/end` render the preedit underlined on canvas). Keys go through the command registry (⌘B/I/U, bullets, indent).
 - **Rendering:** caret and selection rectangles are drawn on the overlay layer; the FormatToolbar and inspector read the selection's run style.
@@ -179,12 +186,12 @@ Each milestone is its own PR, behind a `canvasRenderer` / `canvasEditor` setting
 | M | Scope | Size | Depends |
 |---|---|---|---|
 | K0 | **Spike + decision record.** officeview `drawing` subpath export (or vendoring); add `konva` + `react-konva@18`; Vitest `paint` and `browser` projects; perf budget on a 40-slide deck (first paint, drag fps, memory). Confirms or rejects option B. | S–M | — |
-| K1 | **Drawing core.** `src/canvas/`: scene builder for *elements* (all current types; groups via `groupId`), geometry from presets (our 11 shapes mapped to `prstGeom` names), fills/gradients/lines/dashes/arrows, images (`cover`/`stretch`), opacity, rotation/flip, shadow; `paintSlide`; `<SlideCanvas>` with DPR + font gate. `blank` slides render on canvas. | M | K0 |
-| K2 | **Text engine.** officeview layout + measurer, font loading/epochs, layout cache; insets, anchors, autofit (shrink on overflow, new), bullets; rich-run model read path (`paragraphs`) with plain `content` as one run. | M–L | K1 |
-| K3 | **Layouts and content as scenes.** Layout compilers for the 12 template layouts; chart painter from `chartSpec.js`; roadmap/risks painters; table grid painter. Pixel probes against the DOM renderer for every layout in `SAMPLE_DECK`. | L | K2 |
+| K1 | **Drawing core.** `src/canvas/`: scene builder for *elements* (all current types; groups via `groupId`; text ink read from the post-A3 `color` field), geometry from presets (our 11 shapes mapped to `prstGeom` names), fills/gradients/lines/dashes/arrows, images (`cover`/`stretch`), opacity, rotation/flip, shadow; `paintSlide`; `<SlideCanvas>` with DPR; `ensureAssets` (fonts + image decode). `blank` slides render on canvas. | M | K0, A3 |
+| K2 | **Text engine + rich-text model.** officeview layout + measurer, font epochs, layout cache; insets, anchors, autofit (shrink on overflow, new), bullets. **Model (F-TXT-3):** the `paragraphs`/runs schema with its `deckUtils.js` validator, `normalizeDeck` migration (plain `content` → one run), MCP/Co-pilot schema, and PPTX export/import of runs and paragraph props — so rich text is a complete, round-tripping field before anything edits it. | L | K1 |
+| K3 | **Layouts and content as scenes.** Layout compilers for the 12 template layouts; chart painter from `chartSpec.js`; roadmap/risks painters; table grid painter; **`pptxExport.js` layout builders re-pointed at the compiled scene** (decision 8) with scene↔export parity tests. Pixel probes against the DOM renderer for every layout in `SAMPLE_DECK`. | L | K2 |
 | K4 | **Read-only surfaces on canvas.** Thumbnails/sorter with a bitmap cache keyed by slide revision (optional worker), presenter (transitions via canvas compositing), Home slide-1 cards (U13), PDF export via canvas → jsPDF. | M | K3 |
 | K5 | **Konva editor stage.** react-konva Stage + 3 layers; select/drag/smart guides/Transformer (single, multi, group)/marquee/shape draw/pen/context-menu hit/zoom + Fit + pan (U8)/rulers/collab cursors; text via the DOM overlay (§7 first cut). Parity checklist = today's `CanvasSlide` tests. | L | K4 |
-| K6 | **Canvas-native text editing.** Caret map, hidden-textarea input + IME, selection rendering, rich-run editing via `richText.js`, FormatToolbar on canvas selections; template fields and text elements both. Covers F-TXT-1 and the editing half of F-TXT-3. | L | K5 |
+| K6 | **Canvas-native text editing.** Caret map, hidden-textarea input + IME, selection rendering; the pure `lib/richText.js` edit operations (`insertText`, `deleteRange`, `applyRunStyle`, `splitParagraph`, …) with exhaustive tests; FormatToolbar on canvas selections (B/I/U, size, colour); template fields and text elements both. Covers F-TXT-1 and the editing half of F-TXT-3. | L | K5 |
 | K7 | **Cut-over.** Remove the DOM renderer (`SlideRenderer` render path, `ScaledSlide`, `ElementsLayer`, `.el-hit` overlay, `modern-screenshot`), delete the flags, update SPEC/CLAUDE.md ("Adding a slide layout" becomes: model schema + layout compiler + export builder). | S | K6 |
 
 Rough total: 7–10 weeks of focused work. K1–K4 already improve fidelity (presets, gradients, crisp zoom, real thumbnails, better PDF) before the editor itself switches.
@@ -193,6 +200,7 @@ Rough total: 7–10 weeks of focused work. K1–K4 already improve fidelity (pre
 
 **Risks**
 - **Text editing on canvas (K6)** is the largest piece (caret, IME, selection, undo coalescing). Mitigations: officeview's recorded text ranges as the caret basis; pure `richText.js`; K5's DOM overlay is a working fallback that can ship indefinitely if K6 slips.
+- **PowerPoint re-wraps text.** Even with export driven by the scene (decision 8), PowerPoint lays out text with its own engine on open, so line breaks can still differ from the canvas. Mitigation: officeview's PowerPoint-validated metrics; export sets explicit box insets, autofit and line spacing; round-trip parity tests per layout; a short list of reference decks checked in PowerPoint (`validation/office-reference` approach).
 - **Fidelity is now owned by us, not the browser.** Wrapping, kerning and font fallback come from our layout; mismatches with PowerPoint show up everywhere at once. Mitigation: officeview's native-PowerPoint-validated line metrics; golden tests; the `validation/office-reference` approach for a handful of decks.
 - **Memory and performance.** Stage sized to the viewport, ≤ 3 layers, background layer cached, `perfectDrawEnabled(false)`, thumbnails as cached bitmaps (never live stages), `Konva.pixelRatio` capped on low-memory devices.
 - **Accessibility and browser features.** Canvas text is invisible to screen readers, browser find and spell-check. Mitigations: the hidden DOM mirror (§6.7), app-level find (F-TXT-4), spell-check deferred to F4 using the mirror.

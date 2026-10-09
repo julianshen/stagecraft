@@ -547,7 +547,7 @@ The order is driven by dependencies:
 - Text in shapes and rich text unblock tables, charts, links and find.
 - The post-processor unblocks motion, gradients and groups in export.
 
-Order: **A → K → B → C → D → E → F**. A3 and A4 don't touch the render path and may run in parallel with K.
+Order: **A → K → B → C → D → E → F**. A3 lands **before K1**, because its `fill` → `color` migration changes the element contract the scene builder reads. A4 doesn't touch the render path and may run in parallel with K.
 
 ### Phase A — UX honesty & foundations (unblocks everything)
 | M | Scope | Size | Depends |
@@ -563,21 +563,21 @@ Full design, options and test strategy: [`CANVAS-EDITOR.md`](CANVAS-EDITOR.md). 
 | M | Scope | Size | Depends |
 |---|---|---|---|
 | K0 | Spike + decision record: officeview `drawing` subpath export (or vendoring), `konva` + `react-konva@18`, Vitest `paint` + `browser` projects, perf budget | S–M | — |
-| K1 | Drawing core: scene builder for elements, preset geometry, fills/gradients/lines/arrows, images, `paintSlide`, `<SlideCanvas>` (DPR, font gate) | M | K0 |
-| K2 | Text engine: officeview layout + measurer, font epochs, layout cache, insets/anchors/**autofit**/bullets, rich-run read path | M–L | K1 |
-| K3 | Layouts and content as scenes: 12 layout compilers, chart painter (from `chartSpec.js`), roadmap/risks painters, table grid painter | L | K2 |
+| K1 | Drawing core: scene builder for elements, preset geometry, fills/gradients/lines/arrows, images, `paintSlide`, `<SlideCanvas>` (DPR), `ensureAssets` (fonts + image decode; exports await it) | M | K0, A3 |
+| K2 | Text engine (officeview layout + measurer, font epochs, layout cache, insets/anchors/**autofit**/bullets) **+ F-TXT-3 model**: `paragraphs`/runs schema, validator, `normalizeDeck` migration, MCP schema, export/import of runs | L | K1 |
+| K3 | Layouts and content as scenes: 12 layout compilers, chart painter (from `chartSpec.js`), roadmap/risks painters, table grid painter; **PPTX layout builders export from the compiled scene** (one geometry source) | L | K2 |
 | K4 | Read-only surfaces on canvas: thumbnails/sorter (bitmap cache), presenter, **Home slide-1 cards (U13)**, PDF export via canvas | M | K3 |
 | K5 | Konva editor stage: select/drag/guides/Transformer/marquee/draw/pen/context-menu/collab, **zoom + Fit + pan (U8)**; text via DOM overlay | L | K4 |
-| K6 | Canvas-native text editing: caret map, hidden-textarea input + IME, selection, rich-run editing (F-TXT-1, editing half of F-TXT-3) | L | K5 |
+| K6 | Canvas-native text editing: caret map, hidden-textarea input + IME, selection, `lib/richText.js` edit operations, rich-run editing (F-TXT-1, editing half of F-TXT-3) | L | K5 |
 | K7 | Cut-over: remove DOM renderer, overlay, `modern-screenshot`, flags; update SPEC/CLAUDE.md | S | K6 |
 
 ### Phase B — Object model fidelity (round-trip for typical decks)
-All B milestones paint and edit through the Phase K engine. B1/B2 shrink because in-place editing, autofit and the rich-text layout land in K2/K6; what remains is the model, the toolbar, and export/import.
+All B milestones paint and edit through the Phase K engine. B1/B2 shrink because the rich-text model and its export/import (K2), autofit (K2) and in-place editing with `richText.js` (K6) land in Phase K; what remains is text-in-shapes and the full text toolbar.
 
 | M | Scope | Size | Depends |
 |---|---|---|---|
 | B1 | **F-TXT-2** text inside shapes (one object), insets UI, autofit UI; import as one object; export | S–M | A3, K6 |
-| B2 | **F-TXT-3 rich text**, rest: unified text toolbar (family, strike, sub/sup, highlight, bullets/numbering, indent, clear) + export/import runs | M | B1 |
+| B2 | **F-TXT-3 rich text**, rest: unified text toolbar (family, strike, sub/sup, highlight, bullets/numbering, indent, clear), with export/import of those run/paragraph props | M | B1 |
 | B3 | **F-OBJ-1 table element** (K3 grid painter, cell text via K6) + Table tab + import/export | M–L | B2 (cell text) |
 | B4 | **F-OBJ-2 chart element** (K3 chart painter) + Chart tab + `c:chartSpace` import | M | A3, K3 |
 | B5 | **F-OBJ-6 asset store** + import dedupe + sync + export media-dedupe patch | M | A4 |
