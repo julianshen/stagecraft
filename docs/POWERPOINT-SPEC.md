@@ -564,10 +564,10 @@ Full design, options and test strategy: [`CANVAS-EDITOR.md`](CANVAS-EDITOR.md). 
 |---|---|---|---|
 | K0 | Spike + decision record: officeview `drawing` subpath export (or vendoring), `konva` + `react-konva@18`, Vitest `paint` + `browser` projects, perf budget | S–M | — |
 | K1 | Drawing core: scene builder for elements (slide height read from the deck, never hard-coded, so D3 slide size needs no canvas refactor), preset geometry, fills/gradients/lines/arrows, images, `paintSlide`, `<SlideCanvas>` (DPR), `ensureAssets` (fonts + image decode; exports await it) | M | K0, A3 |
-| K2 | Text engine (officeview layout + measurer, font epochs, layout cache, insets/anchors/**autofit**/bullets) **+ F-TXT-3 model**: `paragraphs`/runs schema, validator, `normalizeDeck` migration, MCP schema, export/import of runs | L | K1 |
-| K3 | Layouts and content as scenes: 12 layout compilers, chart painter (from `chartSpec.js`), roadmap/risks painters, table grid painter; **PPTX layout builders export from the compiled scene** (one geometry source) | L | K2 |
+| K2 | Text engine (officeview layout + measurer, font epochs, layout cache, insets/anchors/**autofit**/bullets) **+ F-TXT-3 model**: `paragraphs`/runs schema, validator, `normalizeDeck` migration, MCP schema, and canvas painting + PPTX export/import of **every** F-TXT-3 run and paragraph property (all run styles, align, level, bullets/numbering, indent/hanging, spacing, line spacing; `link` excepted, C5) | L | K1 |
+| K3 | Layouts and content as scenes: 12 layout compilers (`cover`, `agenda`, `divider`, `kpi`, `chart`, `split`, `table`, `text`, `list`, `roadmap`, `risks`, `thanks`; `blank` has no template content and is complete from K1, so all 13 layouts are covered), chart painter (from `chartSpec.js`), roadmap/risks painters, table grid painter; **PPTX layout builders export from the compiled scene** (one geometry source) | L | K2 |
 | K4 | Read-only surfaces on canvas: thumbnails/sorter (bitmap cache keyed by a render key that includes deck-wide inputs), presenter, **Home slide-1 cards (U13)**, PDF export via canvas | M | K3 |
-| K5 | Konva editor stage: select/drag/guides/Transformer/marquee/draw/pen/context-menu/collab, **zoom + Fit + pan (U8)**; text via DOM overlay | L | K4 |
+| K5 | Konva editor stage: select/drag/guides/Transformer/marquee/draw/pen/context-menu/collab, **zoom + Fit + pan (U8)**; text via DOM overlay for plain-string text only (multi-run text is read-only until K6, [`CANVAS-EDITOR.md`](CANVAS-EDITOR.md) §7) | L | K4 |
 | K6 | Canvas-native text editing: caret map, hidden-textarea input + IME, selection, `lib/richText.js` edit operations, rich-run editing (F-TXT-1, editing half of F-TXT-3) | L | K5 |
 | K7 | Cut-over: remove DOM renderer, overlay, `modern-screenshot`, flags; update SPEC/CLAUDE.md | S | K6 |
 
@@ -577,7 +577,7 @@ All B milestones paint and edit through the Phase K engine. B1/B2 shrink because
 | M | Scope | Size | Depends |
 |---|---|---|---|
 | B1 | **F-TXT-2** text inside shapes (one object), insets UI, autofit UI; import as one object; export | S–M | A3, K6 |
-| B2 | **F-TXT-3 rich text**, rest: unified text toolbar (family, strike, sub/sup, highlight, bullets/numbering, indent, clear), with export/import of those run/paragraph props | M | B1 |
+| B2 | **F-TXT-3 rich text**, rest: the editing UI only — unified text toolbar (family, strike, sub/sup, highlight, bullets/numbering, indent, clear) driving `richText.js`. No model or export/import work: K2 already owns every property these controls set | M | B1 |
 | B3 | **F-OBJ-1 table element** (K3 grid painter, cell text via K6) + Table tab + import/export | M–L | B2 (cell text) |
 | B4 | **F-OBJ-2 chart element** (K3 chart painter) + Chart tab + `c:chartSpace` import | M | A3, K3 |
 | B5 | **F-OBJ-6 asset store** + import dedupe + sync + export media-dedupe patch | M | A4 |
