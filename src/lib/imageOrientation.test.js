@@ -45,6 +45,28 @@ describe('jpegOrientation', () => {
   });
 });
 
+describe('jpegOrientation — malformed EXIF stays inside its APP1 segment', () => {
+  // APP1 'Exif\0\0' + an 8-byte TIFF header whose IFD offset is `ifd`, then
+  // `after` — bytes beyond APP1 that look like an IFD with an Orientation entry.
+  const fakeIfd = [1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0];
+  const jpeg = ({ magic = 42, ifd = 8, tail = [] } = {}) => {
+    const tiff = [0x49, 0x49, magic, 0, ifd, 0, 0, 0, ...tail];
+    const app1 = [...ascii('Exif'), 0, 0, ...tiff];
+    return new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0, app1.length + 2, ...app1, 0xff, 0xfe, 0, 2 + fakeIfd.length, ...fakeIfd, 0xff, 0xd9]);
+  };
+
+  it('ignores an IFD (or entry table) that lies past the segment', () => {
+    // TIFF starts at byte 12; the COM segment's look-alike IFD starts at 24 → offset 12.
+    expect(jpegOrientation(jpeg({ ifd: 12 }))).toBe(1);
+    expect(clearOrientation(dataUrl(jpeg({ ifd: 12 })))).toBe(dataUrl(jpeg({ ifd: 12 }))); // left byte-for-byte
+  });
+
+  it('ignores a TIFF header without the 42 magic', () => {
+    expect(jpegOrientation(jpeg({ magic: 0, tail: fakeIfd }))).toBe(1);
+    expect(jpegOrientation(jpeg({ tail: fakeIfd }))).toBe(6); // the same IFD, well-formed, is read
+  });
+});
+
 describe('clearOrientation', () => {
   it('rewrites the tag to 1 in place — the pixels and every other byte stay as they are', () => {
     const src = exifJpeg(6);
@@ -153,6 +175,38 @@ describe('uprightSlides', () => {
     ), { id: 'c', layout: 'cover' }];
     expect(await uprightSlides(slides)).toBe(slides);
     expect(createImageBitmap).not.toHaveBeenCalled();
+  });
+
+  it('decodes with an <img> where createImageBitmap is missing (Safari 14)', async () => {
+    const { canvas, ctx } = stubBrowser();
+    vi.stubGlobal('createImageBitmap', undefined);
+    // An <img> that honours EXIF: the 2×1 probe decodes 1×2, the picture 30×40.
+    const made = [];
+    vi.stubGlobal('Image', class {
+      set src(url) { this.url = url; }
+      async decode() {
+        const size = urls.get(this.url).size;
+        [this.naturalWidth, this.naturalHeight] = size === PROBE_BYTES ? [1, 2] : [30, 40];
+        made.push(this);
+      }
+    });
+    const urls = new Map();
+    let n = 0;
+    // jsdom has no object URLs: install them for this test only.
+    URL.createObjectURL = vi.fn((blob) => { const u = `blob:${n++}`; urls.set(u, blob); return u; });
+    URL.revokeObjectURL = vi.fn();
+    try {
+      const out = await uprightSlides([slideOf({ id: 'a', type: 'image', src: dataUrl(exifJpeg(6)) })]);
+      expect(out[0].elements[0].src).toBe(UPRIGHT);
+      expect(made).toHaveLength(2); // probe + picture
+      expect(canvas.sizes).toEqual([[30, 40]]);
+      expect(ctx.transform).not.toHaveBeenCalled();
+      expect(ctx.drawImage).toHaveBeenCalledWith(made[1], 0, 0);
+      expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
+    } finally {
+      delete URL.createObjectURL;
+      delete URL.revokeObjectURL;
+    }
   });
 
   it('keeps the original when the browser cannot decode or encode it', async () => {
