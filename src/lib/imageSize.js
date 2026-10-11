@@ -94,7 +94,11 @@ const isIsoBmff = (b) => ascii(b, 4, 'ftyp'); // AVIF / HEIC
 const needsWhole = (b) => (b[0] === 0xff && b[1] === 0xd8) || isIsoBmff(b) || isXml(b);
 
 function sizeOf(b) {
-  if (b.length >= 26 && ascii(b, 0, 'BM')) return { w: Math.abs(le32s(b, 18)), h: Math.abs(le32s(b, 22)) };
+  if (b.length >= 26 && ascii(b, 0, 'BM')) {
+    // The DIB header size (offset 14) picks the layout: OS/2's 12-byte core
+    // header has 16-bit dimensions; every later one 32-bit (negative h = top-down).
+    return le32s(b, 14) === 12 ? { w: le16(b, 18), h: le16(b, 20) } : { w: Math.abs(le32s(b, 18)), h: Math.abs(le32s(b, 22)) };
+  }
   if (isIsoBmff(b)) return ispeSize(b);
   if (isXml(b)) return svgSize(b);
   if (b.length >= 24 && b[0] === 0x89 && ascii(b, 1, 'PNG')) return { w: be32(b, 16), h: be32(b, 20) };

@@ -75,9 +75,12 @@ describe('dataImageSize', () => {
 
   it('reads BMP dimensions (a negative height means top-down rows)', () => {
     const le32 = (n) => [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255];
-    const bmp = (w, h) => [...ascii('BM'), ...new Array(16).fill(0), ...le32(w), ...le32(h >>> 0), 1, 0, 24, 0];
+    const bmp = (w, h) => [...ascii('BM'), ...new Array(12).fill(0), ...le32(40), ...le32(w), ...le32(h >>> 0), 1, 0, 24, 0];
     expect(dataImageSize(url('image/bmp', bmp(200, 100)))).toEqual({ w: 200, h: 100 });
     expect(dataImageSize(url('image/bmp', bmp(200, -100)))).toEqual({ w: 200, h: 100 });
+    // OS/2 BITMAPCOREHEADER (12 bytes): unsigned 16-bit width/height at 18/20
+    const core = [...ascii('BM'), ...new Array(12).fill(0), ...le32(12), 0x2c, 0x01, 0x96, 0x00, 1, 0, 24, 0, 0, 0];
+    expect(dataImageSize(url('image/bmp', core))).toEqual({ w: 300, h: 150 });
   });
 
   it('reads AVIF / HEIC dimensions from the ispe property', () => {
