@@ -14,14 +14,15 @@ const CHART_TYPE_OPTIONS = CHART_TYPES.map((t) => ({ value: t, label: CHART_TYPE
 // extras are dropped on the first edit, exactly as the canvas/export resolve them.
 
 export default function ChartDataEditor({ slide, onApply }) {
-  // Donut/pie render only series[0] (canvas and export both) — the editor
-  // shows and commits exactly the rendered series: extra authored series are
-  // not editable and clip away on the first edit (same normalization-persists
-  // policy as the rest of this editor), and the multi-series controls hide.
+  // Donut/pie render only series[0] (canvas and export both), so the editor
+  // shows only that one and hides the multi-series controls. Edits still act on
+  // every series — the hidden ones keep their data (and stay aligned as rows
+  // change), so switching a chart to Donut and back never loses a series.
   const singleSeries = chartTypeOf(slide) === 'donut';
   const model = chartData(slide);
   const categories = model.categories;
-  const series = singleSeries ? model.series.slice(0, 1) : model.series;
+  const series = model.series;
+  const shown = singleSeries ? series.slice(0, 1) : series; // a prefix, so indices match
 
   const commit = (cats, ser) => onApply({ chart: { categories: cats, series: ser } });
   const mapSeries = (fn) => series.map((s, i) => ({ name: s.name, values: fn(s, i) }));
@@ -43,9 +44,9 @@ export default function ChartDataEditor({ slide, onApply }) {
           onChange={(chartType) => onApply({ chartType })} />
       </FieldRow>
       <h4>Chart data</h4>
-      <div style={{ display: 'grid', gridTemplateColumns: `1.4fr repeat(${series.length}, 1fr) 20px`, gap: 4, alignItems: 'center' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `1.4fr repeat(${shown.length}, 1fr) 20px`, gap: 4, alignItems: 'center' }}>
         <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>CATEGORY</span>
-        {series.map((s, si) => (
+        {shown.map((s, si) => (
           <input key={`h${si}`} className="cell-input" value={s.name ?? ''} title="Series name"
             onChange={(e) => setName(si, e.target.value)} />
         ))}
@@ -53,7 +54,7 @@ export default function ChartDataEditor({ slide, onApply }) {
         {categories.map((c, ci) => (
           <React.Fragment key={`r${ci}`}>
             <input className="cell-input" value={c ?? ''} title="Category" onChange={(e) => setCategory(ci, e.target.value)} />
-            {series.map((s, si) => (
+            {shown.map((s, si) => (
               <NumberCell key={`v${si}`} value={s.values[ci]} title="Value" onCommit={(n) => setValue(si, ci, n)} />
             ))}
             <IconButton name="x" size={10} title="Remove row" disabled={categories.length <= 1} onClick={() => removeRow(ci)} />
