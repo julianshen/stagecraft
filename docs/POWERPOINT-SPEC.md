@@ -318,8 +318,9 @@ Colours stay hex unless F-DES-1 says otherwise. Lengths are canvas px (1920 wide
   - Each preset is a clip polygon (or SVG path for curves) plus its `pptx` name. `PRST_TYPE` in the importer derives from it automatically.
 - **Flip:** `flipH`/`flipV` on every element.
   - Canvas: `scale(-1)` composed with rotation.
-  - Export: pptxgenjs `flipH`/`flipV`.
-  - Import: map directly and remove the flip warning.
+  - Export: pptxgenjs `flipH`/`flipV`. ✅ (A4)
+  - Import: map directly and remove the flip warning. ✅ (A4; flipped tables keep a warning — their cells mirror, their text stays upright)
+  - Canvas: ✅ (A4) `elementTransform` — shapes, pictures and paths mirror; text follows PowerPoint (flipH leaves it readable, flipV turns it 180°).
   - UI: Arrange ▸ Rotate/Flip (Rotate 90° left/right, Flip H/V).
 - **Arrowheads:** `arrowStart`/`arrowEnd` on `line`/`path`/connectors, each `none|triangle|stealth|oval|diamond|arrow`, with sizes S/M/L.
   - Canvas: SVG markers.
@@ -521,6 +522,8 @@ Each issue links to its fix. Spell-check uses the browser's spellcheck in edit m
 
 `lib/pptxPost.js` takes the pptxgenjs output (`pptx.write({outputType:'arraybuffer'})`), opens it with JSZip and applies **pure XML patches per slide**. Each patch is unit-tested against fixture XML.
 
+Status: ✅ scaffold + gradients + groups (A4). `exportToPPTX` collects a per-slide plan (`{ gradients, groups }`), writes the package with `pptx.write({ outputType: 'arraybuffer' })`, runs `postProcess`, and downloads the result. Template-field object names (below) land with the first patch that targets one (F-MOT-2).
+
 Patches:
 - transitions (F-MOT-1);
 - timing (F-MOT-2);
@@ -558,7 +561,7 @@ Order: **A → K → B → C → D → E → F**. A3 lands **before K1**, becaus
 | A1 ✅ | **F-UI-1 command registry**: context-aware element/thumbnail/canvas menus, truthful shortcuts, Ctrl parity, ⌘K palette, generated Shortcuts page, editor PgUp/PgDn | M | — |
 | A2 ✅ | **F-UI-4 honesty pass 2**: presenter clock/reset, status bar binds, export footer (format + slide count, no invented size) and wired export defaults, hide/wire remaining mocks, Start with AI. *Fit/zoom > 92% moves to K5 and Home slide-1 thumbnails to K4: both are rewritten by the canvas engine.* | S | — |
 | A3 ✅ | **F-UI-3 inspector correctness**: Select primitive (single chevron), text-colour labelling + `fill`→`color` migration (`lib/normalizeDeck.js`), image fit control (+ export sizing), chart-type control. *Text-box Fill/Line moves to B1; background to D2.* | S | — |
-| A4 | **F-EXP-1 `pptxPost.js` scaffold** + first patches: `grpSp` groups, shape/background `gradFill`, element flips | M | — |
+| A4 | ✅ **F-EXP-1 `pptxPost.js` scaffold** + first patches: `grpSp` groups, shape `gradFill`, element flips (model, canvas, native export, import). Background `gradFill` moves to D2, which adds the background gradient model it patches | M | — |
 
 ### Phase K — Canvas engine (re-platform rendering and editing)
 Full design, options and test strategy: [`CANVAS-EDITOR.md`](CANVAS-EDITOR.md). Konva stage for interaction, officeview's drawing engine (preset geometry, Office gradients, line ends, rich-text layout) for pixels, one framework-free `paintSlide()` for every non-editing surface. Each milestone ships behind a setting until K7.

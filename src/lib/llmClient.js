@@ -202,9 +202,10 @@ numeric "x","y","w","h", and a hex colour: "fill" for shapes and lines (e.g.
 left|center|right,"fontFamily"), and shapes/lines ${shapeList}.
 Any element may also set: "stroke" (a hex outline colour) with "strokeWidth" (px)
 and optional "strokeDash" ("dashed" or "dotted"); "gradient" ({"from","to" hex,
-"angle" in degrees}) which overrides a shape's "fill" on the canvas (still set
-"fill" — it stays required, and is the export's fallback); "shadow" ({"color" hex, "blur","x","y"});
-"opacity" (0-100); and "rot" (rotation in degrees). Setting "elements" REPLACES the
+"angle" in degrees}) which overrides a shape's "fill" (still set "fill" — it
+stays required); "shadow" ({"color" hex, "blur","x","y"}); "opacity" (0-100);
+"rot" (rotation in degrees); and "flipH"/"flipV" (true to mirror the element —
+text stays readable, flipV turns it upside down). Setting "elements" REPLACES the
 text/shape/line overlay, so include every text/shape/line element you want to keep;
 omit "elements" to leave the overlay unchanged. Do NOT list "image" elements — any
 existing images on the slide are preserved automatically.`;

@@ -200,6 +200,8 @@ const ELEMENT_FIELD_OK = {
   // but each element still exports at its own absolute geometry.
   groupId: isStr,
   fontSize: isPosFinite, lineSpacing: isPosFinite, rot: isFinite_, opacity: isFinite_,
+  // Mirroring in the element's own frame (before its rotation), as in OOXML.
+  flipH: isBool, flipV: isBool,
   bold: isBool, italic: isBool, underline: isBool,
   // align is an enum the renderer maps to flex/textAlign (anything else falls
   // back to left); constrain it so canvas and export agree. fontFamily is

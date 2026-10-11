@@ -11,7 +11,7 @@ import { headingPx } from '../../lib/headingScale.js';
 import { shapeDef, hasVisibleStroke, clipPoints } from '../../lib/shapes.js';
 import { isHexColor } from '../../lib/color.js';
 import { slideBgClass } from '../../lib/slideScheme.js';
-import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf, fontStack, valignOf, objectFitOf, INK_CSS } from '../../lib/elements.js';
+import { elementTransform, dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf, fontStack, valignOf, objectFitOf, INK_CSS } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider fallbacks,
 // plus `headingScale`, which sizes every title via headingPx). This is the memo
@@ -418,7 +418,7 @@ const FLEX_FOR_VALIGN = { top: 'flex-start', middle: 'center', bottom: 'flex-end
 function ElementView({ el }) {
   const base = {
     position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h,
-    ...(el.rot ? { transform: `rotate(${el.rot}deg)` } : {}),
+    ...(elementTransform(el) ? { transform: elementTransform(el) } : {}),
     ...(el.opacity != null ? { opacity: Math.max(0, Math.min(100, el.opacity)) / 100 } : {}),
     // A drop shadow applies to any element type and follows the painted shape
     // (clip-path included), so it lives on the shared base style. A malformed

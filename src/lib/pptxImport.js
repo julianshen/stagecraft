@@ -297,6 +297,9 @@ const toPx = (box, fit) => ({
   w: round2(box.w * fit.k), h: round2(box.h * fit.k),
   ...(box.rot ? { rot: round2(box.rot) } : {}),
 });
+// A box's mirroring as element flips (only the true ones, so unflipped
+// elements carry no flip keys).
+const flipsOf = (box) => ({ ...(box.flipH ? { flipH: true } : {}), ...(box.flipV ? { flipV: true } : {}) });
 
 // Move a box's centre by a clockwise (y-down) turn of `deg` about (gx, gy) — the
 // box itself keeps its size; callers add `deg` to its own rotation.
@@ -383,7 +386,7 @@ function outlinePoints(type, w, h) {
   return [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]];
 }
 
-const FLIP_WARNING = 'Mirrored (flipped) shapes and pictures were imported unmirrored.';
+const FLIP_WARNING = 'Mirrored (flipped) tables were imported with their cells mirrored but their text upright.';
 
 // ---- line (a:ln) ----
 const DASH = { dash: 'dashed', lgDash: 'dashed', sysDash: 'dashed', dashDot: 'dashed', lgDashDot: 'dashed', lgDashDotDot: 'dashed', sysDashDot: 'dashed', sysDashDotDot: 'dashed', dot: 'dotted', sysDot: 'dotted' };
@@ -658,7 +661,9 @@ class SlideReader {
     }
     const box = xfrmBox(inh.xfrm, groupT);
     if (!box || !(box.w >= 0) || !(box.h >= 0)) return;
-    const geo = toPx(box, this.ctx.fit);
+    // Lines and elbows bake their flips into endpoints; every other shape (and
+    // its text) keeps them as element flips.
+    const geo = { ...toPx(box, this.ctx.fit), ...flipsOf(box) };
     const spPr = kid(sp, 'spPr');
     // Geometry may be inherited from the layout/master placeholder.
     const prst = firstOf([spPr, ...inh.spPrs], (p) => attr(kid(p, 'prstGeom'), 'prst') ?? (kid(p, 'custGeom') ? 'custGeom' : null));
@@ -674,7 +679,6 @@ class SlideReader {
     const known = PRST_TYPE[prst];
     if (prst && !known) this.warn(`Shape "${prst}" was imported as a rectangle.`);
     const type = known || (prst ? 'rect' : null);
-    if ((box.flipH || box.flipV) && type !== 'line') this.warn(FLIP_WARNING);
     if (ln?.arrow) this.warn('Arrowheads on lines and connectors were not imported.');
     if (['blipFill', 'pattFill', 'grpFill'].some((f) => kid(spPr, f))) {
       this.warn("Picture or pattern fills on shapes aren't supported — those shapes import without them.");
@@ -773,7 +777,6 @@ class SlideReader {
     }
     const box = xfrmBox(inh.xfrm, groupT);
     if (!box) return;
-    if (box.flipH || box.flipV) this.warn(FLIP_WARNING);
     const srcRect = path(pic, 'blipFill', 'srcRect');
     if (srcRect && [...srcRect.attributes].some((a) => Number(a.value))) this.warn('Cropped pictures import uncropped (stretched to their frame).');
     if (path(pic, 'blipFill', 'tile')) this.warn(TILE_WARNING);
@@ -782,7 +785,7 @@ class SlideReader {
     const amt = blipAlpha(blip);
     // PowerPoint stretches a picture to its frame (a:stretch) — keep that, not cover.
     if (src) {
-      this.push({ type: 'image', ...toPx(box, this.ctx.fit), src, fit: 'stretch',
+      this.push({ type: 'image', ...toPx(box, this.ctx.fit), ...flipsOf(box), src, fit: 'stretch',
         ...(amt < 1 ? { opacity: Math.round(amt * 100) } : {}) }, groupId);
     }
   }

@@ -553,9 +553,20 @@ describe('importPptx — review fixes', () => {
     expect(el.rot).toBe(90);
   });
 
-  it('warns that mirrored (flipped) shapes and pictures import unmirrored', async () => {
-    const sp = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="A"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(0, 0, 10, 10, ' flipH="1"')}<a:prstGeom prst="rightArrow"/><a:solidFill><a:srgbClr val="000000"/></a:solidFill></p:spPr></p:sp>`;
-    expect((await one(sp)).warnings.join(' ')).toMatch(/mirrored/i);
+  it('keeps a mirrored (flipped) shape\'s flips — on the shape and its text', async () => {
+    const sp = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="A"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(0, 0, 10, 10, ' flipH="1" flipV="1"')}<a:prstGeom prst="rightArrow"/><a:solidFill><a:srgbClr val="000000"/></a:solidFill></p:spPr><p:txBody><a:bodyPr/>${para('Go')}</p:txBody></p:sp>`;
+    const { slide, warnings } = await one(sp);
+    expect(slide.elements.map((e) => [e.type, e.flipH, e.flipV])).toEqual([['arrow', true, true], ['text', true, true]]);
+    expect(warnings.join(' ')).not.toMatch(/mirrored/i);
+  });
+
+  it('keeps a mirrored picture\'s flips, and leaves unflipped elements without flip keys', async () => {
+    const pic = (id, extra) => `<p:pic><p:nvPicPr><p:cNvPr id="${id}" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdP"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10, extra)}</p:spPr></p:pic>`;
+    const { slide, warnings } = await one(pic(4, ' flipV="1"') + pic(5, ''), { slide: { extraRels: [['rIdP', 'image', '../media/p.png']] } }, { media: { 'p.png': PNG } });
+    expect(slide.elements[0]).toMatchObject({ type: 'image', flipV: true });
+    expect('flipH' in slide.elements[0]).toBe(false);
+    expect('flipV' in slide.elements[1]).toBe(false);
+    expect(warnings.join(' ')).not.toMatch(/mirrored/i);
   });
 
   it('keeps an explicit fill on a placeholder whose geometry is inherited', async () => {
@@ -624,14 +635,14 @@ describe('importPptx — Codex review fixes', () => {
     } finally { spy.mockRestore(); }
   });
 
-  it('mirrors a flipped group\'s children about the group centre and warns', async () => {
+  it('mirrors a flipped group\'s children about the group centre and flips each child', async () => {
     // A 200×100 group flipped horizontally; its child fills the left half.
     const grp = `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="9" name="G"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
       <p:grpSpPr><a:xfrm flipH="1"><a:off x="${100 * PX}" y="${100 * PX}"/><a:ext cx="${200 * PX}" cy="${100 * PX}"/><a:chOff x="0" y="0"/><a:chExt cx="${200 * PX}" cy="${100 * PX}"/></a:xfrm></p:grpSpPr>
       ${shape(3, 'triangle', 0, 0, 100, 100, '<a:solidFill><a:srgbClr val="123456"/></a:solidFill>')}</p:grpSp>`;
     const { slide, warnings } = await one(grp);
-    expect(slide.elements[0]).toMatchObject({ x: 200, y: 100 }); // moved to the right half
-    expect(warnings.join(' ')).toMatch(/mirrored/i);
+    expect(slide.elements[0]).toMatchObject({ x: 200, y: 100, flipH: true }); // moved to the right half, and itself mirrored
+    expect(warnings.join(' ')).not.toMatch(/mirrored/i);
   });
 });
 
@@ -738,7 +749,7 @@ describe('importPptx — Codex review fixes (round 4)', () => {
 describe('importPptx — Codex review fixes (round 5)', () => {
   it('accepts the textual true form of XML booleans (flipH="true", showMasterSp="false")', async () => {
     const sp = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="A"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(0, 0, 10, 10, ' flipH="true"')}<a:prstGeom prst="rightArrow"/><a:solidFill><a:srgbClr val="000000"/></a:solidFill></p:spPr></p:sp>`;
-    expect((await one(sp)).warnings.join(' ')).toMatch(/mirrored/i);
+    expect((await one(sp)).slide.elements[0].flipH).toBe(true);
     const master = DEFAULT_MASTER.replace('</p:spTree>', `${shape(9, 'rect', 0, 0, 10, 10, '<a:solidFill><a:srgbClr val="4472C4"/></a:solidFill>')}</p:spTree>`);
     expect((await one('', { attrs: ' showMasterSp="false"' }, { master })).slide.elements).toEqual([]);
   });

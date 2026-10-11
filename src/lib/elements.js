@@ -47,6 +47,19 @@ export const isRenderableShadow = (s) => !!s && isHexColor(s.color)
 // export approximates it with the midpoint blend (pptxgen has no shape gradient
 // — a documented degradation). DEFAULT_GRADIENT seeds the Properties toggle.
 export const DEFAULT_GRADIENT = Object.freeze({ from: '#4f46e5', to: '#06b6d4', angle: 135 });
+// The CSS transform that draws an element's rotation and flips. CSS applies the
+// right-most function first, so `rotate(r) scale(sx, sy)` mirrors in the
+// element's own frame and then turns it — the OOXML order (an xfrm's flips are
+// applied before its rot). Text follows PowerPoint: a flipped text box's text
+// stays readable, so flipH changes nothing and flipV turns it 180°.
+export function elementTransform(el) {
+  const text = el.type === 'text';
+  const rot = (Number(el.rot) || 0) + (text && el.flipV ? 180 : 0);
+  const sx = !text && el.flipH ? -1 : 1, sy = !text && el.flipV ? -1 : 1;
+  const parts = [rot ? `rotate(${rot}deg)` : '', sx < 0 || sy < 0 ? `scale(${sx}, ${sy})` : ''].filter(Boolean);
+  return parts.length ? parts.join(' ') : undefined;
+}
+
 export const linearGradientCss = (g) => `linear-gradient(${g.angle}deg, ${g.from}, ${g.to})`;
 // Is this gradient safe for both surfaces? Same gate-bypass reasoning as
 // isRenderableShadow: a malformed gradient falls back to the solid fill on the

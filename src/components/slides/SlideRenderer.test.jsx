@@ -34,6 +34,11 @@ describe('ElementsLayer', () => {
     expect(textEl.style.width).toBe('300px');
   });
 
+  it('mirrors a flipped element (rotation applied after the flip)', () => {
+    const { container } = render(<ElementsLayer elements={[{ id: 's', type: 'rect', x: 0, y: 0, w: 100, h: 100, rot: 45, flipH: true, fill: '#ff0000' }]} />);
+    expect(container.querySelector('[style*="scale"]').style.transform).toBe('rotate(45deg) scale(-1, 1)');
+  });
+
   it('applies rotation, opacity, and fill to elements', () => {
     const { container } = render(
       <ElementsLayer

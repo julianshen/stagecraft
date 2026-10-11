@@ -522,6 +522,21 @@ describe('exportToPPTX — post-processing and download (F-EXP-1)', () => {
   const blank = (id, elements) => ({ id, layout: 'blank', elements });
   const deck2 = (...slides) => ({ title: 'My Deck', theme: 'indigo', sections: [{ id: 's', name: 'S', slides: slides.map((x) => x.id) }], slides });
 
+  it('exports flips natively on shapes, paths, pictures and text', async () => {
+    await exportToPPTX(deck2(blank('b', [
+      { id: 'r', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', flipH: true },
+      { id: 'p', type: 'path', x: 0, y: 0, w: 10, h: 10, points: [[0, 0], [1, 1]], stroke: '#000000', flipV: true },
+      { id: 'i', type: 'image', x: 0, y: 0, w: 10, h: 10, src: 'data:image/png;base64,AAA', flipH: true, flipV: true },
+      { id: 't', type: 'text', x: 0, y: 0, w: 10, h: 10, content: 'T', color: '#000000', flipV: true },
+      { id: 'n', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000' },
+    ])));
+    const s = last();
+    const flips = (o) => [o.flipH, o.flipV];
+    expect(s.shapes.map((x) => flips(x.o))).toEqual([[true, undefined], [undefined, true], [undefined, undefined]]);
+    expect(flips(s.images[0].o)).toEqual([true, true]);
+    expect(flips(s.texts.find((x) => x.t === 'T').o)).toEqual([undefined, true]); // PowerPoint turns flipped text itself
+  });
+
   it('names every exported element by its id, so the patches can find it', async () => {
     await exportToPPTX(deck2(blank('b', [
       { id: 't1', type: 'text', x: 0, y: 0, w: 100, h: 50, content: 'Hi', color: '#000000' },

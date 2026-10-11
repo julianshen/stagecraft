@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, autoArrangeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, pathFromStroke, dashArray, dashType, borderStyle, STROKE_DASHES, lineSpacingOf, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
-import { fontStack } from './elements.js';
+import { fontStack, elementTransform } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -1146,5 +1146,25 @@ describe('fontStack (Office font fallbacks on the canvas)', () => {
     expect(fontStack(undefined)).toBeUndefined();
     expect(fontStack('')).toBeUndefined();
     expect(fontStack('Evil", x')).toBe('"Evil, x", var(--f-sans), sans-serif');
+  });
+});
+
+describe('elementTransform (rotation + flips, as the canvas draws them)', () => {
+  it('is undefined for an unrotated, unflipped element', () => {
+    expect(elementTransform({ type: 'rect' })).toBeUndefined();
+    expect(elementTransform({ type: 'rect', rot: 0, flipH: false })).toBeUndefined();
+  });
+
+  it('rotates, then mirrors in the element\'s own frame (CSS applies the right-most first, like OOXML)', () => {
+    expect(elementTransform({ type: 'rect', rot: 30 })).toBe('rotate(30deg)');
+    expect(elementTransform({ type: 'rect', flipH: true })).toBe('scale(-1, 1)');
+    expect(elementTransform({ type: 'image', rot: 30, flipV: true })).toBe('rotate(30deg) scale(1, -1)');
+    expect(elementTransform({ type: 'path', flipH: true, flipV: true })).toBe('scale(-1, -1)');
+  });
+
+  it('follows PowerPoint for text: flipH leaves it readable, flipV turns it 180°', () => {
+    expect(elementTransform({ type: 'text', flipH: true })).toBeUndefined();
+    expect(elementTransform({ type: 'text', flipV: true })).toBe('rotate(180deg)');
+    expect(elementTransform({ type: 'text', rot: 30, flipH: true, flipV: true })).toBe('rotate(210deg)');
   });
 });

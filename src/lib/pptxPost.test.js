@@ -126,12 +126,12 @@ describe('postProcess', () => {
     expect(await out.file('ppt/slides/slide2.xml').async('string')).toContain('<a:gradFill');
   });
 
-  it('round-trips through PowerPoint XML: real pptxgenjs output → patched → re-imported with its gradient and group', async () => {
+  it('round-trips through PowerPoint XML: real pptxgenjs output → patched → re-imported with its gradient, group and flip', async () => {
     const pptx = new pptxgen();
     pptx.layout = 'LAYOUT_16x9';
     const s = pptx.addSlide();
     s.addShape(pptx.ShapeType.rect, { x: 1, y: 1, w: 2, h: 1, fill: { color: '808080' }, objectName: 'grad' });
-    s.addShape(pptx.ShapeType.rect, { x: 4, y: 1, w: 1, h: 1, fill: { color: '00FF00' }, objectName: 'g1' });
+    s.addShape(pptx.ShapeType.rect, { x: 4, y: 1, w: 1, h: 1, fill: { color: '00FF00' }, objectName: 'g1', flipH: true });
     s.addShape(pptx.ShapeType.ellipse, { x: 5, y: 2, w: 1, h: 1, fill: { color: '0000FF' }, objectName: 'g2' });
     const raw = await pptx.write({ outputType: 'arraybuffer' });
     const patched = await postProcess(raw, [{ gradients: { grad: { from: '112233', to: 'AABBCC', angle: 180 } }, groups: [['g1', 'g2']] }]);
@@ -142,5 +142,6 @@ describe('postProcess', () => {
     const grouped = els.filter((e) => e.groupId);
     expect(grouped).toHaveLength(2);
     expect(grouped[0].groupId).toBe(grouped[1].groupId);
+    expect(grouped.map((e) => !!e.flipH)).toEqual([true, false]); // a flip survives inside the group
   });
 });
