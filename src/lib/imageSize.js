@@ -90,7 +90,7 @@ function ispeSize(b) {
   return null;
 }
 
-const isXml = (b) => /^\s*</.test(String.fromCharCode(...b.subarray(0, 16))); // SVG
+const isXml = (b) => /^(\xef\xbb\xbf)?\s*</.test(String.fromCharCode(...b.subarray(0, 16))); // SVG (optional UTF-8 BOM)
 const isIsoBmff = (b) => ascii(b, 4, 'ftyp'); // AVIF / HEIC
 // Formats whose size can sit beyond the decoded head (see HEAD_CHARS).
 const needsWhole = (b) => (b[0] === 0xff && b[1] === 0xd8) || isIsoBmff(b) || isXml(b);

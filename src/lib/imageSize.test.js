@@ -91,6 +91,11 @@ describe('dataImageSize', () => {
     expect(dataImageSize(url('image/avif', avif))).toEqual({ w: 1280, h: 720 });
   });
 
+  it('reads an SVG that starts with a UTF-8 byte-order mark', () => {
+    const bom = String.fromCharCode(0xef, 0xbb, 0xbf);
+    expect(dataImageSize(`data:image/svg+xml;base64,${btoa(`${bom}<svg width="40" height="10"></svg>`)}`)).toEqual({ w: 40, h: 10 });
+  });
+
   it('accepts media-type parameters before ;base64 (e.g. charset)', () => {
     const svg = btoa('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"></svg>');
     expect(dataImageSize(`data:image/svg+xml;charset=utf-8;base64,${svg}`)).toEqual({ w: 40, h: 20 });
