@@ -556,7 +556,7 @@ describe('exportToPPTX — post-processing and download (F-EXP-1)', () => {
       { id: 'i1', type: 'image', x: 0, y: 0, w: 100, h: 50, src: 'data:image/png;base64,AAA' },
     ])));
     const s = last();
-    expect(s.texts.find((x) => x.t === 'Hi').o.objectName).toBe('t1');
+    expect(s.texts.find((x) => x.t === 'Hi').o.objectName).toBe('t1'); // objectNameOf: plain ids pass through
     expect(s.shapes.map((x) => x.o.objectName)).toEqual(['r1', 'p1']);
     expect(s.images[0].o.objectName).toBe('i1');
   });

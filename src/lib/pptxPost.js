@@ -24,6 +24,14 @@ const P = 'http://schemas.openxmlformats.org/presentationml/2006/main';
 const hasWork = ({ gradients, groups }) => Object.keys(gradients).length > 0 || groups.length > 0;
 
 /**
+ * The object name an element exports under, which the patches key on: its id,
+ * percent-encoded so it holds nothing XML escapes (pptxgenjs escapes a text
+ * box's name twice, so `&` or `"` in an id would otherwise never match).
+ * One-to-one, so distinct ids stay distinct; plain ids pass through unchanged.
+ */
+export const objectNameOf = (id) => encodeURIComponent(String(id)).replace(/'/g, '%27');
+
+/**
  * A slide's plan, read from its elements (each exported under its id): every
  * shape's valid gradient, and each groupId's members in z-order. Members that
  * weren't drawn (an image without a src) and one-member groups need no
@@ -36,11 +44,11 @@ export function planFor(slide) {
   for (const el of Array.isArray(slide?.elements) ? slide.elements : []) {
     if (!el?.id) continue;
     if (isFillableShape(el.type) && isRenderableGradient(el.gradient)) {
-      gradients[el.id] = { from: pptxHex(el.gradient.from), to: pptxHex(el.gradient.to), angle: el.gradient.angle };
+      gradients[objectNameOf(el.id)] = { from: pptxHex(el.gradient.from), to: pptxHex(el.gradient.to), angle: el.gradient.angle };
     }
     if (el.groupId) {
       if (!groups.has(el.groupId)) groups.set(el.groupId, []);
-      groups.get(el.groupId).push(el.id);
+      groups.get(el.groupId).push(objectNameOf(el.id));
     }
   }
   return { gradients, groups: [...groups.values()] };

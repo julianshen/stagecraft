@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
 import pptxgen from 'pptxgenjs';
-import { patchSlideXml, postProcess, linAngle, planFor } from './pptxPost.js';
+import { patchSlideXml, postProcess, linAngle, planFor, objectNameOf } from './pptxPost.js';
 import { importPptx } from './pptxImport.js';
 import { NS, tree } from '../test/pptxFixture.js';
 
@@ -195,6 +195,21 @@ describe('postProcess', () => {
     const out = await JSZip.loadAsync(await postProcess(buf, [{ gradients: {}, groups: [] }, { gradients: { a: { from: '000000', to: 'FFFFFF', angle: 90 } }, groups: [] }]));
     expect(await out.file('ppt/slides/slide1.xml').async('string')).not.toContain('gradFill');
     expect(await out.file('ppt/slides/slide2.xml').async('string')).toContain('<a:gradFill');
+  });
+
+  it('finds every kind of element by its object name, even ids with XML characters (pptxgenjs double-escapes a text name)', async () => {
+    const id = `a"b&c<d>'`;
+    const pptx = new pptxgen();
+    const s = pptx.addSlide();
+    s.addText('T', { x: 1, y: 1, w: 1, h: 1, objectName: objectNameOf(`${id}t`) });
+    s.addShape(pptx.ShapeType.rect, { x: 3, y: 1, w: 1, h: 1, fill: { color: '00FF00' }, objectName: objectNameOf(`${id}r`) });
+    const raw = await pptx.write({ outputType: 'arraybuffer' });
+    const plan = planFor({ elements: [{ id: `${id}t`, type: 'text', groupId: 'G' }, { id: `${id}r`, type: 'rect', groupId: 'G' }] });
+    const out = await JSZip.loadAsync(await postProcess(raw, [plan]));
+    const grp = parse(await out.file('ppt/slides/slide1.xml').async('string')).getElementsByTagNameNS(P, 'grpSp')[0];
+    expect(grp).toBeTruthy(); // both members found by name → grouped
+    expect(objectNameOf(id)).toMatch(/^[A-Za-z0-9%._~*()!-]+$/); // nothing XML would escape
+    expect(objectNameOf('el-1')).toBe('el-1'); // plain ids pass through
   });
 
   it('round-trips through PowerPoint XML: real pptxgenjs output → patched → re-imported with its gradient, group and flip', async () => {

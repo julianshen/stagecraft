@@ -12,7 +12,7 @@ import { dataImageSize } from './imageSize.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
 import { slideBgClass } from './slideScheme.js';
 import { uprightSlides } from './imageOrientation.js';
-import { postProcess, planFor } from './pptxPost.js';
+import { postProcess, planFor, objectNameOf } from './pptxPost.js';
 
 // ---- deck theme accent (fallback to indigo) ----
 // The deck theme only tints accents; the slide background/ink come from the
@@ -119,7 +119,7 @@ function elementGeo(el) {
   const g = { x: IN(num(el.x)), y: IN(num(el.y)), w: IN(num(el.w)), h: IN(num(el.h)) };
   const rot = num(el.rot);
   if (rot) g.rotate = rot; // pptx rotates about the shape centre, like the canvas
-  if (el.id) g.objectName = String(el.id); // what the post-processor's patches key on
+  if (el.id) g.objectName = objectNameOf(el.id); // what the post-processor's patches key on
   // Flips are native xfrm attributes (PowerPoint handles flipped text itself).
   if (el.flipH) g.flipH = true;
   if (el.flipV) g.flipV = true;
