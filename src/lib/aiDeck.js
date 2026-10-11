@@ -15,6 +15,23 @@ const OUTLINE_LAYOUTS = [...SLIDE_LAYOUTS].filter((l) => l !== 'blank');
 
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
 
+// The content each layout actually renders beyond its title. A generated slide
+// must fill at least one of these, or the deck would keep the template's
+// placeholders (a globally valid field like `subtitle` is invisible on a kpi
+// slide). Cover, divider and thanks are complete with just a title.
+const LAYOUT_CONTENT = {
+  agenda: ['items'], kpi: ['kpis'], chart: ['chart'], split: ['body', 'stats'],
+  table: ['rows'], text: ['body'], roadmap: ['lanes'], risks: ['items'], list: ['items'],
+};
+// Non-blank: a non-empty string, a number, or a collection/record holding one.
+const hasContent = (v) => {
+  if (typeof v === 'string') return v.trim() !== '';
+  if (typeof v === 'number') return true;
+  if (Array.isArray(v)) return v.some(hasContent);
+  return v !== null && typeof v === 'object' && Object.values(v).some(hasContent);
+};
+const usable = (safe, layout) => !LAYOUT_CONTENT[layout] || LAYOUT_CONTENT[layout].some((k) => hasContent(safe[k]));
+
 /**
  * Parse and validate the model's outline reply into
  * `{ title, slides: [{ layout, title, brief }] }`. Unknown layouts and untitled
@@ -83,9 +100,9 @@ export async function buildDeck(outline, { generate = generateSlide, onProgress,
     // chose, or layout-specific fields would be checked against the wrong schema.
     const { layout: _ignored, ...fields } = raw && typeof raw === 'object' ? raw : {};
     const safe = sanitizeSlidePatch(fields, item.layout);
-    // A reply with nothing usable for this layout (the outline supplies the title)
-    // would only save template placeholders — fail so a resume retries this slide.
-    if (!Object.keys(safe).some((k) => k !== 'title')) {
+    // A reply with nothing this layout renders would only save template
+    // placeholders — fail so a resume retries this slide.
+    if (!usable(safe, item.layout)) {
       const e = new LLMError('slide', 'unusable slide');
       e.partial = slides;
       throw e;

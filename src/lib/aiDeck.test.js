@@ -77,9 +77,10 @@ describe('draftOutline', () => {
 
 describe('buildDeck', () => {
   const outline = parseOutline(JSON.stringify(outlineJson));
+  const KPIS = [{ label: 'Revenue', val: '$1M' }]; // what the outline's kpi slide renders
 
   it('generates one slide per outline item, in order, reporting progress', async () => {
-    const generate = vi.fn(async (prompt) => ({ title: 'ignored?', subtitle: `for ${prompt.slice(0, 5)}` }));
+    const generate = vi.fn(async (prompt) => ({ title: 'ignored?', subtitle: `for ${prompt.slice(0, 5)}`, kpis: KPIS }));
     const onProgress = vi.fn();
     const deck = await buildDeck(outline, { generate, onProgress });
     expect(generate).toHaveBeenCalledTimes(3);
@@ -95,18 +96,19 @@ describe('buildDeck', () => {
   });
 
   it('keeps only schema-valid fields from the model and never trusts its id', async () => {
-    const generate = vi.fn(async () => ({ id: 'evil', speakerNotes: 'x', __proto__: { polluted: true }, kpis: 'nope', subtitle: 'ok' }));
+    const generate = vi.fn(async () => ({ id: 'evil', speakerNotes: 'x', __proto__: { polluted: true }, chart: { categories: ['a'], series: [{ values: [1] }] }, kpis: KPIS, subtitle: 'ok' }));
     const deck = await buildDeck(outline, { generate });
     const s = deck.slides[1];
     expect(s.id).not.toBe('evil');
     expect(s).not.toHaveProperty('speakerNotes');
-    expect(s.kpis).not.toBe('nope'); // the invalid value is dropped (the template's kpis remain)
+    expect(s).not.toHaveProperty('chart'); // valid data, but not for a kpi slide
+    expect(s.kpis).toEqual(KPIS);
     expect(s.subtitle).toBe('ok');
     expect(s.title).toBe('Numbers');
   });
 
   it('keeps the reviewed outline title and layout over the model reply (incl. the unparseable-reply fallback)', async () => {
-    const generate = vi.fn(async (prompt) => ({ layout: 'text', title: prompt, body: 'raw reply' }));
+    const generate = vi.fn(async (prompt) => ({ layout: 'text', title: prompt, body: 'raw reply', kpis: KPIS }));
     const deck = await buildDeck(outline, { generate });
     expect(deck.slides.map((s) => [s.layout, s.title])).toEqual([
       ['cover', 'Q3 Review'], ['kpi', 'Numbers'], ['thanks', 'Thanks'],
@@ -115,15 +117,17 @@ describe('buildDeck', () => {
 
   it('validates the model fields against the outline layout, not a layout the model picked', async () => {
     // agenda items are objects; a list slide needs strings — they must not leak across
-    const generate = vi.fn(async () => ({ layout: 'agenda', items: [{ n: '01', t: 'x', d: 'y' }], subtitle: 'ok' }));
     const listOutline = { title: 'T', slides: [{ layout: 'list', title: 'Points', brief: '' }] };
-    const deck = await buildDeck(listOutline, { generate });
+    const agendaItems = vi.fn(async () => ({ layout: 'agenda', items: [{ n: '01', t: 'x', d: 'y' }], subtitle: 'ok' }));
+    expect((await buildDeck(listOutline, { generate: agendaItems }).catch((e) => e)).reason).toBe('slide');
+    const listItems = vi.fn(async () => ({ layout: 'agenda', items: ['x', 'y'] }));
+    const deck = await buildDeck(listOutline, { generate: listItems });
     expect(deck.slides[0].layout).toBe('list');
-    expect(deck.slides[0].items.every((it) => typeof it === 'string')).toBe(true);
+    expect(deck.slides[0].items).toEqual(['x', 'y']);
   });
 
   it('asks for strict slides by default, so an unusable reply fails instead of a placeholder', async () => {
-    const generate = vi.fn(async () => ({ subtitle: 'x' }));
+    const generate = vi.fn(async () => ({ subtitle: 'x', kpis: KPIS }));
     await buildDeck(outline, { generate });
     expect(generate.mock.calls[0][2]).toEqual({ strict: true });
   });
@@ -136,6 +140,30 @@ describe('buildDeck', () => {
     expect(err.partial).toHaveLength(1);
   });
 
+  it('rejects a reply whose only content is a field the layout does not render', async () => {
+    // subtitle is schema-valid anywhere, but a kpi slide only shows its kpis
+    const generate = vi.fn().mockResolvedValueOnce({ subtitle: 'ok' }).mockResolvedValueOnce({ subtitle: 'Revenue grew' });
+    const err = await buildDeck(outline, { generate }).catch((e) => e);
+    expect(err.reason).toBe('slide');
+    expect(err.partial).toHaveLength(1);
+  });
+
+  it('rejects empty layout content (an empty collection or blank entries)', async () => {
+    for (const reply of [{ kpis: [] }, { kpis: [{ label: ' ', val: '' }] }]) {
+      const generate = vi.fn().mockResolvedValueOnce({ subtitle: 'ok' }).mockResolvedValueOnce(reply);
+      const err = await buildDeck(outline, { generate }).catch((e) => e);
+      expect(err.reason).toBe('slide');
+      expect(err.partial).toHaveLength(1); // the cover succeeded; it failed at the kpi slide
+    }
+  });
+
+  it('accepts a title-only cover, divider or thanks slide — the title is their content', async () => {
+    const generate = vi.fn(async () => ({}));
+    const titled = { title: 'T', slides: ['cover', 'divider', 'thanks'].map((layout) => ({ layout, title: layout, brief: '' })) };
+    const deck = await buildDeck(titled, { generate });
+    expect(deck.slides.map((s) => s.layout)).toEqual(['cover', 'divider', 'thanks']);
+  });
+
   it('keeps partial slides even when generate rejects with a non-Error', async () => {
     const generate = vi.fn().mockResolvedValueOnce({ subtitle: 'ok' }).mockRejectedValueOnce('boom');
     let err;
@@ -146,14 +174,13 @@ describe('buildDeck', () => {
   });
 
   it('starts each slide from its layout template, so a rejected field keeps the template default', async () => {
-    const generate = vi.fn(async () => ({ kpis: 'not an array', subtitle: 'ok' }));
+    const generate = vi.fn(async () => ({ note: { not: 'text' }, kpis: KPIS, subtitle: 'ok' }));
     const deck = await buildDeck(outline, { generate });
-    expect(Array.isArray(deck.slides[1].kpis)).toBe(true);
-    expect(deck.slides[1].kpis.length).toBeGreaterThan(0);
+    expect(deck.slides[1].note).toBe('edit values'); // the kpi template's note
   });
 
   it('falls back to the outline layout when the model switches to an invalid one', async () => {
-    const generate = vi.fn(async () => ({ layout: 'hologram', subtitle: 'ok' }));
+    const generate = vi.fn(async () => ({ layout: 'hologram', subtitle: 'ok', kpis: KPIS }));
     const deck = await buildDeck(outline, { generate });
     expect(deck.slides.map((s) => s.layout)).toEqual(['cover', 'kpi', 'thanks']);
   });
@@ -168,7 +195,7 @@ describe('buildDeck', () => {
   });
 
   it('resumes after the slides already generated', async () => {
-    const generate = vi.fn(async () => ({ subtitle: 'ok' }));
+    const generate = vi.fn(async () => ({ subtitle: 'ok', kpis: KPIS }));
     const onProgress = vi.fn();
     const first = { id: 'kept', layout: 'cover', title: 'Q3 Review' };
     const deck = await buildDeck(outline, { generate, onProgress, done: [first] });
