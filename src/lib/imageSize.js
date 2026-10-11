@@ -71,7 +71,7 @@ const svgLen = (v) => {
 function svgSize(b) {
   let text = '';
   for (let i = 0; i < b.length; i++) text += String.fromCharCode(b[i]);
-  const tag = /<svg\b[^>]*>/i.exec(text)?.[0];
+  const tag = /<svg\b[^>]*>/i.exec(text.replace(/<!--[\s\S]*?-->/g, ''))?.[0]; // skip commented-out markup
   if (!tag) return null;
   const attr = (name) => new RegExp(`\\s${name}\\s*=\\s*["']([^"']*)["']`, 'i').exec(tag)?.[1];
   const w = svgLen(attr('width')), h = svgLen(attr('height'));
