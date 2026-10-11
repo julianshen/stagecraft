@@ -4,11 +4,11 @@ import { jpegOrientation, clearOrientation, uprightSlides } from './imageOrienta
 const ascii = (s) => [...s].map((c) => c.charCodeAt(0));
 // A JPEG: optional leading segments, an APP1 EXIF IFD0 with one entry
 // (Orientation, 0x0112, by default), then a SOF0 frame of w×h.
-function exifJpeg(orientation, { bigEndian = false, lead = [], tag = 0x0112, w = 40, h = 30 } = {}) {
+function exifJpeg(orientation, { bigEndian = false, lead = [], tag = 0x0112, type = 3, count = 1, w = 40, h = 30 } = {}) {
   const u16 = (n) => (bigEndian ? [n >> 8, n & 255] : [n & 255, n >> 8]);
   const u32 = (n) => (bigEndian ? [0, 0, n >> 8, n & 255] : [n & 255, n >> 8, 0, 0]);
   const tiff = [...ascii(bigEndian ? 'MM' : 'II'), ...u16(42), ...u32(8),
-    ...u16(1), ...u16(tag), ...u16(3), ...u32(1), ...u16(orientation), 0, 0, ...u32(0)];
+    ...u16(1), ...u16(tag), ...u16(type), ...u32(count), ...u16(orientation), 0, 0, ...u32(0)];
   const app1 = [...ascii('Exif'), 0, 0, ...tiff];
   const len = app1.length + 2;
   const sof = [0xff, 0xc0, 0, 11, 8, h >> 8, h & 255, w >> 8, w & 255, 1, 1, 0x11, 0];
@@ -39,6 +39,9 @@ describe('jpegOrientation', () => {
     expect(jpegOrientation(new Uint8Array([0x89, ...ascii('PNG')]))).toBe(1);          // not a JPEG
     expect(jpegOrientation(exifJpeg(9))).toBe(1);                                       // out of range
     expect(jpegOrientation(exifJpeg(6, { tag: 0x010f }))).toBe(1);                     // EXIF without an Orientation entry
+    expect(jpegOrientation(exifJpeg(6, { type: 4 }))).toBe(1);                         // not a SHORT: the value field is an offset
+    expect(jpegOrientation(exifJpeg(6, { count: 2 }))).toBe(1);                        // not a single inline value
+    expect(clearOrientation(dataUrl(exifJpeg(6, { type: 4 })))).toBe(dataUrl(exifJpeg(6, { type: 4 }))); // left byte-for-byte
     expect(jpegOrientation(new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0, 8, ...ascii('Nope'), 0, 0]))).toBe(1); // APP1 that isn't EXIF
     expect(jpegOrientation(new Uint8Array([0xff, 0xd8, 0x00]))).toBe(1);               // not a marker
     expect(jpegOrientation(exifJpeg(6, { lead: [0xff, 0xda, 0, 2] }))).toBe(1);        // past start-of-scan: entropy data, not segments

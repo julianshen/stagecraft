@@ -28,13 +28,17 @@ function scanJpeg(b) {
       const size = at + 2 + len - t; // TIFF bytes this APP1 holds: every read stays inside them
       const le = b[t] === 0x49;
       const u16 = (o) => (le ? b[t + o] | (b[t + o + 1] << 8) : (b[t + o] << 8) | b[t + o + 1]);
-      const ifd = le ? u16(4) | (u16(6) << 16) : (u16(4) << 16) | u16(6);
+      const u32 = (o) => (le ? u16(o) + u16(o + 2) * 0x10000 : u16(o) * 0x10000 + u16(o + 2));
+      const ifd = u32(4);
       const valid = size >= 8 && (le || b[t] === 0x4d) && u16(2) === 42 && ifd + 2 <= size;
       for (let i = 0, n = valid ? u16(ifd) : 0; i < n && ifd + 2 + (i + 1) * 12 <= size; i++) {
         const entry = ifd + 2 + i * 12;
         if (u16(entry) === 0x0112) {
+          // A well-formed Orientation is one SHORT (type 3, count 1), held inline in
+          // the entry's value field; anything else would make that field an offset.
+          const inline = u16(entry + 2) === 3 && u32(entry + 4) === 1;
           const o = u16(entry + 8);
-          if (o >= 1 && o <= 8) Object.assign(info, { orientation: o, at: t + entry + 8, le });
+          if (inline && o >= 1 && o <= 8) Object.assign(info, { orientation: o, at: t + entry + 8, le });
           break;
         }
       }
