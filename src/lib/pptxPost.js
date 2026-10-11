@@ -28,8 +28,13 @@ const hasWork = ({ gradients, groups }) => Object.keys(gradients).length > 0 || 
  * percent-encoded so it holds nothing XML escapes (pptxgenjs escapes a text
  * box's name twice, so `&` or `"` in an id would otherwise never match).
  * One-to-one, so distinct ids stay distinct; plain ids pass through unchanged.
+ * A lone UTF-16 surrogate (which encodeURIComponent rejects) becomes `%uXXXX`,
+ * a form percent-encoding never produces.
  */
-export const objectNameOf = (id) => encodeURIComponent(String(id)).replace(/'/g, '%27');
+const isLoneSurrogate = (c) => c.length === 1 && c >= '\ud800' && c <= '\udfff';
+export const objectNameOf = (id) => String(id)
+  .replace(/[\ud800-\udbff][\udc00-\udfff]|[^]/g, (c) => (isLoneSurrogate(c) ? `%u${c.charCodeAt(0).toString(16).toUpperCase()}` : encodeURIComponent(c)))
+  .replace(/'/g, '%27');
 
 /**
  * A slide's plan, read from its elements (each exported under its id): every
@@ -39,7 +44,7 @@ export const objectNameOf = (id) => encodeURIComponent(String(id)).replace(/'/g,
  * two members.
  */
 export function planFor(slide) {
-  const gradients = {};
+  const gradients = Object.create(null); // keyed by arbitrary ids: no inherited __proto__ setter
   const groups = new Map();
   for (const el of Array.isArray(slide?.elements) ? slide.elements : []) {
     if (!el?.id) continue;

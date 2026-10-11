@@ -63,6 +63,21 @@ describe('planFor (a slide\'s post-processing plan, read from its elements)', ()
     ] })).toEqual({ gradients: {}, groups: [] });
     expect(planFor({})).toEqual({ gradients: {}, groups: [] });
   });
+
+  it('keys any id as a plain name — even "__proto__" gets its own gradient entry', () => {
+    const plan = planFor({ elements: [{ id: '__proto__', type: 'rect', gradient: { from: '#000000', to: '#ffffff', angle: 90 } }] });
+    expect(Object.keys(plan.gradients)).toEqual(['__proto__']);
+  });
+});
+
+describe('objectNameOf (the XML-safe, one-to-one name an element exports under)', () => {
+  it('encodes lone UTF-16 surrogates instead of throwing, keeping distinct ids distinct', () => {
+    expect(objectNameOf('a\ud800')).toBe('a%uD800');
+    expect(objectNameOf('\udc00b')).toBe('%uDC00b');
+    expect(objectNameOf('a\ud800')).not.toBe(objectNameOf('a\ud801'));
+    expect(objectNameOf('😀')).toBe(encodeURIComponent('😀')); // a proper pair still percent-encodes as UTF-8
+    expect(objectNameOf("it's")).toBe('it%27s');
+  });
 });
 
 describe('patchSlideXml — gradients', () => {
