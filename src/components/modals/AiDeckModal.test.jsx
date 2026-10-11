@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { StrictMode } from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AiDeckModal } from './AiDeckModal.jsx';
 
@@ -189,5 +190,13 @@ describe('AiDeckModal', () => {
     unmount();
     await act(async () => { finish({ slides: [] }); });
     expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it('works under React.StrictMode (the dev double mount must not leave it "unmounted")', async () => {
+    draftOutline.mockResolvedValue(outline);
+    render(<StrictMode><AiDeckModal onClose={vi.fn()} onCreate={vi.fn()} /></StrictMode>);
+    typeTopic();
+    fireEvent.click(screen.getByRole('button', { name: /Draft outline/ }));
+    expect(await screen.findByText('Numbers')).toBeInTheDocument();
   });
 });

@@ -20,7 +20,11 @@ export function AiDeckModal({ onClose, onCreate }) {
   // A request that settles after the dialog is gone (closed by the app, a view
   // switch) must not create a deck the user no longer expects.
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  // Re-armed in setup: StrictMode's dev double mount runs cleanup then setup again.
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
 
   // App closes any modal on Escape (window listener). Past the topic step that
   // would discard a drafted outline or abandon an in-flight build, so swallow
