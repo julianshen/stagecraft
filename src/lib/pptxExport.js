@@ -119,7 +119,7 @@ function elementGeo(el) {
   const g = { x: IN(num(el.x)), y: IN(num(el.y)), w: IN(num(el.w)), h: IN(num(el.h)) };
   const rot = num(el.rot);
   if (rot) g.rotate = rot; // pptx rotates about the shape centre, like the canvas
-  if (el.id) g.objectName = objectNameOf(el.id); // what the post-processor's patches key on
+  if (el.id != null) g.objectName = objectNameOf(el.id); // what the post-processor's patches key on
   // Flips are native xfrm attributes (PowerPoint handles flipped text itself).
   if (el.flipH) g.flipH = true;
   if (el.flipV) g.flipV = true;

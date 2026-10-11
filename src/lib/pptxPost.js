@@ -29,12 +29,13 @@ const hasWork = ({ gradients, groups }) => Object.keys(gradients).length > 0 || 
  * box's name twice, so `&` or `"` in an id would otherwise never match).
  * One-to-one, so distinct ids stay distinct; plain ids pass through unchanged.
  * A lone UTF-16 surrogate (which encodeURIComponent rejects) becomes `%uXXXX`,
- * a form percent-encoding never produces.
+ * a form percent-encoding never produces; the empty id (a valid id, whose
+ * empty name pptxgenjs would ignore) becomes a bare `%`, likewise unique.
  */
 const isLoneSurrogate = (c) => c.length === 1 && c >= '\ud800' && c <= '\udfff';
-export const objectNameOf = (id) => String(id)
+export const objectNameOf = (id) => (String(id) === '' ? '%' : String(id)
   .replace(/[\ud800-\udbff][\udc00-\udfff]|[^]/g, (c) => (isLoneSurrogate(c) ? `%u${c.charCodeAt(0).toString(16).toUpperCase()}` : encodeURIComponent(c)))
-  .replace(/'/g, '%27');
+  .replace(/'/g, '%27'));
 
 /**
  * A slide's plan, read from its elements (each exported under its id): every
@@ -47,7 +48,7 @@ export function planFor(slide) {
   const gradients = Object.create(null); // keyed by arbitrary ids: no inherited __proto__ setter
   const groups = new Map();
   for (const el of Array.isArray(slide?.elements) ? slide.elements : []) {
-    if (!el?.id) continue;
+    if (el?.id == null) continue; // '' is a valid id
     if (isFillableShape(el.type) && isRenderableGradient(el.gradient)) {
       gradients[objectNameOf(el.id)] = { from: pptxHex(el.gradient.from), to: pptxHex(el.gradient.to), angle: el.gradient.angle };
     }

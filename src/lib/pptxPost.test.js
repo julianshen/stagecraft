@@ -68,6 +68,15 @@ describe('planFor (a slide\'s post-processing plan, read from its elements)', ()
     const plan = planFor({ elements: [{ id: '__proto__', type: 'rect', gradient: { from: '#000000', to: '#ffffff', angle: 90 } }] });
     expect(Object.keys(plan.gradients)).toEqual(['__proto__']);
   });
+
+  it('keeps an element whose id is the empty string (a valid id) under its own name', () => {
+    const plan = planFor({ elements: [
+      { id: '', type: 'rect', gradient: { from: '#000000', to: '#ffffff', angle: 90 }, groupId: 'G' },
+      { id: 'b', type: 'rect', groupId: 'G' },
+    ] });
+    expect(Object.keys(plan.gradients)).toEqual(['%']);
+    expect(plan.groups).toEqual([['%', 'b']]);
+  });
 });
 
 describe('objectNameOf (the XML-safe, one-to-one name an element exports under)', () => {
@@ -77,6 +86,7 @@ describe('objectNameOf (the XML-safe, one-to-one name an element exports under)'
     expect(objectNameOf('a\ud800')).not.toBe(objectNameOf('a\ud801'));
     expect(objectNameOf('😀')).toBe(encodeURIComponent('😀')); // a proper pair still percent-encodes as UTF-8
     expect(objectNameOf("it's")).toBe('it%27s');
+    expect(objectNameOf('')).toBe('%'); // non-empty (pptxgenjs ignores an empty name), and no other id encodes to a bare %
   });
 });
 
