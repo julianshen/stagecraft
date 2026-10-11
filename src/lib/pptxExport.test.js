@@ -565,7 +565,7 @@ describe('exportToPPTX — free-form elements overlay', () => {
     await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: PNG_640x480, fit: 'stretch' }]));
     expect(last().images[0].o).toMatchObject({ w: 2, h: 2 });
     expect(last().images[0].o).not.toHaveProperty('sizing');
-    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: 'data:image/svg+xml;base64,PHN2Zy8+', fit: 'contain' }]));
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: 'data:image/tiff;base64,SUkqAA==', fit: 'contain' }]));
     expect(last().images[0].o).not.toHaveProperty('sizing');
   });
 

@@ -70,7 +70,9 @@ describe('dataImageSize', () => {
     expect(cm.h).toBeCloseTo(5 * 96 / 2.54);
     expect(dataImageSize(svg('width="1in" height="72pt"'))).toEqual({ w: 96, h: 96 });
     expect(dataImageSize(svg('width="12pc" height="25.4mm"'))).toEqual({ w: 192, h: 96 });
-    expect(dataImageSize(svg('width="10em" height="5em"'))).toBeNull(); // font-relative, and no viewBox
+    // no usable size at all → the browser's default object size (300×150), as the canvas draws it
+    expect(dataImageSize(svg('width="10em" height="5em"'))).toEqual({ w: 300, h: 150 });
+    expect(dataImageSize('data:image/svg+xml;base64,' + btoa('<svg/>'))).toEqual({ w: 300, h: 150 });
   });
 
   it('reads BMP dimensions (a negative height means top-down rows)', () => {
@@ -98,7 +100,6 @@ describe('dataImageSize', () => {
   it('returns null for anything it cannot size', () => {
     expect(dataImageSize('')).toBeNull();
     expect(dataImageSize(null)).toBeNull();
-    expect(dataImageSize('data:image/svg+xml;base64,' + btoa('<svg/>'))).toBeNull(); // no size at all
     expect(dataImageSize('data:image/svg+xml;base64,' + btoa('<html></html>'))).toBeNull(); // not an svg
     expect(dataImageSize('data:image/tiff;base64,' + btoa('II*\0'))).toBeNull();
     expect(dataImageSize(url('image/avif', [0, 0, 0, 24, ...ascii('ftypavif'), ...new Array(16).fill(0)]))).toBeNull(); // no ispe
