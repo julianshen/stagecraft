@@ -65,36 +65,40 @@ describe('uprightSlides', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
   // A fake browser decode/encode: createImageBitmap → canvas → toBlob. `applied`
-  // = whether the browser honours imageOrientation (the bitmap comes back turned).
-  function stubBrowser({ applied = true } = {}) {
+  // = whether the browser honours imageOrientation: the built-in 2×1 probe (the
+  // only 321-byte blob here) then comes back 1×2, and every picture turned.
+  const PROBE_BYTES = 321;
+  function stubBrowser({ applied = true, size = [40, 30] } = {}) {
     let active = 0;
     const seen = { maxActive: 0 };
     const createImageBitmap = vi.fn(async (blob, { imageOrientation }) => {
       seen.maxActive = Math.max(seen.maxActive, ++active);
       await new Promise((r) => setTimeout(r, 1));
+      const [w, h] = blob.size === PROBE_BYTES ? [2, 1] : size;
       const turned = applied && imageOrientation === 'from-image';
-      return { width: turned ? 30 : 40, height: turned ? 40 : 30, close: vi.fn(() => { active--; }) };
+      return { width: turned ? h : w, height: turned ? w : h, close: vi.fn(() => { active--; }) };
     });
+    const pictureCalls = () => createImageBitmap.mock.calls.filter(([blob]) => blob.size !== PROBE_BYTES);
     vi.stubGlobal('createImageBitmap', createImageBitmap);
     const ctx = { drawImage: vi.fn(), transform: vi.fn() };
     const canvas = { width: 0, height: 0, sizes: [], getContext: () => ctx,
       toBlob: vi.fn(function (cb, type) { this.sizes.push([this.width, this.height]); cb(new Blob(['UPRIGHT'], { type })); }) };
     const realCreate = document.createElement.bind(document);
     vi.spyOn(document, 'createElement').mockImplementation((tag) => (tag === 'canvas' ? canvas : realCreate(tag)));
-    return { createImageBitmap, canvas, ctx, seen };
+    return { createImageBitmap, pictureCalls, canvas, ctx, seen };
   }
   const slideOf = (...elements) => ({ id: 's', layout: 'blank', elements });
   const UPRIGHT = `data:image/jpeg;base64,${btoa('UPRIGHT')}`;
 
   it('re-encodes a rotated JPEG upright in copies of the slides, once per distinct src', async () => {
-    const { createImageBitmap, canvas, ctx } = stubBrowser();
+    const { pictureCalls, canvas, ctx } = stubBrowser();
     const rotated = dataUrl(exifJpeg(6));
     const a = { id: 'a', type: 'image', src: rotated };
     const slides = [slideOf(a, { id: 'b', type: 'image', src: rotated }, { id: 't', type: 'text', content: 'x' })];
     const out = await uprightSlides(slides);
     expect(out[0].elements.map((e) => e.src)).toEqual([UPRIGHT, UPRIGHT, undefined]);
-    expect(createImageBitmap).toHaveBeenCalledTimes(1);
-    expect(createImageBitmap.mock.calls[0][1]).toEqual({ imageOrientation: 'from-image' });
+    expect(pictureCalls()).toHaveLength(1);
+    expect(pictureCalls()[0][1]).toEqual({ imageOrientation: 'from-image' });
     expect(canvas.sizes).toEqual([[30, 40]]);
     expect(ctx.transform).not.toHaveBeenCalled(); // the browser already turned it
     expect(canvas.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg', expect.any(Number));
@@ -111,6 +115,9 @@ describe('uprightSlides', () => {
   });
 
   it.each([
+    [2, [-1, 0, 0, 1, 40, 0]],   // mirror
+    [3, [-1, 0, 0, -1, 40, 30]], // 180°
+    [4, [1, 0, 0, -1, 0, 30]],   // flip
     [5, [0, 1, 1, 0, 0, 0]],     // transpose
     [7, [0, -1, -1, 0, 30, 40]], // transverse
     [8, [0, -1, 1, 0, 0, 40]],   // 90° anticlockwise
@@ -120,11 +127,18 @@ describe('uprightSlides', () => {
     expect(ctx.transform).toHaveBeenCalledWith(...matrix);
   });
 
+  it('turns a square picture itself too (the probe, not the picture\'s size, decides)', async () => {
+    const { canvas, ctx } = stubBrowser({ applied: false, size: [30, 30] });
+    await uprightSlides([slideOf({ id: 'a', type: 'image', src: dataUrl(exifJpeg(6, { w: 30, h: 30 })) })]);
+    expect(canvas.sizes).toEqual([[30, 30]]);
+    expect(ctx.transform).toHaveBeenCalledWith(0, 1, -1, 0, 30, 0);
+  });
+
   it('decodes one picture at a time (full-size bitmaps add up)', async () => {
-    const { createImageBitmap, seen } = stubBrowser();
+    const { pictureCalls, seen } = stubBrowser();
     const slides = [6, 8, 3].map((o, i) => slideOf({ id: `i${i}`, type: 'image', src: dataUrl(exifJpeg(o, { w: 40 + i })) }));
     await uprightSlides(slides);
-    expect(createImageBitmap).toHaveBeenCalledTimes(3);
+    expect(pictureCalls()).toHaveLength(3);
     expect(seen.maxActive).toBe(1);
   });
 
