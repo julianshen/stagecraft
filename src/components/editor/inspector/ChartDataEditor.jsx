@@ -1,7 +1,9 @@
 import React from 'react';
-import { Button, IconButton } from '../../ui/Primitives.jsx';
+import { Button, IconButton, FieldRow, Select } from '../../ui/Primitives.jsx';
 import NumberCell from './NumberCell.jsx';
-import { chartData } from '../../../lib/chartSpec.js';
+import { chartData, chartTypeOf, CHART_TYPES } from '../../../lib/chartSpec.js';
+
+const CHART_TYPE_OPTIONS = CHART_TYPES.map((t) => ({ value: t, label: t[0].toUpperCase() + t.slice(1) }));
 
 // Inspector editor for a chart slide's data. Renders the same normalized view
 // the canvas and the PPTX export draw (chartData — including its demo fallback,
@@ -35,6 +37,11 @@ export default function ChartDataEditor({ slide, onApply }) {
 
   return (
     <div className="pane-section">
+      {/* The type was only reachable at insert (or via the AI) — U12. */}
+      <FieldRow label="TYPE">
+        <Select ariaLabel="Chart type" value={chartTypeOf(slide)} options={CHART_TYPE_OPTIONS}
+          onChange={(chartType) => onApply({ chartType })} />
+      </FieldRow>
       <h4>Chart data</h4>
       <div style={{ display: 'grid', gridTemplateColumns: `1.4fr repeat(${series.length}, 1fr) 20px`, gap: 4, alignItems: 'center' }}>
         <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>CATEGORY</span>

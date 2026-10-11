@@ -13,6 +13,15 @@ const TYPE_MAP = {
   line: { type: 'line' },
 };
 
+// The chart types a user can pick (pie is an alias that draws as a donut).
+export const CHART_TYPES = Object.freeze(['line', 'bar', 'area', 'donut']);
+// The type a slide actually draws as, by the rule above: pie → donut, anything
+// unknown or missing → line. What the chart-type control shows.
+export const chartTypeOf = (slide) => {
+  const t = slide?.chartType === 'pie' ? 'donut' : slide?.chartType;
+  return CHART_TYPES.includes(t) ? t : 'line';
+};
+
 // Sensible defaults so a chart slide with no data still exports a real chart.
 const DEFAULT_CATEGORIES = ['Q1', 'Q2', 'Q3', 'Q4'];
 const DEFAULT_SERIES = [{ name: 'Coverage', values: [112, 131, 149, 184] }];

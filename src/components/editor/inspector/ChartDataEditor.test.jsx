@@ -14,6 +14,28 @@ const renderEditor = (s = slide) => {
   return { ...utils, onApply };
 };
 
+describe('ChartDataEditor — chart type', () => {
+  it('changes the chart type after insert (it was AI-only before)', () => {
+    const { onApply } = renderEditor();
+    const select = screen.getByRole('combobox', { name: 'Chart type' });
+    expect(select).toHaveValue('bar');
+    fireEvent.change(select, { target: { value: 'donut' } });
+    expect(onApply).toHaveBeenCalledWith({ chartType: 'donut' });
+    expect(sanitizeSlidePatch({ chartType: 'donut' }, 'chart')).toEqual({ chartType: 'donut' });
+  });
+
+  it('shows the type the canvas draws: pie as Donut, a missing type as Line', () => {
+    renderEditor({ ...slide, chartType: 'pie' });
+    expect(screen.getByRole('combobox', { name: 'Chart type' })).toHaveValue('donut');
+  });
+
+  it('defaults a chart with no type to Line', () => {
+    const { chartType, ...untyped } = slide;
+    renderEditor(untyped);
+    expect(screen.getByRole('combobox', { name: 'Chart type' })).toHaveValue('line');
+  });
+});
+
 describe('ChartDataEditor', () => {
   it('renders the categories and series from the slide', () => {
     renderEditor();
