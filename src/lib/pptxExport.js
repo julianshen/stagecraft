@@ -7,7 +7,8 @@ import { flattenDeck } from './deckOrder.js';
 import { CANVAS_BASELINE_PX } from './fontBaselines.js';
 import { resolveHeadingScale } from './headingScale.js';
 import { toHex, isHexColor, mixHex } from './color.js';
-import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType, lineSpacingOf, valignOf } from './elements.js';
+import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType, lineSpacingOf, valignOf, INK as DEFAULT_INK, fitOf } from './elements.js';
+import { dataImageSize } from './imageSize.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
 import { slideBgClass } from './slideScheme.js';
 
@@ -122,6 +123,21 @@ function elementGeo(el) {
   return g;
 }
 
+// A cover/contain picture (the canvas object-fit) → pptx `sizing`, which crops
+// or letterboxes the image's NATURAL aspect into the box — so pptxgen needs
+// that aspect as the image's own w/h, with the box in `sizing`. A stretch
+// image, or one whose size can't be read from its header, stretches to the box.
+// Only the ratio matters, so it's passed scaled to a 1-inch long side: pptxgen
+// reads any number ≥ 100 as EMU, which would wreck a very tall/wide picture.
+const PPTX_SIZING = { cover: 'cover', contain: 'contain' };
+function imageSizing(el, geo) {
+  const type = PPTX_SIZING[fitOf(el)];
+  const size = type && dataImageSize(el.src);
+  if (!size) return {};
+  const long = Math.max(size.w, size.h);
+  return { w: size.w / long, h: size.h / long, sizing: { type, w: geo.w, h: geo.h } };
+}
+
 // Draw a slide's free-form elements over whatever the layout builder produced,
 // so anything placed on the canvas survives export. Geometry/rotation/opacity
 // map 1:1; image objectFit and text auto-fit aren't reproduced exactly.
@@ -157,14 +173,14 @@ function addElements(pptx, sld, slide) {
       sld.addText(el.content || '', {
         ...geo, fontSize: PT(num(el.fontSize, 48)), bold: !!el.bold, italic: !!el.italic,
         underline: !!el.underline, align: el.align || 'left', valign: valignOf(el), lineSpacingMultiple: lineSpacingOf(el),
-        // Match ElementView's `var(--ink, #15171C)` text default (not the deck
-        // theme's white ink) so a fill-less text element isn't invisible.
-        color: pxHex(el.fill || '#15171C'), fontFace: el.fontFamily || 'Inter', ...withOpacity, ...withShadow,
+        // Match ElementView's DEFAULT_INK text default (not the deck theme's white
+        // ink) so a colour-less text element isn't invisible.
+        color: pxHex(el.color || DEFAULT_INK), fontFace: el.fontFamily || 'Inter', ...withOpacity, ...withShadow,
       });
       continue;
     }
     if (el.type === 'image') {
-      if (el.src) sld.addImage({ ...geo, data: el.src, ...withOpacity, ...withShadow });
+      if (el.src) sld.addImage({ ...geo, ...imageSizing(el, geo), data: el.src, ...withOpacity, ...withShadow });
       continue;
     }
     if (el.type === 'path') {
@@ -185,7 +201,7 @@ function addElements(pptx, sld, slide) {
       // the canvas's zero-width stroke does not draw.
       sld.addShape(ST.custGeom, {
         ...geo, points: pts,
-        ...(lw > 0 ? { line: { color: pxHex(el.stroke || '#15171C'), width: lw, ...withOpacity, ...(dt ? { dashType: dt } : {}) } } : {}),
+        ...(lw > 0 ? { line: { color: pxHex(el.stroke || DEFAULT_INK), width: lw, ...withOpacity, ...(dt ? { dashType: dt } : {}) } } : {}),
         ...withShadow,
       });
       continue;
@@ -197,7 +213,7 @@ function addElements(pptx, sld, slide) {
     // A gradient fill has no pptx shape equivalent, so it exports as the midpoint
     // blend of its two stops — the solid that sits between the canvas gradient.
     // A malformed gradient falls back to the solid `fill`, matching the canvas.
-    const fillColor = isRenderableGradient(el.gradient) ? mixHex(el.gradient.from, el.gradient.to) : (el.fill || '#15171C');
+    const fillColor = isRenderableGradient(el.gradient) ? mixHex(el.gradient.from, el.gradient.to) : (el.fill || DEFAULT_INK);
     const fill = { color: pxHex(fillColor), ...withOpacity };
     const opts = { ...geo, fill, ...withShadow };
     // A box shape's stroke → a pptx line (colour + pt width), matching the

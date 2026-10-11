@@ -9,8 +9,18 @@ const TYPE_MAP = {
   bar: { type: 'bar', barDir: 'col' },
   area: { type: 'area' },
   donut: { type: 'doughnut' },
-  pie: { type: 'doughnut' },
   line: { type: 'line' },
+};
+
+// The chart types a user can pick, with their labels — one table for the
+// insert picker, the Data-panel TYPE control and the canvas caption.
+export const CHART_TYPE_LABELS = Object.freeze({ line: 'Line', bar: 'Bar', area: 'Area', donut: 'Donut' });
+export const CHART_TYPES = Object.freeze(Object.keys(CHART_TYPE_LABELS));
+// The type a slide actually draws as, by the rule above: pie → donut, anything
+// unknown or missing → line. Every surface (canvas, export, inspector) reads it.
+export const chartTypeOf = (slide) => {
+  const t = slide?.chartType === 'pie' ? 'donut' : slide?.chartType;
+  return CHART_TYPES.includes(t) ? t : 'line';
 };
 
 // Sensible defaults so a chart slide with no data still exports a real chart.
@@ -63,7 +73,7 @@ export const renameSeries = (slide, si, name) =>
   editChart(slide, (d) => ({ series: d.series.map((s, i) => (i === si ? { ...s, name } : s)) }));
 
 export function chartSpec(slide) {
-  const m = TYPE_MAP[slide?.chartType] || TYPE_MAP.line; // renderer defaults unknown/missing to line
+  const m = TYPE_MAP[chartTypeOf(slide)];
   const { categories, series } = chartData(slide);
   // pptxgenjs wants [{ name, labels, values }].
   const data = series.map((s) => ({ name: s.name, labels: categories, values: s.values }));

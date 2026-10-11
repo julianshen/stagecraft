@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { normalizeDeck } from '../lib/normalizeDeck.js';
 
 const DEFAULT_POLL_MS = 1500;
 const DEFAULT_PUSH_DEBOUNCE_MS = 300;
@@ -91,7 +92,10 @@ export function useDeckSync(deck, onExternalDeck, options = {}) {
   // silently suppress every status update in the real (StrictMode) app.
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
-  const adopt = useCallback((serverDeck, rev, forId) => {
+  const adopt = useCallback((incoming, rev, forId) => {
+    // Every deck the editor takes in arrives here, so it enters in the current
+    // model whatever wrote it (identity kept when already current).
+    const serverDeck = normalizeDeck(incoming);
     lastRev.current = rev;
     adopted.current = serverDeck;
     adoptedRev.current = rev;

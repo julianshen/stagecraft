@@ -130,14 +130,17 @@ A label can never claim a shortcut that isn't bound.
 - Adding a whole slide of that kind moves to **New slide ▾** (layout gallery).
 - The **Text ▾** menu becomes text-box presets (Title, Heading, Body) that insert *text elements*.
 
-### 2.4 F-UI-3 — Inspector correctness
+### 2.4 F-UI-3 — Inspector correctness ✅ (A3, except the items marked below)
 
 - **Label colours by meaning:**
-  - text colour → *Text colour*;
-  - shape fill → *Fill*;
-  - text boxes gain Fill and Line (default none).
-- **Shared `Select` primitive** with one chevron (fixes U11).
-- **Controls for model-only fields:** image fit (Fit / Fill / Stretch), chart type, background (F-DES-3).
+  - ✅ text colour → *Text colour*, stored in `color` (migrated from `fill` by `lib/normalizeDeck.js`);
+  - ✅ shape fill → *Fill*;
+  - text boxes gain Fill and Line (default none). *(Delivered with text-in-shapes, B1/F-TXT-2: A3 frees `fill` for it, and the gate rejects a text `fill` until a box fill renders.)*
+- ✅ **Shared `Select` primitive** with one chevron (fixes U11).
+- **Controls for model-only fields:**
+  - ✅ image fit (Properties → Picture: Fill / Fit / Stretch, `cover` / `contain` / `stretch`); the PPTX export now honours it too;
+  - ✅ chart type (Data panel → TYPE);
+  - background. *(F-DES-3, D2.)*
 
 ### 2.5 F-UI-4 — Honesty pass 2 ✅ (A2, except the K-owned items marked below)
 
@@ -187,7 +190,7 @@ Colours stay hex unless F-DES-1 says otherwise. Lengths are canvas px (1920 wide
   - `resize` grows `h`.
 - **Export:** one `addText` with `shape` + `fill` + `line`; `margin` = insets; `fit: 'shrink'|'resize'`.
 - **Import:** a `p:sp` with geometry and `txBody` becomes **one** element; remove the pair-grouping workaround. `bodyPr lIns/tIns/rIns/bIns`, `normAutofit` and `spAutoFit` map directly.
-- **Migration:** text elements' `fill` → `color`. The gate accepts the legacy shape for one release, and `normalizeDeck` rewrites it.
+- **Migration:** ✅ (A3) text elements' `fill` → `color`. `normalizeDeck` rewrites the legacy shape wherever a deck enters the store (snapshot load, every server write) and in AI element patches, so the gate only ever sees the current shape.
 - **Acceptance criteria:**
   - An imported callout is one selectable object.
   - Its fill and text are both editable.
@@ -554,7 +557,7 @@ Order: **A → K → B → C → D → E → F**. A3 lands **before K1**, becaus
 |---|---|---|---|
 | A1 ✅ | **F-UI-1 command registry**: context-aware element/thumbnail/canvas menus, truthful shortcuts, Ctrl parity, ⌘K palette, generated Shortcuts page, editor PgUp/PgDn | M | — |
 | A2 ✅ | **F-UI-4 honesty pass 2**: presenter clock/reset, status bar binds, export footer (format + slide count, no invented size) and wired export defaults, hide/wire remaining mocks, Start with AI. *Fit/zoom > 92% moves to K5 and Home slide-1 thumbnails to K4: both are rewritten by the canvas engine.* | S | — |
-| A3 | **F-UI-3 inspector correctness**: Select primitive (single chevron), text-colour labelling + `fill`→`color` migration, image fit control, chart-type control | S | — |
+| A3 ✅ | **F-UI-3 inspector correctness**: Select primitive (single chevron), text-colour labelling + `fill`→`color` migration (`lib/normalizeDeck.js`), image fit control (+ export sizing), chart-type control. *Text-box Fill/Line moves to B1; background to D2.* | S | — |
 | A4 | **F-EXP-1 `pptxPost.js` scaffold** + first patches: `grpSp` groups, shape/background `gradFill`, element flips | M | — |
 
 ### Phase K — Canvas engine (re-platform rendering and editing)

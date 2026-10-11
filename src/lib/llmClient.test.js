@@ -299,6 +299,14 @@ describe('editSlide', () => {
     expect(patch).toEqual({ title: 'New title', body: 'New body' });
   });
 
+  it('tells the model text is coloured by "color" and shapes by "fill"', async () => {
+    fetchMock.mockResolvedValue(res({ text: '{}' }));
+    await editSlide({ id: 'a', layout: 'blank' }, 'add a caption');
+    const { system } = JSON.parse(fetchMock.mock.calls[0][1].body).payload ?? JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(system).toMatch(/"color" \(the text colour\) for text/);
+    expect(system).toMatch(/"fill" for shapes and lines/);
+  });
+
   it('strips markdown code fences', async () => {
     fetchMock.mockResolvedValue(res({ text: '```json\n{"layout":"list","items":["x"]}\n```' }));
     expect(await editSlide({ id: 'a' }, 'as a list')).toEqual({ layout: 'list', items: ['x'] });

@@ -764,3 +764,47 @@ describe('slide insertion keeps a closing thanks slide last', () => {
     expect(store.deck.sections[0].slides).toEqual(['a', r.body.id]);
   });
 });
+
+describe('model migration (text fill → color)', () => {
+  const legacyText = { id: 't', type: 'text', x: 0, y: 0, w: 10, h: 10, content: 'Hi', fill: '#ff0000' };
+  const legacyDeck = () => ({ ...deck(), slides: [{ id: 'a', layout: 'blank', elements: [legacyText] }] });
+  const ink = (store) => store.deck.slides[0].elements[0];
+
+  it('migrates a legacy deck wrapped as the active one', () => {
+    expect(ink(createDeckStore(legacyDeck())).color).toBe('#ff0000');
+  });
+
+  it('migrates decks restored from a persisted snapshot', () => {
+    const store = createDeckStore({ decks: { d1: { id: 'd1', name: 'D', deck: legacyDeck(), updatedAt: 1 } }, activeId: 'd1' });
+    expect(ink(store)).toMatchObject({ color: '#ff0000' });
+    expect(ink(store)).not.toHaveProperty('fill');
+  });
+
+  it('migrates a deck that arrives by PUT /api/deck and POST /api/decks', async () => {
+    const store = createDeckStore(deck());
+    await handleApiRequest(store, req('PUT', '/api/deck', legacyDeck()));
+    expect(ink(store).color).toBe('#ff0000');
+    await handleApiRequest(store, req('POST', '/api/decks', { deck: legacyDeck() }));
+    expect(ink(store).color).toBe('#ff0000');
+  });
+
+  it('migrates elements written through the MCP update_slide tool', async () => {
+    const store = createDeckStore(deck());
+    await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'update_slide', arguments: { id: 'a', updates: { elements: [legacyText] } } }));
+    expect(store.deck.slides.find((s) => s.id === 'a').elements[0]).toMatchObject({ color: '#ff0000' });
+  });
+});
+
+describe('slide writes return the stored (migrated) slide', () => {
+  const legacyText = { id: 't', type: 'text', x: 0, y: 0, w: 10, h: 10, content: 'Hi', fill: '#ff0000' };
+  it('MCP add_slide and POST /api/slides echo the slide as stored', async () => {
+    const store = createDeckStore(deck());
+    const viaMcp = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'add_slide', arguments: { layout: 'blank', elements: [legacyText] } }));
+    expect(viaMcp.body.result.elements[0]).toMatchObject({ color: '#ff0000' });
+    expect(viaMcp.body.result.elements[0]).not.toHaveProperty('fill');
+    const viaRest = await handleApiRequest(store, req('POST', '/api/slides', { layout: 'blank', elements: [legacyText] }));
+    expect(viaRest.body.elements[0]).toMatchObject({ color: '#ff0000' });
+    expect(viaRest.body.elements[0]).not.toHaveProperty('fill');
+    expect(store.deck.slides.find((s) => s.id === viaRest.body.id)).toEqual(viaRest.body);
+  });
+});

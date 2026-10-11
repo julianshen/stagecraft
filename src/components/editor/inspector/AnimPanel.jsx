@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import Icon from '../../ui/Icon.jsx';
-import { FieldRow, InputGroup, Button, IconButton } from '../../ui/Primitives.jsx';
+import { FieldRow, InputGroup, Button, IconButton, Select } from '../../ui/Primitives.jsx';
 import { TRANSITION_TYPES, BUILD_TYPES } from '../../../lib/deckUtils.js';
 
 const DEFAULT_DURATION = 480; // ms — seeds the DUR field when a slide has no transition yet
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // "fadeIn" → "Fade In" for the build TYPE options (derived, so a new BUILD_TYPE is labelled).
 const buildLabel = (t) => cap(t.replace(/([A-Z])/g, ' $1'));
+const TRANSITION_OPTIONS = [...TRANSITION_TYPES].map((t) => ({ value: t, label: cap(t) }));
+const BUILD_OPTIONS = [...BUILD_TYPES].map((t) => ({ value: t, label: buildLabel(t) }));
 
 // The slide-transition editor. TYPE + DUR read the live `slide.transition` (else
 // a none/480ms default) and commit through the shared patch gate (onApply →
@@ -44,13 +45,9 @@ export default function AnimPanel({ slide, onApply }) {
       <div className="pane-section">
         <h4>Transition</h4>
         <FieldRow label="TYPE">
-          <div className="input-group">
-            <select aria-label="Transition type" value={type} disabled={!slide}
-              onChange={(e) => apply({ type: e.target.value })}>
-              {[...TRANSITION_TYPES].map((t) => <option key={t} value={t}>{cap(t)}</option>)}
-            </select>
-            <Icon name="chevron-down" size={11} />
-          </div>
+          <Select ariaLabel="Transition type" value={type} disabled={!slide}
+            onChange={(v) => apply({ type: v })}
+            options={TRANSITION_OPTIONS} />
         </FieldRow>
         <FieldRow label="DUR">
           <InputGroup ariaLabel="Transition duration" unit="ms" value={durRaw} disabled={!slide}
@@ -62,13 +59,9 @@ export default function AnimPanel({ slide, onApply }) {
         <h4>Builds</h4>
         {builds.map((b, i) => (
           <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 6 }}>
-            <div className="input-group" style={{ flex: 1 }}>
-              <select aria-label={`Build ${i + 1} type`} value={b.type} disabled={!slide}
-                onChange={(e) => commitBuilds(builds.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))}>
-                {[...BUILD_TYPES].map((t) => <option key={t} value={t}>{buildLabel(t)}</option>)}
-              </select>
-              <Icon name="chevron-down" size={11} />
-            </div>
+            <Select ariaLabel={`Build ${i + 1} type`} value={b.type} disabled={!slide} style={{ flex: 1 }}
+              onChange={(v) => commitBuilds(builds.map((x, j) => (j === i ? { ...x, type: v } : x)))}
+              options={BUILD_OPTIONS} />
             <IconButton name="trash" size={12} title={`Delete build ${i + 1}`} disabled={!slide}
               onClick={() => commitBuilds(builds.filter((_, j) => j !== i))} />
           </div>

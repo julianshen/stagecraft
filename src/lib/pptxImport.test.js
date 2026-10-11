@@ -109,7 +109,7 @@ describe('importPptx — text', () => {
       { bodyPr: '<a:bodyPr anchor="b"/>' }));
     expect(slide.elements[0]).toMatchObject({
       type: 'text', content: 'Styled', fontSize: 48, bold: true, italic: true, underline: true,
-      fill: '#C00000', fontFamily: 'Calibri', align: 'center', valign: 'bottom',
+      color: '#C00000', fontFamily: 'Calibri', align: 'center', valign: 'bottom',
     });
   });
 
@@ -121,7 +121,7 @@ describe('importPptx — text', () => {
 
   it('defaults a plain text box to 18pt, top-anchored, left-aligned, theme tx1 ink', async () => {
     const { slide } = await one(textBox(2, 0, 0, 400, 100, para('Plain')));
-    expect(slide.elements[0]).toMatchObject({ fontSize: 36, valign: 'top', align: 'left', fill: '#000000' });
+    expect(slide.elements[0]).toMatchObject({ fontSize: 36, valign: 'top', align: 'left', color: '#000000' });
   });
 
   it('inherits master text styles for placeholders: title font (+mj-lt), body bullets per level', async () => {
@@ -148,7 +148,7 @@ describe('importPptx — text', () => {
   it('resolves scheme colours through the colour map + lumMod/lumOff', async () => {
     const rKids = '<a:solidFill><a:schemeClr val="tx1"><a:lumMod val="50000"/><a:lumOff val="50000"/></a:schemeClr></a:solidFill>';
     const { slide } = await one(textBox(2, 0, 0, 400, 100, para('Grey', { rKids })));
-    expect(slide.elements[0].fill).toBe('#808080');
+    expect(slide.elements[0].color).toBe('#808080');
   });
 
   it('skips empty text bodies', async () => {
@@ -181,7 +181,7 @@ describe('importPptx — shapes, lines, pictures, tables', () => {
     const { slide } = await one(shape(2, 'ellipse', 0, 0, 100, 100, '', style + `<p:txBody><a:bodyPr anchor="ctr"/>${para('In')}</p:txBody>`));
     expect(slide.elements[0]).toMatchObject({ type: 'circle', fill: '#ED7D31' });
     // The text rides on top, coloured by the style fontRef.
-    expect(slide.elements[1]).toMatchObject({ type: 'text', content: 'In', fill: '#FFFFFF', valign: 'middle' });
+    expect(slide.elements[1]).toMatchObject({ type: 'text', content: 'In', color: '#FFFFFF', valign: 'middle' });
   });
 
   it('lets a shape style fontRef colour beat the master otherStyle default', async () => {
@@ -189,7 +189,7 @@ describe('importPptx — shapes, lines, pictures, tables', () => {
       '<p:otherStyle><a:lvl1pPr><a:defRPr sz="1800"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill></a:defRPr>');
     const style = '<p:style><a:lnRef idx="0"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="1"><a:schemeClr val="accent1"/></a:fillRef><a:effectRef idx="0"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></p:style>';
     const { slide } = await one(shape(2, 'rect', 0, 0, 100, 100, '', style + `<p:txBody><a:bodyPr/>${para('White')}</p:txBody>`), {}, { master });
-    expect(els(slide, 'text')[0].fill).toBe('#FFFFFF');
+    expect(els(slide, 'text')[0].color).toBe('#FFFFFF');
   });
 
   it('turns an outline-only shape into a closed stroked path', async () => {
@@ -457,7 +457,7 @@ describe('importPptx — OOXML edge cases', () => {
     const { deck } = await importPptx(await zip.generateAsync({ type: 'uint8array' }));
     expect(deck.slides).toHaveLength(1);
     expect(deck.slides[0]).toMatchObject({ bgColor: '#FFFFFF', title: 'Lone' });
-    expect(deck.slides[0].elements[0].fill).toBe('#000000');
+    expect(deck.slides[0].elements[0].color).toBe('#000000');
     expect(deck.title).toBe('Imported presentation');
   });
 
@@ -465,7 +465,7 @@ describe('importPptx — OOXML edge cases', () => {
     const after = '<p:clrMapOvr><a:overrideClrMapping bg1="dk1" tx1="lt1" bg2="dk2" tx2="lt2"/></p:clrMapOvr>';
     const { slide, warnings } = await one(textBox(2, 0, 0, 10, 10, para('Inverse')), { after, attrs: ' show="0"' });
     expect(slide.bgColor).toBe('#000000');
-    expect(slide.elements[0].fill).toBe('#FFFFFF');
+    expect(slide.elements[0].color).toBe('#FFFFFF');
     expect(warnings.join(' ')).toMatch(/hidden/i);
   });
 
@@ -473,7 +473,7 @@ describe('importPptx — OOXML edge cases', () => {
     const theme = `<a:theme ${NS}><a:themeElements/></a:theme>`;
     const master = `<p:sldMaster ${NS}>${tree('')}</p:sldMaster>`;
     const { slide } = await one(textBox(2, 0, 0, 10, 10, para('Bare')), {}, { theme, master });
-    expect(slide.elements[0]).toMatchObject({ fill: '#000000', fontSize: 36 });
+    expect(slide.elements[0]).toMatchObject({ color: '#000000', fontSize: 36 });
   });
 
   it('reads gradient backgrounds, and does not inherit past an unresolvable slide background', async () => {
@@ -595,7 +595,7 @@ describe('importPptx — Codex review fixes', () => {
   it('applies paragraph default run properties (pPr/defRPr) when the run has none', async () => {
     const p = '<a:p><a:pPr algn="ctr"><a:defRPr sz="3200" b="1"><a:solidFill><a:srgbClr val="00AA00"/></a:solidFill><a:latin typeface="Verdana"/></a:defRPr></a:pPr><a:r><a:rPr lang="en-US"/><a:t>Para styled</a:t></a:r></a:p>';
     const { slide } = await one(textBox(2, 0, 0, 400, 100, p));
-    expect(slide.elements[0]).toMatchObject({ fontSize: 64, bold: true, fill: '#00AA00', fontFamily: 'Verdana', align: 'center' });
+    expect(slide.elements[0]).toMatchObject({ fontSize: 64, bold: true, color: '#00AA00', fontFamily: 'Verdana', align: 'center' });
   });
 
   it('rejects an oversized picture from its declared size, before decoding it', async () => {
@@ -718,7 +718,7 @@ describe('importPptx — Codex review fixes (round 4)', () => {
     const layout = `<p:sldLayout ${NS}>${tree('')}<p:clrMapOvr><a:overrideClrMapping bg1="dk1" tx1="lt1" bg2="dk2" tx2="lt2"/></p:clrMapOvr></p:sldLayout>`;
     const { slide } = await one(textBox(2, 0, 0, 10, 10, para('Light on dark')), {}, { layout });
     expect(slide.bgColor).toBe('#000000');
-    expect(slide.elements[0].fill).toBe('#FFFFFF');
+    expect(slide.elements[0].color).toBe('#FFFFFF');
   });
 });
 
@@ -745,7 +745,7 @@ describe('importPptx — Codex review fixes (round 5)', () => {
     const layout = `<p:sldLayout ${NS}>${tree('')}<p:clrMapOvr><a:overrideClrMapping bg1="dk1" tx1="lt1" bg2="dk2" tx2="lt2"/></p:clrMapOvr></p:sldLayout>`;
     const { slide } = await one(textBox(2, 0, 0, 10, 10, para('Master colours')), { after: '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>' }, { layout });
     expect(slide.bgColor).toBe('#FFFFFF');
-    expect(slide.elements[0].fill).toBe('#000000');
+    expect(slide.elements[0].color).toBe('#000000');
   });
 });
 
@@ -840,7 +840,8 @@ describe('importPptx — Codex review fixes (round 10)', () => {
     const ph = `<p:sp><p:nvSpPr><p:cNvPr id="3" name="B"/><p:cNvSpPr/><p:nvPr><p:ph idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/>${para('Styled')}</p:txBody></p:sp>`;
     const [box, text] = (await one(ph, {}, { layout })).slide.elements;
     expect(box).toMatchObject({ type: 'rect', fill: '#0000FF', stroke: '#FF0000' });
-    expect(text.fill).toBe('#FFFFFF');
+    expect(text.color).toBe('#FFFFFF');
+    expect(text).not.toHaveProperty('fill'); // the shape's fill stays on the box
   });
 });
 

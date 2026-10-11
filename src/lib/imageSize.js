@@ -1,0 +1,160 @@
+// An embedded image's natural pixel size, read from its data-URL header — no
+// decode, no DOM, so the PPTX export can size a `cover`/`contain` picture the
+// way the canvas's object-fit does. PNG, GIF, JPEG, WebP, BMP, SVG and AVIF/
+// HEIC; anything else (TIFF, a malformed payload) → null, and the caller falls
+// back to stretching.
+
+// Headers sit at the front: PNG/GIF/WebP/BMP need < 32 bytes, so decode a
+// small prefix (base64 chars, a multiple of 4). JPEG (SOF after any amount of
+// metadata), SVG (size in its root tag's attributes) and AVIF/HEIC (an ispe box
+// inside meta) may need more, so those are decoded whole (once per picture, at
+// export).
+const HEAD_CHARS = 64;
+
+function bytesOf(dataUrl, chars) {
+  if (typeof dataUrl !== 'string') return null;
+  const m = /^data:image\/[\w.+-]+(?:;[^;,]*)*?;base64,/i.exec(dataUrl); // media-type params (charset=…) may precede ;base64
+  if (!m) return null;
+  try {
+    const body = dataUrl.slice(m[0].length);
+    const bin = atob(chars ? body.slice(0, chars) : body);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch {
+    return null; // not base64
+  }
+}
+
+const ascii = (b, at, s) => [...s].every((c, i) => b[at + i] === c.charCodeAt(0));
+const be16 = (b, at) => (b[at] << 8) | b[at + 1];
+const le16 = (b, at) => b[at] | (b[at + 1] << 8);
+const le32s = (b, at) => b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24); // signed
+const le24 = (b, at) => b[at] | (b[at + 1] << 8) | (b[at + 2] << 16);
+const be32 = (b, at) => ((b[at] << 24) >>> 0) + ((b[at + 1] << 16) | (b[at + 2] << 8) | b[at + 3]);
+
+function jpegSize(b) {
+  let at = 2; // past SOI
+  while (at + 9 < b.length) {
+    if (b[at] !== 0xff) return null;
+    while (b[at + 1] === 0xff) at++; // fill bytes may pad a marker
+    const marker = b[at + 1];
+    // SOF0–SOF15 carry the frame size, except DHT (C4), JPG (C8) and DAC (CC).
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { w: be16(b, at + 7), h: be16(b, at + 5) };
+    }
+    at += 2 + be16(b, at + 2); // skip this segment (its length includes the 2 length bytes)
+  }
+  return null;
+}
+
+function webpSize(b) {
+  if (ascii(b, 12, 'VP8 ')) return { w: le16(b, 26) & 0x3fff, h: le16(b, 28) & 0x3fff };
+  if (ascii(b, 12, 'VP8L')) {
+    const bits = (b[21] | (b[22] << 8) | (b[23] << 16) | (b[24] << 24)) >>> 0;
+    return { w: (bits & 0x3fff) + 1, h: ((bits >>> 14) & 0x3fff) + 1 };
+  }
+  if (ascii(b, 12, 'VP8X')) return { w: le24(b, 24) + 1, h: le24(b, 27) + 1 };
+  return null;
+}
+
+// An SVG's size: absolute width/height on the root tag, else its viewBox's
+// width/height, else null — with no intrinsic ratio, CSS cover/contain fill
+// the box, which the caller's stretch fallback reproduces.
+// Absolute CSS units convert to px so mixed units keep their true ratio.
+const SVG_LEN = /^\s*([\d.]+)(px|in|cm|mm|pt|pc)?\s*$/i;
+const PX_PER = { px: 1, in: 96, cm: 96 / 2.54, mm: 96 / 25.4, pt: 96 / 72, pc: 16 };
+const svgLen = (v) => {
+  const m = SVG_LEN.exec(v ?? '');
+  return m ? Number(m[1]) * PX_PER[(m[2] || 'px').toLowerCase()] : null;
+};
+function svgSize(b) {
+  let text = '';
+  for (let i = 0; i < b.length; i++) text += String.fromCharCode(b[i]);
+  const tag = /<svg\b[^>]*>/i.exec(text.replace(/<!--[\s\S]*?-->/g, ''))?.[0]; // skip commented-out markup
+  if (!tag) return null;
+  const attr = (name) => new RegExp(`\\s${name}\\s*=\\s*["']([^"']*)["']`, 'i').exec(tag)?.[1];
+  const w = svgLen(attr('width')), h = svgLen(attr('height'));
+  if (w && h) return { w, h };
+  const vb = (attr('viewBox') ?? '').trim().split(/[\s,]+/).map(Number);
+  return vb.length === 4 && vb.every(Number.isFinite) ? { w: vb[2], h: vb[3] } : null;
+}
+
+// AVIF/HEIC (ISO-BMFF): the size lives in an `ispe` property box (4 bytes of
+// version/flags, then big-endian width and height). A file can carry several
+// (grid tiles, a thumbnail), so follow meta → pitm (the primary item) → ipma
+// (its property indices) → ipco (the properties) to the primary's own `ispe`.
+// Anything unresolvable → null, and the caller stretches.
+
+// Child boxes of [from, to): { type, body: [start, end) }.
+function boxes(b, from, to) {
+  const out = [];
+  for (let at = from; at + 8 <= to;) {
+    const size = be32(b, at) || to - at; // 0 = runs to the end
+    if (size < 8 || at + size > to) break;
+    out.push({ type: String.fromCharCode(...b.subarray(at + 4, at + 8)), start: at + 8, end: at + size });
+    at += size;
+  }
+  return out;
+}
+const child = (list, type) => list.find((x) => x.type === type);
+
+function primaryIspe(b) {
+  const meta = child(boxes(b, 0, b.length), 'meta');
+  if (!meta) return null;
+  const inMeta = boxes(b, meta.start + 4, meta.end); // meta is a FullBox
+  const pitm = child(inMeta, 'pitm');
+  const iprp = child(inMeta, 'iprp');
+  if (!pitm || !iprp) return null;
+  const primary = b[pitm.start] ? be32(b, pitm.start + 4) : be16(b, pitm.start + 4);
+  const inIprp = boxes(b, iprp.start, iprp.end);
+  const ipco = child(inIprp, 'ipco');
+  const ipma = child(inIprp, 'ipma');
+  if (!ipco || !ipma) return null;
+  const props = boxes(b, ipco.start, ipco.end);
+  const version = b[ipma.start];
+  const wideIndex = b[ipma.start + 3] & 1;
+  let at = ipma.start + 8; // past version/flags and entry_count
+  for (let n = be32(b, ipma.start + 4); n > 0 && at < ipma.end; n--) {
+    const id = version ? be32(b, at) : be16(b, at);
+    at += version ? 4 : 2;
+    const count = b[at++];
+    for (let i = 0; i < count; i++) {
+      const index = wideIndex ? be16(b, at) & 0x7fff : b[at] & 0x7f; // high bit = "essential"
+      at += wideIndex ? 2 : 1;
+      const prop = props[index - 1];
+      if (id === primary && prop?.type === 'ispe') return { w: be32(b, prop.start + 4), h: be32(b, prop.start + 8) };
+    }
+  }
+  return null;
+}
+
+// An SVG by its declared type, or — mislabelled — by markup within the head
+// (an optional UTF-8 BOM, then whitespace, then `<`).
+const isSvg = (dataUrl, head) => /^data:image\/svg\+xml[;,]/i.test(dataUrl) || /^(\xef\xbb\xbf)?\s*</.test(String.fromCharCode(...head));
+const isIsoBmff = (b) => ascii(b, 4, 'ftyp'); // AVIF / HEIC
+// Formats whose size can sit beyond the decoded head (see HEAD_CHARS).
+const needsWhole = (b) => (b[0] === 0xff && b[1] === 0xd8) || isIsoBmff(b);
+
+function sizeOf(b) {
+  if (b.length >= 26 && ascii(b, 0, 'BM')) {
+    // The DIB header size (offset 14) picks the layout: OS/2's 12-byte core
+    // header has 16-bit dimensions; every later one 32-bit (negative h = top-down).
+    return le32s(b, 14) === 12 ? { w: le16(b, 18), h: le16(b, 20) } : { w: Math.abs(le32s(b, 18)), h: Math.abs(le32s(b, 22)) };
+  }
+  if (isIsoBmff(b)) return primaryIspe(b);
+  if (b.length >= 24 && b[0] === 0x89 && ascii(b, 1, 'PNG')) return { w: be32(b, 16), h: be32(b, 20) };
+  if (b.length >= 10 && ascii(b, 0, 'GIF8')) return { w: le16(b, 6), h: le16(b, 8) };
+  if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8) return jpegSize(b);
+  if (b.length >= 16 && ascii(b, 0, 'RIFF') && ascii(b, 8, 'WEBP')) return webpSize(b);
+  return null;
+}
+
+/** `{ w, h }` in pixels for a data-URL image (formats above), else null. */
+export function dataImageSize(dataUrl) {
+  let b = bytesOf(dataUrl, HEAD_CHARS);
+  const svg = b && isSvg(dataUrl, b);
+  if (b && (svg || needsWhole(b))) b = bytesOf(dataUrl);
+  const size = b && (svg ? svgSize(b) : sizeOf(b));
+  return size && size.w > 0 && size.h > 0 ? size : null;
+}

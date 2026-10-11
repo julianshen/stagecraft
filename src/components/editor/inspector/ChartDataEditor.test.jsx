@@ -14,6 +14,28 @@ const renderEditor = (s = slide) => {
   return { ...utils, onApply };
 };
 
+describe('ChartDataEditor — chart type', () => {
+  it('changes the chart type after insert (it was AI-only before)', () => {
+    const { onApply } = renderEditor();
+    const select = screen.getByRole('combobox', { name: 'Chart type' });
+    expect(select).toHaveValue('bar');
+    fireEvent.change(select, { target: { value: 'donut' } });
+    expect(onApply).toHaveBeenCalledWith({ chartType: 'donut' });
+    expect(sanitizeSlidePatch({ chartType: 'donut' }, 'chart')).toEqual({ chartType: 'donut' });
+  });
+
+  it('shows the type the canvas draws: pie as Donut, a missing type as Line', () => {
+    renderEditor({ ...slide, chartType: 'pie' });
+    expect(screen.getByRole('combobox', { name: 'Chart type' })).toHaveValue('donut');
+  });
+
+  it('defaults a chart with no type to Line', () => {
+    const { chartType, ...untyped } = slide;
+    renderEditor(untyped);
+    expect(screen.getByRole('combobox', { name: 'Chart type' })).toHaveValue('line');
+  });
+});
+
 describe('ChartDataEditor', () => {
   it('renders the categories and series from the slide', () => {
     renderEditor();
@@ -109,15 +131,27 @@ describe('single-series chart types (donut/pie)', () => {
 });
 
 describe('donut/pie with extra authored series', () => {
-  it('edits only the rendered series — commits clip to series[0] like the canvas/export', () => {
-    const donut = {
-      id: 'd2', layout: 'chart', chartType: 'pie',
-      chart: { categories: ['A', 'B'], series: [{ name: 'S1', values: [1, 2] }, { name: 'GHOST', values: [9, 9] }] },
-    };
+  const donut = {
+    id: 'd2', layout: 'chart', chartType: 'pie',
+    chart: { categories: ['A', 'B'], series: [{ name: 'S1', values: [1, 2] }, { name: 'GHOST', values: [9, 8] }] },
+  };
+
+  it('edits only the rendered series, but keeps the hidden ones (switching back to line restores them)', () => {
     const onApply = vi.fn();
     const { queryByDisplayValue } = render(<ChartDataEditor slide={donut} onApply={onApply} />);
     expect(queryByDisplayValue('GHOST')).toBeNull(); // unrendered series not editable
     fireEvent.change(queryByDisplayValue('1'), { target: { value: '5' } });
-    expect(onApply.mock.calls[0][0].chart.series).toEqual([{ name: 'S1', values: [5, 2] }]);
+    expect(onApply.mock.calls[0][0].chart.series).toEqual([{ name: 'S1', values: [5, 2] }, { name: 'GHOST', values: [9, 8] }]);
+    fireEvent.change(queryByDisplayValue('A'), { target: { value: 'Z' } });
+    expect(onApply.mock.calls[1][0].chart.series[1]).toEqual({ name: 'GHOST', values: [9, 8] });
+  });
+
+  it('keeps hidden series aligned when rows are added or removed', () => {
+    const onApply = vi.fn();
+    const { getByRole, getAllByRole } = render(<ChartDataEditor slide={donut} onApply={onApply} />);
+    fireEvent.click(getByRole('button', { name: /add row/i }));
+    expect(onApply.mock.calls[0][0].chart.series[1]).toEqual({ name: 'GHOST', values: [9, 8, 0] });
+    fireEvent.click(getAllByRole('button', { name: /delete row|remove row/i })[0]);
+    expect(onApply.mock.calls[1][0].chart.series[1]).toEqual({ name: 'GHOST', values: [8] });
   });
 });

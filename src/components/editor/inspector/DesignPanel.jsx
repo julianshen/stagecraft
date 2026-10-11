@@ -1,7 +1,14 @@
 import React from 'react';
 import { THEME_OPTIONS, accentColor, accentLabel } from '../menus/ThemeMenu.jsx';
 import { LayoutGrid } from '../menus/LayoutGrid.jsx';
+import { Select } from '../../ui/Primitives.jsx';
 import { HEADING_SCALES, resolveHeadingScale, effectiveTitlePx } from '../../../lib/headingScale.js';
+
+const SCALE_OPTIONS = HEADING_SCALES.map((s) => ({ value: String(s.value), label: `${s.label} (${s.value}×)` }));
+// The presets, plus the current scale when it isn't one (see below).
+const scaleOptions = (scale) => (HEADING_SCALES.some((s) => s.value === scale)
+  ? SCALE_OPTIONS
+  : [...SCALE_OPTIONS, { value: String(scale), label: `Custom (${scale}×)` }]);
 
 // Insertable components → createComponentSlide ids (via onAddComponent).
 const COMPONENTS = [
@@ -58,15 +65,12 @@ export default function DesignPanel({ deck, current, slide, onChangeLayout, onCh
         <div className="tokens-row">
           <div className="swatch-s" style={{ background: 'var(--ink)', color: 'white', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600 }}>Aa</div>
           <div className="name">H1 · {effectiveTitlePx(slide, deck)}px</div>
-          <div className="input-group" style={{ marginLeft: 'auto', minWidth: 96 }}>
-            <select aria-label="Heading scale" value={String(scale)} onChange={(e) => onChangeHeadingScale?.(Number(e.target.value))}>
-              {HEADING_SCALES.map((s) => <option key={s.value} value={s.value}>{s.label} ({s.value}×)</option>)}
-              {/* A gate-bypassing write can set an in-range non-preset scale; surface it
-                  so the control reflects what the slide actually renders (resolveHeadingScale
-                  clamps a range, not a preset set) rather than snapping to a preset. */}
-              {!HEADING_SCALES.some((s) => s.value === scale) && <option value={String(scale)}>Custom ({scale}×)</option>}
-            </select>
-          </div>
+          {/* A gate-bypassing write can set an in-range non-preset scale; surface it
+              so the control reflects what the slide actually renders (resolveHeadingScale
+              clamps a range, not a preset set) rather than snapping to a preset. */}
+          <Select ariaLabel="Heading scale" value={String(scale)} style={{ marginLeft: 'auto', minWidth: 96 }}
+            onChange={(v) => onChangeHeadingScale?.(Number(v))}
+            options={scaleOptions(scale)} />
         </div>
       </div>
       <div className="pane-section">

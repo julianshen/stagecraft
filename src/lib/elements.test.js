@@ -31,8 +31,14 @@ describe('createElement', () => {
     expect(el).not.toHaveProperty('content');
   });
 
-  it('gives elements a default fill (matching the render)', () => {
-    expect(createElement('text', { id: 't' }).fill).toBe('#15171C');
+  it('gives text a default ink `color` (no `fill` — that would be a box fill)', () => {
+    const t = createElement('text', { id: 't' });
+    expect(t.color).toBe('#15171C');
+    expect(t).not.toHaveProperty('fill');
+    expect(createElement('text', { id: 't', color: '#abcdef' }).color).toBe('#abcdef');
+  });
+
+  it('gives shapes a default fill (matching the render)', () => {
     expect(createElement('triangle', { id: 'g' }).fill).toBe('#4f46e5');
     expect(createElement('rect', { id: 'r', fill: '#abcdef' }).fill).toBe('#abcdef');
   });
