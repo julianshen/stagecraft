@@ -186,9 +186,12 @@ describe('uprightSlides', () => {
     expect(createImageBitmap).not.toHaveBeenCalled();
   });
 
-  it('decodes with an <img> where createImageBitmap is missing (Safari 14)', async () => {
+  it.each([
+    ['is missing (Safari 14)', undefined],
+    ['rejects the imageOrientation option (older Chrome / Firefox)', vi.fn().mockRejectedValue(new TypeError("'from-image' is not a valid enum value"))],
+  ])('decodes with an <img> where createImageBitmap %s', async (_, impl) => {
     const { canvas, ctx } = stubBrowser();
-    vi.stubGlobal('createImageBitmap', undefined);
+    vi.stubGlobal('createImageBitmap', impl);
     // An <img> that honours EXIF: the 2×1 probe decodes 1×2, the picture 30×40.
     const made = [];
     vi.stubGlobal('Image', class {

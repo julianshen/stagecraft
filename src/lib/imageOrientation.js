@@ -98,13 +98,19 @@ const TURN = {
 };
 
 // A JPEG decoded for drawing, with its size read up front (a closed
-// ImageBitmap reports 0×0): createImageBitmap where there is one, else an
-// <img> (Safari 14). Both apply EXIF orientation where the browser does.
+// ImageBitmap reports 0×0): createImageBitmap where it takes the
+// imageOrientation option, else an <img> — Safari 14 has no createImageBitmap,
+// and older engines (Chrome 87, Firefox < 111) reject 'from-image'. Both apply
+// EXIF orientation where the browser does.
 async function decodeJpeg(bytes) {
   const blob = new Blob([bytes], { type: 'image/jpeg' });
   if (typeof createImageBitmap === 'function') {
-    const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
-    return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close?.() };
+    try {
+      const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+      return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close?.() };
+    } catch {
+      // fall through to <img>; a picture neither can decode fails there
+    }
   }
   const url = URL.createObjectURL(blob);
   try {
