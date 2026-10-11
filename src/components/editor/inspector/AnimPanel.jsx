@@ -6,6 +6,8 @@ const DEFAULT_DURATION = 480; // ms — seeds the DUR field when a slide has no 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // "fadeIn" → "Fade In" for the build TYPE options (derived, so a new BUILD_TYPE is labelled).
 const buildLabel = (t) => cap(t.replace(/([A-Z])/g, ' $1'));
+const TRANSITION_OPTIONS = [...TRANSITION_TYPES].map((t) => ({ value: t, label: cap(t) }));
+const BUILD_OPTIONS = [...BUILD_TYPES].map((t) => ({ value: t, label: buildLabel(t) }));
 
 // The slide-transition editor. TYPE + DUR read the live `slide.transition` (else
 // a none/480ms default) and commit through the shared patch gate (onApply →
@@ -45,7 +47,7 @@ export default function AnimPanel({ slide, onApply }) {
         <FieldRow label="TYPE">
           <Select ariaLabel="Transition type" value={type} disabled={!slide}
             onChange={(v) => apply({ type: v })}
-            options={[...TRANSITION_TYPES].map((t) => ({ value: t, label: cap(t) }))} />
+            options={TRANSITION_OPTIONS} />
         </FieldRow>
         <FieldRow label="DUR">
           <InputGroup ariaLabel="Transition duration" unit="ms" value={durRaw} disabled={!slide}
@@ -59,7 +61,7 @@ export default function AnimPanel({ slide, onApply }) {
           <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 6 }}>
             <Select ariaLabel={`Build ${i + 1} type`} value={b.type} disabled={!slide} style={{ flex: 1 }}
               onChange={(v) => commitBuilds(builds.map((x, j) => (j === i ? { ...x, type: v } : x)))}
-              options={[...BUILD_TYPES].map((t) => ({ value: t, label: buildLabel(t) }))} />
+              options={BUILD_OPTIONS} />
             <IconButton name="trash" size={12} title={`Delete build ${i + 1}`} disabled={!slide}
               onClick={() => commitBuilds(builds.filter((_, j) => j !== i))} />
           </div>

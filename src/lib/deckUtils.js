@@ -291,9 +291,9 @@ function fieldOk(key, value, layout) {
 export function sanitizeSlidePatch(patch, currentLayout) {
   const safe = {};
   if (!patch || typeof patch !== 'object') return safe;
-  // A model (or an older client) may still author legacy element fields —
-  // upgrade them to the current model before validating.
-  if (Array.isArray(patch.elements)) patch = { ...patch, elements: normalizeSlide({ elements: patch.elements }).elements };
+  // A patch is a partial slide: a model (or an older client) may still author
+  // legacy fields — upgrade it to the current model before validating.
+  patch = normalizeSlide(patch);
   // The effective layout is the (valid) one the patch switches to, else the
   // slide's current layout — it decides layout-specific field shapes.
   const layout = typeof patch.layout === 'string' && SLIDE_LAYOUTS.has(patch.layout) ? patch.layout : currentLayout;

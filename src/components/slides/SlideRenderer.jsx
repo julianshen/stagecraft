@@ -1,7 +1,7 @@
 // Renders one slide from the sample deck in 1920×1080 coordinates.
 // Caller should wrap in <ScaledSlide> if displaying inside a smaller container.
 import { useId } from 'react';
-import { chartData, renameCategory, renameSeries, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
+import { chartData, renameCategory, renameSeries, chartTypeOf, CHART_TYPE_LABELS, CHART_SERIES_OKLCH } from '../../lib/chartSpec.js';
 import { roadmapModel, renameLane, renameMonth, relabelMilestone, ROADMAP_STATES, ROADMAP_LABELS, ROADMAP_OKLCH } from '../../lib/roadmapSpec.js';
 import { SEVERITY_OKLCH } from '../../lib/riskSpec.js';
 import EditableText from '../ui/EditableText.jsx';
@@ -11,7 +11,7 @@ import { headingPx } from '../../lib/headingScale.js';
 import { shapeDef, hasVisibleStroke, clipPoints } from '../../lib/shapes.js';
 import { isHexColor } from '../../lib/color.js';
 import { slideBgClass } from '../../lib/slideScheme.js';
-import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf, fontStack, valignOf, objectFitOf } from '../../lib/elements.js';
+import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf, fontStack, valignOf, objectFitOf, INK_CSS } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider fallbacks,
 // plus `headingScale`, which sizes every title via headingPx). This is the memo
@@ -286,7 +286,7 @@ export function ChartByType({ type, slide, editable = false, onCommitPatch }) {
   if (type === 'bar') return <BarChart {...cat} series={d.series}/>;
   if (type === 'area') return <AreaChart {...cat} series={d.series}/>;
   // donut's legend labels ARE the categories → renameCategory (no multi-series legend).
-  if (type === 'donut' || type === 'pie') return <DonutChart categories={d.categories} values={d.series[0]?.values} editable={editable} onRenameCat={onRenameCat}/>;
+  if (chartTypeOf({ chartType: type }) === 'donut') return <DonutChart categories={d.categories} values={d.series[0]?.values} editable={editable} onRenameCat={onRenameCat}/>;
   return <LineChart {...cat} series={d.series}/>;
 }
 
@@ -442,7 +442,7 @@ function ElementView({ el }) {
         // Preserve newlines/spaces typed into the Properties Content textarea
         // (HTML collapses them by default).
         whiteSpace: 'pre-wrap',
-        color: el.color || 'var(--ink, #15171C)', lineHeight: lineSpacingOf(el), overflow: 'hidden',
+        color: el.color || INK_CSS, lineHeight: lineSpacingOf(el), overflow: 'hidden',
       }}>
         {el.content}
       </div>
@@ -459,7 +459,7 @@ function ElementView({ el }) {
   if (el.type === 'path') {
     // A freehand pen stroke: an open SVG polyline of the 0..1 points, riding
     // rot/opacity/shadow via `base` (StrokeSvg filters invalid points).
-    return <StrokeSvg points={el.points} style={base} stroke={el.stroke || 'var(--ink, #15171C)'} strokeWidth={el.strokeWidth ?? 2} strokeDash={el.strokeDash} />;
+    return <StrokeSvg points={el.points} style={base} stroke={el.stroke || INK_CSS} strokeWidth={el.strokeWidth ?? 2} strokeDash={el.strokeDash} />;
   }
   // Every shape (incl. the line special case) dispatches off the shared registry
   // so the canvas and the export can't drift (lib/shapes.js).
@@ -471,7 +471,7 @@ function ElementView({ el }) {
   // A line is a sharp-cornered bar (no border-radius, ink-default fill) at its
   // real height (its stroke thickness) — distinct from the rect fallback below,
   // which rounds to an 8px radius and uses the indigo fill. base already sets the height.
-  if (def?.line) return <div style={{ ...base, background: grad || el.fill || 'var(--ink, #15171C)' }} />;
+  if (def?.line) return <div style={{ ...base, background: grad || el.fill || INK_CSS }} />;
   const fill = { background: grad || el.fill || 'oklch(0.62 0.17 265)' };
   if (def?.clip) {
     if (!hasVisibleStroke(el)) return <div style={{ ...base, ...fill, clipPath: def.clip }} />;
@@ -663,8 +663,8 @@ function SlideContent({ slide, deck, sectionName, num, total, editable = false, 
       );
     }
     case 'chart': {
-      const chartType = slide.chartType || 'line';
-      const typeLabel = { line:'Line', bar:'Bar', area:'Area', donut:'Donut', pie:'Donut' }[chartType] || 'Chart';
+      const chartType = chartTypeOf(slide);
+      const typeLabel = CHART_TYPE_LABELS[chartType];
       return (
         <div className="slide">
           <SlideChrome slide={s} deck={deck}/>

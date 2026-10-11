@@ -1,9 +1,9 @@
 import React from 'react';
 import { Button, IconButton, FieldRow, Select } from '../../ui/Primitives.jsx';
 import NumberCell from './NumberCell.jsx';
-import { chartData, chartTypeOf, CHART_TYPES } from '../../../lib/chartSpec.js';
+import { chartData, chartTypeOf, CHART_TYPES, CHART_TYPE_LABELS } from '../../../lib/chartSpec.js';
 
-const CHART_TYPE_OPTIONS = CHART_TYPES.map((t) => ({ value: t, label: t[0].toUpperCase() + t.slice(1) }));
+const CHART_TYPE_OPTIONS = CHART_TYPES.map((t) => ({ value: t, label: CHART_TYPE_LABELS[t] }));
 
 // Inspector editor for a chart slide's data. Renders the same normalized view
 // the canvas and the PPTX export draw (chartData — including its demo fallback,
@@ -18,7 +18,7 @@ export default function ChartDataEditor({ slide, onApply }) {
   // shows and commits exactly the rendered series: extra authored series are
   // not editable and clip away on the first edit (same normalization-persists
   // policy as the rest of this editor), and the multi-series controls hide.
-  const singleSeries = slide.chartType === 'donut' || slide.chartType === 'pie';
+  const singleSeries = chartTypeOf(slide) === 'donut';
   const model = chartData(slide);
   const categories = model.categories;
   const series = singleSeries ? model.series.slice(0, 1) : model.series;

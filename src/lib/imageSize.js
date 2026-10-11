@@ -3,16 +3,19 @@
 // way the canvas's object-fit does. PNG, GIF, JPEG and WebP; anything else
 // (SVG, a malformed payload) → null, and the caller falls back to stretching.
 
-// Headers sit at the front; a JPEG's SOF can trail an EXIF block, so read a
-// generous prefix rather than decoding a multi-MB image whole.
-const PREFIX_CHARS = 256 * 1024; // base64 chars (a multiple of 4)
+// Headers sit at the front: PNG/GIF/WebP need < 32 bytes, so decode a small
+// prefix first. Only a JPEG may need more — its SOF can trail an EXIF block —
+// so it's retried with a generous prefix, never the multi-MB image whole.
+// (Both are base64 char counts, multiples of 4.)
+const HEAD_CHARS = 64;
+const JPEG_CHARS = 256 * 1024;
 
-function bytesOf(dataUrl) {
+function bytesOf(dataUrl, chars) {
   if (typeof dataUrl !== 'string') return null;
   const m = /^data:image\/[\w.+-]+;base64,/i.exec(dataUrl);
   if (!m) return null;
   try {
-    const bin = atob(dataUrl.slice(m[0].length, m[0].length + PREFIX_CHARS));
+    const bin = atob(dataUrl.slice(m[0].length, m[0].length + chars));
     const out = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
     return out;
@@ -61,7 +64,8 @@ function sizeOf(b) {
 
 /** `{ w, h }` in pixels for a PNG/GIF/JPEG/WebP data URL, else null. */
 export function dataImageSize(dataUrl) {
-  const b = bytesOf(dataUrl);
+  let b = bytesOf(dataUrl, HEAD_CHARS);
+  if (b && b[0] === 0xff && b[1] === 0xd8) b = bytesOf(dataUrl, JPEG_CHARS); // JPEG: scan further
   const size = b && sizeOf(b);
   return size && size.w > 0 && size.h > 0 ? size : null;
 }

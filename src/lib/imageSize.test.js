@@ -39,6 +39,12 @@ describe('dataImageSize', () => {
     expect(dataImageSize(url('image/webp', riff(vp8x)))).toEqual({ w: 1920, h: 1080 });
   });
 
+  it('finds a JPEG frame size past a large leading segment (EXIF)', () => {
+    const exif = [0xff, 0xe1, 0x10, 0x00, ...new Array(0x1000 - 2).fill(0)]; // a 4 KB APP1
+    const sof = [0xff, 0xc0, 0, 11, 8, 0x01, 0x2c, 0x01, 0x90, 1, 1, 0x11, 0]; // 400×300
+    expect(dataImageSize(url('image/jpeg', [0xff, 0xd8, ...exif, ...sof]))).toEqual({ w: 400, h: 300 });
+  });
+
   it('returns null for anything it cannot size', () => {
     expect(dataImageSize('')).toBeNull();
     expect(dataImageSize(null)).toBeNull();

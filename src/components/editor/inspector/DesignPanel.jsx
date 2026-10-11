@@ -2,6 +2,12 @@ import React from 'react';
 import { THEME_OPTIONS, accentColor, accentLabel } from '../menus/ThemeMenu.jsx';
 import { LayoutGrid } from '../menus/LayoutGrid.jsx';
 import { Select } from '../../ui/Primitives.jsx';
+
+const SCALE_OPTIONS = HEADING_SCALES.map((s) => ({ value: String(s.value), label: `${s.label} (${s.value}×)` }));
+// The presets, plus the current scale when it isn't one (see below).
+const scaleOptions = (scale) => (HEADING_SCALES.some((s) => s.value === scale)
+  ? SCALE_OPTIONS
+  : [...SCALE_OPTIONS, { value: String(scale), label: `Custom (${scale}×)` }]);
 import { HEADING_SCALES, resolveHeadingScale, effectiveTitlePx } from '../../../lib/headingScale.js';
 
 // Insertable components → createComponentSlide ids (via onAddComponent).
@@ -64,10 +70,7 @@ export default function DesignPanel({ deck, current, slide, onChangeLayout, onCh
               clamps a range, not a preset set) rather than snapping to a preset. */}
           <Select ariaLabel="Heading scale" value={String(scale)} style={{ marginLeft: 'auto', minWidth: 96 }}
             onChange={(v) => onChangeHeadingScale?.(Number(v))}
-            options={[
-              ...HEADING_SCALES.map((s) => ({ value: String(s.value), label: `${s.label} (${s.value}×)` })),
-              ...(HEADING_SCALES.some((s) => s.value === scale) ? [] : [{ value: String(scale), label: `Custom (${scale}×)` }]),
-            ]} />
+            options={scaleOptions(scale)} />
         </div>
       </div>
       <div className="pane-section">

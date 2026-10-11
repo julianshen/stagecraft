@@ -3,19 +3,34 @@ import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup, Seg, Select } from '../../ui/Primitives.jsx';
 import { toHex } from '../../../lib/color.js';
 import { isStrokeableShape, isFillableShape } from '../../../lib/shapes.js';
-import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, TEXT_INK, IMAGE_FITS, borderStyle, valignOf } from '../../../lib/elements.js';
+import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, INK, borderStyle, valignOf, fitOf } from '../../../lib/elements.js';
 import { requiresFill } from '../../../lib/deckUtils.js';
 
 // Line-spacing presets for the dropdown (the field itself is a continuous
 // multiplier — the gate accepts any positive, a non-preset value is shown too).
 const LINE_SPACINGS = Object.freeze([1, 1.15, 1.2, 1.5, 2, 2.5, 3]);
 const FONT_FAMILIES = Object.freeze(['Inter', 'Georgia', 'JetBrains Mono', 'Courier New', 'Arial', 'Calibri']);
-// PowerPoint's picture fit names for the model's IMAGE_FITS.
+// PowerPoint's picture fit names for the model's IMAGE_FITS (elements.js).
 const IMAGE_FIT_OPTIONS = Object.freeze([
   { v: 'cover', l: 'Fill', title: 'Fill — crop the picture to fill the box' },
   { v: 'contain', l: 'Fit', title: 'Fit — show the whole picture inside the box' },
   { v: 'stretch', l: 'Stretch', title: 'Stretch — distort the picture to the box' },
 ]);
+
+// A titled solid-colour section: a swatch + its hex.
+function ColorSection({ title, ariaLabel, value, onChange }) {
+  const hex = toHex(value);
+  return (
+    <div className="pane-section">
+      <h4>{title}</h4>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+        <input type="color" aria-label={ariaLabel} value={hex} onChange={e => onChange(e.target.value)}
+          style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 4, background: 'none' }} />
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12 }}>{hex}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function PropsPanel({ selected, setSelected, count = 0 }) {
   if (count > 1) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{count} elements selected — drag to move them together, or align via the toolbar.</div>;
@@ -67,43 +82,21 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
         <div className="pane-section">
           <h4>Picture</h4>
           <FieldRow label="FIT">
-            <Seg value={IMAGE_FITS.includes(selected.fit) ? selected.fit : 'cover'} onChange={fit => setSelected({ ...selected, fit })}
+            <Seg value={fitOf(selected)} onChange={fit => setSelected({ ...selected, fit })}
               options={IMAGE_FIT_OPTIONS} />
           </FieldRow>
         </div>
       )}
 
-      {/* Text is coloured by its ink `color` — labelled as such, not "Fill" (U7):
-          a text-box fill is a separate property (F-TXT-2). */}
+      {/* Colours are labelled by meaning (U7): text is coloured by its ink
+          `color`; a shape by its `fill` (a text-box fill is F-TXT-2). */}
       {selected.type === 'text' && (
-      <div className="pane-section">
-        <h4>Text colour</h4>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-          <input
-            type="color"
-            aria-label="Text color"
-            value={toHex(selected.color || TEXT_INK)}
-            onChange={e => setSelected({ ...selected, color: e.target.value })}
-            style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 4, background: 'none' }}
-          />
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12 }}>{toHex(selected.color || TEXT_INK)}</div>
-        </div>
-      </div>
+        <ColorSection title="Text colour" ariaLabel="Text color" value={selected.color || INK}
+          onChange={color => setSelected({ ...selected, color })} />
       )}
       {requiresFill(selected.type) && (
-      <div className="pane-section">
-        <h4>Fill</h4>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-          <input
-            type="color"
-            aria-label="Fill color"
-            value={toHex(selected.fill)}
-            onChange={e => setSelected({ ...selected, fill: e.target.value })}
-            style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 4, background: 'none' }}
-          />
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12 }}>{toHex(selected.fill)}</div>
-        </div>
-      </div>
+        <ColorSection title="Fill" ariaLabel="Fill color" value={selected.fill}
+          onChange={fill => setSelected({ ...selected, fill })} />
       )}
       {/* Gradient fill (any shape) overrides the solid fill: a toggle seeds the
           default; the two stops + angle edit it. The export approximates it with

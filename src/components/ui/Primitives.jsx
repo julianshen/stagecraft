@@ -66,9 +66,10 @@ export function InputGroup({ icoLeft, unit, value, onChange, placeholder, disabl
 }
 
 // ---------------- Select ----------------
-// The one dropdown: a native <select> (keyboard + a11y for free) with the
-// browser arrow hidden (CSS appearance: none) under our single chevron — the
-// inspector fields used to show both (U11). `options` are values, or
+// The field dropdown (inspector, modals): a native <select> (keyboard + a11y
+// for free) with the browser arrow hidden (CSS appearance: none) under our
+// single chevron — these fields used to show both (U11). Settings' wider rows
+// keep their own .select wrappers but share the same arrow-hiding rule. `options` are values, or
 // { value, label, disabled }; onChange receives the chosen value string.
 export function Select({ value, onChange, options, ariaLabel, disabled, className, style }) {
   return (
