@@ -64,6 +64,13 @@ describe('dataImageSize', () => {
     expect(dataImageSize(svg('width="320" height="120px"'))).toEqual({ w: 320, h: 120 });
     expect(dataImageSize(svg('viewBox="0 0 64 48"'))).toEqual({ w: 64, h: 48 });
     expect(dataImageSize(svg('width="100%" height="100%" viewBox="0 0 30, 10"'))).toEqual({ w: 30, h: 10 }); // relative units → viewBox
+    // absolute CSS units convert to px (96/in), so mixed units keep the true ratio
+    const cm = dataImageSize(svg('width="10cm" height="5cm"'));
+    expect(cm.w).toBeCloseTo(10 * 96 / 2.54);
+    expect(cm.h).toBeCloseTo(5 * 96 / 2.54);
+    expect(dataImageSize(svg('width="1in" height="72pt"'))).toEqual({ w: 96, h: 96 });
+    expect(dataImageSize(svg('width="12pc" height="25.4mm"'))).toEqual({ w: 192, h: 96 });
+    expect(dataImageSize(svg('width="10em" height="5em"'))).toBeNull(); // font-relative, and no viewBox
   });
 
   it('reads BMP dimensions (a negative height means top-down rows)', () => {

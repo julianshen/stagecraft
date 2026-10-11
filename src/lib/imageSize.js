@@ -58,17 +58,23 @@ function webpSize(b) {
   return null;
 }
 
-// An SVG's size: absolute width/height on the root tag (unitless or px), else
-// its viewBox's width/height — the canvas sizes a relative-unit SVG the same way.
-const SVG_LEN = /^\s*([\d.]+)(px)?\s*$/;
+// An SVG's size: absolute width/height on the root tag, else its viewBox's
+// width/height — the canvas sizes a relative-unit (%, em) SVG the same way.
+// Absolute CSS units convert to px so mixed units keep their true ratio.
+const SVG_LEN = /^\s*([\d.]+)(px|in|cm|mm|pt|pc)?\s*$/i;
+const PX_PER = { px: 1, in: 96, cm: 96 / 2.54, mm: 96 / 25.4, pt: 96 / 72, pc: 16 };
+const svgLen = (v) => {
+  const m = SVG_LEN.exec(v ?? '');
+  return m ? Number(m[1]) * PX_PER[(m[2] || 'px').toLowerCase()] : null;
+};
 function svgSize(b) {
   let text = '';
   for (let i = 0; i < b.length; i++) text += String.fromCharCode(b[i]);
   const tag = /<svg\b[^>]*>/i.exec(text)?.[0];
   if (!tag) return null;
   const attr = (name) => new RegExp(`\\s${name}\\s*=\\s*["']([^"']*)["']`, 'i').exec(tag)?.[1];
-  const w = SVG_LEN.exec(attr('width') ?? ''), h = SVG_LEN.exec(attr('height') ?? '');
-  if (w && h) return { w: Number(w[1]), h: Number(h[1]) };
+  const w = svgLen(attr('width')), h = svgLen(attr('height'));
+  if (w && h) return { w, h };
   const vb = (attr('viewBox') ?? '').trim().split(/[\s,]+/).map(Number);
   return vb.length === 4 && vb.every(Number.isFinite) ? { w: vb[2], h: vb[3] } : null;
 }
