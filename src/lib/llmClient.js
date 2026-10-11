@@ -11,8 +11,8 @@ import { SHAPES } from './shapes.js';
 /**
  * A classified LLM failure — `reason` keys into LLM_ERROR_MESSAGES below.
  * Reasons are minted by the /api/llm proxy (see api.js), except the client-side
- * 'network' (proxy unreachable) and 'outline' (the model answered, but not with
- * a usable deck outline — lib/aiDeck.js).
+ * 'network' (proxy unreachable), and 'outline' / 'slide' (the model answered,
+ * but not with a usable deck outline / slide — lib/aiDeck.js).
  */
 export class LLMError extends Error {
   constructor(reason, message) {
@@ -31,6 +31,8 @@ const LLM_ERROR_MESSAGES = {
   provider: 'The AI provider returned an error — try again.',
   // minted by lib/aiDeck.js when the model's deck outline is unusable
   outline: 'The AI did not return a usable outline — try again or rephrase the topic.',
+  // minted client-side when a generated slide is unusable (generateSlide strict / lib/aiDeck.js)
+  slide: 'The AI returned a slide it couldn’t use — resume to try that slide again.',
 };
 
 /** User-facing message for any error thrown by an LLM call. */
@@ -138,9 +140,11 @@ export function parseJsonReply(text) {
 
 /**
  * Generate a new slide from a prompt.
- * Returns a slide object (JSON parsed from the LLM reply).
+ * Returns a slide object (JSON parsed from the LLM reply). An unparseable reply
+ * falls back to a text slide holding the raw reply — unless `strict`, where it
+ * throws `LLMError('slide')` so a caller building a whole deck can retry it.
  */
-export async function generateSlide(prompt, context = {}) {
+export async function generateSlide(prompt, context = {}, { strict = false } = {}) {
   const systemMsg = `You are a slide-generation assistant for a presentation app called Stagecraft.
 Given a user prompt, output a single JSON slide object (no markdown, no explanation).
 Valid layouts: cover, agenda, divider, kpi, chart, split, table, text, roadmap, risks, list, thanks, blank.
@@ -164,6 +168,7 @@ Context deck title: ${context.deckTitle || 'Untitled'}`;
   } catch {
     // fall through to the text-slide fallback
   }
+  if (strict) throw new LLMError('slide', 'unusable slide');
   return { id: `ai-${Date.now()}`, layout: 'text', title: prompt, body: text };
 }
 

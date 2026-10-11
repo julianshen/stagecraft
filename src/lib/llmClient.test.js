@@ -264,6 +264,14 @@ describe('generateSlide', () => {
     expect(slide.id).toMatch(/^ai-/);
   });
 
+  it('in strict mode, rejects an unusable reply with a classified error instead of falling back', async () => {
+    fetchMock.mockResolvedValue(res({ text: 'just prose, not json' }));
+    const err = await generateSlide('summary', {}, { strict: true }).catch((e) => e);
+    expect(err).toBeInstanceOf(LLMError);
+    expect(err.reason).toBe('slide');
+    expect(describeLLMError(err)).toMatch(/slide/i);
+  });
+
   it('falls back to a text slide when the reply is valid JSON but not an object', async () => {
     fetchMock.mockResolvedValue(res({ text: '[1, 2, 3]' }));
     const slide = await generateSlide('summary');

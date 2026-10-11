@@ -70,6 +70,7 @@ export async function buildDeck(outline, { generate = generateSlide, onProgress,
       raw = await generate(
         `${item.title} — ${item.brief || item.title}. Use the "${item.layout}" layout.`,
         { deckTitle: outline.title },
+        { strict: true }, // an unparseable reply fails rather than becoming a placeholder
       );
     } catch (err) {
       // An injected generate may reject with a primitive or frozen value; wrap
@@ -82,6 +83,13 @@ export async function buildDeck(outline, { generate = generateSlide, onProgress,
     // chose, or layout-specific fields would be checked against the wrong schema.
     const { layout: _ignored, ...fields } = raw && typeof raw === 'object' ? raw : {};
     const safe = sanitizeSlidePatch(fields, item.layout);
+    // A reply with nothing usable for this layout (the outline supplies the title)
+    // would only save template placeholders — fail so a resume retries this slide.
+    if (!Object.keys(safe).some((k) => k !== 'title')) {
+      const e = new LLMError('slide', 'unusable slide');
+      e.partial = slides;
+      throw e;
+    }
     slides.push({ ...createComponentSlide(item.layout), ...safe, layout: item.layout, title: item.title, id: newId('ai') });
     onProgress?.(slides.length, outline.slides.length);
   }

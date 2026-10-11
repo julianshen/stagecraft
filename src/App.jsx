@@ -144,7 +144,10 @@ export default function App() {
       id = meta.id;
       aiDeckIds.current.set(generated, id);
     }
-    if (!(await handleOpenDeck(id))) throw new Error('The deck was saved to your library but could not be opened.');
+    if (!(await handleOpenDeck(id))) {
+      await refreshDecks(); // list the saved deck (and move LIVE to it) even though it didn't open
+      throw new Error('The deck was saved to your library but could not be opened.');
+    }
     setModal(null);
   };
   // Import a PowerPoint file: parse it client-side, save it as a new library

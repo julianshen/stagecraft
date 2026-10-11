@@ -312,6 +312,9 @@ describe('Start with AI', () => {
 
     expect(within(dialog).getByRole('alert')).toHaveTextContent(/saved to your library but could not be opened/);
     expect(store.get('stagecraft.view')).toBe('home');
+    // the library is refreshed so the saved deck is listed (and LIVE moves to it)
+    const listCalls = srv.fetchFn.mock.calls.filter(([u, i]) => String(u).split('?')[0] === '/api/decks' && (!i || !i.method || i.method === 'GET'));
+    expect(listCalls.length).toBeGreaterThanOrEqual(2);
   });
 
   it('retrying after an open failure reopens the saved deck instead of creating a duplicate', async () => {

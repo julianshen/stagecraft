@@ -115,15 +115,29 @@ describe('buildDeck', () => {
 
   it('validates the model fields against the outline layout, not a layout the model picked', async () => {
     // agenda items are objects; a list slide needs strings — they must not leak across
-    const generate = vi.fn(async () => ({ layout: 'agenda', items: [{ n: '01', t: 'x', d: 'y' }] }));
+    const generate = vi.fn(async () => ({ layout: 'agenda', items: [{ n: '01', t: 'x', d: 'y' }], subtitle: 'ok' }));
     const listOutline = { title: 'T', slides: [{ layout: 'list', title: 'Points', brief: '' }] };
     const deck = await buildDeck(listOutline, { generate });
     expect(deck.slides[0].layout).toBe('list');
     expect(deck.slides[0].items.every((it) => typeof it === 'string')).toBe(true);
   });
 
+  it('asks for strict slides by default, so an unusable reply fails instead of a placeholder', async () => {
+    const generate = vi.fn(async () => ({ subtitle: 'x' }));
+    await buildDeck(outline, { generate });
+    expect(generate.mock.calls[0][2]).toEqual({ strict: true });
+  });
+
+  it('treats a reply with no usable content for the layout as a failure, resumable at that slide', async () => {
+    // a valid object whose only content is invalid for kpi (kpis must be an array)
+    const generate = vi.fn().mockResolvedValueOnce({ subtitle: 'ok' }).mockResolvedValueOnce({ kpis: 'nope', title: 'X' });
+    const err = await buildDeck(outline, { generate }).catch((e) => e);
+    expect(err.reason).toBe('slide');
+    expect(err.partial).toHaveLength(1);
+  });
+
   it('keeps partial slides even when generate rejects with a non-Error', async () => {
-    const generate = vi.fn().mockResolvedValueOnce({}).mockRejectedValueOnce('boom');
+    const generate = vi.fn().mockResolvedValueOnce({ subtitle: 'ok' }).mockRejectedValueOnce('boom');
     let err;
     try { await buildDeck(outline, { generate }); } catch (e) { err = e; }
     expect(err).toBeInstanceOf(Error);
@@ -132,20 +146,20 @@ describe('buildDeck', () => {
   });
 
   it('starts each slide from its layout template, so a rejected field keeps the template default', async () => {
-    const generate = vi.fn(async () => ({ kpis: 'not an array' }));
+    const generate = vi.fn(async () => ({ kpis: 'not an array', subtitle: 'ok' }));
     const deck = await buildDeck(outline, { generate });
     expect(Array.isArray(deck.slides[1].kpis)).toBe(true);
     expect(deck.slides[1].kpis.length).toBeGreaterThan(0);
   });
 
   it('falls back to the outline layout when the model switches to an invalid one', async () => {
-    const generate = vi.fn(async () => ({ layout: 'hologram' }));
+    const generate = vi.fn(async () => ({ layout: 'hologram', subtitle: 'ok' }));
     const deck = await buildDeck(outline, { generate });
     expect(deck.slides.map((s) => s.layout)).toEqual(['cover', 'kpi', 'thanks']);
   });
 
   it('stops at a failure and hands back the slides already generated', async () => {
-    const generate = vi.fn().mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('rate limited'));
+    const generate = vi.fn().mockResolvedValueOnce({ subtitle: 'ok' }).mockRejectedValueOnce(new Error('rate limited'));
     let err;
     try { await buildDeck(outline, { generate }); } catch (e) { err = e; }
     expect(err.message).toBe('rate limited');
@@ -154,7 +168,7 @@ describe('buildDeck', () => {
   });
 
   it('resumes after the slides already generated', async () => {
-    const generate = vi.fn(async () => ({}));
+    const generate = vi.fn(async () => ({ subtitle: 'ok' }));
     const onProgress = vi.fn();
     const first = { id: 'kept', layout: 'cover', title: 'Q3 Review' };
     const deck = await buildDeck(outline, { generate, onProgress, done: [first] });
