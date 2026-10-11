@@ -3,7 +3,7 @@ import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup, Seg, Select } from '../../ui/Primitives.jsx';
 import { toHex } from '../../../lib/color.js';
 import { isStrokeableShape, isFillableShape } from '../../../lib/shapes.js';
-import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, borderStyle, valignOf } from '../../../lib/elements.js';
+import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, TEXT_INK, borderStyle, valignOf } from '../../../lib/elements.js';
 import { requiresFill } from '../../../lib/deckUtils.js';
 
 // Line-spacing presets for the dropdown (the field itself is a continuous
@@ -57,6 +57,23 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
         </div>
       )}
 
+      {/* Text is coloured by its ink `color` — labelled as such, not "Fill" (U7):
+          a text-box fill is a separate property (F-TXT-2). */}
+      {selected.type === 'text' && (
+      <div className="pane-section">
+        <h4>Text colour</h4>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+          <input
+            type="color"
+            aria-label="Text color"
+            value={toHex(selected.color || TEXT_INK)}
+            onChange={e => setSelected({ ...selected, color: e.target.value })}
+            style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 4, background: 'none' }}
+          />
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12 }}>{toHex(selected.color || TEXT_INK)}</div>
+        </div>
+      </div>
+      )}
       {requiresFill(selected.type) && (
       <div className="pane-section">
         <h4>Fill</h4>

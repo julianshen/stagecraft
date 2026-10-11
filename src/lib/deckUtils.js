@@ -2,6 +2,7 @@ import { isFormattableKey, isFmtRecord } from './slideFmt.js';
 import { shapeDef } from './shapes.js';
 import { isHexColor } from './color.js';
 import { STROKE_DASHES, TEXT_VALIGNS, IMAGE_FITS } from './elements.js';
+import { normalizeSlide } from './normalizeDeck.js';
 
 export function getFlatSlideIds(deck) {
   if (!deck) return [];
@@ -185,7 +186,7 @@ const isGradient = (v) => isPlainObject(v)
 const ELEMENT_FIELD_OK = {
   id: isStr, type: isKnownElementType,
   x: isFinite_, y: isFinite_, w: isFinite_, h: isFinite_,
-  fill: isHexColor, content: isStr, src: isDataImage,
+  fill: isHexColor, color: isHexColor, content: isStr, src: isDataImage,
   // A shape outline: hex colour (canvas border == export line) + a non-negative
   // px width (0 = no outline). Rendered/exported only for box shapes (see
   // `isStrokeableShape`); the gate accepts the fields on any element.
@@ -213,19 +214,21 @@ const ELEMENT_FIELD_OK = {
 // JSON-parsed patch can carry an own `__proto__`/`constructor` key that must
 // reject, not resolve up the prototype chain.
 const ownFieldOk = (k, v) => ownValidate(ELEMENT_FIELD_OK, k, v);
-// Every fill-bearing element (text colour, line/shape fill) needs a hex fill:
-// a fill-less element's canvas default diverges from the export (a shape renders
-// indigo vs #15171C; text/line render the editor theme's `--ink` — light under
-// the dark theme — vs #15171C). Only `image` has no fill.
-// A fill-bearing element type (text colour / shape fill). image carries a `src`
-// and path is stroked, not filled. Exported so the inspector's Fill control and
-// this gate share one rule (single-sourced, like the shape predicates).
-export const requiresFill = (type) => isKnownElementType(type) && type !== 'image' && type !== 'path';
+// Every coloured element needs an explicit hex colour: a colour-less element's
+// canvas default diverges from the export (a shape renders indigo vs #15171C;
+// text/line render the editor theme's `--ink` — light under the dark theme — vs
+// #15171C). A shape (line included) is coloured by its `fill`; text by its ink
+// `color` (its `fill` is reserved for a text-box fill, which doesn't render yet,
+// so it's rejected rather than persisted invisibly). image carries a `src` and
+// path is stroked, not filled. Exported so the inspector's Fill control and this
+// gate share one rule (single-sourced, like the shape predicates).
+export const requiresFill = (type) => isKnownElementType(type) && type !== 'image' && type !== 'path' && type !== 'text';
 export const isValidElement = (el) => isPlainObject(el)
   && isStr(el.id)                                                 // id required — every consumer keys/selects by it
   && isKnownElementType(el.type)                                  // type present + known
   && isFinite_(el.x) && isFinite_(el.y) && isFinite_(el.w) && isFinite_(el.h) // geometry present + finite
-  && (!requiresFill(el.type) || isHexColor(el.fill))              // fill-bearing elements carry a hex fill (canvas == export)
+  && (!requiresFill(el.type) || isHexColor(el.fill))              // shapes carry a hex fill (canvas == export)
+  && (el.type === 'text' ? isHexColor(el.color) && el.fill === undefined : el.color === undefined) // text ink is `color`, and only text has one
   && (el.type !== 'text' || (isStr(el.content) && el.content.length > 0)) // a text element needs visible content
   && (el.type !== 'path' || (isPoints(el.points) && isHexColor(el.stroke))) // a path needs a valid polyline + a stroke colour (its only colour; canvas == export)
   && Object.entries(el).every(([k, v]) => ownFieldOk(k, v));      // every key known (own) + correctly typed
@@ -288,6 +291,9 @@ function fieldOk(key, value, layout) {
 export function sanitizeSlidePatch(patch, currentLayout) {
   const safe = {};
   if (!patch || typeof patch !== 'object') return safe;
+  // A model (or an older client) may still author legacy element fields —
+  // upgrade them to the current model before validating.
+  if (Array.isArray(patch.elements)) patch = { ...patch, elements: normalizeSlide({ elements: patch.elements }).elements };
   // The effective layout is the (valid) one the patch switches to, else the
   // slide's current layout — it decides layout-specific field shapes.
   const layout = typeof patch.layout === 'string' && SLIDE_LAYOUTS.has(patch.layout) ? patch.layout : currentLayout;

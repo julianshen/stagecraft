@@ -42,11 +42,28 @@ describe('PropsPanel', () => {
     expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ opacity: 100 }));
   });
 
-  it('binds the fill color', () => {
+  it('binds a shape\'s fill color', () => {
     const setSelected = vi.fn();
-    render(<PropsPanel selected={el} setSelected={setSelected} />);
+    render(<PropsPanel selected={{ id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#000000' }} setSelected={setSelected} />);
     fireEvent.change(screen.getByLabelText('Fill color'), { target: { value: '#abcdef' } });
     expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ fill: '#abcdef' }));
+  });
+
+  it('labels a text element\'s ink "Text colour" (not Fill) and binds it to `color`', () => {
+    const setSelected = vi.fn();
+    render(<PropsPanel selected={{ ...el, color: '#112233' }} setSelected={setSelected} />);
+    expect(screen.getByRole('heading', { name: 'Text colour' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Fill color')).not.toBeInTheDocument();
+    const input = screen.getByLabelText('Text color');
+    expect(input.value).toBe('#112233');
+    fireEvent.change(input, { target: { value: '#abcdef' } });
+    expect(setSelected).toHaveBeenCalledWith(expect.objectContaining({ color: '#abcdef' }));
+    expect(setSelected.mock.calls[0][0]).not.toHaveProperty('fill');
+  });
+
+  it('shows the default ink for a colour-less text element', () => {
+    render(<PropsPanel selected={el} setSelected={vi.fn()} />);
+    expect(screen.getByLabelText('Text color').value).toBe('#15171c');
   });
 
   it('normalizes the fill into a lowercase 6-digit hex for the color input', () => {

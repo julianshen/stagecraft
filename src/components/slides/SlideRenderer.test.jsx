@@ -39,7 +39,7 @@ describe('ElementsLayer', () => {
       <ElementsLayer
         elements={[
           { id: 's', type: 'rect', x: 0, y: 0, w: 100, h: 100, rot: 45, opacity: 50, fill: '#ff0000' },
-          { id: 't', type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'Hi', fill: '#00ff00' },
+          { id: 't', type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'Hi', color: '#00ff00' },
         ]}
       />
     );
@@ -822,7 +822,7 @@ describe('Slide — blank layout (PowerPoint "Blank")', () => {
   it('renders no template chrome or title — only the element overlay', () => {
     const slide = {
       id: 'b', layout: 'blank', title: 'Outline-only title',
-      elements: [{ id: 'e1', type: 'text', x: 10, y: 10, w: 100, h: 40, content: 'Imported box', fill: '#000000' }],
+      elements: [{ id: 'e1', type: 'text', x: 10, y: 10, w: 100, h: 40, content: 'Imported box', color: '#000000' }],
     };
     const { container } = render(<Slide slide={slide} deck={{ title: 'Demo', author: 'Me' }} sectionName="S" num={1} total={1} />);
     expect(screen.getByText('Imported box')).toBeInTheDocument();
@@ -843,7 +843,7 @@ describe('Slide — blank layout (PowerPoint "Blank")', () => {
 });
 
 describe('ElementsLayer — text valign', () => {
-  const el = (valign) => ({ id: 'e', type: 'text', x: 0, y: 0, w: 100, h: 100, content: 'V', fill: '#000000', ...(valign ? { valign } : {}) });
+  const el = (valign) => ({ id: 'e', type: 'text', x: 0, y: 0, w: 100, h: 100, content: 'V', color: '#000000', ...(valign ? { valign } : {}) });
   const box = (c) => c.firstChild.firstChild; // layer → element
   it('anchors top / bottom via flex alignItems', () => {
     expect(box(render(<ElementsLayer elements={[el('top')]} />).container).style.alignItems).toBe('flex-start');

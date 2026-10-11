@@ -462,7 +462,7 @@ describe('sanitizeSlidePatch — per-field formatting (fmt)', () => {
 describe('sanitizeSlidePatch — free-form canvas elements', () => {
   // Valid elements carry an id (the gate requires one; applyAIPatch mints it
   // before the gate runs). Fills are hex; image src is a data URL.
-  const text = { id: 'a', type: 'text', x: 10, y: 20, w: 100, h: 40, content: 'Hi', fill: '#111' };
+  const text = { id: 'a', type: 'text', x: 10, y: 20, w: 100, h: 40, content: 'Hi', color: '#111' };
   const shape = { id: 'b', type: 'shape', x: 0, y: 0, w: 50, h: 50, fill: '#abc' };
   const line = { id: 'c', type: 'line', x: 0, y: 0, w: 200, h: 8, fill: '#111' };
 
@@ -481,7 +481,7 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
 
   it('requires a hex fill on every fill-bearing element (text/line/shape); only image needs none', () => {
     expect(sanitizeSlidePatch({ elements: [{ id: 's', type: 'circle', x: 0, y: 0, w: 16, h: 16 }] }, 'text')).toEqual({}); // fill-less shape
-    expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, content: 'x' }] }, 'text')).toEqual({}); // fill-less text (canvas --ink vs export #15171C)
+    expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, content: 'x' }] }, 'text')).toEqual({}); // colour-less text (canvas --ink vs export #15171C)
     expect(sanitizeSlidePatch({ elements: [{ id: 'l', type: 'line', x: 0, y: 0, w: 50, h: 8 }] }, 'text')).toEqual({}); // fill-less line
     const img = { id: 'i', type: 'image', x: 0, y: 0, w: 64, h: 64, src: 'data:image/png;base64,AAA' };
     expect(sanitizeSlidePatch({ elements: [img] }, 'text')).toEqual({ elements: [img] }); // image needs no fill
@@ -500,9 +500,23 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
   });
 
   it('requires non-empty content on a text element (an empty one renders nothing)', () => {
-    expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, fill: '#111' }] }, 'text')).toEqual({}); // no content
-    expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, fill: '#111', content: '' }] }, 'text')).toEqual({}); // empty content
+    expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, color: '#111' }] }, 'text')).toEqual({}); // no content
+    expect(sanitizeSlidePatch({ elements: [{ id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, color: '#111', content: '' }] }, 'text')).toEqual({}); // empty content
     expect(sanitizeSlidePatch({ elements: [text] }, 'text')).toEqual({ elements: [text] }); // text fixture has content
+  });
+
+  it('takes a text element\'s ink from `color`, migrating a legacy `fill` (an AI may still send one)', () => {
+    const legacy = { id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, content: 'x', fill: '#123456' };
+    const { fill, ...rest } = legacy;
+    expect(sanitizeSlidePatch({ elements: [legacy] }, 'text')).toEqual({ elements: [{ ...rest, color: '#123456' }] });
+  });
+
+  it('rejects `color` on a non-text element, and a text box `fill` (no box fill renders yet)', () => {
+    const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 50, h: 50, fill: '#abcdef' };
+    expect(sanitizeSlidePatch({ elements: [{ ...rect, color: '#000000' }] }, 'text')).toEqual({});
+    const boxed = { id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, content: 'x', color: '#000000', fill: '#ffffff' };
+    expect(sanitizeSlidePatch({ elements: [boxed] }, 'text')).toEqual({});
+    expect(sanitizeSlidePatch({ elements: [{ ...boxed, color: 'red' }] }, 'text')).toEqual({}); // colour must be hex
   });
 
   it('accepts a known strokeDash (solid/dashed/dotted) and rejects an unknown one', () => {
@@ -514,7 +528,7 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
   });
 
   it('accepts a positive lineSpacing and rejects a non-positive one', () => {
-    const t = { id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, content: 'x', fill: '#111' };
+    const t = { id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, content: 'x', color: '#111' };
     expect(sanitizeSlidePatch({ elements: [{ ...t, lineSpacing: 1.5 }] }, 'text')).toEqual({ elements: [{ ...t, lineSpacing: 1.5 }] });
     expect(sanitizeSlidePatch({ elements: [{ ...t, lineSpacing: 0 }] }, 'text')).toEqual({});  // 0 would overlap text
     expect(sanitizeSlidePatch({ elements: [{ ...t, lineSpacing: -1 }] }, 'text')).toEqual({});
@@ -569,7 +583,7 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
   });
 
   it('accepts the full optional field set with correct types', () => {
-    const rich = { id: 'e1', type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'A', fontSize: 48, bold: true, italic: false, underline: true, align: 'center', fontFamily: 'Inter', fill: '#111', rot: 30, opacity: 50 };
+    const rich = { id: 'e1', type: 'text', x: 0, y: 0, w: 100, h: 40, content: 'A', fontSize: 48, bold: true, italic: false, underline: true, align: 'center', fontFamily: 'Inter', color: '#111', rot: 30, opacity: 50 };
     expect(sanitizeSlidePatch({ elements: [rich] }, 'text')).toEqual({ elements: [rich] });
   });
 
@@ -588,8 +602,8 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: 'nope' }, 'text')).toEqual({});                          // not an array
     expect(sanitizeSlidePatch({ elements: [text, 'str'] }, 'text')).toEqual({});                    // non-object element
     expect(sanitizeSlidePatch({ elements: [{ ...text, type: 'bogus' }] }, 'text')).toEqual({});     // unknown type
-    expect(sanitizeSlidePatch({ elements: [{ id: 'x', type: 'text', x: 0, y: 0, w: 100, fill: '#111' }] }, 'text')).toEqual({}); // missing h
-    expect(sanitizeSlidePatch({ elements: [{ type: 'text', x: 0, y: 0, w: 10, h: 10, fill: '#111' }] }, 'text')).toEqual({}); // missing id
+    expect(sanitizeSlidePatch({ elements: [{ id: 'x', type: 'text', x: 0, y: 0, w: 100, color: '#111' }] }, 'text')).toEqual({}); // missing h
+    expect(sanitizeSlidePatch({ elements: [{ type: 'text', x: 0, y: 0, w: 10, h: 10, color: '#111' }] }, 'text')).toEqual({}); // missing id
     expect(sanitizeSlidePatch({ elements: [{ ...text, x: NaN }] }, 'text')).toEqual({});            // non-finite geometry
     expect(sanitizeSlidePatch({ elements: [{ ...text, w: 'wide' }] }, 'text')).toEqual({});         // non-numeric geometry
     expect(sanitizeSlidePatch({ elements: [{ ...text, w: '100' }] }, 'text')).toEqual({});          // a NUMERIC string is still rejected (no coercion at the gate)
@@ -637,7 +651,7 @@ describe('sanitizeSlidePatch — blank layout + bgColor', () => {
 });
 
 describe('sanitizeSlidePatch — text element valign', () => {
-  const t = (extra) => ({ id: 'e', type: 'text', x: 0, y: 0, w: 10, h: 10, content: 'x', fill: '#000000', ...extra });
+  const t = (extra) => ({ id: 'e', type: 'text', x: 0, y: 0, w: 10, h: 10, content: 'x', color: '#000000', ...extra });
   it('accepts top / middle / bottom', () => {
     for (const valign of ['top', 'middle', 'bottom']) {
       expect(sanitizeSlidePatch({ elements: [t({ valign })] }, 'blank').elements[0].valign).toBe(valign);

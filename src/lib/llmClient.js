@@ -195,14 +195,15 @@ number of milliseconds, e.g. 480); "none" is an instant cut.
 
 To add or change free-form overlay graphics, set "elements": an array of objects
 placed in a 1920x1080 canvas (origin top-left). Every element needs "type",
-numeric "x","y","w","h", and a hex "fill" (e.g. "#1a1a2e" — for text this is the
-text colour). Types: "text" (with "content", optional "fontSize", "lineSpacing"
+numeric "x","y","w","h", and a hex colour: "fill" for shapes and lines (e.g.
+"#1a1a2e"), "color" (the text colour) for text — never "fill" on text. Types:
+"text" (with "content", optional "fontSize", "lineSpacing"
 (a line-height multiplier, e.g. 1.5), "bold","italic","underline","align"
 left|center|right,"fontFamily"), and shapes/lines ${shapeList}.
 Any element may also set: "stroke" (a hex outline colour) with "strokeWidth" (px)
 and optional "strokeDash" ("dashed" or "dotted"); "gradient" ({"from","to" hex,
-"angle" in degrees}) which overrides "fill" on the canvas (still set "fill" — it
-stays required, and is the export's fallback); "shadow" ({"color" hex, "blur","x","y"});
+"angle" in degrees}) which overrides a shape's "fill" on the canvas (still set
+"fill" — it stays required, and is the export's fallback); "shadow" ({"color" hex, "blur","x","y"});
 "opacity" (0-100); and "rot" (rotation in degrees). Setting "elements" REPLACES the
 text/shape/line overlay, so include every text/shape/line element you want to keep;
 omit "elements" to leave the overlay unchanged. Do NOT list "image" elements — any

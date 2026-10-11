@@ -68,8 +68,12 @@ const rotateVec = (x, y, rad) => {
   return [x * cos - y * sin, x * sin + y * cos];
 };
 
+// The ink a colour-less text element renders and exports with (the canvas's
+// `var(--ink, #15171C)` fallback) — and the new-text default.
+export const TEXT_INK = '#15171C';
+
 const DEFAULTS = {
-  text: { w: 480, h: 120, content: 'Text', fill: '#15171C' },
+  text: { w: 480, h: 120, content: 'Text', color: TEXT_INK }, // text is coloured by its ink `color`
   rect: { w: 320, h: 200, fill: '#4f46e5' },
   ellipse: { w: 240, h: 240, fill: '#4f46e5' },
   circle: { w: 240, h: 240, fill: '#4f46e5' },
@@ -104,8 +108,10 @@ export function createElement(type, opts = {}) {
     el.points = opts.points ?? [];
     el.stroke = opts.stroke ?? d.stroke;       // DEFAULTS.path always carries stroke + strokeWidth
     el.strokeWidth = opts.strokeWidth ?? d.strokeWidth;
+  } else if (type === 'text') {
+    el.content = opts.content ?? d.content;
+    el.color = opts.color ?? d.color; // ink, not `fill` (reserved for a text-box fill)
   } else {
-    if (d.content !== undefined) el.content = opts.content ?? d.content;
     el.fill = opts.fill ?? d.fill ?? '#4f46e5'; // canonical hex so the inspector swatch matches the render
   }
   // Keep a new element on-slide and at/above its per-type minimum, like every

@@ -7,7 +7,7 @@ import { flattenDeck } from './deckOrder.js';
 import { CANVAS_BASELINE_PX } from './fontBaselines.js';
 import { resolveHeadingScale } from './headingScale.js';
 import { toHex, isHexColor, mixHex } from './color.js';
-import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType, lineSpacingOf, valignOf } from './elements.js';
+import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType, lineSpacingOf, valignOf, TEXT_INK } from './elements.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
 import { slideBgClass } from './slideScheme.js';
 
@@ -158,8 +158,8 @@ function addElements(pptx, sld, slide) {
         ...geo, fontSize: PT(num(el.fontSize, 48)), bold: !!el.bold, italic: !!el.italic,
         underline: !!el.underline, align: el.align || 'left', valign: valignOf(el), lineSpacingMultiple: lineSpacingOf(el),
         // Match ElementView's `var(--ink, #15171C)` text default (not the deck
-        // theme's white ink) so a fill-less text element isn't invisible.
-        color: pxHex(el.fill || '#15171C'), fontFace: el.fontFamily || 'Inter', ...withOpacity, ...withShadow,
+        // theme's white ink) so a colour-less text element isn't invisible.
+        color: pxHex(el.color || TEXT_INK), fontFace: el.fontFamily || 'Inter', ...withOpacity, ...withShadow,
       });
       continue;
     }

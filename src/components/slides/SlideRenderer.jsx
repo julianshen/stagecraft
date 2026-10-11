@@ -442,7 +442,7 @@ function ElementView({ el }) {
         // Preserve newlines/spaces typed into the Properties Content textarea
         // (HTML collapses them by default).
         whiteSpace: 'pre-wrap',
-        color: el.fill || 'var(--ink, #15171C)', lineHeight: lineSpacingOf(el), overflow: 'hidden',
+        color: el.color || 'var(--ink, #15171C)', lineHeight: lineSpacingOf(el), overflow: 'hidden',
       }}>
         {el.content}
       </div>

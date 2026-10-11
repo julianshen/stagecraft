@@ -514,7 +514,7 @@ describe('exportToPPTX — free-form elements overlay', () => {
 
   it('exports a text element as addText with px→pt size, style, and px→inch geometry', async () => {
     await exportToPPTX(elemDeck([
-      { id: 't', type: 'text', x: 192, y: 96, w: 384, h: 192, content: 'Hi', fontSize: 48, bold: true, italic: true, underline: true, align: 'center', fill: '#112233' },
+      { id: 't', type: 'text', x: 192, y: 96, w: 384, h: 192, content: 'Hi', fontSize: 48, bold: true, italic: true, underline: true, align: 'center', color: '#112233' },
     ]));
     const t = last().texts.find((x) => x.t === 'Hi');
     expect(t).toBeTruthy();
@@ -523,8 +523,8 @@ describe('exportToPPTX — free-form elements overlay', () => {
 
   it('exports a text element line spacing as a pptxgen lineSpacingMultiple (default 1.2, matching the canvas)', async () => {
     await exportToPPTX(elemDeck([
-      { id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Spaced', fill: '#111', lineSpacing: 1.8 },
-      { id: 'd', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Default', fill: '#111' },
+      { id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Spaced', color: '#111', lineSpacing: 1.8 },
+      { id: 'd', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Default', color: '#111' },
     ]));
     expect(last().texts.find((t) => t.t === 'Spaced').o.lineSpacingMultiple).toBe(1.8);
     expect(last().texts.find((t) => t.t === 'Default').o.lineSpacingMultiple).toBe(1.2); // absent → 1.2, matching the canvas line-height
@@ -901,7 +901,7 @@ describe('exportToPPTX — blank layout', () => {
   it('exports only the background colour + elements — no template text', async () => {
     await exportToPPTX(deckWith({
       id: 'b', layout: 'blank', title: 'Outline only', bgColor: '#112233',
-      elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 192, h: 96, content: 'Hello', fill: '#FFFFFF', fontSize: 48 }],
+      elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 192, h: 96, content: 'Hello', color: '#FFFFFF', fontSize: 48 }],
     }));
     expect(last().background).toEqual({ color: '112233' });
     expect(textsOf(last())).toEqual(['Hello']);
@@ -915,7 +915,7 @@ describe('exportToPPTX — blank layout', () => {
 });
 
 describe('exportToPPTX — text element valign', () => {
-  const deck = (valign) => deckWith({ id: 'b', layout: 'blank', elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 100, h: 100, content: 'V', fill: '#000000', ...(valign ? { valign } : {}) }] });
+  const deck = (valign) => deckWith({ id: 'b', layout: 'blank', elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 100, h: 100, content: 'V', color: '#000000', ...(valign ? { valign } : {}) }] });
   it('maps top/bottom to pptx valign', async () => {
     await exportToPPTX(deck('top'));
     expect(optsOf(last(), 'V').valign).toBe('top');
