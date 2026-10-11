@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { parseOutline, draftOutline, buildDeck, MAX_OUTLINE_SLIDES } from './aiDeck.js';
 import { describeLLMError } from './llmClient.js';
+import { SLIDE_LAYOUTS } from './deckUtils.js';
 
 const outlineJson = {
   title: 'Q3 Review',
@@ -126,6 +127,23 @@ describe('buildDeck', () => {
     expect(deck.slides[0].items).toEqual(['x', 'y']);
   });
 
+  it('tells the model the fields each slide\'s layout renders', async () => {
+    const generate = vi.fn(async () => ({ subtitle: 'ok', kpis: KPIS }));
+    await buildDeck(outline, { generate });
+    expect(generate.mock.calls[1][0]).toMatch(/"kpis": \[\{"label"/); // the kpi slide
+    expect(generate.mock.calls[0][0]).toContain('"subtitle"');          // the cover
+  });
+
+  it('has a field shape for every layout an outline may use', async () => {
+    const layouts = [...SLIDE_LAYOUTS].filter((l) => l !== 'blank');
+    const generate = vi.fn(async () => { throw new Error('stop'); });
+    for (const layout of layouts) {
+      await buildDeck({ title: 'T', slides: [{ layout, title: 'X', brief: '' }] }, { generate }).catch(() => {});
+    }
+    expect(generate).toHaveBeenCalledTimes(layouts.length);
+    for (const [prompt] of generate.mock.calls) expect(prompt).not.toContain('undefined');
+  });
+
   it('asks for strict slides by default, so an unusable reply fails instead of a placeholder', async () => {
     const generate = vi.fn(async () => ({ subtitle: 'x', kpis: KPIS }));
     await buildDeck(outline, { generate });
@@ -154,6 +172,40 @@ describe('buildDeck', () => {
       const err = await buildDeck(outline, { generate }).catch((e) => e);
       expect(err.reason).toBe('slide');
       expect(err.partial).toHaveLength(1); // the cover succeeded; it failed at the kpi slide
+    }
+  });
+
+  it('rejects collection entries whose keys the layout does not render', async () => {
+    const one = (layout) => ({ title: 'T', slides: [{ layout, title: layout, brief: '' }] });
+    const cases = [
+      ['kpi', { kpis: [{ metric: 'Revenue', value: '$1M' }] }],   // renderer reads label/val
+      ['agenda', { items: [{ heading: 'Intro' }] }],              // reads t/d
+      ['risks', { items: [{ risk: 'Churn' }] }],                  // reads t/d
+      ['split', { stats: [{ name: 'NPS', score: 40 }] }],         // reads lbl/val
+      ['roadmap', { lanes: [{ name: 'A', items: [{ title: 'x', t: 0, d: 2 }] }] }], // reads lbl
+    ];
+    for (const [layout, reply] of cases) {
+      const err = await buildDeck(one(layout), { generate: vi.fn(async () => reply) }).catch((e) => e);
+      expect(err.reason, layout).toBe('slide');
+    }
+  });
+
+  it('accepts layout content in the shape its renderer reads', async () => {
+    const one = (layout) => ({ title: 'T', slides: [{ layout, title: layout, brief: '' }] });
+    const cases = [
+      ['kpi', { kpis: [{ label: 'Revenue', val: '$1M' }] }],
+      ['agenda', { items: [{ n: '01', t: 'Intro' }] }],
+      ['risks', { items: [{ sev: 'high', d: 'Churn' }] }],
+      ['split', { stats: [{ lbl: 'NPS', val: 40 }] }],
+      ['roadmap', { lanes: [{ name: 'A', items: [{ lbl: 'Ship', t: 0, d: 2 }] }] }],
+      ['list', { items: ['a'] }],
+      ['table', { columns: ['A'], rows: [['1']] }],
+      ['text', { body: 'Hello' }],
+      ['chart', { chart: { categories: ['Q1'], series: [{ name: 'Rev', values: [1] }] } }],
+    ];
+    for (const [layout, reply] of cases) {
+      const deck = await buildDeck(one(layout), { generate: vi.fn(async () => reply) });
+      expect(deck.slides[0].layout).toBe(layout);
     }
   });
 

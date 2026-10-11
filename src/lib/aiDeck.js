@@ -15,14 +15,6 @@ const OUTLINE_LAYOUTS = [...SLIDE_LAYOUTS].filter((l) => l !== 'blank');
 
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
 
-// The content each layout actually renders beyond its title. A generated slide
-// must fill at least one of these, or the deck would keep the template's
-// placeholders (a globally valid field like `subtitle` is invisible on a kpi
-// slide). Cover, divider and thanks are complete with just a title.
-const LAYOUT_CONTENT = {
-  agenda: ['items'], kpi: ['kpis'], chart: ['chart'], split: ['body', 'stats'],
-  table: ['rows'], text: ['body'], roadmap: ['lanes'], risks: ['items'], list: ['items'],
-};
 // Non-blank: a non-empty string, a number, or a collection/record holding one.
 const hasContent = (v) => {
   if (typeof v === 'string') return v.trim() !== '';
@@ -30,7 +22,45 @@ const hasContent = (v) => {
   if (Array.isArray(v)) return v.some(hasContent);
   return v !== null && typeof v === 'object' && Object.values(v).some(hasContent);
 };
-const usable = (safe, layout) => !LAYOUT_CONTENT[layout] || LAYOUT_CONTENT[layout].some((k) => hasContent(safe[k]));
+// A collection with at least one entry filling a key the renderer reads.
+const someEntry = (...keys) => (v) => Array.isArray(v) && v.some((e) => keys.some((k) => hasContent(e?.[k])));
+
+// What each layout actually renders beyond its title, checked down to the keys
+// the renderer reads. A generated slide must fill one of these, or the deck
+// would keep the template's placeholders (a globally valid `subtitle` is
+// invisible on a kpi slide; `{ metric, value }` kpis render as blank cards).
+// Cover, divider and thanks are complete with just a title.
+const LAYOUT_CONTENT = {
+  agenda: { items: someEntry('t', 'd') },
+  kpi: { kpis: someEntry('label', 'val') },
+  chart: { chart: hasContent }, // shape (non-empty categories + series) already gated by sanitizeSlidePatch
+  split: { body: hasContent, stats: someEntry('lbl', 'val') },
+  table: { rows: hasContent },
+  text: { body: hasContent },
+  roadmap: { lanes: (v) => Array.isArray(v) && v.some((lane) => someEntry('lbl')(lane?.items)) },
+  risks: { items: someEntry('t', 'd') },
+  list: { items: hasContent },
+};
+// The JSON shape of each layout's fields, sent with the slide prompt so the
+// model fills the keys the renderer reads (LAYOUT_CONTENT checks them).
+const LAYOUT_FIELDS = {
+  cover: '"subtitle": string',
+  agenda: '"items": [{"n": "01", "t": string, "d": string}]',
+  divider: '"chapter": "01"',
+  kpi: '"kpis": [{"label": string, "val": string, "delta": string, "target": string, "good": boolean}], "note": string',
+  chart: '"chartType": "line"|"bar"|"area"|"donut", "sub": string, "chart": {"categories": [string], "series": [{"name": string, "values": [number]}]}',
+  split: '"body": string, "stats": [{"lbl": string, "val": string}]',
+  table: '"columns": [string], "rows": [[string]]',
+  text: '"body": string',
+  roadmap: '"months": [string], "lanes": [{"name": string, "items": [{"lbl": string, "t": start month index, "d": duration in months, "state": "done"|"inflight"|"planned"}]}]',
+  risks: '"items": [{"sev": "high"|"med"|"low", "t": string, "d": string}]',
+  list: '"items": [string]',
+  thanks: '"subtitle": string',
+};
+const usable = (safe, layout) => {
+  const spec = LAYOUT_CONTENT[layout];
+  return !spec || Object.entries(spec).some(([key, ok]) => ok(safe[key]));
+};
 
 /**
  * Parse and validate the model's outline reply into
@@ -85,7 +115,7 @@ export async function buildDeck(outline, { generate = generateSlide, onProgress,
     let raw;
     try {
       raw = await generate(
-        `${item.title} — ${item.brief || item.title}. Use the "${item.layout}" layout.`,
+        `${item.title} — ${item.brief || item.title}. Use the "${item.layout}" layout with these fields: ${LAYOUT_FIELDS[item.layout]}.`,
         { deckTitle: outline.title },
         { strict: true }, // an unparseable reply fails rather than becoming a placeholder
       );
