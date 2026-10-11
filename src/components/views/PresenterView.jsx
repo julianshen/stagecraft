@@ -4,6 +4,7 @@ import { Slide } from '../slides/SlideRenderer.jsx';
 import { resolveNotes } from '../../data/deck.js';
 import { transitionAnim } from '../../lib/transitions.js';
 import { dispatchKey } from '../../lib/commands.js';
+import { readGeneralSettings } from '../../lib/generalSettings.js';
 import LaserLayer from '../presenter/LaserLayer.jsx';
 import PresenterSidePanel from '../presenter/PresenterSidePanel.jsx';
 import PresenterControls from '../presenter/PresenterControls.jsx';
@@ -26,12 +27,18 @@ export default function PresenterView({ deck, onExit }) {
   // Start on the first slide — for a freshly created deck that's the cover.
   // (Previously a demo deep-link to slide 4, tuned to the sample deck.)
   const [idx, setIdx] = useState(0);
-  const [elapsed, setElapsed] = useState(412); // seconds
+  // Elapsed seconds are derived from a start timestamp on each tick, not counted
+  // per tick: browsers throttle timers in background tabs / on sleep, so a
+  // counter would drift behind wall time. Reset restarts the timestamp.
+  const [startedAt, setStartedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(startedAt);
+  const elapsed = Math.max(0, Math.floor((now - startedAt) / 1000));
+  const [{ presentTarget }] = useState(readGeneralSettings);
   const [laser, setLaser] = useState(false);
   const [blackout, setBlackout] = useState(false);
 
   useEffect(() => {
-    const t = setInterval(() => setElapsed(e => e + 1), 1000);
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -94,6 +101,8 @@ export default function PresenterView({ deck, onExit }) {
         idx={idx}
         total={flat.length}
         elapsed={elapsed}
+        target={presentTarget}
+        onResetClock={() => { const t = Date.now(); setStartedAt(t); setNow(t); }}
         laser={laser}
         setLaser={setLaser}
         blackout={blackout}

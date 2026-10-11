@@ -25,7 +25,6 @@ import ThemeMenu, { THEME_OPTIONS } from './menus/ThemeMenu.jsx';
 import ComponentMenu from './menus/ComponentMenu.jsx';
 import InspectorPane from './inspector/InspectorPane.jsx';
 import FloatingInspector from './inspector/FloatingInspector.jsx';
-import TimelineDrawer from './drawers/TimelineDrawer.jsx';
 import DefaultAIDrawer from './drawers/DefaultAIDrawer.jsx';
 
 // Toolbar tooltips naming each command's real, bound shortcut (from the registry).
@@ -147,7 +146,6 @@ export default function SlideEditor(props) {
   const [inspectorTab, setInspectorTab] = useState('design');
   const [zoom, setZoom] = useState(62);
   const [showAI, setShowAI] = useState(false);
-  const [showTimeline, setShowTimeline] = useState(false);
   // Open right-click menu: { x, y, kind: 'canvas' | 'element' | 'slide', fixed? }.
   const [ctxMenu, setCtxMenu] = useState(null);
   const [showPalette, setShowPalette] = useState(false);
@@ -345,8 +343,8 @@ export default function SlideEditor(props) {
 
         <div className="group">
           <IconButton name="magic" title="Auto-arrange" disabled={!canAlign} onClick={() => callbacks.onAutoArrange && callbacks.onAutoArrange()}/>
-          <IconButton name="timeline" active={showTimeline} onClick={()=>setShowTimeline(v=>!v)} title="Animation timeline"/>
-          <IconButton name="history" title="Version history"/>
+          <IconButton name="timeline" title="Animation timeline" soon/>
+          <IconButton name="history" title="Version history" soon/>
         </div>
 
         {slots.toolbarExtras}
@@ -424,7 +422,6 @@ export default function SlideEditor(props) {
           {callbacks.onFormatField && <FormatToolbar currentSlide={cur} onFormat={callbacks.onFormatField} />}
           <StatusBar zoom={zoom} setZoom={setZoom} selected={selectedElement}/>
 
-          {showTimeline && <TimelineDrawer onClose={()=>setShowTimeline(false)} />}
           {showAI && (slots.aiDrawer || <DefaultAIDrawer onClose={()=>setShowAI(false)} slideNum={curIdx+1} slide={cur} onApplyPatch={callbacks.onApplyAIPatch} />)}
           {ctxMenu && (
             <Menu

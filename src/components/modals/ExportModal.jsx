@@ -5,10 +5,13 @@ import SoonTag from '../ui/SoonTag.jsx';
 import { exportToPPTX } from '../../lib/pptxExport.js';
 import { exportToPDF } from '../../lib/pdfExport.js';
 import { flattenDeck } from '../../lib/deckOrder.js';
+import { readExportSettings } from '../../lib/exportSettings.js';
 
 export default function ExportModal({ onClose, deck }) {
-  const [fmt, setFmt] = useState('pptx');
-  const [includeNotes, setIncludeNotes] = useState(true);
+  // Preselected from Settings → Export defaults (read once per open).
+  const [defaults] = useState(readExportSettings);
+  const [fmt, setFmt] = useState(defaults.format);
+  const [includeNotes, setIncludeNotes] = useState(defaults.includeNotes);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState(null);
   // The range is 1-indexed over the FLATTENED slides (the order + count the export
@@ -52,20 +55,22 @@ export default function ExportModal({ onClose, deck }) {
     }
   }
 
+  // Parse each field (empty/invalid → the full bound; a typed 0 clamps to 1
+  // rather than falling through), clamp to [1, total], then normalise start≤end;
+  // send a range only when it actually narrows the deck (a full range stays unranged).
+  const bound = (s, full) => { const n = parseInt(s, 10); return Number.isNaN(n) ? full : n; };
+  const lo = Math.max(1, Math.min(total, bound(from, 1)));
+  const hi = Math.max(1, Math.min(total, bound(to, total)));
+  const start = Math.min(lo, hi), end = Math.max(lo, hi);
+  const range = (start > 1 || end < total) ? { from: start, to: end } : undefined;
+  const count = total ? end - start + 1 : 0;
+
   async function handleExport() {
     // Only PPTX + PDF are implemented; soon options can't be selected, but guard
     // anyway so no format silently no-ops.
     if (fmt !== 'pptx' && fmt !== 'pdf') return;
     setExporting(true);
     setError(null);
-    // Parse each field (empty/invalid → the full bound; a typed 0 clamps to 1
-    // rather than falling through), clamp to [1, total], then normalise start≤end;
-    // send a range only when it actually narrows the deck (a full range stays unranged).
-    const bound = (s, full) => { const n = parseInt(s, 10); return Number.isNaN(n) ? full : n; };
-    const lo = Math.max(1, Math.min(total, bound(from, 1)));
-    const hi = Math.max(1, Math.min(total, bound(to, total)));
-    const start = Math.min(lo, hi), end = Math.max(lo, hi);
-    const range = (start > 1 || end < total) ? { from: start, to: end } : undefined;
     try {
       if (fmt === 'pdf') {
         await exportToPDF(deck, range ? { range } : {});
@@ -131,7 +136,7 @@ export default function ExportModal({ onClose, deck }) {
                 </div>
               </FieldRow>
               <FieldRow label="QUALITY">
-                <div className="input-group"><input value="High" readOnly/><Icon name="chevron-down" size={11}/></div>
+                <div className="input-group is-soon"><input value="High" disabled aria-label="Quality"/><SoonTag/></div>
               </FieldRow>
               <FieldRow label="NOTES">
                 <div className={`input-group${fmt === 'pdf' ? ' is-soon' : ''}`}>
@@ -145,14 +150,14 @@ export default function ExportModal({ onClose, deck }) {
                 </div>
               </FieldRow>
               <FieldRow label="COMMENTS">
-                <div className="input-group"><input value="Exclude" readOnly/></div>
+                <div className="input-group is-soon"><input value="Exclude" disabled aria-label="Comments"/><SoonTag/></div>
               </FieldRow>
             </div>
           </div>
         </div>
         <div className="modal-foot">
           <span style={{ flex: 1, fontSize: 12, fontFamily: 'var(--f-mono)', color: error ? 'var(--danger)' : 'var(--ink-3)' }} role={error ? 'alert' : undefined}>
-            {error || `${fmt.toUpperCase()} · ~6.4 MB · est 4s`}
+            {error || `${fmt.toUpperCase()} · ${count} ${count === 1 ? 'slide' : 'slides'}`}
           </span>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button variant="accent" icon="download" onClick={handleExport} disabled={exporting}>

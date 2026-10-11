@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, act } from '@testing-library/react';
+import { stubLocalStorage } from '../../test/localStorage.js';
+import { GENERAL_STORAGE_KEY } from '../../lib/generalSettings.js';
 import PresenterView from './PresenterView.jsx';
 
 const origRO = globalThis.ResizeObserver;
@@ -18,7 +20,48 @@ const deck = {
   ],
 };
 
+const store = stubLocalStorage();
+
 describe('PresenterView', () => {
+  it('starts the clock at 00:00 and counts up', () => {
+    vi.useFakeTimers();
+    try {
+      const { getByText } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+      expect(getByText('00:00')).toBeTruthy();
+      act(() => { vi.advanceTimersByTime(3000); });
+      expect(getByText('00:03')).toBeTruthy();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('derives elapsed time from the clock, so throttled timers cannot make it lag', () => {
+    vi.useFakeTimers();
+    try {
+      const { getByText } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+      // a backgrounded tab: wall time jumps 90 s but only one tick fires
+      act(() => { vi.setSystemTime(Date.now() + 90_000); vi.advanceTimersByTime(1000); });
+      expect(getByText('01:31')).toBeTruthy();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('resets the clock to 00:00', () => {
+    vi.useFakeTimers();
+    try {
+      const { getByText, getByRole } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+      act(() => { vi.advanceTimersByTime(5000); });
+      fireEvent.click(getByRole('button', { name: /reset/i }));
+      expect(getByText('00:00')).toBeTruthy();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('shows the talk target from Settings, and none by default', () => {
+    const { queryByText, unmount } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+    expect(queryByText(/target/)).toBeNull();
+    unmount();
+    store.set(GENERAL_STORAGE_KEY, JSON.stringify({ presentTarget: 20 }));
+    const { getByText } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+    expect(getByText(/target 20:00/)).toBeTruthy();
+  });
+
   it('starts on the first slide (the cover), not the demo deep-link', () => {
     const { getByText } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
     expect(getByText(/slide 1 of 5/)).toBeTruthy();

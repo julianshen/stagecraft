@@ -87,8 +87,8 @@ export default function ThumbsPane({ flat, sections, curId, onPick, renderSlide,
         <span>Slides · {flat.length}</span>
         <div className="actions">
           <IconButton name="plus" title={newSlideTitle} onClick={onNewSlide} />
-          <IconButton name="outline" title="Outline view" />
-          <IconButton name="more-h" title="More" />
+          <IconButton name="outline" title="Outline view" soon />
+          <IconButton name="more-h" title="More" soon />
         </div>
       </div>
       <div className="thumbs">

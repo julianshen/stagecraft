@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ACCENTS, SAMPLE_DECK } from './data/deck.js';
 import TopBar from './components/TopBar.jsx';
 
@@ -10,6 +10,7 @@ import PresenterView from './components/views/PresenterView.jsx';
 
 import ExportModal  from './components/modals/ExportModal.jsx';
 import TemplatePicker from './components/modals/TemplatePicker.jsx';
+import { AiDeckModal } from './components/modals/AiDeckModal.jsx';
 
 import TweaksPanel, { TWEAK_DEFAULTS } from './components/TweaksPanel.jsx';
 import { useDeckSync } from './hooks/useDeckSync.js';
@@ -130,6 +131,30 @@ export default function App() {
       await handleOpenDeck(meta.id);
     } catch { /* server error — leave the picker open */ }
   };
+  // Start with AI: save the generated deck to the library and open it. A failure
+  // throws back to the dialog, which stays open and shows it.
+  // A retry of the same generated deck never creates a duplicate: after an open
+  // failure it reopens the deck already saved, and a save whose response was
+  // lost re-sends the same idempotency key so the server replays it.
+  const aiDeckSaves = useRef(new WeakMap()); // generated deck → { requestId, id? }
+  const handleCreateAiDeck = async (generated) => {
+    let save = aiDeckSaves.current.get(generated);
+    if (!save) {
+      save = { requestId: `ai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}` };
+      aiDeckSaves.current.set(generated, save);
+    }
+    if (!save.id) {
+      const meta = await createDeck(generated.title, generated, undefined, { requestId: save.requestId });
+      if (!meta?.id) throw new Error('The deck library did not accept the new deck.');
+      save.id = meta.id;
+    }
+    const { id } = save;
+    if (!(await handleOpenDeck(id))) {
+      await refreshDecks(); // list the saved deck (and move LIVE to it) even though it didn't open
+      throw new Error('The deck was saved to your library but could not be opened.');
+    }
+    setModal(null);
+  };
   // Import a PowerPoint file: parse it client-side, save it as a new library
   // deck, open it, and say what was (and couldn't be) brought across. App-level
   // toasts so the notice survives the switch from Home to the editor.
@@ -234,6 +259,7 @@ export default function App() {
           onRenameDeck={handleRenameDeck}
           onDeleteDeck={handleDeleteDeck}
           onOpenTemplates={() => setModal('templates')}
+          onStartWithAI={() => setModal('ai-deck')}
           onImportPptx={handleImportPptx}
           searchQuery={searchQuery}
         />
@@ -270,6 +296,10 @@ export default function App() {
           onClose={() => setModal(null)}
           onPick={handlePickTemplate}
         />
+      )}
+
+      {modal === 'ai-deck' && (
+        <AiDeckModal onClose={() => setModal(null)} onCreate={handleCreateAiDeck}/>
       )}
 
       {modal === 'export' && (

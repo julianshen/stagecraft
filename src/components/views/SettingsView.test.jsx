@@ -200,13 +200,24 @@ describe('settings interactions', () => {
     expect(setTw).toHaveBeenCalledTimes(4);
   });
 
-  it('export rows respond to clicks', () => {
-    const { container } = renderSettings();
+  it('persists the export defaults the dialog actually uses', () => {
+    renderSettings();
     fireEvent.click(screen.getByText('Export defaults'));
-    expect(container.querySelectorAll('.switch.on').length).toBe(3);
-    fireEvent.click(screen.getByText('Standard'));      // Seg
-    fireEvent.click(screen.getByText('Speaker notes')); // ToggleRow flips off
-    expect(container.querySelectorAll('.switch.on').length).toBe(2);
+    fireEvent.change(screen.getByLabelText('Default format'), { target: { value: 'pdf' } });
+    expect(JSON.parse(store.get('stagecraft.export')).format).toBe('pdf');
+    fireEvent.click(screen.getByText('Speaker notes').closest('.toggle-row'));
+    expect(JSON.parse(store.get('stagecraft.export')).includeNotes).toBe(false);
+  });
+
+  it('marks the export defaults the dialog cannot honor as Soon', () => {
+    renderSettings();
+    fireEvent.click(screen.getByText('Export defaults'));
+    for (const title of ['Live data snapshot', 'Slide numbers']) {
+      expect(screen.getByText(title).closest('.toggle-row')).toHaveAttribute('aria-disabled', 'true');
+    }
+    expect(screen.getByText('Quality').closest('.set-row').querySelector('.soon-tag')).toBeTruthy();
+    const keynote = screen.getByRole('option', { name: /Keynote/ });
+    expect(keynote).toBeDisabled();
   });
 });
 
@@ -267,7 +278,7 @@ describe('General section honesty (Task 4)', () => {
 
   // AC-4.2 (persisted shape): only the keys something reads survive — the
   // live toggles keep persisting, legacy inert keys are not resurrected.
-  it('AC-4.2: persisted shape contains only snapToGrid and showRulers', () => {
+  it('AC-4.2: persisted shape contains only the live keys', () => {
     store.set('stagecraft.general', JSON.stringify({
       slideSize: '4:3', language: 'fr-FR', autosave: false, spellCheck: false,
       snapToGrid: true, showRulers: true,
@@ -278,7 +289,7 @@ describe('General section honesty (Task 4)', () => {
     fireEvent.click(screen.getByText('Snap to grid').closest('.toggle-row'));
 
     const persisted = JSON.parse(store.get('stagecraft.general'));
-    expect(Object.keys(persisted).sort()).toEqual(['showRulers', 'snapToGrid']);
+    expect(Object.keys(persisted).sort()).toEqual(['presentTarget', 'showRulers', 'snapToGrid']);
     expect(persisted.snapToGrid).toBe(false);
     expect(persisted.showRulers).toBe(true);
   });
@@ -299,6 +310,29 @@ describe('General section honesty (Task 4)', () => {
     openGeneral();
     const snapSwitch = screen.getByText('Snap to grid').closest('.toggle-row').querySelector('.switch');
     expect(snapSwitch.classList.contains('on')).toBe(false);
+  });
+
+  it('persists the presenter talk target in minutes; empty means none', () => {
+    renderSettings();
+    openGeneral();
+    const input = screen.getByLabelText('Talk target (minutes)');
+    expect(input).toHaveValue(null);
+    fireEvent.change(input, { target: { value: '25' } });
+    expect(JSON.parse(store.get('stagecraft.general')).presentTarget).toBe(25);
+    fireEvent.change(input, { target: { value: '' } });
+    expect(JSON.parse(store.get('stagecraft.general')).presentTarget).toBe(0);
+  });
+
+  it('clamps an out-of-range talk target into whole minutes', () => {
+    renderSettings();
+    openGeneral();
+    const input = screen.getByLabelText('Talk target (minutes)');
+    fireEvent.change(input, { target: { value: '12.7' } });
+    expect(JSON.parse(store.get('stagecraft.general')).presentTarget).toBe(12);
+    fireEvent.change(input, { target: { value: '99999' } });
+    expect(JSON.parse(store.get('stagecraft.general')).presentTarget).toBe(600);
+    fireEvent.change(input, { target: { value: '-3' } });
+    expect(JSON.parse(store.get('stagecraft.general')).presentTarget).toBe(0);
   });
 
   it('leaves defaults intact for keys absent from the stored object', () => {

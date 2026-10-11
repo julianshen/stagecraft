@@ -692,7 +692,7 @@ describe('importPptx — Codex review fixes (round 3)', () => {
     zip.file('ppt/slides/slide1.xml', slideXml(textBox(2, 0, 0, 10, 10, para('x'.repeat(30 * 1024 * 1024)))));
     const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
     await expect(importPptx(bytes)).rejects.toThrow(/too large/i);
-  });
+  }, 60000); // compressing ~30 MB can exceed the 5 s default under coverage instrumentation
 });
 
 describe('importPptx — Codex review fixes (round 4)', () => {

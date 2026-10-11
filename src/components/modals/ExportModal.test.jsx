@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, fireEvent, waitFor, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ExportModal from './ExportModal.jsx';
+import { stubLocalStorage } from '../../test/localStorage.js';
+import { EXPORT_STORAGE_KEY } from '../../lib/exportSettings.js';
 
 // vi.hoisted so the mock fn is initialized before the hoisted vi.mock factory
 // references it (matches pptxExport.test.js) — no reliance on a deferred-arrow
@@ -12,6 +14,8 @@ const exportToPDF = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 vi.mock('../../lib/pdfExport.js', () => ({ exportToPDF }));
 
 const deck = { title: 'D', slides: [{ id: 'a' }, { id: 'b' }], sections: [{ id: 's', name: 'S', slides: ['a', 'b'] }] };
+
+const store = stubLocalStorage();
 
 beforeEach(() => { exportToPPTX.mockClear(); exportToPDF.mockClear(); });
 
@@ -82,7 +86,7 @@ describe('ExportModal', () => {
   // AC-6.1: Keynote/PDF/PNG/MP4/Link options are disabled with a Soon affordance
   // and clicking one does NOT select it — pptx remains the selected format.
   it('AC-6.1: non-PPTX options are marked Soon, aria-disabled, and unselectable', () => {
-    const { getByText, getAllByLabelText } = render(<ExportModal deck={deck} onClose={vi.fn()} />);
+    const { getByText, getByRole } = render(<ExportModal deck={deck} onClose={vi.fn()} />);
     // query by the sub-line ("PDF" as a title collides with the PDF icon-box text)
     const soonSubs = [
       'Native Keynote package',            // key
@@ -98,7 +102,8 @@ describe('ExportModal', () => {
       fireEvent.click(opt); // must NOT select it
       expect(opt.className).not.toContain('selected');
     }
-    expect(getAllByLabelText('Coming soon')).toHaveLength(soonSubs.length);
+    // (QUALITY/COMMENTS carry their own Soon tags — count only the format picker's)
+    expect(within(getByRole('radiogroup')).getAllByLabelText('Coming soon')).toHaveLength(soonSubs.length);
     // pptx stays selected and default-selected throughout
     const pptx = getByText('PowerPoint · .pptx').closest('.export-opt');
     expect(pptx.className).toContain('selected');
@@ -257,3 +262,35 @@ describe('ExportModal — PDF export (pdf-export)', () => {
   });
 });
 
+describe('ExportModal — honest options (A2)', () => {
+  it('shows what will actually be exported, not an invented size or time', () => {
+    const { container, getByLabelText } = render(<ExportModal deck={deck} onClose={vi.fn()} />);
+    const foot = container.querySelector('.modal-foot');
+    expect(foot.textContent).not.toMatch(/MB|est \d/);
+    expect(foot.textContent).toContain('PPTX · 2 slides');
+    fireEvent.change(getByLabelText('Range to'), { target: { value: '1' } });
+    expect(foot.textContent).toContain('PPTX · 1 slide');
+  });
+
+  it('marks QUALITY and COMMENTS as not yet available', () => {
+    const { getByText } = render(<ExportModal deck={deck} onClose={vi.fn()} />);
+    for (const label of ['QUALITY', 'COMMENTS']) {
+      const row = getByText(label).closest('.field-row');
+      expect(row.querySelector('.soon-tag')).toBeTruthy();
+      expect(row.querySelector('input').disabled).toBe(true);
+    }
+  });
+
+  it('preselects the format and notes saved in Settings → Export defaults', async () => {
+    store.set(EXPORT_STORAGE_KEY, JSON.stringify({ format: 'pptx', includeNotes: false }));
+    const { getByText } = render(<ExportModal deck={deck} onClose={vi.fn()} />);
+    fireEvent.click(getByText(/Export PPTX/));
+    await waitFor(() => expect(exportToPPTX).toHaveBeenCalledWith(deck, { includeNotes: false }));
+  });
+
+  it('preselects PDF when that is the saved default', () => {
+    store.set(EXPORT_STORAGE_KEY, JSON.stringify({ format: 'pdf' }));
+    const { getByText } = render(<ExportModal deck={deck} onClose={vi.fn()} />);
+    expect(getByText(/Export PDF/)).toBeTruthy();
+  });
+});

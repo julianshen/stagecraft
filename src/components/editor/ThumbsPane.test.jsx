@@ -332,3 +332,16 @@ describe('new section', () => {
     expect(() => fireEvent.click(screen.getByText('New section'))).not.toThrow();
   });
 });
+
+describe('ThumbsPane header honesty (A2)', () => {
+  it('marks the unbuilt Outline and More buttons as coming soon and disabled', () => {
+    renderPane(() => {});
+    for (const name of ['Outline view', 'More']) {
+      const btn = screen.getByRole('button', { name: `${name} — coming soon` });
+      // aria-disabled (not disabled) keeps it keyboard-focusable, so the status is discoverable
+      expect(btn).toHaveAttribute('aria-disabled', 'true');
+      expect(btn).not.toBeDisabled();
+      expect(btn.className).toContain('is-soon');
+    }
+  });
+});

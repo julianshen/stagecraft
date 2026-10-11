@@ -140,6 +140,29 @@ describe('decks library REST', () => {
     expect(Object.keys(store.decks)).toHaveLength(2);
   });
 
+  it('POST /api/decks replays a repeated requestId instead of creating a duplicate', async () => {
+    const store = createDeckStore(deck());
+    const first = await handleApiRequest(store, req('POST', '/api/decks', { name: 'AI', requestId: 'r-1' }));
+    await handleApiRequest(store, req('POST', '/api/decks', { name: 'Other' })); // something else becomes active
+    const again = await handleApiRequest(store, req('POST', '/api/decks', { name: 'AI', requestId: 'r-1' }));
+    expect(again.status).toBe(200);
+    expect(again.body.id).toBe(first.body.id);
+    expect(store.activeId).toBe(first.body.id);        // the replay activates it, like the original did
+    expect(Object.keys(store.decks)).toHaveLength(3);  // demo + AI + Other — no duplicate
+    expect(again.body).not.toHaveProperty('requestId'); // the key is not part of the public meta
+    const other = await handleApiRequest(store, req('POST', '/api/decks', { name: 'AI', requestId: 'r-2' }));
+    expect(other.body.id).not.toBe(first.body.id);     // a new key is a new deck
+  });
+
+  it('POST /api/decks ignores a requestId that is not a short string', async () => {
+    const store = createDeckStore(deck());
+    for (const requestId of [42, 'x'.repeat(201), '']) {
+      await handleApiRequest(store, req('POST', '/api/decks', { requestId }));
+      await handleApiRequest(store, req('POST', '/api/decks', { requestId }));
+    }
+    expect(Object.keys(store.decks)).toHaveLength(7); // every POST created a deck
+  });
+
   it('GET /api/decks/:id returns the full deck, 404 for unknown', async () => {
     const store = createDeckStore(deck());
     const id = store.activeId;
