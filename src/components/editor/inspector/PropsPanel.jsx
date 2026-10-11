@@ -1,6 +1,6 @@
 import React from 'react';
 import Icon from '../../ui/Icon.jsx';
-import { FieldRow, InputGroup, Seg } from '../../ui/Primitives.jsx';
+import { FieldRow, InputGroup, Seg, Select } from '../../ui/Primitives.jsx';
 import { toHex } from '../../../lib/color.js';
 import { isStrokeableShape, isFillableShape } from '../../../lib/shapes.js';
 import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, borderStyle, valignOf } from '../../../lib/elements.js';
@@ -137,13 +137,9 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
         </div>
         {/* Dash style applies wherever the outline/stroke renders; `solid` clears the field. */}
         <FieldRow label="DASH">
-          <div className="input-group">
-            <select aria-label="Stroke dash" value={borderStyle(selected.strokeDash)}
-              onChange={e => setSelected({ ...selected, strokeDash: e.target.value === 'solid' ? undefined : e.target.value })}>
-              {STROKE_DASHES.map(d => <option key={d} value={d}>{d[0].toUpperCase() + d.slice(1)}</option>)}
-            </select>
-            <Icon name="chevron-down" size={11} />
-          </div>
+          <Select ariaLabel="Stroke dash" value={borderStyle(selected.strokeDash)}
+            onChange={v => setSelected({ ...selected, strokeDash: v === 'solid' ? undefined : v })}
+            options={STROKE_DASHES.map(d => ({ value: d, label: d[0].toUpperCase() + d.slice(1) }))} />
         </FieldRow>
       </div>
       )}
@@ -176,21 +172,13 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
         <div className="pane-section">
           <h4>Type</h4>
           <FieldRow label="FAMILY">
-            <div className="input-group">
-              <select aria-label="Font family" value={fam} onChange={e => setSelected({ ...selected, fontFamily: e.target.value })}>
-                {famOpts.map(f => <option key={f} value={f}>{f}</option>)}
-              </select>
-              <Icon name="chevron-down" size={11} />
-            </div>
+            <Select ariaLabel="Font family" value={fam} options={famOpts}
+              onChange={v => setSelected({ ...selected, fontFamily: v })} />
           </FieldRow>
           <FieldRow label="SIZE"><InputGroup value={selected.fontSize ?? 48} onChange={v => setSelected({ ...selected, fontSize: Math.max(1, +v || 48) })} unit="px" /></FieldRow>
           <FieldRow label="SPACING">
-            <div className="input-group">
-              <select aria-label="Line spacing" value={sp} onChange={e => setSelected({ ...selected, lineSpacing: +e.target.value })}>
-                {spOpts.map(s => <option key={s} value={s}>{s}×</option>)}
-              </select>
-              <Icon name="chevron-down" size={11} />
-            </div>
+            <Select ariaLabel="Line spacing" value={sp} options={spOpts.map(s => ({ value: s, label: `${s}×` }))}
+              onChange={v => setSelected({ ...selected, lineSpacing: +v })} />
           </FieldRow>
           <FieldRow label="ALIGN">
             <Seg value={selected.align ?? 'left'} onChange={a => setSelected({ ...selected, align: a })}

@@ -65,6 +65,26 @@ export function InputGroup({ icoLeft, unit, value, onChange, placeholder, disabl
   );
 }
 
+// ---------------- Select ----------------
+// The one dropdown: a native <select> (keyboard + a11y for free) with the
+// browser arrow hidden (CSS appearance: none) under our single chevron — the
+// inspector fields used to show both (U11). `options` are values, or
+// { value, label, disabled }; onChange receives the chosen value string.
+export function Select({ value, onChange, options, ariaLabel, disabled, className, style }) {
+  return (
+    <div className={`input-group select-field${className ? ` ${className}` : ''}`} style={style}>
+      <select className="select-field-control" aria-label={ariaLabel} value={value} disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => {
+          const { value: v, label = String(v), disabled: off } = typeof o === 'object' ? o : { value: o };
+          return <option key={v} value={v} disabled={off}>{label}</option>;
+        })}
+      </select>
+      <Icon name="chevron-down" size={11} className="chev" />
+    </div>
+  );
+}
+
 // ---------------- Segmented ----------------
 export function Seg({ value, onChange, options, disabled = false }) {
   return (

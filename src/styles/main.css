@@ -923,6 +923,15 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
   width: 100%;
 }
 .input-group .unit { color: var(--ink-4); font-family: var(--f-mono); font-size: 10.5px; }
+/* <Select>: the native arrow is hidden so only our chevron shows. */
+.select-field-control {
+  appearance: none; -webkit-appearance: none;
+  flex: 1; min-width: 0; height: 100%;
+  background: none; border: 0; outline: 0;
+  font: inherit; font-size: 12px; color: var(--ink); cursor: pointer;
+}
+.select-field-control:disabled { cursor: default; }
+.select-field .chev { color: var(--ink-4); pointer-events: none; flex-shrink: 0; }
 
 .double-input {
   display: grid;
