@@ -268,8 +268,8 @@ function groupTransform(grpSpPr, parentT) {
   // Scale/offset into the group box; a flipped group then mirrors each child's
   // centre about the group centre (before rotating, as PowerPoint applies it),
   // reverses the child's rotation when exactly one axis is mirrored, and toggles
-  // the child's own flip (lines take the mirrored endpoints; other mirrored
-  // children report themselves). Finally the group's rotation turns the child
+  // the child's own flip (lines take the mirrored endpoints; other children
+  // keep it as their element flipH/flipV). Finally the group's rotation turns the child
   // about the group centre and adds to its own, so the composition holds.
   const gx = own.x + own.w / 2, gy = own.y + own.h / 2;
   const fx = own.flipH ? -1 : 1, fy = own.flipV ? -1 : 1;

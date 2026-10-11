@@ -528,10 +528,6 @@ const BUILDERS = new Map([
 ]);
 
 // ---- main export function ----
-/**
- * Export a deck object to a .pptx file using pptxgenjs.
- * @param {Object} deck — SAMPLE_DECK-shaped object
- */
 const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 
 // Save a file the way pptxgenjs' own writeFile does in the browser: a
@@ -544,9 +540,15 @@ function download(blob, fileName) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url));
+  // Revoke after a beat, as pptxgenjs does: Firefox can otherwise fail the
+  // download with 'blob:null' (pptxgenjs issue #81).
+  setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
+/**
+ * Export a deck object to a .pptx file using pptxgenjs.
+ * @param {Object} deck — SAMPLE_DECK-shaped object
+ */
 export async function exportToPPTX(deck, { includeNotes = true, range = null } = {}) {
   const pptx = new pptxgen();
   pptx.layout = 'LAYOUT_16x9';

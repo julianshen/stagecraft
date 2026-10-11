@@ -445,11 +445,17 @@ export function expandToGroups(elements, ids) {
     .map((el) => el.id);
 }
 
-// Stamp `groupId` onto every selected element (reassigning any prior group).
-// Unselected elements keep their reference (no needless deck churn).
+// Stamp `groupId` onto every selected element (reassigning any prior group)
+// and gather them at the topmost member's z-position, keeping their order —
+// as PowerPoint's Group does, so the group is contiguous and exports as one
+// (pptxPost.js). Unselected elements keep their reference (no needless churn).
 export function groupElements(elements, ids, groupId) {
   const sel = new Set(ids || []);
-  return (elements || []).map((el) => (el && sel.has(el.id) ? { ...el, groupId } : el));
+  const isMember = (el) => el && sel.has(el.id);
+  const list = elements || [];
+  const members = list.filter(isMember).map((el) => ({ ...el, groupId }));
+  const top = list.reduce((t, el, i) => (isMember(el) ? i : t), -1); // (not findLastIndex: Safari 14 / Chrome 87 targets)
+  return list.flatMap((el, i) => (i === top ? members : isMember(el) ? [] : [el]));
 }
 
 // Remove the `groupId` key from selected grouped elements (the key, not a

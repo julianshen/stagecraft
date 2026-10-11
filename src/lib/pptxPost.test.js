@@ -32,6 +32,11 @@ describe('linAngle (CSS linear-gradient angle → DrawingML a:lin ang)', () => {
     expect(linAngle(-45)).toBe(225 * 60000);   // normalised into [0, 360)
     expect(linAngle(450)).toBe(0);
   });
+
+  it('is a whole number (a:lin ang is an xsd:int), whatever angle the deck holds', () => {
+    expect(linAngle(7.77)).toBe(Math.round((7.77 + 270) * 60000));
+    expect(Number.isInteger(linAngle(1 / 3))).toBe(true);
+  });
 });
 
 describe('planFor (a slide\'s post-processing plan, read from its elements)', () => {
@@ -91,6 +96,14 @@ describe('patchSlideXml — gradients', () => {
     expect(out).toContain('<a:noFill/>');
   });
 
+  it('patches nothing under a name that is not unique (a duplicated id, or one clashing with a pptxgenjs default name)', () => {
+    const out = parse(patchSlideXml(slide(sp(2, 'dup') + sp(3, 'dup') + sp(4, 'x')), {
+      gradients: { dup: { from: '000000', to: 'FFFFFF', angle: 0 } }, groups: [['dup', 'x']],
+    }));
+    expect(out.getElementsByTagNameNS(A, 'gradFill')).toHaveLength(0);
+    expect(out.getElementsByTagNameNS(P, 'grpSp')).toHaveLength(0);
+  });
+
   it('keeps the XML declaration and ignores names it cannot find', () => {
     const src = slide(sp(2, 'el-a'));
     const out = patchSlideXml(src, { gradients: { missing: { from: '000000', to: 'FFFFFF', angle: 0 } } });
@@ -122,12 +135,21 @@ describe('patchSlideXml — groups', () => {
     expect(groupIds.every((id) => id > 7)).toBe(true);
   });
 
-  it('gathers non-adjacent members at the topmost member\'s z-position, keeping their order', () => {
-    // a (group) · x · b (group) → x · [a, b]: PowerPoint groups are contiguous.
+  it('leaves members ungrouped when another object sits between them, so the stacking stays as drawn', () => {
+    // a (group) · x · b (group): a PowerPoint group is contiguous, and gathering
+    // the members would lift a over x. The look wins over the group.
     const out = parse(patchSlideXml(slide(sp(2, 'a') + sp(3, 'x') + sp(4, 'b')), { groups: [['a', 'b']] }));
-    const top = [...spTree(out).children].filter((c) => c.localName === 'sp' || c.localName === 'grpSp').map((c) => c.localName);
-    expect(top).toEqual(['sp', 'grpSp']);
-    expect(childNames(spTree(out).getElementsByTagNameNS(P, 'grpSp')[0])).toEqual(['a', 'b']);
+    expect(out.getElementsByTagNameNS(P, 'grpSp')).toHaveLength(0);
+    expect(childNames(spTree(out))).toEqual(['a', 'x', 'b']);
+  });
+
+  it('frames rotated members by their turned bounds', () => {
+    // a 400×40 bar turned 90° about its centre (200, 20) spans x 180..220, y -180..220
+    const bar = sp(2, 'bar', { w: 400, h: 40 }).replace('<a:xfrm>', '<a:xfrm rot="5400000">');
+    const out = parse(patchSlideXml(slide(bar + sp(3, 'dot', { x: 300, y: 0, w: 10, h: 10 })), { groups: [['bar', 'dot']] }));
+    const xf = out.getElementsByTagNameNS(P, 'grpSp')[0].getElementsByTagNameNS(P, 'grpSpPr')[0].getElementsByTagNameNS(A, 'xfrm')[0];
+    const val = (tag, a) => Number(xf.getElementsByTagNameNS(A, tag)[0].getAttribute(a));
+    expect([val('off', 'x'), val('off', 'y'), val('ext', 'cx'), val('ext', 'cy')]).toEqual([180, -180, 130, 400]);
   });
 
   it('reads each member\'s own frame: a nested group\'s grpSpPr, a graphic frame\'s p:xfrm', () => {

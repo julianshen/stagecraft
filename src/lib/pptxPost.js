@@ -63,7 +63,11 @@ export async function postProcess(data, plans) {
 export function patchSlideXml(xml, { gradients = {}, groups = [] } = {}) {
   const doc = parseXml(xml);
   const cNvPrs = [...doc.getElementsByTagNameNS(P, 'cNvPr')];
-  const named = new Map(cNvPrs.map((n) => [n.getAttribute('name'), n]));
+  // Only a unique name is patched: a duplicated element id, or one that
+  // happens to match a pptxgenjs default name ("Text 3"), is ambiguous.
+  const count = new Map();
+  for (const n of cNvPrs) count.set(n.getAttribute('name'), (count.get(n.getAttribute('name')) || 0) + 1);
+  const named = new Map(cNvPrs.filter((n) => count.get(n.getAttribute('name')) === 1).map((n) => [n.getAttribute('name'), n]));
   for (const [name, gradient] of Object.entries(gradients)) {
     const spPr = kid(drawableOf(named.get(name)), 'spPr');
     if (spPr) applyGradient(doc, spPr, gradient);
@@ -87,7 +91,7 @@ function drawableOf(cNvPr) {
 }
 
 /** A CSS `linear-gradient` angle (0° = up, clockwise) as DrawingML `a:lin ang` (0° = rightward, clockwise; 60000ths). */
-export const linAngle = (cssDeg) => ((((cssDeg - 90) % 360) + 360) % 360) * 60000;
+export const linAngle = (cssDeg) => Math.round(((((cssDeg - 90) % 360) + 360) % 360) * 60000);
 
 const node = (doc, ns, tag, attrs = {}, children = []) => {
   const n = doc.createElementNS(ns, tag);
@@ -110,29 +114,44 @@ function applyGradient(doc, spPr, { from, to, angle }) {
   ]), solid);
 }
 
-// A drawing object's own frame (EMU): spPr/xfrm, a group's grpSpPr/xfrm, or a
-// graphic frame's p:xfrm.
-const frameOf = (shape) => xfrmBox(path(shape, 'spPr', 'xfrm') ?? path(shape, 'grpSpPr', 'xfrm') ?? kid(shape, 'xfrm'))
-  ?? { x: 0, y: 0, w: 0, h: 0 };
+// The bounds (EMU) a drawing object covers: its own frame — spPr/xfrm, a
+// group's grpSpPr/xfrm or a graphic frame's p:xfrm — turned by its rotation
+// about its centre.
+function boundsOf(shape) {
+  const b = xfrmBox(path(shape, 'spPr', 'xfrm') ?? path(shape, 'grpSpPr', 'xfrm') ?? kid(shape, 'xfrm')) ?? { x: 0, y: 0, w: 0, h: 0, rot: 0 };
+  const t = (b.rot * Math.PI) / 180, c = Math.abs(Math.cos(t)), s = Math.abs(Math.sin(t));
+  const hw = (b.w * c + b.h * s) / 2, hh = (b.w * s + b.h * c) / 2;
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+  return { x: Math.round(cx - hw), y: Math.round(cy - hh), r: Math.round(cx + hw), b: Math.round(cy + hh) };
+}
+
+// Are the (document-ordered) members adjacent in z-order — siblings with no
+// other drawing object between them?
+function adjacent(members) {
+  const siblings = [...members[0].parentNode.children].filter((c) => DRAWABLE.has(c.localName));
+  const at = siblings.indexOf(members[0]);
+  return members.every((m, i) => siblings[at + i] === m);
+}
 
 // Wrap the members in a p:grpSp (shape id `id`) whose child frame is the
-// identity (chOff/chExt = off/ext = their bounding box), so every member keeps
-// its absolute geometry. A PowerPoint group is contiguous in z-order, so it
-// takes the topmost member's place and the members keep their relative order.
-// Returns whether a group was made (it needs two members).
+// identity (chOff/chExt = off/ext = their bounds), so every member keeps its
+// absolute geometry. A PowerPoint group is contiguous in z-order, so members
+// with another object between them stay ungrouped: gathering them would
+// restack the slide (the editor's ⌘G gathers them first, as PowerPoint does).
+// Returns whether a group was made (it needs two adjacent members).
 function applyGroup(doc, members, id) {
   if (members.length < 2) return false;
   members.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
-  const boxes = members.map(frameOf);
+  if (!adjacent(members)) return false;
+  const boxes = members.map(boundsOf);
   const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y));
-  const cx = Math.max(...boxes.map((b) => b.x + b.w)) - x, cy = Math.max(...boxes.map((b) => b.y + b.h)) - y;
+  const cx = Math.max(...boxes.map((b) => b.r)) - x, cy = Math.max(...boxes.map((b) => b.b)) - y;
   const frame = [node(doc, A, 'a:off', { x, y }), node(doc, A, 'a:ext', { cx, cy }), node(doc, A, 'a:chOff', { x, y }), node(doc, A, 'a:chExt', { cx, cy })];
   const grp = node(doc, P, 'p:grpSp', {}, [
     node(doc, P, 'p:nvGrpSpPr', {}, [node(doc, P, 'p:cNvPr', { id, name: `Group ${id}` }), node(doc, P, 'p:cNvGrpSpPr'), node(doc, P, 'p:nvPr')]),
     node(doc, P, 'p:grpSpPr', {}, [node(doc, A, 'a:xfrm', {}, frame)]),
   ]);
-  const top = members[members.length - 1];
-  top.parentNode.insertBefore(grp, top);
+  members[0].parentNode.insertBefore(grp, members[0]);
   for (const m of members) grp.appendChild(m);
   return true;
 }

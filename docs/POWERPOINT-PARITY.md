@@ -107,7 +107,7 @@ remaining gaps cluster in four places, which phase 2–3 target:
 | | Shadow | 🟢 | 🔴 | 🟢 | effectLst import |
 | | Lines / connectors | 🟡 straight | 🟢 straight, dashed, elbow; curved → elbow and arrowheads dropped (both warned) | 🟢 | arrowheads |
 | | Freeform / pen | 🟢 | 🔴 custGeom → rect | 🟢 | custGeom paths |
-| | Group / ungroup | 🟢 | 🟢 | 🟢 `p:grpSp` (A4; non-adjacent members gather at the topmost one's z-position) | — |
+| | Group / ungroup | 🟢 (⌘G gathers members at the topmost one's z-position, as PowerPoint does) | 🟢 | 🟢 `p:grpSp` (A4) when its members are adjacent in z-order; an older group with another object between members exports ungrouped, so the stacking stays as drawn | — |
 | | Rotate / flip | 🟡 rotate; flips render (text as PowerPoint: flipV turns it 180°), no flip UI yet | 🟢 rotate incl. rotated groups and tables; flips kept (tables: cells mirrored, text upright, warned) | 🟢 rotate + flips (A4) | flip UI (C1) |
 | | Align / distribute / z-order | 🟢 | — | — | — |
 | **Images** | Insert / move / resize / transparency | 🟢 | 🟢 PNG/JPEG/GIF/SVG/WebP, stretch fit, transparency; tiled → stretched (warned); a JPEG's EXIF rotation reset (drawn unrotated, as PowerPoint does) | 🟢 (rotated (EXIF) JPEGs export upright, as the canvas shows them) | — |

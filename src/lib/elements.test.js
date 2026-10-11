@@ -1014,6 +1014,10 @@ describe('element grouping', () => {
       expect(out.find((e) => e.id === 'a').groupId).toBe('g9'); // reassigned from g1
       expect(out.find((e) => e.id === 'd').groupId).toBe('g2'); // unselected, unchanged
     });
+    it('gathers the members at the topmost one\'s z-position, keeping their order (as PowerPoint does)', () => {
+      const flat = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+      expect(groupElements(flat, ['c', 'a'], 'g').map((e) => e.id)).toEqual(['b', 'a', 'c', 'd']);
+    });
     it('returns the same element reference for unselected elements (no needless copies)', () => {
       const input = els();
       const out = groupElements(input, ['a'], 'g9');
