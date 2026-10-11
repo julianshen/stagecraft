@@ -70,9 +70,10 @@ describe('dataImageSize', () => {
     expect(cm.h).toBeCloseTo(5 * 96 / 2.54);
     expect(dataImageSize(svg('width="1in" height="72pt"'))).toEqual({ w: 96, h: 96 });
     expect(dataImageSize(svg('width="12pc" height="25.4mm"'))).toEqual({ w: 192, h: 96 });
-    // no usable size at all → the browser's default object size (300×150), as the canvas draws it
-    expect(dataImageSize(svg('width="10em" height="5em"'))).toEqual({ w: 300, h: 150 });
-    expect(dataImageSize('data:image/svg+xml;base64,' + btoa('<svg/>'))).toEqual({ w: 300, h: 150 });
+    // no intrinsic ratio at all → null: CSS cover/contain then fill the box, which the stretch fallback matches
+    expect(dataImageSize(svg('width="10em" height="5em"'))).toBeNull();
+    expect(dataImageSize(svg('width="200"'))).toBeNull();
+    expect(dataImageSize('data:image/svg+xml;base64,' + btoa('<svg/>'))).toBeNull();
   });
 
   it('reads BMP dimensions (a negative height means top-down rows)', () => {

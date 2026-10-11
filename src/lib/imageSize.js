@@ -59,7 +59,8 @@ function webpSize(b) {
 }
 
 // An SVG's size: absolute width/height on the root tag, else its viewBox's
-// width/height, else the default 300×150 — as the canvas sizes it.
+// width/height, else null — with no intrinsic ratio, CSS cover/contain fill
+// the box, which the caller's stretch fallback reproduces.
 // Absolute CSS units convert to px so mixed units keep their true ratio.
 const SVG_LEN = /^\s*([\d.]+)(px|in|cm|mm|pt|pc)?\s*$/i;
 const PX_PER = { px: 1, in: 96, cm: 96 / 2.54, mm: 96 / 25.4, pt: 96 / 72, pc: 16 };
@@ -76,9 +77,7 @@ function svgSize(b) {
   const w = svgLen(attr('width')), h = svgLen(attr('height'));
   if (w && h) return { w, h };
   const vb = (attr('viewBox') ?? '').trim().split(/[\s,]+/).map(Number);
-  // No intrinsic size at all → the browser's default object size, which is
-  // what the canvas's object-fit uses.
-  return vb.length === 4 && vb.every(Number.isFinite) ? { w: vb[2], h: vb[3] } : { w: 300, h: 150 };
+  return vb.length === 4 && vb.every(Number.isFinite) ? { w: vb[2], h: vb[3] } : null;
 }
 
 // AVIF/HEIC (ISO-BMFF): the image's spatial extent lives in an `ispe` property
