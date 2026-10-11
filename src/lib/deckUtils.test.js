@@ -533,6 +533,13 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...img, fit: 'tile' }] }, 'text')).toEqual({});
   });
 
+  it('accepts boolean flipH/flipV on any element and rejects anything else', () => {
+    const base = { id: 's', type: 'rect', x: 0, y: 0, w: 50, h: 50, fill: '#abc' };
+    expect(sanitizeSlidePatch({ elements: [{ ...base, flipH: true, flipV: false }] }, 'text')).toEqual({ elements: [{ ...base, flipH: true, flipV: false }] });
+    expect(sanitizeSlidePatch({ elements: [{ ...base, flipH: 'yes' }] }, 'text')).toEqual({});
+    expect(sanitizeSlidePatch({ elements: [{ ...base, flipV: 1 }] }, 'text')).toEqual({});
+  });
+
   it('accepts a known strokeDash (solid/dashed/dotted) and rejects an unknown one', () => {
     const base = { id: 's', type: 'rect', x: 0, y: 0, w: 50, h: 50, fill: '#abc', stroke: '#000', strokeWidth: 2 };
     for (const d of ['solid', 'dashed', 'dotted']) {

@@ -47,6 +47,35 @@ export const isRenderableShadow = (s) => !!s && isHexColor(s.color)
 // export approximates it with the midpoint blend (pptxgen has no shape gradient
 // — a documented degradation). DEFAULT_GRADIENT seeds the Properties toggle.
 export const DEFAULT_GRADIENT = Object.freeze({ from: '#4f46e5', to: '#06b6d4', angle: 135 });
+// How the canvas orients an element: its rotation plus the mirror signs of its
+// flips (flips apply in the element's own frame, before the rotation — the
+// OOXML order). Text follows PowerPoint: a flipped text box's text stays
+// readable, so flipH changes nothing and flipV turns it 180°.
+function orientation(el) {
+  const text = el.type === 'text';
+  return {
+    rot: (Number(el.rot) || 0) + (text && el.flipV ? 180 : 0),
+    sx: !text && el.flipH ? -1 : 1,
+    sy: !text && el.flipV ? -1 : 1,
+  };
+}
+
+// The CSS transform that draws it. CSS applies the right-most function first,
+// so `rotate(r) scale(sx, sy)` mirrors and then turns.
+export function elementTransform(el) {
+  const { rot, sx, sy } = orientation(el);
+  return [rot && `rotate(${rot}deg)`, (sx < 0 || sy < 0) && `scale(${sx}, ${sy})`].filter(Boolean).join(' ') || undefined;
+}
+
+// The direction its drop shadow points on the canvas, in degrees clockwise
+// from +x (y-down), [0, 360): the filter shares the transformed node, so the
+// local x/y offset turns and mirrors with the element.
+export function shadowAngle(el) {
+  const { rot, sx, sy } = orientation(el);
+  const deg = Math.atan2(el.shadow.y * sy, el.shadow.x * sx) * 180 / Math.PI + rot;
+  return ((deg % 360) + 360) % 360;
+}
+
 export const linearGradientCss = (g) => `linear-gradient(${g.angle}deg, ${g.from}, ${g.to})`;
 // Is this gradient safe for both surfaces? Same gate-bypass reasoning as
 // isRenderableShadow: a malformed gradient falls back to the solid fill on the
@@ -416,11 +445,17 @@ export function expandToGroups(elements, ids) {
     .map((el) => el.id);
 }
 
-// Stamp `groupId` onto every selected element (reassigning any prior group).
-// Unselected elements keep their reference (no needless deck churn).
+// Stamp `groupId` onto every selected element (reassigning any prior group)
+// and gather them at the topmost member's z-position, keeping their order —
+// as PowerPoint's Group does, so the group is contiguous and exports as one
+// (pptxPost.js). Unselected elements keep their reference (no needless churn).
 export function groupElements(elements, ids, groupId) {
   const sel = new Set(ids || []);
-  return (elements || []).map((el) => (el && sel.has(el.id) ? { ...el, groupId } : el));
+  const isMember = (el) => el && sel.has(el.id);
+  const list = elements || [];
+  const members = list.filter(isMember).map((el) => ({ ...el, groupId }));
+  const top = list.reduce((t, el, i) => (isMember(el) ? i : t), -1); // (not findLastIndex: Safari 14 / Chrome 87 targets)
+  return list.flatMap((el, i) => (i === top ? members : isMember(el) ? [] : [el]));
 }
 
 // Remove the `groupId` key from selected grouped elements (the key, not a

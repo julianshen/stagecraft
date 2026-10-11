@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, autoArrangeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, pathFromStroke, dashArray, dashType, borderStyle, STROKE_DASHES, lineSpacingOf, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
-import { fontStack } from './elements.js';
+import { fontStack, elementTransform, shadowAngle } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -1014,6 +1014,10 @@ describe('element grouping', () => {
       expect(out.find((e) => e.id === 'a').groupId).toBe('g9'); // reassigned from g1
       expect(out.find((e) => e.id === 'd').groupId).toBe('g2'); // unselected, unchanged
     });
+    it('gathers the members at the topmost one\'s z-position, keeping their order (as PowerPoint does)', () => {
+      const flat = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+      expect(groupElements(flat, ['c', 'a'], 'g').map((e) => e.id)).toEqual(['b', 'a', 'c', 'd']);
+    });
     it('returns the same element reference for unselected elements (no needless copies)', () => {
       const input = els();
       const out = groupElements(input, ['a'], 'g9');
@@ -1146,5 +1150,42 @@ describe('fontStack (Office font fallbacks on the canvas)', () => {
     expect(fontStack(undefined)).toBeUndefined();
     expect(fontStack('')).toBeUndefined();
     expect(fontStack('Evil", x')).toBe('"Evil, x", var(--f-sans), sans-serif');
+  });
+});
+
+describe('elementTransform (rotation + flips, as the canvas draws them)', () => {
+  it('is undefined for an unrotated, unflipped element', () => {
+    expect(elementTransform({ type: 'rect' })).toBeUndefined();
+    expect(elementTransform({ type: 'rect', rot: 0, flipH: false })).toBeUndefined();
+  });
+
+  it('rotates, then mirrors in the element\'s own frame (CSS applies the right-most first, like OOXML)', () => {
+    expect(elementTransform({ type: 'rect', rot: 30 })).toBe('rotate(30deg)');
+    expect(elementTransform({ type: 'rect', flipH: true })).toBe('scale(-1, 1)');
+    expect(elementTransform({ type: 'image', rot: 30, flipV: true })).toBe('rotate(30deg) scale(1, -1)');
+    expect(elementTransform({ type: 'path', flipH: true, flipV: true })).toBe('scale(-1, -1)');
+  });
+
+  it('follows PowerPoint for text: flipH leaves it readable, flipV turns it 180°', () => {
+    expect(elementTransform({ type: 'text', flipH: true })).toBeUndefined();
+    expect(elementTransform({ type: 'text', flipV: true })).toBe('rotate(180deg)');
+    expect(elementTransform({ type: 'text', rot: 30, flipH: true, flipV: true })).toBe('rotate(210deg)');
+  });
+});
+
+describe('shadowAngle (the direction the canvas draws a shadow, after flips and rotation)', () => {
+  const sh = (x, y) => ({ color: '#000000', blur: 4, x, y });
+  it('is the offset\'s own direction (clockwise from +x, y-down) for a plain element', () => {
+    expect(shadowAngle({ type: 'rect', shadow: sh(10, 0) })).toBe(0);
+    expect(shadowAngle({ type: 'rect', shadow: sh(0, 10) })).toBe(90);
+  });
+  it('mirrors the offset with the element\'s flips, then adds its rotation', () => {
+    expect(shadowAngle({ type: 'rect', flipH: true, shadow: sh(10, 0) })).toBe(180);
+    expect(shadowAngle({ type: 'image', flipV: true, shadow: sh(0, 10) })).toBe(270);
+    expect(shadowAngle({ type: 'rect', rot: 30, flipH: true, shadow: sh(10, 0) })).toBe(210);
+  });
+  it('turns with flipped text the way the text turns (flipH none, flipV 180°)', () => {
+    expect(shadowAngle({ type: 'text', flipH: true, shadow: sh(10, 0) })).toBe(0);
+    expect(shadowAngle({ type: 'text', flipV: true, shadow: sh(10, 0) })).toBe(180);
   });
 });

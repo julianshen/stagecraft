@@ -2,7 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Record everything the export draws onto a mocked pptxgenjs, so we can assert
 // the roadmap builder emits a real timeline instead of a placeholder.
-const rec = vi.hoisted(() => ({ slides: [], sections: [] }));
+const rec = vi.hoisted(() => ({ slides: [], sections: [], raw: new ArrayBuffer(8), writeOpts: null }));
+// The post-processor (F-EXP-1) is unit-tested on its own; here it records the
+// per-slide patch plans the export hands it and returns a marker package.
+const post = vi.hoisted(() => ({ plans: null, out: new ArrayBuffer(16) }));
+vi.mock('./pptxPost.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  postProcess: async (data, plans) => { post.plans = plans; return data === rec.raw ? post.out : null; },
+}));
 vi.mock('pptxgenjs', () => {
   class FakePptx {
     constructor() {
@@ -29,12 +36,13 @@ vi.mock('pptxgenjs', () => {
       rec.slides.push(s);
       return s;
     }
-    writeFile() { return Promise.resolve('ok.pptx'); }
+    write(opts) { rec.writeOpts = opts; return Promise.resolve(rec.raw); }
   }
   return { default: FakePptx };
 });
 
 import { exportToPPTX } from './pptxExport.js';
+import { planFor } from './pptxPost.js';
 import { CANVAS_BASELINE_PX } from './fontBaselines.js';
 import { CHART_SERIES_HEX } from './chartSpec.js';
 import { SEVERITY_HEX } from './riskSpec.js';
@@ -59,7 +67,16 @@ const deckWith = (slide) => ({
   slides: [slide],
 });
 
-beforeEach(() => { rec.slides.length = 0; rec.sections.length = 0; });
+// The download: an object URL for the post-processed package, clicked on a
+// temporary <a download>. jsdom has no object URLs, so they're stubbed here.
+const dl = { blobs: [], clicks: [] };
+beforeEach(() => {
+  rec.slides.length = 0; rec.sections.length = 0; post.plans = null;
+  dl.blobs.length = 0; dl.clicks.length = 0;
+  URL.createObjectURL = (blob) => { dl.blobs.push(blob); return `blob:${dl.blobs.length}`; };
+  URL.revokeObjectURL = () => {};
+  HTMLAnchorElement.prototype.click = function click() { dl.clicks.push({ href: this.getAttribute('href'), download: this.download }); };
+});
 
 describe('exportToPPTX — font-size parity (text layout)', () => {
   // Canvas defaults (SlideRenderer text layout): title 84px, body 32px.
@@ -502,6 +519,69 @@ describe('exportToPPTX speaker notes', () => {
   it('omits all notes when includeNotes is false', async () => {
     await exportToPPTX(notesDeck, { includeNotes: false });
     expect(rec.slides.map((s) => s.notes)).toEqual([null, null, null]);
+  });
+});
+
+describe('exportToPPTX — post-processing and download (F-EXP-1)', () => {
+  const blank = (id, elements) => ({ id, layout: 'blank', elements });
+  const deck2 = (...slides) => ({ title: 'My Deck', theme: 'indigo', sections: [{ id: 's', name: 'S', slides: slides.map((x) => x.id) }], slides });
+
+  it('exports flips natively on shapes, paths, pictures and text', async () => {
+    await exportToPPTX(deck2(blank('b', [
+      { id: 'r', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', flipH: true },
+      { id: 'p', type: 'path', x: 0, y: 0, w: 10, h: 10, points: [[0, 0], [1, 1]], stroke: '#000000', flipV: true },
+      { id: 'i', type: 'image', x: 0, y: 0, w: 10, h: 10, src: 'data:image/png;base64,AAA', flipH: true, flipV: true },
+      { id: 't', type: 'text', x: 0, y: 0, w: 10, h: 10, content: 'T', color: '#000000', flipV: true },
+      { id: 'n', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000' },
+    ])));
+    const s = last();
+    const flips = (o) => [o.flipH, o.flipV];
+    expect(s.shapes.map((x) => flips(x.o))).toEqual([[true, undefined], [undefined, true], [undefined, undefined]]);
+    expect(flips(s.images[0].o)).toEqual([true, true]);
+    expect(flips(s.texts.find((x) => x.t === 'T').o)).toEqual([undefined, true]); // PowerPoint turns flipped text itself
+  });
+
+  it('exports a flipped element\'s shadow on the side the canvas draws it', async () => {
+    await exportToPPTX(deck2(blank('b', [
+      { id: 'r', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', flipH: true, shadow: { color: '#000000', blur: 4, x: 10, y: 0 } },
+    ])));
+    expect(last().shapes[0].o.shadow.angle).toBe(180); // offset +x, mirrored → points left
+  });
+
+  it('names every exported element by its id, so the patches can find it', async () => {
+    await exportToPPTX(deck2(blank('b', [
+      { id: 't1', type: 'text', x: 0, y: 0, w: 100, h: 50, content: 'Hi', color: '#000000' },
+      { id: 'r1', type: 'rect', x: 0, y: 0, w: 100, h: 50, fill: '#FF0000' },
+      { id: 'p1', type: 'path', x: 0, y: 0, w: 100, h: 50, points: [[0, 0], [1, 1]], stroke: '#000000' },
+      { id: 'i1', type: 'image', x: 0, y: 0, w: 100, h: 50, src: 'data:image/png;base64,AAA' },
+      { id: '', type: 'ellipse', x: 0, y: 0, w: 100, h: 50, fill: '#00FF00' }, // an empty id is still a valid id
+    ])));
+    const s = last();
+    expect(s.texts.find((x) => x.t === 'Hi').o.objectName).toBe('t1'); // objectNameOf: plain ids pass through
+    expect(s.shapes.map((x) => x.o.objectName)).toEqual(['r1', 'p1', '%']);
+    expect(s.images[0].o.objectName).toBe('i1');
+  });
+
+  it('hands the post-processor each slide\'s plan (planFor), in slide order', async () => {
+    const two = blank('two', [
+      { id: 'g', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', gradient: { from: '#112233', to: '#aabbcc', angle: 45 } },
+      { id: 'a', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', groupId: 'G' },
+      { id: 'b', type: 'ellipse', x: 0, y: 0, w: 10, h: 10, fill: '#000000', groupId: 'G' },
+    ]);
+    await exportToPPTX(deck2(blank('one', [{ id: 'solo', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000' }]), two));
+    expect(post.plans).toEqual([{ gradients: {}, groups: [] }, planFor(two)]);
+    expect(post.plans[1].groups).toEqual([['a', 'b']]);
+  });
+
+  it('writes the package in memory, post-processes it and downloads the result', async () => {
+    const name = await exportToPPTX(deck2(blank('b', [])));
+    expect(name).toBe('My_Deck.pptx');
+    expect(rec.writeOpts).toEqual({ outputType: 'arraybuffer' });
+    expect(dl.blobs).toHaveLength(1);
+    expect(dl.blobs[0].type).toBe('application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    expect(dl.blobs[0].size).toBe(post.out.byteLength); // the post-processed package, not the raw one (8 bytes)
+    expect(dl.clicks).toEqual([{ href: 'blob:1', download: 'My_Deck.pptx' }]);
+    expect(document.querySelector('a[download]')).toBeNull(); // the temporary link is removed
   });
 });
 

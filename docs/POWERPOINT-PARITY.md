@@ -47,7 +47,7 @@ missing · **P2** less common or polish. ✅ = fixed in this change.
 | 9 | P1 | Fixed 16:9 canvas; 4:3 / custom sizes letterbox on import | `SLIDE_W/H` | `deck.size` (16:9, 4:3, custom); the 1920-wide authoring space generalises to a width × height |
 | 10 | P1 | Imported charts are placeholders | `pptxImport.js` | Parse `c:chartSpace` (categories + series) into the existing `chart` model — the export already writes native charts |
 | 11 | P1 | Imported tables become cell grids, not an editable table | `pptxImport.js` | A `table` element type (the `table` layout's model, positioned freely); apply table styles |
-| 12 | P2 | Transitions/animations don't export (pptxgenjs has no API); shape gradients export as a solid blend | `pptxExport.js` | Post-process the generated zip with JSZip (now a dependency) to inject `<p:transition>`, `<p:timing>` and `<a:gradFill>` |
+| 12 | P2 | Transitions/animations don't export (pptxgenjs has no API). ✅ Shape gradients and groups now do, via the post-processor (A4) | `pptxExport.js`, `pptxPost.js` | `lib/pptxPost.js` (A4) patches the generated zip with JSZip; next it injects `<p:transition>` (E1) and `<p:timing>` (E3) |
 | 13 | P2 | Text insets / autofit not modelled (imported text sits flush to its box edge) | `ElementView`, import | `inset` on text elements (PowerPoint default 0.1″ / 0.05″), honoured on both surfaces |
 | 14 | P2 | Hidden slides, slide numbers/footers/date, hyperlinks, comments, media, SmartArt, equations not modelled | — | See matrix §3; import warns rather than drops silently |
 | 16 | P1 | **No shared asset store.** Every image element carries its own data URL, so a master logo/background imported onto 40 slides is stored 40× in the deck JSON (re-PUT on every sync, kept in undo history). Import decodes once and warns | `elements` model, `pptxImport.js` | A deck-level `assets` map (id → data URL) referenced by image elements / slide backgrounds; export embeds each once |
@@ -75,7 +75,7 @@ remaining gaps cluster in four places, which phase 2–3 target:
 1. **Text model:** a single style per text box (#8), no insets or autofit (#13), no hyperlinks.
 2. **Template model:** no data-driven masters, themes or slide sizes (#7, #9).
 3. **Object types:** charts and tables don't import as editable objects (#10, #11).
-4. **Export post-processing:** transitions, gradients, groups and flips (#12).
+4. **Export post-processing:** ✅ gradients, groups and flips (A4, `lib/pptxPost.js`); transitions and animations next (#12).
 
 | Area | PowerPoint feature | Editor | Import | Export | Next |
 |---|---|---|---|---|---|
@@ -102,13 +102,13 @@ remaining gaps cluster in four places, which phase 2–3 target:
 | | Autofit / insets / columns | 🔴 | 🟡 fontScale applied | 🔴 | #13 |
 | | Hyperlinks | 🔴 | 🟡 plain text / inert shape (warned) | 🔴 | P2 |
 | **Shapes** | Preset shapes | 🟡 11 presets | 🟡 common presets mapped (rounded outlines kept), rest → rect (warned) | 🟢 | more presets |
-| | Fill solid / gradient / transparency | 🟢 | 🟢 every colour form; fill and outline alpha kept separately; radial and per-stop alpha approximated (warned) | 🟡 gradient blended | #12 |
+| | Fill solid / gradient / transparency | 🟢 | 🟢 every colour form; fill and outline alpha kept separately; radial and per-stop alpha approximated (warned) | 🟢 real linear `gradFill` (A4) | — |
 | | Outline colour / width / dash | 🟢 | 🟢 | 🟢 | — |
 | | Shadow | 🟢 | 🔴 | 🟢 | effectLst import |
 | | Lines / connectors | 🟡 straight | 🟢 straight, dashed, elbow; curved → elbow and arrowheads dropped (both warned) | 🟢 | arrowheads |
 | | Freeform / pen | 🟢 | 🔴 custGeom → rect | 🟢 | custGeom paths |
-| | Group / ungroup | 🟢 | 🟢 | 🟡 flattened | grpSp export |
-| | Rotate / flip | 🟡 rotate only | 🟡 rotate incl. rotated groups and tables; flips on lines, pictures/shapes warned | 🟡 rotate only | flip |
+| | Group / ungroup | 🟢 (⌘G gathers members at the topmost one's z-position, as PowerPoint does) | 🟢 | 🟢 `p:grpSp` (A4) when its members are adjacent in z-order; an older group with another object between members exports ungrouped, so the stacking stays as drawn | — |
+| | Rotate / flip | 🟡 rotate; flips render (text as PowerPoint: flipV turns it 180°), no flip UI yet | 🟢 rotate incl. rotated groups and tables; flips kept (tables: cells mirrored, text upright, warned) | 🟢 rotate + flips (A4) | flip UI (C1) |
 | | Align / distribute / z-order | 🟢 | — | — | — |
 | **Images** | Insert / move / resize / transparency | 🟢 | 🟢 PNG/JPEG/GIF/SVG/WebP, stretch fit, transparency; tiled → stretched (warned); a JPEG's EXIF rotation reset (drawn unrotated, as PowerPoint does) | 🟢 (rotated (EXIF) JPEGs export upright, as the canvas shows them) | — |
 | | Fit (Fill / Fit / Stretch) | 🟢 Properties → Picture | 🟡 stretch only | 🟢 cover/contain via pptx sizing (A3) | — |
