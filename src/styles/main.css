@@ -1307,6 +1307,8 @@ input, textarea { font: inherit; color: inherit; background: none; border: 0; ou
    real `disabled` attr — this only styles the muted state, no pointer-events
    trap that would kill tooltips. */
 .is-soon { opacity: 0.55; }
+.iconbtn.is-soon { cursor: default; }
+.iconbtn.is-soon:hover { background: none; color: inherit; }
 .deck-card .sub {
   font-family: var(--f-mono);
   font-size: 10.5px;

@@ -553,7 +553,7 @@ Order: **A → K → B → C → D → E → F**. A3 lands **before K1**, becaus
 | M | Scope | Size | Depends |
 |---|---|---|---|
 | A1 ✅ | **F-UI-1 command registry**: context-aware element/thumbnail/canvas menus, truthful shortcuts, Ctrl parity, ⌘K palette, generated Shortcuts page, editor PgUp/PgDn | M | — |
-| A2 ✅ | **F-UI-4 honesty pass 2**: presenter clock/reset, status bar binds, real export size, hide/wire remaining mocks, Start with AI. *Fit/zoom > 92% moves to K5 and Home slide-1 thumbnails to K4: both are rewritten by the canvas engine.* | S | — |
+| A2 ✅ | **F-UI-4 honesty pass 2**: presenter clock/reset, status bar binds, export footer (format + slide count, no invented size) and wired export defaults, hide/wire remaining mocks, Start with AI. *Fit/zoom > 92% moves to K5 and Home slide-1 thumbnails to K4: both are rewritten by the canvas engine.* | S | — |
 | A3 | **F-UI-3 inspector correctness**: Select primitive (single chevron), text-colour labelling + `fill`→`color` migration, image fit control, chart-type control | S | — |
 | A4 | **F-EXP-1 `pptxPost.js` scaffold** + first patches: `grpSp` groups, shape/background `gradFill`, element flips | M | — |
 

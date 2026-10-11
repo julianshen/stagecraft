@@ -113,6 +113,24 @@ describe('buildDeck', () => {
     ]);
   });
 
+  it('validates the model fields against the outline layout, not a layout the model picked', async () => {
+    // agenda items are objects; a list slide needs strings — they must not leak across
+    const generate = vi.fn(async () => ({ layout: 'agenda', items: [{ n: '01', t: 'x', d: 'y' }] }));
+    const listOutline = { title: 'T', slides: [{ layout: 'list', title: 'Points', brief: '' }] };
+    const deck = await buildDeck(listOutline, { generate });
+    expect(deck.slides[0].layout).toBe('list');
+    expect(deck.slides[0].items.every((it) => typeof it === 'string')).toBe(true);
+  });
+
+  it('keeps partial slides even when generate rejects with a non-Error', async () => {
+    const generate = vi.fn().mockResolvedValueOnce({}).mockRejectedValueOnce('boom');
+    let err;
+    try { await buildDeck(outline, { generate }); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toBe('boom');
+    expect(err.partial).toHaveLength(1);
+  });
+
   it('starts each slide from its layout template, so a rejected field keeps the template default', async () => {
     const generate = vi.fn(async () => ({ kpis: 'not an array' }));
     const deck = await buildDeck(outline, { generate });

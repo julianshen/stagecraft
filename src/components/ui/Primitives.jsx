@@ -14,8 +14,9 @@ export function Avatar({ name, color, size = 22, initials }) {
 
 // ---------------- Button / IconButton ----------------
 // `soon` marks a visible-but-unbuilt control (honest UI) on both buttons:
-// disabled and dimmed via `.is-soon`; a Button also shows the Soon pill, an
-// IconButton (no room for it) says so in its tooltip.
+// inert and dimmed via `.is-soon`; a Button also shows the Soon pill, an
+// IconButton (no room for it) says so in its tooltip and accessible name — and
+// stays focusable (aria-disabled, not disabled) so keyboard users can find out.
 export function Button({ children, variant = 'ghost', size, icon, kbd, style, className, soon = false, disabled, ...rest }) {
   const cls = `btn ${variant}${size === 'lg' ? ' lg' : ''}${soon ? ' is-soon' : ''}${className ? ` ${className}` : ''}`;
   return (
@@ -32,10 +33,12 @@ export function IconButton({ name, active, title, size = 14, onClick, style, dis
   return (
     <button
       className={`iconbtn${active ? ' active' : ''}${soon ? ' is-soon' : ''}`}
-      onClick={onClick}
+      onClick={soon ? undefined : onClick}
       title={soon ? `${title} — coming soon` : title}
+      aria-label={soon ? `${title} — coming soon` : undefined}
+      aria-disabled={soon || undefined}
       style={style}
-      disabled={disabled || soon}
+      disabled={disabled}
     >
       <Icon name={name} size={size} />
     </button>

@@ -376,7 +376,8 @@ describe('SlideEditor toolbar honesty (A2)', () => {
     const { getByTitle, container } = renderEditor({}, 0);
     for (const name of ['Version history', 'Animation timeline']) {
       const btn = getByTitle(`${name} — coming soon`);
-      expect(btn).toBeDisabled();
+      expect(btn).toHaveAttribute('aria-disabled', 'true');
+      expect(btn).toHaveAccessibleName(`${name} — coming soon`);
       fireEvent.click(btn);
     }
     expect(container.querySelector('.timeline')).toBeNull();

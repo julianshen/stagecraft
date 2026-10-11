@@ -37,9 +37,12 @@ export function AiDeckModal({ onClose, onCreate }) {
     setStep('drafting');
     setError(null);
     try {
-      setOutline(await draftOutline(topic));
+      const drafted = await draftOutline(topic);
+      if (!alive.current) return;
+      setOutline(drafted);
       setStep('outline');
     } catch (err) {
+      if (!alive.current) return;
       setError(describeLLMError(err));
       setStep('topic');
     }
@@ -50,6 +53,7 @@ export function AiDeckModal({ onClose, onCreate }) {
     try {
       await onCreate(deck);
     } catch (err) {
+      if (!alive.current) return;
       setBuilt(deck);
       setError(err?.message || 'Couldn’t save the deck — try again.');
       setStep('outline');
@@ -64,6 +68,7 @@ export function AiDeckModal({ onClose, onCreate }) {
     try {
       deck = await buildDeck(outline, { onProgress: (n) => setDone(n), done: partial });
     } catch (err) {
+      if (!alive.current) return;
       setPartial(err?.partial || partial);
       setError(describeLLMError(err));
       setStep('outline');

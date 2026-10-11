@@ -33,6 +33,16 @@ describe('PresenterView', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it('derives elapsed time from the clock, so throttled timers cannot make it lag', () => {
+    vi.useFakeTimers();
+    try {
+      const { getByText } = render(<PresenterView deck={deck} onExit={vi.fn()} />);
+      // a backgrounded tab: wall time jumps 90 s but only one tick fires
+      act(() => { vi.setSystemTime(Date.now() + 90_000); vi.advanceTimersByTime(1000); });
+      expect(getByText('01:31')).toBeTruthy();
+    } finally { vi.useRealTimers(); }
+  });
+
   it('resets the clock to 00:00', () => {
     vi.useFakeTimers();
     try {

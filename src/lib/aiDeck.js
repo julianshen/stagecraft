@@ -72,10 +72,16 @@ export async function buildDeck(outline, { generate = generateSlide, onProgress,
         { deckTitle: outline.title },
       );
     } catch (err) {
-      err.partial = slides;
-      throw err;
+      // An injected generate may reject with a primitive or frozen value; wrap
+      // it so the partial slides always ride along.
+      const e = err instanceof Error && Object.isExtensible(err) ? err : new Error(String(err?.message ?? err));
+      e.partial = slides;
+      throw e;
     }
-    const safe = sanitizeSlidePatch(raw, item.layout);
+    // Validate against the reviewed outline's layout: drop any layout the model
+    // chose, or layout-specific fields would be checked against the wrong schema.
+    const { layout: _ignored, ...fields } = raw && typeof raw === 'object' ? raw : {};
+    const safe = sanitizeSlidePatch(fields, item.layout);
     slides.push({ ...createComponentSlide(item.layout), ...safe, layout: item.layout, title: item.title, id: newId('ai') });
     onProgress?.(slides.length, outline.slides.length);
   }
