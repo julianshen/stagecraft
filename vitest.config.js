@@ -49,6 +49,7 @@ export default defineConfig({
         'src/lib/domEvents.js',
         'src/lib/shapes.js',
         'src/lib/imageFile.js',
+        'src/lib/imageOrientation.js',
         'src/hooks/useDeckSync.js',
         'src/hooks/useReorderDrag.js',
         'src/hooks/useToasts.js',

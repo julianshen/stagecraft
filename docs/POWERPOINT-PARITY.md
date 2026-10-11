@@ -110,7 +110,7 @@ remaining gaps cluster in four places, which phase 2–3 target:
 | | Group / ungroup | 🟢 | 🟢 | 🟡 flattened | grpSp export |
 | | Rotate / flip | 🟡 rotate only | 🟡 rotate incl. rotated groups and tables; flips on lines, pictures/shapes warned | 🟡 rotate only | flip |
 | | Align / distribute / z-order | 🟢 | — | — | — |
-| **Images** | Insert / move / resize / transparency | 🟢 | 🟢 PNG/JPEG/GIF/SVG/WebP, stretch fit, transparency; tiled → stretched (warned) | 🟢 | — |
+| **Images** | Insert / move / resize / transparency | 🟢 | 🟢 PNG/JPEG/GIF/SVG/WebP, stretch fit, transparency; tiled → stretched (warned); a JPEG's EXIF rotation reset (drawn unrotated, as PowerPoint does) | 🟢 (rotated (EXIF) JPEGs export upright, as the canvas shows them) | — |
 | | Fit (Fill / Fit / Stretch) | 🟢 Properties → Picture | 🟡 stretch only | 🟢 cover/contain via pptx sizing (A3) | — |
 | | Crop | 🔴 | 🔴 imported uncropped (warned) | 🔴 | P2 |
 | | EMF/WMF | 🔴 | 🔴 skipped (warned) | — | rasterise |

@@ -10,25 +10,21 @@
 // every sync, so a huge photo would bloat memory/disk and lag editing.
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
 
-export function readImageFile(file) {
+/** A Blob/File as a data URL. */
+export function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
-    if (!file) {
-      reject(new Error('no file'));
-      return;
-    }
-    // `accept="image/*"` filters the OS dialog but doesn't guarantee it (drag/drop,
-    // "all files"), so validate before reading the bytes into a base64 string.
-    if (!file.type?.startsWith('image/')) {
-      reject(new Error('That file is not an image'));
-      return;
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      reject(new Error('That image is too large (max 10 MB)'));
-      return;
-    }
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(reader.error || new Error('read failed'));
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(blob);
   });
+}
+
+export async function readImageFile(file) {
+  if (!file) throw new Error('no file');
+  // `accept="image/*"` filters the OS dialog but doesn't guarantee it (drag/drop,
+  // "all files"), so validate before reading the bytes into a base64 string.
+  if (!file.type?.startsWith('image/')) throw new Error('That file is not an image');
+  if (file.size > MAX_IMAGE_BYTES) throw new Error('That image is too large (max 10 MB)');
+  return blobToDataUrl(file);
 }

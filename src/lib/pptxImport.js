@@ -20,6 +20,7 @@ import { SLIDE_W, SLIDE_H, MIN_LINE_THICKNESS } from './elements.js';
 import { isValidElement } from './deckUtils.js';
 import { SHAPES, shapeDef, clipPoints } from './shapes.js';
 import { MAX_IMAGE_BYTES } from './imageFile.js';
+import { clearOrientation } from './imageOrientation.js';
 
 const EMU_PER_PT = 12700;
 // Inflated-size budgets for the package's XML (a real slide part is KBs; a
@@ -915,7 +916,9 @@ async function encodeImage(pkg, target, warn) {
   }
   const b64 = await file.async('base64');
   if ((b64.length * 3) / 4 > MAX_IMAGE_BYTES) return tooBig();
-  return `data:${mime};base64,${b64}`;
+  // PowerPoint draws a JPEG's raster unrotated, whatever its EXIF says; reset the
+  // tag so the canvas <img> (which would honour it) draws the same.
+  return clearOrientation(`data:${mime};base64,${b64}`);
 }
 
 // Background: slide → layout → master; a solid/gradient fill or a theme bgRef

@@ -407,6 +407,19 @@ describe('importPptx — OOXML edge cases', () => {
     expect((await one(sp + pic + half)).slide.elements).toEqual([]);
   });
 
+  it('resets a JPEG\'s EXIF orientation, so the canvas draws it unrotated as PowerPoint does', async () => {
+    // FF D8, then APP1 'Exif\0\0' + little-endian TIFF with IFD0 { Orientation (0x0112) = 6 }.
+    const tiff = [0x49, 0x49, 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0];
+    const app1 = [0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff];
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0, app1.length + 2, ...app1, 0xff, 0xd9]);
+    const pic = `<p:pic><p:nvPicPr><p:cNvPr id="4" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdA"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic>`;
+    const { slide } = await one(pic, { slide: { extraRels: [['rIdA', 'image', '../media/r.jpg']] } }, { media: { 'r.jpg': jpeg } });
+    const src = slide.elements[0].src;
+    const bytes = Uint8Array.from(atob(src.slice(src.indexOf(',') + 1)), (c) => c.charCodeAt(0));
+    expect(bytes[30]).toBe(1); // the Orientation value (TIFF at 12 + IFD at 8 + count 2 + value field 8), 6 → 1
+    expect([...bytes].filter((b, i) => b !== jpeg[i])).toHaveLength(1); // nothing else touched
+  });
+
   it('resolves pictures by absolute target, and skips external / missing ones with a warning', async () => {
     const pic = (rid) => `<p:pic><p:nvPicPr><p:cNvPr id="4" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rid}"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic>`;
     const { slide, warnings } = await one(pic('rIdA') + pic('rIdE') + pic('rIdMissing') + pic('rIdGone'), {
