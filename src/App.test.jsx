@@ -281,7 +281,7 @@ describe('Start with AI', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /Generate 1 slide/ }));
     await flush();
 
-    expect(created).toEqual([{ name: 'Q3', deck: generated }]);
+    expect(created).toEqual([{ name: 'Q3', deck: generated, requestId: expect.any(String) }]);
     expect(store.get('stagecraft.view')).toBe('editor');
     expect(screen.queryByRole('dialog', { name: 'Start with AI' })).toBeNull();
   });
@@ -351,6 +351,45 @@ describe('Start with AI', () => {
 
     expect(creates).toBe(1);
     expect(activations).toBe(2);
+    expect(store.get('stagecraft.view')).toBe('editor');
+  });
+
+  it('retries a save whose response was lost with the same requestId, so the server can replay it', async () => {
+    store.set('stagecraft.view', 'home');
+    const generated = { title: 'Q3', sections: [], slides: [] };
+    vi.mocked(draftOutline).mockResolvedValue({ title: 'Q3', slides: [{ layout: 'cover', title: 'Q3', brief: '' }] });
+    vi.mocked(buildDeck).mockResolvedValue(generated);
+    const srv = makeServer();
+    const base = srv.fetchFn.getMockImplementation();
+    const posts = [];
+    srv.fetchFn.mockImplementation((url, init) => {
+      const path = String(url).split('?')[0];
+      if (path === '/api/decks' && init?.method === 'POST') {
+        posts.push(JSON.parse(init.body));
+        // the first request reaches the server, but its response is lost
+        if (posts.length === 1) return Promise.reject(new TypeError('Failed to fetch'));
+        return Promise.resolve({ ok: true, json: async () => ({ id: 'x3' }) });
+      }
+      if (path === '/api/decks/x3/activate') return Promise.resolve({ ok: true, json: async () => ({ deck: generated, rev: 2 }) });
+      return base(url, init);
+    });
+    vi.stubGlobal('fetch', srv.fetchFn);
+
+    render(<App />);
+    await flush();
+    fireEvent.click(screen.getByText('Start with AI'));
+    const dialog = screen.getByRole('dialog', { name: 'Start with AI' });
+    fireEvent.change(within(dialog).getByLabelText('Deck topic'), { target: { value: 'Q3' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Draft outline/ }));
+    await flush();
+    fireEvent.click(within(dialog).getByRole('button', { name: /Generate 1 slide/ }));
+    await flush();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Retry save' }));
+    await flush();
+
+    expect(posts).toHaveLength(2);
+    expect(typeof posts[0].requestId).toBe('string');
+    expect(posts[1].requestId).toBe(posts[0].requestId);
     expect(store.get('stagecraft.view')).toBe('editor');
   });
 });

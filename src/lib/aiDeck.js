@@ -24,6 +24,13 @@ const hasContent = (v) => {
 };
 // A collection with at least one entry filling a key the renderer reads.
 const someEntry = (...keys) => (v) => Array.isArray(v) && v.some((e) => keys.some((k) => hasContent(e?.[k])));
+// A real data point: chartData coerces anything else (and pads missing values)
+// to 0, which would plot a fabricated all-zero chart.
+const isNumeric = (x) => (typeof x === 'number' && Number.isFinite(x))
+  || (typeof x === 'string' && x.trim() !== '' && Number.isFinite(Number(x)));
+// A chart with at least one plotted (in-range) numeric value. Its shape —
+// non-empty categories + series — is already gated by sanitizeSlidePatch.
+const hasChartData = (c) => c.series.some((s) => s.values.slice(0, c.categories.length).some(isNumeric));
 
 // What each layout actually renders beyond its title, checked down to the keys
 // the renderer reads. A generated slide must fill one of these, or the deck
@@ -33,7 +40,7 @@ const someEntry = (...keys) => (v) => Array.isArray(v) && v.some((e) => keys.som
 const LAYOUT_CONTENT = {
   agenda: { items: someEntry('t', 'd') },
   kpi: { kpis: someEntry('label', 'val') },
-  chart: { chart: hasContent }, // shape (non-empty categories + series) already gated by sanitizeSlidePatch
+  chart: { chart: (v) => v !== undefined && hasChartData(v) },
   split: { body: hasContent, stats: someEntry('lbl', 'val') },
   table: { rows: hasContent },
   text: { body: hasContent },

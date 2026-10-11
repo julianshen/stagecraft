@@ -35,6 +35,12 @@ describe('decksApi requests', () => {
     expect(JSON.parse(fetchFn.mock.calls[0][1].body)).toEqual({ name: 'Atlas', deck: seed });
   });
 
+  it('createDeck sends an idempotency requestId when given one', async () => {
+    const fetchFn = resolving({ id: 'new' });
+    await createDeck('Q3', null, fetchFn, { requestId: 'r-1' });
+    expect(JSON.parse(fetchFn.mock.calls[0][1].body)).toEqual({ name: 'Q3', requestId: 'r-1' });
+  });
+
   it('openDeck activates the deck by id (encoded) and returns it', async () => {
     const fetchFn = resolving({ deck: { theme: 'amber' }, rev: 3 });
     const r = await openDeck('d 1', fetchFn);

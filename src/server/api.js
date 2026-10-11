@@ -288,9 +288,21 @@ export async function handleApiRequest(store, req, deps = {}) {
       return ok(Object.values(store.decks).map((r) => deckMeta(r, store.activeId)));
     }
     if (method === 'POST') {
+      // An optional client idempotency key: a retry whose first response was
+      // lost replays (re-activates) the deck it already created rather than
+      // adding a duplicate. Kept on the record so it survives the snapshot.
+      const requestId = typeof body?.requestId === 'string' && body.requestId && body.requestId.length <= 200
+        ? body.requestId : null;
+      const replay = requestId && Object.values(store.decks).find((r) => r.requestId === requestId);
+      if (replay) {
+        store.activeId = replay.id;
+        bump(store, null);
+        return ok(deckMeta(replay, store.activeId));
+      }
       const id = newDeckId();
       const d = (body && body.deck) || blankDeck();
       store.decks[id] = makeRecord(id, d, body && body.name);
+      if (requestId) store.decks[id].requestId = requestId;
       store.activeId = id;
       bump(store);
       return ok(deckMeta(store.decks[id], store.activeId), 201);

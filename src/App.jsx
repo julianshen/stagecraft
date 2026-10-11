@@ -133,17 +133,22 @@ export default function App() {
   };
   // Start with AI: save the generated deck to the library and open it. A failure
   // throws back to the dialog, which stays open and shows it.
-  // A retry of the same generated deck (after an open failure) reopens the deck
-  // already saved rather than creating a duplicate.
-  const aiDeckIds = useRef(new WeakMap());
+  // A retry of the same generated deck never creates a duplicate: after an open
+  // failure it reopens the deck already saved, and a save whose response was
+  // lost re-sends the same idempotency key so the server replays it.
+  const aiDeckSaves = useRef(new WeakMap()); // generated deck → { requestId, id? }
   const handleCreateAiDeck = async (generated) => {
-    let id = aiDeckIds.current.get(generated);
-    if (!id) {
-      const meta = await createDeck(generated.title, generated);
-      if (!meta?.id) throw new Error('The deck library did not accept the new deck.');
-      id = meta.id;
-      aiDeckIds.current.set(generated, id);
+    let save = aiDeckSaves.current.get(generated);
+    if (!save) {
+      save = { requestId: `ai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}` };
+      aiDeckSaves.current.set(generated, save);
     }
+    if (!save.id) {
+      const meta = await createDeck(generated.title, generated, undefined, { requestId: save.requestId });
+      if (!meta?.id) throw new Error('The deck library did not accept the new deck.');
+      save.id = meta.id;
+    }
+    const { id } = save;
     if (!(await handleOpenDeck(id))) {
       await refreshDecks(); // list the saved deck (and move LIVE to it) even though it didn't open
       throw new Error('The deck was saved to your library but could not be opened.');

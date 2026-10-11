@@ -52,12 +52,13 @@ export async function listDecks(fetchFn = globalThis.fetch) {
 }
 
 // Create a deck. `deck` optionally seeds its content (e.g. from a template);
-// omitted → the server creates a blank deck.
-export async function createDeck(name, deck = null, fetchFn = globalThis.fetch) {
+// omitted → the server creates a blank deck. `requestId` is an idempotency key:
+// re-sending it replays the deck the first request created (a lost response).
+export async function createDeck(name, deck = null, fetchFn = globalThis.fetch, { requestId } = {}) {
   const res = await fetchFn('/api/decks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...(name ? { name } : {}), ...(deck ? { deck } : {}) }),
+    body: JSON.stringify({ ...(name ? { name } : {}), ...(deck ? { deck } : {}), ...(requestId ? { requestId } : {}) }),
   });
   return jsonOrThrow(res, 'createDeck');
 }

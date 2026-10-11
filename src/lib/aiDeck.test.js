@@ -183,6 +183,10 @@ describe('buildDeck', () => {
       ['risks', { items: [{ risk: 'Churn' }] }],                  // reads t/d
       ['split', { stats: [{ name: 'NPS', score: 40 }] }],         // reads lbl/val
       ['roadmap', { lanes: [{ name: 'A', items: [{ title: 'x', t: 0, d: 2 }] }] }], // reads lbl
+      // chartData pads missing values and coerces non-numbers to 0 — an all-zero fabricated chart
+      ['chart', { chart: { categories: ['Q1'], series: [{ name: 'Revenue', values: [] }] } }],
+      ['chart', { chart: { categories: ['Q1'], series: [{ name: 'Revenue', values: ['n/a', '', null] }] } }],
+      ['chart', { chart: { categories: ['Q1'], series: [{ name: 'Revenue', values: ['n/a', 5] }] } }], // 5 is past the last category
     ];
     for (const [layout, reply] of cases) {
       const err = await buildDeck(one(layout), { generate: vi.fn(async () => reply) }).catch((e) => e);
@@ -202,6 +206,7 @@ describe('buildDeck', () => {
       ['table', { columns: ['A'], rows: [['1']] }],
       ['text', { body: 'Hello' }],
       ['chart', { chart: { categories: ['Q1'], series: [{ name: 'Rev', values: [1] }] } }],
+      ['chart', { chart: { categories: ['Q1', 'Q2'], series: [{ values: [null, '12.5'] }] } }], // numeric string
     ];
     for (const [layout, reply] of cases) {
       const deck = await buildDeck(one(layout), { generate: vi.fn(async () => reply) });
