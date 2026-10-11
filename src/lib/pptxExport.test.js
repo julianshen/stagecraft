@@ -514,7 +514,7 @@ describe('exportToPPTX — free-form elements overlay', () => {
 
   it('exports a text element as addText with px→pt size, style, and px→inch geometry', async () => {
     await exportToPPTX(elemDeck([
-      { id: 't', type: 'text', x: 192, y: 96, w: 384, h: 192, content: 'Hi', fontSize: 48, bold: true, italic: true, underline: true, align: 'center', fill: '#112233' },
+      { id: 't', type: 'text', x: 192, y: 96, w: 384, h: 192, content: 'Hi', fontSize: 48, bold: true, italic: true, underline: true, align: 'center', color: '#112233' },
     ]));
     const t = last().texts.find((x) => x.t === 'Hi');
     expect(t).toBeTruthy();
@@ -523,8 +523,8 @@ describe('exportToPPTX — free-form elements overlay', () => {
 
   it('exports a text element line spacing as a pptxgen lineSpacingMultiple (default 1.2, matching the canvas)', async () => {
     await exportToPPTX(elemDeck([
-      { id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Spaced', fill: '#111', lineSpacing: 1.8 },
-      { id: 'd', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Default', fill: '#111' },
+      { id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Spaced', color: '#111', lineSpacing: 1.8 },
+      { id: 'd', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Default', color: '#111' },
     ]));
     expect(last().texts.find((t) => t.t === 'Spaced').o.lineSpacingMultiple).toBe(1.8);
     expect(last().texts.find((t) => t.t === 'Default').o.lineSpacingMultiple).toBe(1.2); // absent → 1.2, matching the canvas line-height
@@ -534,6 +534,39 @@ describe('exportToPPTX — free-form elements overlay', () => {
     await exportToPPTX(elemDeck([{ id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'X' }]));
     const t = last().texts.find((x) => x.t === 'X');
     expect(t.o.color).toBe('15171C'); // matches ElementView's var(--ink, #15171C) default, not FFFFFF
+  });
+
+  // A 640×480 PNG header — enough for dataImageSize to read its natural size.
+  const be32 = (n) => [(n >>> 24) & 255, (n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const PNG_640x480 = `data:image/png;base64,${btoa(String.fromCharCode(137, 80, 78, 71, 13, 10, 26, 10, ...be32(13), 73, 72, 68, 82, ...be32(640), ...be32(480), 8, 6, 0, 0, 0))}`;
+  const box = { x: 0, y: 0, w: 384, h: 384 }; // 2in × 2in square
+
+  it('exports a cover / contain image with pptx sizing against its natural aspect, as the canvas object-fit', async () => {
+    for (const fit of ['cover', 'contain']) {
+      await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: PNG_640x480, fit }]));
+      const o = last().images[0].o;
+      expect(o.sizing).toEqual({ type: fit, w: 2, h: 2 });
+      expect(o.h / o.w).toBeCloseTo(480 / 640); // the image's own aspect; sizing fits it to the box
+    }
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: PNG_640x480 }])); // absent fit = cover
+    expect(last().images[0].o.sizing.type).toBe('cover');
+  });
+
+  it('keeps a very tall picture\'s aspect below pptxgen\'s 100 "is EMU, not inches" cutoff', async () => {
+    const tall = `data:image/png;base64,${btoa(String.fromCharCode(137, 80, 78, 71, 13, 10, 26, 10, ...be32(13), 73, 72, 68, 82, ...be32(1080), ...be32(12000), 8, 6, 0, 0, 0))}`;
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', x: 0, y: 0, w: 1920, h: 1080, src: tall, fit: 'cover' }]));
+    const o = last().images[0].o;
+    expect(Math.max(o.w, o.h)).toBeLessThan(100);
+    expect(o.h / o.w).toBeCloseTo(12000 / 1080);
+    expect(o.sizing).toEqual({ type: 'cover', w: 10, h: 5.625 });
+  });
+
+  it('stretches a "stretch" image, and an image whose size can\'t be read, to its box', async () => {
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: PNG_640x480, fit: 'stretch' }]));
+    expect(last().images[0].o).toMatchObject({ w: 2, h: 2 });
+    expect(last().images[0].o).not.toHaveProperty('sizing');
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: 'data:image/tiff;base64,SUkqAA==', fit: 'contain' }]));
+    expect(last().images[0].o).not.toHaveProperty('sizing');
   });
 
   it('exports an image element as addImage with its data URL, skipping an empty image', async () => {
@@ -551,13 +584,18 @@ describe('exportToPPTX — free-form elements overlay', () => {
     const app1 = [0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff];
     const rotated = `data:image/jpeg;base64,${btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe1, 0, app1.length + 2, ...app1, 0xff, 0xd9))}`;
     vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 30, height: 40, close() {} }));
-    const canvas = { getContext: () => ({ drawImage() {} }), toBlob: (cb, type) => cb(new Blob(['UP'], { type })) };
+    // The upright re-encode: a JPEG whose frame (SOF0) is 30×40 — portrait, as displayed.
+    const upright = new Uint8Array([0xff, 0xd8, 0xff, 0xc0, 0, 11, 8, 0, 40, 0, 30, 1, 1, 0x11, 0, 0xff, 0xd9]);
+    const canvas = { getContext: () => ({ drawImage() {} }), toBlob: (cb, type) => cb(new Blob([upright], { type })) };
     const realCreate = document.createElement.bind(document);
     const spy = vi.spyOn(document, 'createElement').mockImplementation((tag) => (tag === 'canvas' ? canvas : realCreate(tag)));
     try {
       const deck = elemDeck([{ id: 'i', type: 'image', x: 0, y: 0, w: 480, h: 360, src: rotated }]);
       await exportToPPTX(deck);
-      expect(last().images[0].o.data).toBe(`data:image/jpeg;base64,${btoa('UP')}`);
+      const { o } = last().images[0];
+      expect(o.data).toBe(`data:image/jpeg;base64,${btoa(String.fromCharCode(...upright))}`);
+      // Fill (cover) sizing reads the upright picture: portrait 3:4, not the stored 4:3.
+      expect([o.w, o.h]).toEqual([0.75, 1]);
       expect(deck.slides[0].elements[0].src).toBe(rotated);
     } finally {
       spy.mockRestore();
@@ -921,7 +959,7 @@ describe('exportToPPTX — blank layout', () => {
   it('exports only the background colour + elements — no template text', async () => {
     await exportToPPTX(deckWith({
       id: 'b', layout: 'blank', title: 'Outline only', bgColor: '#112233',
-      elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 192, h: 96, content: 'Hello', fill: '#FFFFFF', fontSize: 48 }],
+      elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 192, h: 96, content: 'Hello', color: '#FFFFFF', fontSize: 48 }],
     }));
     expect(last().background).toEqual({ color: '112233' });
     expect(textsOf(last())).toEqual(['Hello']);
@@ -935,7 +973,7 @@ describe('exportToPPTX — blank layout', () => {
 });
 
 describe('exportToPPTX — text element valign', () => {
-  const deck = (valign) => deckWith({ id: 'b', layout: 'blank', elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 100, h: 100, content: 'V', fill: '#000000', ...(valign ? { valign } : {}) }] });
+  const deck = (valign) => deckWith({ id: 'b', layout: 'blank', elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 100, h: 100, content: 'V', color: '#000000', ...(valign ? { valign } : {}) }] });
   it('maps top/bottom to pptx valign', async () => {
     await exportToPPTX(deck('top'));
     expect(optsOf(last(), 'V').valign).toBe('top');

@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
-import Icon from '../ui/Icon.jsx';
-import { Button, IconButton, FieldRow } from '../ui/Primitives.jsx';
+import { Button, IconButton, FieldRow, Select } from '../ui/Primitives.jsx';
 import SoonTag from '../ui/SoonTag.jsx';
 import { exportToPPTX } from '../../lib/pptxExport.js';
 import { exportToPDF } from '../../lib/pdfExport.js';
@@ -139,15 +138,12 @@ export default function ExportModal({ onClose, deck }) {
                 <div className="input-group is-soon"><input value="High" disabled aria-label="Quality"/><SoonTag/></div>
               </FieldRow>
               <FieldRow label="NOTES">
-                <div className={`input-group${fmt === 'pdf' ? ' is-soon' : ''}`}>
-                  {/* PDF is a visual artifact — it carries no speaker notes, so the
-                      control is disabled (and ignored: exportToPDF takes no notes). */}
-                  <select value={fmt === 'pdf' ? 'exclude' : (includeNotes ? 'include' : 'exclude')} disabled={fmt === 'pdf'} onChange={(e) => setIncludeNotes(e.target.value === 'include')} aria-label="Speaker notes">
-                    <option value="include">Include speaker notes</option>
-                    <option value="exclude">Exclude speaker notes</option>
-                  </select>
-                  <Icon name="chevron-down" size={11}/>
-                </div>
+                {/* PDF is a visual artifact — it carries no speaker notes, so the
+                    control is disabled (and ignored: exportToPDF takes no notes). */}
+                <Select ariaLabel="Speaker notes" className={fmt === 'pdf' ? 'is-soon' : undefined}
+                  value={fmt === 'pdf' ? 'exclude' : (includeNotes ? 'include' : 'exclude')} disabled={fmt === 'pdf'}
+                  onChange={(v) => setIncludeNotes(v === 'include')}
+                  options={[{ value: 'include', label: 'Include speaker notes' }, { value: 'exclude', label: 'Exclude speaker notes' }]} />
               </FieldRow>
               <FieldRow label="COMMENTS">
                 <div className="input-group is-soon"><input value="Exclude" disabled aria-label="Comments"/><SoonTag/></div>

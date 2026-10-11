@@ -1,15 +1,36 @@
 import React from 'react';
 import Icon from '../../ui/Icon.jsx';
-import { FieldRow, InputGroup, Seg } from '../../ui/Primitives.jsx';
+import { FieldRow, InputGroup, Seg, Select } from '../../ui/Primitives.jsx';
 import { toHex } from '../../../lib/color.js';
 import { isStrokeableShape, isFillableShape } from '../../../lib/shapes.js';
-import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, borderStyle, valignOf } from '../../../lib/elements.js';
+import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, INK, borderStyle, valignOf, fitOf } from '../../../lib/elements.js';
 import { requiresFill } from '../../../lib/deckUtils.js';
 
 // Line-spacing presets for the dropdown (the field itself is a continuous
 // multiplier — the gate accepts any positive, a non-preset value is shown too).
 const LINE_SPACINGS = Object.freeze([1, 1.15, 1.2, 1.5, 2, 2.5, 3]);
 const FONT_FAMILIES = Object.freeze(['Inter', 'Georgia', 'JetBrains Mono', 'Courier New', 'Arial', 'Calibri']);
+// PowerPoint's picture fit names for the model's IMAGE_FITS (elements.js).
+const IMAGE_FIT_OPTIONS = Object.freeze([
+  { v: 'cover', l: 'Fill', title: 'Fill — crop the picture to fill the box' },
+  { v: 'contain', l: 'Fit', title: 'Fit — show the whole picture inside the box' },
+  { v: 'stretch', l: 'Stretch', title: 'Stretch — distort the picture to the box' },
+]);
+
+// A titled solid-colour section: a swatch + its hex.
+function ColorSection({ title, ariaLabel, value, onChange }) {
+  const hex = toHex(value);
+  return (
+    <div className="pane-section">
+      <h4>{title}</h4>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+        <input type="color" aria-label={ariaLabel} value={hex} onChange={e => onChange(e.target.value)}
+          style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 4, background: 'none' }} />
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12 }}>{hex}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function PropsPanel({ selected, setSelected, count = 0 }) {
   if (count > 1) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{count} elements selected — drag to move them together, or align via the toolbar.</div>;
@@ -57,20 +78,25 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
         </div>
       )}
 
-      {requiresFill(selected.type) && (
-      <div className="pane-section">
-        <h4>Fill</h4>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-          <input
-            type="color"
-            aria-label="Fill color"
-            value={toHex(selected.fill)}
-            onChange={e => setSelected({ ...selected, fill: e.target.value })}
-            style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--line)', borderRadius: 4, background: 'none' }}
-          />
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12 }}>{toHex(selected.fill)}</div>
+      {selected.type === 'image' && (
+        <div className="pane-section">
+          <h4>Picture</h4>
+          <FieldRow label="FIT">
+            <Seg value={fitOf(selected)} onChange={fit => setSelected({ ...selected, fit })}
+              options={IMAGE_FIT_OPTIONS} />
+          </FieldRow>
         </div>
-      </div>
+      )}
+
+      {/* Colours are labelled by meaning (U7): text is coloured by its ink
+          `color`; a shape by its `fill` (a text-box fill is F-TXT-2). */}
+      {selected.type === 'text' && (
+        <ColorSection title="Text colour" ariaLabel="Text color" value={selected.color || INK}
+          onChange={color => setSelected({ ...selected, color })} />
+      )}
+      {requiresFill(selected.type) && (
+        <ColorSection title="Fill" ariaLabel="Fill color" value={selected.fill}
+          onChange={fill => setSelected({ ...selected, fill })} />
       )}
       {/* Gradient fill (any shape) overrides the solid fill: a toggle seeds the
           default; the two stops + angle edit it. The export approximates it with
@@ -137,13 +163,9 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
         </div>
         {/* Dash style applies wherever the outline/stroke renders; `solid` clears the field. */}
         <FieldRow label="DASH">
-          <div className="input-group">
-            <select aria-label="Stroke dash" value={borderStyle(selected.strokeDash)}
-              onChange={e => setSelected({ ...selected, strokeDash: e.target.value === 'solid' ? undefined : e.target.value })}>
-              {STROKE_DASHES.map(d => <option key={d} value={d}>{d[0].toUpperCase() + d.slice(1)}</option>)}
-            </select>
-            <Icon name="chevron-down" size={11} />
-          </div>
+          <Select ariaLabel="Stroke dash" value={borderStyle(selected.strokeDash)}
+            onChange={v => setSelected({ ...selected, strokeDash: v === 'solid' ? undefined : v })}
+            options={STROKE_DASHES.map(d => ({ value: d, label: d[0].toUpperCase() + d.slice(1) }))} />
         </FieldRow>
       </div>
       )}
@@ -176,21 +198,13 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
         <div className="pane-section">
           <h4>Type</h4>
           <FieldRow label="FAMILY">
-            <div className="input-group">
-              <select aria-label="Font family" value={fam} onChange={e => setSelected({ ...selected, fontFamily: e.target.value })}>
-                {famOpts.map(f => <option key={f} value={f}>{f}</option>)}
-              </select>
-              <Icon name="chevron-down" size={11} />
-            </div>
+            <Select ariaLabel="Font family" value={fam} options={famOpts}
+              onChange={v => setSelected({ ...selected, fontFamily: v })} />
           </FieldRow>
           <FieldRow label="SIZE"><InputGroup value={selected.fontSize ?? 48} onChange={v => setSelected({ ...selected, fontSize: Math.max(1, +v || 48) })} unit="px" /></FieldRow>
           <FieldRow label="SPACING">
-            <div className="input-group">
-              <select aria-label="Line spacing" value={sp} onChange={e => setSelected({ ...selected, lineSpacing: +e.target.value })}>
-                {spOpts.map(s => <option key={s} value={s}>{s}×</option>)}
-              </select>
-              <Icon name="chevron-down" size={11} />
-            </div>
+            <Select ariaLabel="Line spacing" value={sp} options={spOpts.map(s => ({ value: s, label: `${s}×` }))}
+              onChange={v => setSelected({ ...selected, lineSpacing: +v })} />
           </FieldRow>
           <FieldRow label="ALIGN">
             <Seg value={selected.align ?? 'left'} onChange={a => setSelected({ ...selected, align: a })}

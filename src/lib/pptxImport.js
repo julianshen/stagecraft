@@ -527,7 +527,7 @@ function textOf(sp, ctx, inh) {
   return {
     content,
     fontSize: Math.max(1, round2(px)),
-    fill: color.hex,
+    color: color.hex,
     ...opacityOf(color.alpha),
     ...(isOn('b') ? { bold: true } : {}),
     ...(isOn('i') ? { italic: true } : {}),
@@ -800,7 +800,7 @@ class SlideReader {
       const geo = toPx(box, this.ctx.fit);
       const gid = groupId || this.id('grp'); // backing box + label move together
       this.push({ type: 'rect', ...geo, fill: '#F2F2F2', stroke: '#BFBFBF', strokeWidth: 2, strokeDash: 'dashed' }, gid);
-      this.push({ type: 'text', ...geo, content: `[${what} — not imported]`, fill: '#7F7F7F',
+      this.push({ type: 'text', ...geo, content: `[${what} — not imported]`, color: '#7F7F7F',
         fontSize: 24, align: 'center', valign: 'middle' }, gid);
     }
   }

@@ -106,6 +106,20 @@ describe('useDeckSync', () => {
     expect(srv.puts).toHaveLength(putsAfterSeed); // and NOT echoed back as an edit
   });
 
+  it('adopts a deck in the current model (legacy text fill → color), without echoing it', async () => {
+    const srv = makeServer({ deck: null, rev: 0 });
+    const controls = {};
+    render(<Harness fetchFn={srv.fetchFn} controls={controls} />);
+    await flush();
+    const putsAfterSeed = srv.puts.length;
+    const legacy = { id: 'old', theme: 'amber', sections: [], slides: [{ id: 's', layout: 'blank', elements: [{ id: 't', type: 'text', content: 'x', fill: '#ff0000' }] }] };
+    srv.state.deck = legacy; srv.state.rev = 7;
+    await act(async () => { controls.adopt(legacy, 7); });
+    await flush(1000);
+    expect(controls.deck.slides[0].elements[0]).toEqual({ id: 't', type: 'text', content: 'x', color: '#ff0000' });
+    expect(srv.puts).toHaveLength(putsAfterSeed); // the migrated copy is not pushed back as an edit
+  });
+
   it('tags writes with the active deck id once known (stale-write guard)', async () => {
     const srv = makeServer({ deck: null, rev: 0 });
     const controls = {};

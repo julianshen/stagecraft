@@ -68,14 +68,20 @@ const rotateVec = (x, y, rad) => {
   return [x * cos - y * sin, x * sin + y * cos];
 };
 
+// The default ink: what a colour-less text element, line or pen stroke renders
+// and exports with (the canvas's `var(--ink, …)` fallback), and the new-text and
+// new-pen default — one value so canvas and export can't drift.
+export const INK = '#15171C';
+export const INK_CSS = `var(--ink, ${INK})`;
+
 const DEFAULTS = {
-  text: { w: 480, h: 120, content: 'Text', fill: '#15171C' },
+  text: { w: 480, h: 120, content: 'Text', color: INK }, // text is coloured by its ink `color`
   rect: { w: 320, h: 200, fill: '#4f46e5' },
   ellipse: { w: 240, h: 240, fill: '#4f46e5' },
   circle: { w: 240, h: 240, fill: '#4f46e5' },
   image: { w: 480, h: 360 }, // a 4:3 box; carries `src` (a data URL), not a fill
   line: { w: 320, h: 8 }, // a thin rule by default; its height is an adjustable stroke thickness
-  path: { w: 320, h: 200, stroke: '#15171C', strokeWidth: 2 }, // a freehand pen stroke; carries `points` (0..1, relative to the box), stroked not filled
+  path: { w: 320, h: 200, stroke: INK, strokeWidth: 2 }, // a freehand pen stroke; carries `points` (0..1, relative to the box), stroked not filled
 };
 
 // Build a new element of `type`, centered by default, with snapped position.
@@ -104,8 +110,10 @@ export function createElement(type, opts = {}) {
     el.points = opts.points ?? [];
     el.stroke = opts.stroke ?? d.stroke;       // DEFAULTS.path always carries stroke + strokeWidth
     el.strokeWidth = opts.strokeWidth ?? d.strokeWidth;
+  } else if (type === 'text') {
+    el.content = opts.content ?? d.content;
+    el.color = opts.color ?? d.color; // ink, not `fill` (reserved for a text-box fill)
   } else {
-    if (d.content !== undefined) el.content = opts.content ?? d.content;
     el.fill = opts.fill ?? d.fill ?? '#4f46e5'; // canonical hex so the inspector swatch matches the render
   }
   // Keep a new element on-slide and at/above its per-type minimum, like every
@@ -204,9 +212,14 @@ export const lineSpacingOf = (el) => (Number.isFinite(el.lineSpacing) && el.line
 export const TEXT_VALIGNS = Object.freeze(['top', 'middle', 'bottom']);
 export const valignOf = (el) => (TEXT_VALIGNS.includes(el.valign) ? el.valign : 'middle');
 
-// How an image fills its box: 'cover' crops to fill (the default) or 'stretch'
-// distorts to fit exactly — PowerPoint's a:stretch, set on imported pictures.
-export const IMAGE_FITS = Object.freeze(['cover', 'stretch']);
+// How an image fills its box (PowerPoint's Fill / Fit / Stretch): 'cover' crops
+// to fill (the default), 'contain' letterboxes the whole image, 'stretch'
+// distorts to fit exactly — a:stretch, set on imported pictures.
+export const IMAGE_FITS = Object.freeze(['cover', 'contain', 'stretch']);
+// An image's effective fit (absent/unknown → cover) — the model value every
+// surface maps from: the inspector shows it, the canvas maps it to CSS.
+export const fitOf = (el) => (IMAGE_FITS.includes(el.fit) ? el.fit : 'cover');
+export const objectFitOf = (el) => ({ cover: 'cover', contain: 'contain', stretch: 'fill' })[fitOf(el)];
 
 // A text element's CSS font-family stack. Imported PowerPoint text names Office
 // fonts the browser often lacks, so the authored family is followed by its

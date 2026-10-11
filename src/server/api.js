@@ -7,6 +7,7 @@
 
 import { LOCAL_DEFAULT_BASE } from '../lib/llmClient.js';
 import { appendSlide } from '../lib/deckOrder.js';
+import { normalizeDeck, normalizeSlide } from '../lib/normalizeDeck.js';
 
 let deckSeq = 0;
 function newDeckId() {
@@ -16,7 +17,7 @@ function deckName(deck) {
   return (deck && (deck.title || deck.name)) || 'Untitled deck';
 }
 function makeRecord(id, deck, name) {
-  return { id, name: name || deckName(deck), deck, updatedAt: Date.now() };
+  return { id, name: name || deckName(deck), deck: normalizeDeck(deck), updatedAt: Date.now() };
 }
 // A minimal but valid empty deck (one section, no slides) for "new deck".
 function blankDeck() {
@@ -62,7 +63,8 @@ export function createDeckStore(initial = null) {
   };
   if (initial && initial.decks) {
     // Copy into the null-prototype map (a parsed-JSON snapshot has Object.prototype).
-    for (const [k, v] of Object.entries(initial.decks)) store.decks[k] = v;
+    // …and upgrade any deck saved by an older model version.
+    for (const [k, v] of Object.entries(initial.decks)) store.decks[k] = v && v.deck ? { ...v, deck: normalizeDeck(v.deck) } : v;
     store.activeId = initial.activeId ?? Object.keys(store.decks)[0] ?? null;
   } else if (initial) {
     store.deck = initial; // wrap a legacy deck as the active one
@@ -78,7 +80,14 @@ function bump(store, rec) {
   const target = rec === undefined
     ? (store.activeId != null ? store.decks[store.activeId] : null)
     : rec;
-  if (target) target.updatedAt = Date.now();
+  if (target) {
+    target.updatedAt = Date.now();
+    // Every content write (PUT/POST bodies, slide REST, MCP tools) lands here,
+    // so one normalize keeps the store on the current model whatever a client
+    // or agent sent (e.g. a legacy text `fill`). Idempotent and identity-
+    // preserving when there's nothing to upgrade.
+    target.deck = normalizeDeck(target.deck);
+  }
 }
 
 function deckMeta(rec, activeId) {
@@ -205,7 +214,8 @@ function runTool(store, name, args = {}) {
 
   switch (name) {
     case 'add_slide': {
-      const s = { id: newSlideId(), layout: 'text', title: 'New slide', ...args };
+      // Normalized here so the slide stored and the slide returned are one object.
+      const s = normalizeSlide({ id: newSlideId(), layout: 'text', title: 'New slide', ...args });
       // appendSlide keeps a closing 'thanks' slide last (same rule as the
       // editor toolbar); with no sections the slide joins the pool only.
       if (store.deck.sections?.length) store.deck = appendSlide(store.deck, s);
@@ -364,7 +374,7 @@ export async function handleApiRequest(store, req, deps = {}) {
     if (method === 'GET') return ok(store.deck?.slides || []);
     if (method === 'POST') {
       if (!store.deck) return ok({ error: 'No deck loaded' }, 400);
-      const slide = { id: newSlideId(), layout: 'text', title: 'New slide', ...body };
+      const slide = normalizeSlide({ id: newSlideId(), layout: 'text', title: 'New slide', ...body });
       // Same closer-stays-last rule as MCP add_slide and the editor toolbar.
       if (store.deck.sections?.length) store.deck = appendSlide(store.deck, slide);
       else store.deck.slides.push(slide);

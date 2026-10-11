@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chartSpec, chartData, renameCategory, renameSeries, CHART_SERIES_OKLCH, CHART_SERIES_HEX } from './chartSpec.js';
+import { chartSpec, chartData, renameCategory, renameSeries, chartTypeOf, CHART_TYPES, CHART_SERIES_OKLCH, CHART_SERIES_HEX } from './chartSpec.js';
 import { oklchToHex } from '../test/oklchToHex.js';
 
 describe('renameSeries — inline chart series-name edit', () => {
@@ -164,5 +164,16 @@ describe('chartSpec', () => {
     const s = chartSpec(slide).data[0];
     expect(s.name).toBe('Series 1');
     expect(s.values).toEqual([0]); // padded to the single category
+  });
+});
+
+describe('chartTypeOf', () => {
+  it('names the type every surface draws: pie → donut, unknown/missing → line', () => {
+    expect(CHART_TYPES).toEqual(['line', 'bar', 'area', 'donut']);
+    for (const t of CHART_TYPES) expect(chartTypeOf({ chartType: t })).toBe(t);
+    expect(chartTypeOf({ chartType: 'pie' })).toBe('donut');
+    expect(chartTypeOf({ chartType: 'radar' })).toBe('line');
+    expect(chartTypeOf({})).toBe('line');
+    expect(chartTypeOf(null)).toBe('line');
   });
 });
