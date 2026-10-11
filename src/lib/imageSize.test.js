@@ -86,10 +86,38 @@ describe('dataImageSize', () => {
     expect(dataImageSize(url('image/bmp', core))).toEqual({ w: 300, h: 150 });
   });
 
-  it('reads AVIF / HEIC dimensions from the ispe property', () => {
-    const be32 = (n) => [(n >>> 24) & 255, (n >> 16) & 255, (n >> 8) & 255, n & 255];
-    const avif = [...be32(24), ...ascii('ftypavif'), 0, 0, 0, 0, ...ascii('avifmif1'), ...be32(20), ...ascii('ispe'), 0, 0, 0, 0, ...be32(1280), ...be32(720)];
-    expect(dataImageSize(url('image/avif', avif))).toEqual({ w: 1280, h: 720 });
+  describe('AVIF / HEIC (ISO-BMFF)', () => {
+    const box = (type, ...body) => [...be32(8 + body.length), ...ascii(type), ...body];
+    const full = (type, version, flags, ...body) => box(type, version, 0, 0, flags, ...body);
+    const ftyp = box('ftyp', ...ascii('avif'), 0, 0, 0, 0, ...ascii('avifmif1'));
+    const ispe = (w, h) => full('ispe', 0, 0, ...be32(w), ...be32(h));
+    const pitm = (id, version = 0) => full('pitm', version, 0, ...(version ? be32(id) : be16(id)));
+    // ipma entries: [itemId, [propertyIndex…]] (1-based indices into ipco)
+    const ipma = (entries, { version = 0, flags = 0 } = {}) => full('ipma', version, flags, ...be32(entries.length),
+      ...entries.flatMap(([id, props]) => [...(version ? be32(id) : be16(id)), props.length,
+        ...props.flatMap((p) => (flags & 1 ? be16(0x8000 | p) : [0x80 | p]))]));
+    const heif = (...metaChildren) => url('image/avif', [...ftyp, ...full('meta', 0, 0, ...metaChildren)]);
+
+    it('reads the primary item\'s ispe, not a tile\'s or thumbnail\'s that comes first', () => {
+      const ipco = box('ipco', ...ispe(512, 512), ...ispe(320, 240), ...ispe(4032, 3024));
+      // item 1 = a tile, 2 = thumbnail, 3 = the primary grid
+      const props = ipma([[1, [1]], [2, [2]], [3, [3]]]);
+      expect(dataImageSize(heif(...pitm(3), ...box('iprp', ...ipco, ...props)))).toEqual({ w: 4032, h: 3024 });
+    });
+
+    it('handles 32-bit item ids and 15-bit property indices', () => {
+      const ipco = box('ipco', ...ispe(64, 64), ...ispe(1280, 720));
+      const props = ipma([[7, [1]], [9, [2]]], { version: 1, flags: 1 });
+      expect(dataImageSize(heif(...pitm(9, 1), ...box('iprp', ...ipco, ...props)))).toEqual({ w: 1280, h: 720 });
+    });
+
+    it('returns null when the primary item cannot be resolved (no pitm, no ispe for it, no meta)', () => {
+      const ipco = box('ipco', ...ispe(64, 64), ...full('pixi', 0, 0, 0));
+      expect(dataImageSize(heif(...box('iprp', ...ipco, ...ipma([[1, [1]]]))))).toBeNull();              // no pitm
+      expect(dataImageSize(heif(...pitm(2), ...box('iprp', ...ipco, ...ipma([[1, [1]], [2, [2]]]))))).toBeNull(); // primary has no ispe
+      expect(dataImageSize(heif(...pitm(1)))).toBeNull();                                                  // no iprp
+      expect(dataImageSize(url('image/avif', [...ftyp, ...new Array(16).fill(0)]))).toBeNull();           // no meta
+    });
   });
 
   it('reads an SVG that starts with a UTF-8 byte-order mark', () => {
@@ -108,7 +136,6 @@ describe('dataImageSize', () => {
     expect(dataImageSize(null)).toBeNull();
     expect(dataImageSize('data:image/svg+xml;base64,' + btoa('<html></html>'))).toBeNull(); // not an svg
     expect(dataImageSize('data:image/tiff;base64,' + btoa('II*\0'))).toBeNull();
-    expect(dataImageSize(url('image/avif', [0, 0, 0, 24, ...ascii('ftypavif'), ...new Array(16).fill(0)]))).toBeNull(); // no ispe
     expect(dataImageSize('data:image/png;base64,%%%')).toBeNull();            // not base64
     expect(dataImageSize(url('image/jpeg', [0xff, 0xd8, 0xff, 0xd9]))).toBeNull(); // no SOF
     expect(dataImageSize(url('image/jpeg', [0xff, 0xd8, 0x00, 1, 2, 3, 4, 5, 6, 7, 8, 9]))).toBeNull(); // not a marker

@@ -80,11 +80,51 @@ function svgSize(b) {
   return vb.length === 4 && vb.every(Number.isFinite) ? { w: vb[2], h: vb[3] } : null;
 }
 
-// AVIF/HEIC (ISO-BMFF): the image's spatial extent lives in an `ispe` property
-// box — 4 bytes of version/flags, then width and height (big-endian).
-function ispeSize(b) {
-  for (let i = 8; i + 16 <= b.length; i++) {
-    if (ascii(b, i, 'ispe')) return { w: be32(b, i + 8), h: be32(b, i + 12) };
+// AVIF/HEIC (ISO-BMFF): the size lives in an `ispe` property box (4 bytes of
+// version/flags, then big-endian width and height). A file can carry several
+// (grid tiles, a thumbnail), so follow meta → pitm (the primary item) → ipma
+// (its property indices) → ipco (the properties) to the primary's own `ispe`.
+// Anything unresolvable → null, and the caller stretches.
+
+// Child boxes of [from, to): { type, body: [start, end) }.
+function boxes(b, from, to) {
+  const out = [];
+  for (let at = from; at + 8 <= to;) {
+    const size = be32(b, at) || to - at; // 0 = runs to the end
+    if (size < 8 || at + size > to) break;
+    out.push({ type: String.fromCharCode(...b.subarray(at + 4, at + 8)), start: at + 8, end: at + size });
+    at += size;
+  }
+  return out;
+}
+const child = (list, type) => list.find((x) => x.type === type);
+
+function primaryIspe(b) {
+  const meta = child(boxes(b, 0, b.length), 'meta');
+  if (!meta) return null;
+  const inMeta = boxes(b, meta.start + 4, meta.end); // meta is a FullBox
+  const pitm = child(inMeta, 'pitm');
+  const iprp = child(inMeta, 'iprp');
+  if (!pitm || !iprp) return null;
+  const primary = b[pitm.start] ? be32(b, pitm.start + 4) : be16(b, pitm.start + 4);
+  const inIprp = boxes(b, iprp.start, iprp.end);
+  const ipco = child(inIprp, 'ipco');
+  const ipma = child(inIprp, 'ipma');
+  if (!ipco || !ipma) return null;
+  const props = boxes(b, ipco.start, ipco.end);
+  const version = b[ipma.start];
+  const wideIndex = b[ipma.start + 3] & 1;
+  let at = ipma.start + 8; // past version/flags and entry_count
+  for (let n = be32(b, ipma.start + 4); n > 0 && at < ipma.end; n--) {
+    const id = version ? be32(b, at) : be16(b, at);
+    at += version ? 4 : 2;
+    const count = b[at++];
+    for (let i = 0; i < count; i++) {
+      const index = wideIndex ? be16(b, at) & 0x7fff : b[at] & 0x7f; // high bit = "essential"
+      at += wideIndex ? 2 : 1;
+      const prop = props[index - 1];
+      if (id === primary && prop?.type === 'ispe') return { w: be32(b, prop.start + 4), h: be32(b, prop.start + 8) };
+    }
   }
   return null;
 }
@@ -100,7 +140,7 @@ function sizeOf(b) {
     // header has 16-bit dimensions; every later one 32-bit (negative h = top-down).
     return le32s(b, 14) === 12 ? { w: le16(b, 18), h: le16(b, 20) } : { w: Math.abs(le32s(b, 18)), h: Math.abs(le32s(b, 22)) };
   }
-  if (isIsoBmff(b)) return ispeSize(b);
+  if (isIsoBmff(b)) return primaryIspe(b);
   if (isXml(b)) return svgSize(b);
   if (b.length >= 24 && b[0] === 0x89 && ascii(b, 1, 'PNG')) return { w: be32(b, 16), h: be32(b, 20) };
   if (b.length >= 10 && ascii(b, 0, 'GIF8')) return { w: le16(b, 6), h: le16(b, 8) };
