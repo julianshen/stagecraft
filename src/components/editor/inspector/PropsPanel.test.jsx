@@ -79,10 +79,26 @@ describe('PropsPanel', () => {
     expect(screen.queryByText('Content')).not.toBeInTheDocument();
   });
 
+  it('sets an image\'s fit with PowerPoint\'s Fill / Fit / Stretch', async () => {
+    const setSelected = vi.fn();
+    const img = { id: 'i', type: 'image', x: 0, y: 0, w: 100, h: 100, src: 'data:image/png;base64,AA==' };
+    render(<PropsPanel selected={img} setSelected={setSelected} />);
+    expect(screen.getByRole('button', { name: 'Fill' })).toHaveClass('active'); // absent fit = cover
+    await userEvent.click(screen.getByRole('button', { name: 'Fit' }));
+    expect(setSelected).toHaveBeenLastCalledWith(expect.objectContaining({ fit: 'contain' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Stretch' }));
+    expect(setSelected).toHaveBeenLastCalledWith(expect.objectContaining({ fit: 'stretch' }));
+  });
+
+  it('shows no fit control on a non-image element', () => {
+    render(<PropsPanel selected={el} setSelected={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Stretch' })).not.toBeInTheDocument();
+  });
+
   it('hides the Fill control for an image element (an image has no colour fill)', () => {
     render(<PropsPanel selected={{ id: 'i', type: 'image', x: 0, y: 0, w: 300, h: 200, src: 'data:image/png;base64,AAA' }} setSelected={vi.fn()} />);
     expect(screen.queryByLabelText('Fill color')).not.toBeInTheDocument();
-    expect(screen.queryByText('Fill')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Fill' })).not.toBeInTheDocument(); // (the Fill *fit* button is a different control)
     // geometry controls still apply to an image
     expect(screen.getByText('POS')).toBeInTheDocument();
   });

@@ -536,6 +536,30 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(t.o.color).toBe('15171C'); // matches ElementView's var(--ink, #15171C) default, not FFFFFF
   });
 
+  // A 640×480 PNG header — enough for dataImageSize to read its natural size.
+  const be32 = (n) => [(n >>> 24) & 255, (n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const PNG_640x480 = `data:image/png;base64,${btoa(String.fromCharCode(137, 80, 78, 71, 13, 10, 26, 10, ...be32(13), 73, 72, 68, 82, ...be32(640), ...be32(480), 8, 6, 0, 0, 0))}`;
+  const box = { x: 0, y: 0, w: 384, h: 384 }; // 2in × 2in square
+
+  it('exports a cover / contain image with pptx sizing against its natural aspect, as the canvas object-fit', async () => {
+    for (const fit of ['cover', 'contain']) {
+      await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: PNG_640x480, fit }]));
+      const o = last().images[0].o;
+      expect(o.sizing).toEqual({ type: fit, w: 2, h: 2 });
+      expect(o.h / o.w).toBeCloseTo(480 / 640); // the image's own aspect; sizing fits it to the box
+    }
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: PNG_640x480 }])); // absent fit = cover
+    expect(last().images[0].o.sizing.type).toBe('cover');
+  });
+
+  it('stretches a "stretch" image, and an image whose size can\'t be read, to its box', async () => {
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: PNG_640x480, fit: 'stretch' }]));
+    expect(last().images[0].o).toMatchObject({ w: 2, h: 2 });
+    expect(last().images[0].o).not.toHaveProperty('sizing');
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: 'data:image/svg+xml;base64,PHN2Zy8+', fit: 'contain' }]));
+    expect(last().images[0].o).not.toHaveProperty('sizing');
+  });
+
   it('exports an image element as addImage with its data URL, skipping an empty image', async () => {
     await exportToPPTX(elemDeck([
       { id: 'i', type: 'image', x: 0, y: 0, w: 480, h: 360, src: 'data:image/png;base64,AAA' },

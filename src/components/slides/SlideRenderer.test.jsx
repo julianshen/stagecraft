@@ -867,6 +867,10 @@ describe('ElementsLayer — image fit', () => {
     const { container } = render(<ElementsLayer elements={[img('stretch')]} />);
     expect(container.querySelector('img').style.objectFit).toBe('fill');
   });
+  it('letterboxes an image with fit "contain" (PowerPoint\'s Fit)', () => {
+    const { container } = render(<ElementsLayer elements={[img('contain')]} />);
+    expect(container.querySelector('img').style.objectFit).toBe('contain');
+  });
   it('keeps cover for images without a fit (the existing behaviour)', () => {
     const { container } = render(<ElementsLayer elements={[img()]} />);
     expect(container.querySelector('img').style.objectFit).toBe('cover');

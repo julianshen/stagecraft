@@ -3,13 +3,19 @@ import Icon from '../../ui/Icon.jsx';
 import { FieldRow, InputGroup, Seg, Select } from '../../ui/Primitives.jsx';
 import { toHex } from '../../../lib/color.js';
 import { isStrokeableShape, isFillableShape } from '../../../lib/shapes.js';
-import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, TEXT_INK, borderStyle, valignOf } from '../../../lib/elements.js';
+import { DEFAULT_SHADOW, DEFAULT_GRADIENT, STROKE_DASHES, TEXT_INK, IMAGE_FITS, borderStyle, valignOf } from '../../../lib/elements.js';
 import { requiresFill } from '../../../lib/deckUtils.js';
 
 // Line-spacing presets for the dropdown (the field itself is a continuous
 // multiplier — the gate accepts any positive, a non-preset value is shown too).
 const LINE_SPACINGS = Object.freeze([1, 1.15, 1.2, 1.5, 2, 2.5, 3]);
 const FONT_FAMILIES = Object.freeze(['Inter', 'Georgia', 'JetBrains Mono', 'Courier New', 'Arial', 'Calibri']);
+// PowerPoint's picture fit names for the model's IMAGE_FITS.
+const IMAGE_FIT_OPTIONS = Object.freeze([
+  { v: 'cover', l: 'Fill', title: 'Fill — crop the picture to fill the box' },
+  { v: 'contain', l: 'Fit', title: 'Fit — show the whole picture inside the box' },
+  { v: 'stretch', l: 'Stretch', title: 'Stretch — distort the picture to the box' },
+]);
 
 export default function PropsPanel({ selected, setSelected, count = 0 }) {
   if (count > 1) return <div className="pane-section" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{count} elements selected — drag to move them together, or align via the toolbar.</div>;
@@ -54,6 +60,16 @@ export default function PropsPanel({ selected, setSelected, count = 0 }) {
             value={selected.content ?? ''}
             onChange={e => setSelected({ ...selected, content: e.target.value })}
           />
+        </div>
+      )}
+
+      {selected.type === 'image' && (
+        <div className="pane-section">
+          <h4>Picture</h4>
+          <FieldRow label="FIT">
+            <Seg value={IMAGE_FITS.includes(selected.fit) ? selected.fit : 'cover'} onChange={fit => setSelected({ ...selected, fit })}
+              options={IMAGE_FIT_OPTIONS} />
+          </FieldRow>
         </div>
       )}
 

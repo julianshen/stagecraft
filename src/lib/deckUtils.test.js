@@ -519,6 +519,14 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [{ ...boxed, color: 'red' }] }, 'text')).toEqual({}); // colour must be hex
   });
 
+  it('accepts an image fit of cover / contain / stretch and rejects any other', () => {
+    const img = { id: 'i', type: 'image', x: 0, y: 0, w: 50, h: 50, src: 'data:image/png;base64,AA==' };
+    for (const fit of ['cover', 'contain', 'stretch']) {
+      expect(sanitizeSlidePatch({ elements: [{ ...img, fit }] }, 'text')).toEqual({ elements: [{ ...img, fit }] });
+    }
+    expect(sanitizeSlidePatch({ elements: [{ ...img, fit: 'tile' }] }, 'text')).toEqual({});
+  });
+
   it('accepts a known strokeDash (solid/dashed/dotted) and rejects an unknown one', () => {
     const base = { id: 's', type: 'rect', x: 0, y: 0, w: 50, h: 50, fill: '#abc', stroke: '#000', strokeWidth: 2 };
     for (const d of ['solid', 'dashed', 'dotted']) {

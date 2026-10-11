@@ -7,7 +7,8 @@ import { flattenDeck } from './deckOrder.js';
 import { CANVAS_BASELINE_PX } from './fontBaselines.js';
 import { resolveHeadingScale } from './headingScale.js';
 import { toHex, isHexColor, mixHex } from './color.js';
-import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType, lineSpacingOf, valignOf, TEXT_INK } from './elements.js';
+import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType, lineSpacingOf, valignOf, TEXT_INK, objectFitOf } from './elements.js';
+import { dataImageSize } from './imageSize.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
 import { slideBgClass } from './slideScheme.js';
 
@@ -122,6 +123,17 @@ function elementGeo(el) {
   return g;
 }
 
+// A cover/contain picture (the canvas object-fit) → pptx `sizing`, which crops
+// or letterboxes the image's NATURAL aspect into the box — so pptxgen needs
+// that aspect as the image's own w/h, with the box in `sizing`. A stretch
+// image, or one whose size can't be read from its header, stretches to the box.
+function imageSizing(el, geo) {
+  const fit = objectFitOf(el);
+  const size = fit !== 'fill' && dataImageSize(el.src);
+  if (!size) return {};
+  return { w: geo.w, h: geo.w * (size.h / size.w), sizing: { type: fit, w: geo.w, h: geo.h } };
+}
+
 // Draw a slide's free-form elements over whatever the layout builder produced,
 // so anything placed on the canvas survives export. Geometry/rotation/opacity
 // map 1:1; image objectFit and text auto-fit aren't reproduced exactly.
@@ -164,7 +176,7 @@ function addElements(pptx, sld, slide) {
       continue;
     }
     if (el.type === 'image') {
-      if (el.src) sld.addImage({ ...geo, data: el.src, ...withOpacity, ...withShadow });
+      if (el.src) sld.addImage({ ...geo, ...imageSizing(el, geo), data: el.src, ...withOpacity, ...withShadow });
       continue;
     }
     if (el.type === 'path') {

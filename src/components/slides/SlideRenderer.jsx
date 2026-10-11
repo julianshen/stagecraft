@@ -11,7 +11,7 @@ import { headingPx } from '../../lib/headingScale.js';
 import { shapeDef, hasVisibleStroke, clipPoints } from '../../lib/shapes.js';
 import { isHexColor } from '../../lib/color.js';
 import { slideBgClass } from '../../lib/slideScheme.js';
-import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf, fontStack, valignOf } from '../../lib/elements.js';
+import { dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf, fontStack, valignOf, objectFitOf } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider fallbacks,
 // plus `headingScale`, which sizes every title via headingPx). This is the memo
@@ -453,7 +453,7 @@ function ElementView({ el }) {
     // empty image is still visible/selectable on the canvas. draggable=false
     // keeps the native image drag from hijacking the canvas drag.
     return el.src
-      ? <img src={el.src} alt="" draggable={false} style={{ ...base, objectFit: el.fit === 'stretch' ? 'fill' : 'cover' }} />
+      ? <img src={el.src} alt="" draggable={false} style={{ ...base, objectFit: objectFitOf(el) }} />
       : <div style={{ ...base, display: 'grid', placeItems: 'center', background: '#eceae4', color: '#9a978f', fontFamily: 'var(--f-mono)', fontSize: 18 }}>No image</div>;
   }
   if (el.type === 'path') {
