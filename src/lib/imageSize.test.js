@@ -79,6 +79,12 @@ describe('dataImageSize', () => {
     expect(dataImageSize(url('image/avif', avif))).toEqual({ w: 1280, h: 720 });
   });
 
+  it('accepts media-type parameters before ;base64 (e.g. charset)', () => {
+    const svg = btoa('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"></svg>');
+    expect(dataImageSize(`data:image/svg+xml;charset=utf-8;base64,${svg}`)).toEqual({ w: 40, h: 20 });
+    expect(dataImageSize(`data:image/png;name=a.png;base64,${btoa(String.fromCharCode(...png(8, 4)))}`)).toEqual({ w: 8, h: 4 });
+  });
+
   it('returns null for anything it cannot size', () => {
     expect(dataImageSize('')).toBeNull();
     expect(dataImageSize(null)).toBeNull();

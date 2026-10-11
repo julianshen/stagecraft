@@ -13,7 +13,7 @@ const HEAD_CHARS = 64;
 
 function bytesOf(dataUrl, chars) {
   if (typeof dataUrl !== 'string') return null;
-  const m = /^data:image\/[\w.+-]+;base64,/i.exec(dataUrl);
+  const m = /^data:image\/[\w.+-]+(?:;[^;,]*)*?;base64,/i.exec(dataUrl); // media-type params (charset=…) may precede ;base64
   if (!m) return null;
   try {
     const body = dataUrl.slice(m[0].length);
