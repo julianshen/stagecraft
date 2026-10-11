@@ -545,6 +545,26 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(last().images[0].o).toMatchObject({ data: 'data:image/png;base64,AAA', x: 0, y: 0, w: 2.5, h: 1.875 });
   });
 
+  it('exports a rotated (EXIF) JPEG upright, leaving the stored deck alone', async () => {
+    // FF D8, then APP1 'Exif\0\0' + little-endian TIFF with IFD0 { Orientation (0x0112) = 6 }.
+    const tiff = [0x49, 0x49, 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0];
+    const app1 = [0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff];
+    const rotated = `data:image/jpeg;base64,${btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe1, 0, app1.length + 2, ...app1, 0xff, 0xd9))}`;
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 30, height: 40, close() {} }));
+    const canvas = { getContext: () => ({ drawImage() {} }), toBlob: (cb, type) => cb(new Blob(['UP'], { type })) };
+    const realCreate = document.createElement.bind(document);
+    const spy = vi.spyOn(document, 'createElement').mockImplementation((tag) => (tag === 'canvas' ? canvas : realCreate(tag)));
+    try {
+      const deck = elemDeck([{ id: 'i', type: 'image', x: 0, y: 0, w: 480, h: 360, src: rotated }]);
+      await exportToPPTX(deck);
+      expect(last().images[0].o.data).toBe(`data:image/jpeg;base64,${btoa('UP')}`);
+      expect(deck.slides[0].elements[0].src).toBe(rotated);
+    } finally {
+      spy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('exports a path element as a custGeom shape: points scaled to box inches + a line, no fill', async () => {
     await exportToPPTX(elemDeck([
       { id: 'p', type: 'path', x: 192, y: 96, w: 384, h: 192, points: [[0, 0], [0.5, 1], [1, 0.5]], stroke: '#112233', strokeWidth: 4 },

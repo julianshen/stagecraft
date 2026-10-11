@@ -10,6 +10,7 @@ import { toHex, isHexColor, mixHex } from './color.js';
 import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType, lineSpacingOf, valignOf } from './elements.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
 import { slideBgClass } from './slideScheme.js';
+import { uprightImages } from './imageOrientation.js';
 
 // ---- deck theme accent (fallback to indigo) ----
 // The deck theme only tints accents; the slide background/ink come from the
@@ -535,6 +536,8 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
     const a = clampIdx(range.from, 1), b = clampIdx(range.to, len);
     slides = flat.slice(Math.min(a, b) - 1, Math.max(a, b));
   }
+  // Rotated (EXIF) JPEGs export upright, as the canvas shows them — only the exported slides' pictures.
+  ({ slides } = await uprightImages({ slides }));
 
   // PowerPoint sections mirror the deck's sections. pptxgenjs files any slide
   // added without a sectionTitle into a "Default-N" section once one exists, so
