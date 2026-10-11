@@ -50,6 +50,7 @@ export default defineConfig({
         'src/lib/shapes.js',
         'src/lib/imageFile.js',
         'src/lib/imageOrientation.js',
+        'src/lib/pptxPost.js',
         'src/hooks/useDeckSync.js',
         'src/hooks/useReorderDrag.js',
         'src/hooks/useToasts.js',

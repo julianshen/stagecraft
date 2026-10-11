@@ -12,6 +12,7 @@ import { dataImageSize } from './imageSize.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
 import { slideBgClass } from './slideScheme.js';
 import { uprightSlides } from './imageOrientation.js';
+import { postProcess } from './pptxPost.js';
 
 // ---- deck theme accent (fallback to indigo) ----
 // The deck theme only tints accents; the slide background/ink come from the
@@ -142,12 +143,18 @@ function imageSizing(el, geo) {
 // Draw a slide's free-form elements over whatever the layout builder produced,
 // so anything placed on the canvas survives export. Geometry/rotation/opacity
 // map 1:1; image objectFit and text auto-fit aren't reproduced exactly.
+// Returns the slide's post-processing plan (F-EXP-1, see pptxPost.js): what
+// pptxgenjs can't write — real gradients and groups — keyed by each element's
+// object name, which is its id.
 function addElements(pptx, sld, slide) {
   const ST = pptx.ShapeType;
+  const plan = { gradients: {}, groups: [] };
+  const groups = new Map(); // groupId → the ids of its drawn members, in z-order
+  const drawn = (el) => { if (el.groupId) groups.set(el.groupId, [...(groups.get(el.groupId) || []), el.id]); };
   // The deck is persisted/agent-authorable, so tolerate a non-array or null entries.
   const elements = (Array.isArray(slide.elements) ? slide.elements : []).filter(Boolean);
   for (const el of elements) {
-    const geo = elementGeo(el);
+    const geo = { ...elementGeo(el), ...(el.id ? { objectName: String(el.id) } : {}) };
     const transparency = Number.isFinite(el.opacity) ? clampPct(100 - el.opacity) : undefined;
     const withOpacity = transparency != null ? { transparency } : {};
     // A drop shadow (any element type) → a pptx outer shadow. x/y px offset →
@@ -178,10 +185,14 @@ function addElements(pptx, sld, slide) {
         // ink) so a colour-less text element isn't invisible.
         color: pxHex(el.color || DEFAULT_INK), fontFace: el.fontFamily || 'Inter', ...withOpacity, ...withShadow,
       });
+      drawn(el);
       continue;
     }
     if (el.type === 'image') {
-      if (el.src) sld.addImage({ ...geo, ...imageSizing(el, geo), data: el.src, ...withOpacity, ...withShadow });
+      if (el.src) {
+        sld.addImage({ ...geo, ...imageSizing(el, geo), data: el.src, ...withOpacity, ...withShadow });
+        drawn(el);
+      }
       continue;
     }
     if (el.type === 'path') {
@@ -205,16 +216,20 @@ function addElements(pptx, sld, slide) {
         ...(lw > 0 ? { line: { color: pxHex(el.stroke || DEFAULT_INK), width: lw, ...withOpacity, ...(dt ? { dashType: dt } : {}) } } : {}),
         ...withShadow,
       });
+      drawn(el);
       continue;
     }
     // Shapes (incl. line) carry a colour fill; the registry drives the mapping.
     // A line maps to a rect at its real geometry — its height IS its thickness,
     // so the generic shape path covers it (def.pptx === 'rect').
     const def = shapeDef(el.type);
-    // A gradient fill has no pptx shape equivalent, so it exports as the midpoint
-    // blend of its two stops — the solid that sits between the canvas gradient.
-    // A malformed gradient falls back to the solid `fill`, matching the canvas.
-    const fillColor = isRenderableGradient(el.gradient) ? mixHex(el.gradient.from, el.gradient.to) : (el.fill || DEFAULT_INK);
+    // pptxgenjs writes only solid shape fills, so a gradient goes out as the
+    // midpoint blend of its stops and the post-processor swaps in the real
+    // a:gradFill (by object name). A malformed gradient falls back to the solid
+    // `fill`, matching the canvas.
+    const grad = isRenderableGradient(el.gradient) && el.id ? el.gradient : null;
+    if (grad) plan.gradients[el.id] = { from: pxHex(grad.from), to: pxHex(grad.to), angle: grad.angle };
+    const fillColor = grad ? mixHex(grad.from, grad.to) : (el.fill || DEFAULT_INK);
     const fill = { color: pxHex(fillColor), ...withOpacity };
     const opts = { ...geo, fill, ...withShadow };
     // A box shape's stroke → a pptx line (colour + pt width), matching the
@@ -227,7 +242,10 @@ function addElements(pptx, sld, slide) {
       opts.line = { color: pxHex(el.stroke), width: PT(el.strokeWidth), ...withOpacity, ...(dt ? { dashType: dt } : {}) };
     }
     sld.addShape(ST[def?.pptx] || ST.rect, opts);
+    drawn(el);
   }
+  plan.groups = [...groups.values()].filter((ids) => ids.length >= 2);
+  return plan;
 }
 
 // ---- per-layout slide builders ----
@@ -528,6 +546,21 @@ const BUILDERS = new Map([
  * Export a deck object to a .pptx file using pptxgenjs.
  * @param {Object} deck — SAMPLE_DECK-shaped object
  */
+const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+
+// Save a file the way pptxgenjs' own writeFile does in the browser: a
+// temporary <a download> on an object URL.
+function download(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url));
+}
+
 export async function exportToPPTX(deck, { includeNotes = true, range = null } = {}) {
   const pptx = new pptxgen();
   pptx.layout = 'LAYOUT_16x9';
@@ -573,6 +606,7 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
     pptx.addSection({ title });
   }
 
+  const plans = [];
   for (const slide of slides) {
     // A per-slide render context: the deck accent + heading scale and the colour
     // scheme the canvas renders this slide in. The slide is created here, filed
@@ -582,7 +616,7 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
     sld.background = { color: tc.bg };
     if (slide.layout !== 'blank') (BUILDERS.get(slide.layout) || addGenericSlide)(pptx, sld, slide, tc);
     // Overlay the free-form elements layer (any layout may carry it).
-    addElements(pptx, sld, slide);
+    plans.push(addElements(pptx, sld, slide));
     if (includeNotes) {
       const n = resolveNotes(slide);
       if (n) sld.addNotes(n);
@@ -590,6 +624,9 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
   }
 
   const fileName = `${(deck.title || 'presentation').replace(/[^a-z0-9]/gi, '_')}.pptx`;
-  await pptx.writeFile({ fileName });
+  // Written in memory so the post-processor can patch what pptxgenjs can't
+  // express (F-EXP-1), then downloaded.
+  const data = await postProcess(await pptx.write({ outputType: 'arraybuffer' }), plans);
+  download(new Blob([data], { type: PPTX_MIME }), fileName);
   return fileName;
 }
