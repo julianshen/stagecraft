@@ -24,13 +24,13 @@ function scanJpeg(b) {
     if (marker === 0xda || marker === 0xd9) break; // entropy-coded data / end: no more headers
     const len = (b[at + 2] << 8) | b[at + 3];
     if (marker === 0xe1 && String.fromCharCode(...b.subarray(at + 4, at + 10)) === 'Exif\0\0') {
-      const t = at + 10; // TIFF header: 'II' little-endian, else 'MM'
+      const t = at + 10; // TIFF header: 'II' little-endian or 'MM' big-endian; anything else is unreadable
       const size = at + 2 + len - t; // TIFF bytes this APP1 holds: every read stays inside them
-      const le = b[t] === 0x49;
+      const le = b[t] === 0x49 && b[t + 1] === 0x49;
       const u16 = (o) => (le ? b[t + o] | (b[t + o + 1] << 8) : (b[t + o] << 8) | b[t + o + 1]);
       const u32 = (o) => (le ? u16(o) + u16(o + 2) * 0x10000 : u16(o) * 0x10000 + u16(o + 2));
       const ifd = u32(4);
-      const valid = size >= 8 && (le || b[t] === 0x4d) && u16(2) === 42 && ifd + 2 <= size;
+      const valid = size >= 8 && (le || (b[t] === 0x4d && b[t + 1] === 0x4d)) && u16(2) === 42 && ifd + 2 <= size;
       for (let i = 0, n = valid ? u16(ifd) : 0; i < n && ifd + 2 + (i + 1) * 12 <= size; i++) {
         const entry = ifd + 2 + i * 12;
         if (u16(entry) === 0x0112) {

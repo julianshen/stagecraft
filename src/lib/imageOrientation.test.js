@@ -64,6 +64,12 @@ describe('jpegOrientation — malformed EXIF stays inside its APP1 segment', () 
     expect(clearOrientation(dataUrl(jpeg({ ifd: 12 })))).toBe(dataUrl(jpeg({ ifd: 12 }))); // left byte-for-byte
   });
 
+  it('ignores a byte-order mark that is not exactly II or MM', () => {
+    const bad = jpeg({ tail: fakeIfd });
+    bad[12 + 1] = 0x4d; // 'IM'
+    expect(jpegOrientation(bad)).toBe(1);
+  });
+
   it('ignores a TIFF header without the 42 magic', () => {
     expect(jpegOrientation(jpeg({ magic: 0, tail: fakeIfd }))).toBe(1);
     expect(jpegOrientation(jpeg({ tail: fakeIfd }))).toBe(6); // the same IFD, well-formed, is read
