@@ -76,7 +76,9 @@ describe('uprightSlides', () => {
       await new Promise((r) => setTimeout(r, 1));
       const [w, h] = blob.size === PROBE_BYTES ? [2, 1] : size;
       const turned = applied && imageOrientation === 'from-image';
-      return { width: turned ? h : w, height: turned ? w : h, close: vi.fn(() => { active--; }) };
+      // close() detaches the bitmap: per the HTML spec its width/height then read 0.
+      const bitmap = { width: turned ? h : w, height: turned ? w : h, close: vi.fn(() => { active--; bitmap.width = bitmap.height = 0; }) };
+      return bitmap;
     });
     const pictureCalls = () => createImageBitmap.mock.calls.filter(([blob]) => blob.size !== PROBE_BYTES);
     vi.stubGlobal('createImageBitmap', createImageBitmap);

@@ -584,7 +584,7 @@ describe('exportToPPTX — free-form elements overlay', () => {
     const app1 = [0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff];
     const rotated = `data:image/jpeg;base64,${btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe1, 0, app1.length + 2, ...app1, 0xff, 0xd9))}`;
     // A browser that honours imageOrientation: the 2×1 orientation-probe (321 bytes) comes back 1×2.
-    vi.stubGlobal('createImageBitmap', vi.fn(async (blob) => (blob.size === 321 ? { width: 1, height: 2 } : { width: 30, height: 40, close() {} })));
+    vi.stubGlobal('createImageBitmap', vi.fn(async (blob) => (blob.size === 321 ? { width: 1, height: 2, close() { this.width = this.height = 0; } } : { width: 30, height: 40, close() { this.width = this.height = 0; } })));
     // The upright re-encode: a JPEG whose frame (SOF0) is 30×40 — portrait, as displayed.
     const upright = new Uint8Array([0xff, 0xd8, 0xff, 0xc0, 0, 11, 8, 0, 40, 0, 30, 1, 1, 0x11, 0, 0xff, 0xd9]);
     const canvas = { getContext: () => ({ drawImage() {} }), toBlob: (cb, type) => cb(new Blob([upright], { type })) };

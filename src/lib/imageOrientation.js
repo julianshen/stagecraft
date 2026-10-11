@@ -97,8 +97,9 @@ const TURN = {
 const PROBE = '/9j/4AAQSkZJRgABAQAAAQABAAD/4QAiRXhpZgAATU0AKgAAAAgAAQESAAMAAAABAAYAAAAAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAABAAIDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AKAAD//Z';
 async function honoursOrientation() {
   const bitmap = await createImageBitmap(new Blob([decode(PROBE)], { type: 'image/jpeg' }), { imageOrientation: 'from-image' });
-  bitmap.close?.();
-  return bitmap.width === 1 && bitmap.height === 2;
+  const turned = bitmap.width === 1 && bitmap.height === 2;
+  bitmap.close?.(); // after reading: a closed bitmap reports 0×0
+  return turned;
 }
 
 // The upright re-encode of a rotated JPEG data URL; anything else → src.
