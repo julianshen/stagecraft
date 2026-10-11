@@ -59,10 +59,33 @@ describe('dataImageSize', () => {
     expect(dataImageSize(url('image/jpeg', [0xff, 0xd8, ...sof]))).toEqual({ w: 400, h: 300 });
   });
 
+  it('reads SVG size from width/height, else from the viewBox', () => {
+    const svg = (attrs) => `data:image/svg+xml;base64,${btoa(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" ${attrs}></svg>`)}`;
+    expect(dataImageSize(svg('width="320" height="120px"'))).toEqual({ w: 320, h: 120 });
+    expect(dataImageSize(svg('viewBox="0 0 64 48"'))).toEqual({ w: 64, h: 48 });
+    expect(dataImageSize(svg('width="100%" height="100%" viewBox="0 0 30, 10"'))).toEqual({ w: 30, h: 10 }); // relative units → viewBox
+  });
+
+  it('reads BMP dimensions (a negative height means top-down rows)', () => {
+    const le32 = (n) => [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255];
+    const bmp = (w, h) => [...ascii('BM'), ...new Array(16).fill(0), ...le32(w), ...le32(h >>> 0), 1, 0, 24, 0];
+    expect(dataImageSize(url('image/bmp', bmp(200, 100)))).toEqual({ w: 200, h: 100 });
+    expect(dataImageSize(url('image/bmp', bmp(200, -100)))).toEqual({ w: 200, h: 100 });
+  });
+
+  it('reads AVIF / HEIC dimensions from the ispe property', () => {
+    const be32 = (n) => [(n >>> 24) & 255, (n >> 16) & 255, (n >> 8) & 255, n & 255];
+    const avif = [...be32(24), ...ascii('ftypavif'), 0, 0, 0, 0, ...ascii('avifmif1'), ...be32(20), ...ascii('ispe'), 0, 0, 0, 0, ...be32(1280), ...be32(720)];
+    expect(dataImageSize(url('image/avif', avif))).toEqual({ w: 1280, h: 720 });
+  });
+
   it('returns null for anything it cannot size', () => {
     expect(dataImageSize('')).toBeNull();
     expect(dataImageSize(null)).toBeNull();
-    expect(dataImageSize('data:image/svg+xml;base64,' + btoa('<svg/>'))).toBeNull();
+    expect(dataImageSize('data:image/svg+xml;base64,' + btoa('<svg/>'))).toBeNull(); // no size at all
+    expect(dataImageSize('data:image/svg+xml;base64,' + btoa('<html></html>'))).toBeNull(); // not an svg
+    expect(dataImageSize('data:image/tiff;base64,' + btoa('II*\0'))).toBeNull();
+    expect(dataImageSize(url('image/avif', [0, 0, 0, 24, ...ascii('ftypavif'), ...new Array(16).fill(0)]))).toBeNull(); // no ispe
     expect(dataImageSize('data:image/png;base64,%%%')).toBeNull();            // not base64
     expect(dataImageSize(url('image/jpeg', [0xff, 0xd8, 0xff, 0xd9]))).toBeNull(); // no SOF
     expect(dataImageSize(url('image/jpeg', [0xff, 0xd8, 0x00, 1, 2, 3, 4, 5, 6, 7, 8, 9]))).toBeNull(); // not a marker
