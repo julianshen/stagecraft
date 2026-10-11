@@ -45,6 +45,20 @@ describe('dataImageSize', () => {
     expect(dataImageSize(url('image/jpeg', [0xff, 0xd8, ...exif, ...sof]))).toEqual({ w: 400, h: 300 });
   });
 
+  it('finds a JPEG frame size behind > 192 KB of metadata segments', () => {
+    const app = [0xff, 0xe1, 0xff, 0xff, ...new Array(0xffff - 2).fill(0)]; // a max-size (64 KB) APP1
+    const sof = [0xff, 0xc0, 0, 11, 8, 0x01, 0x2c, 0x01, 0x90, 1, 1, 0x11, 0]; // 400×300
+    const bytes = new Uint8Array([0xff, 0xd8, ...app, ...app, ...app, ...app, ...sof]); // 256 KB before SOF
+    let bin = '';
+    for (const b of bytes) bin += String.fromCharCode(b);
+    expect(dataImageSize(`data:image/jpeg;base64,${btoa(bin)}`)).toEqual({ w: 400, h: 300 });
+  });
+
+  it('skips 0xFF fill bytes before a JPEG marker', () => {
+    const sof = [0xff, 0xff, 0xff, 0xc0, 0, 11, 8, 0x01, 0x2c, 0x01, 0x90, 1, 1, 0x11, 0];
+    expect(dataImageSize(url('image/jpeg', [0xff, 0xd8, ...sof]))).toEqual({ w: 400, h: 300 });
+  });
+
   it('returns null for anything it cannot size', () => {
     expect(dataImageSize('')).toBeNull();
     expect(dataImageSize(null)).toBeNull();

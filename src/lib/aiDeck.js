@@ -6,6 +6,7 @@
 import { callLLM, generateSlide, parseJsonReply, LLMError } from './llmClient.js';
 import { SLIDE_LAYOUTS, sanitizeSlidePatch } from './deckUtils.js';
 import { newId, createComponentSlide } from './slideFactories.js';
+import { CHART_TYPES } from './chartSpec.js';
 
 export const MAX_OUTLINE_SLIDES = 15;
 
@@ -55,7 +56,7 @@ const LAYOUT_FIELDS = {
   agenda: '"items": [{"n": "01", "t": string, "d": string}]',
   divider: '"chapter": "01"',
   kpi: '"kpis": [{"label": string, "val": string, "delta": string, "target": string, "good": boolean}], "note": string',
-  chart: '"chartType": "line"|"bar"|"area"|"donut", "sub": string, "chart": {"categories": [string], "series": [{"name": string, "values": [number]}]}',
+  chart: `"chartType": ${CHART_TYPES.map((t) => `"${t}"`).join('|')}, "sub": string, "chart": {"categories": [string], "series": [{"name": string, "values": [number]}]}`,
   split: '"body": string, "stats": [{"lbl": string, "val": string}]',
   table: '"columns": [string], "rows": [[string]]',
   text: '"body": string',

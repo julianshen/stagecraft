@@ -552,6 +552,15 @@ describe('exportToPPTX — free-form elements overlay', () => {
     expect(last().images[0].o.sizing.type).toBe('cover');
   });
 
+  it('keeps a very tall picture\'s aspect below pptxgen\'s 100 "is EMU, not inches" cutoff', async () => {
+    const tall = `data:image/png;base64,${btoa(String.fromCharCode(137, 80, 78, 71, 13, 10, 26, 10, ...be32(13), 73, 72, 68, 82, ...be32(1080), ...be32(12000), 8, 6, 0, 0, 0))}`;
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', x: 0, y: 0, w: 1920, h: 1080, src: tall, fit: 'cover' }]));
+    const o = last().images[0].o;
+    expect(Math.max(o.w, o.h)).toBeLessThan(100);
+    expect(o.h / o.w).toBeCloseTo(12000 / 1080);
+    expect(o.sizing).toEqual({ type: 'cover', w: 10, h: 5.625 });
+  });
+
   it('stretches a "stretch" image, and an image whose size can\'t be read, to its box', async () => {
     await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: PNG_640x480, fit: 'stretch' }]));
     expect(last().images[0].o).toMatchObject({ w: 2, h: 2 });

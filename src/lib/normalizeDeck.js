@@ -8,14 +8,15 @@
 //
 // Migrations:
 // - A text element's ink moved from `fill` to `color` (A3), freeing `fill` to
-//   mean the text box's own fill, as on every other shape. Only a `fill`
-//   without a `color` is legacy ink; with both, `fill` is already the box fill.
+//   mean the text box's own fill, as on every other shape. A `fill` without a
+//   `color` is legacy ink and becomes the `color`. With both, the `fill` is a
+//   box fill, which nothing renders or exports yet (F-TXT-2), so it's dropped —
+//   matching the gate, which rejects a text `fill` until then.
 
 export function normalizeElement(el) {
-  if (!el || typeof el !== 'object' || el.type !== 'text') return el;
-  if (el.color !== undefined || el.fill === undefined) return el;
+  if (!el || typeof el !== 'object' || el.type !== 'text' || el.fill === undefined) return el;
   const { fill, ...rest } = el;
-  return { ...rest, color: fill };
+  return rest.color === undefined ? { ...rest, color: fill } : rest;
 }
 
 export function normalizeSlide(slide) {

@@ -511,12 +511,18 @@ describe('sanitizeSlidePatch — free-form canvas elements', () => {
     expect(sanitizeSlidePatch({ elements: [legacy] }, 'text')).toEqual({ elements: [{ ...rest, color: '#123456' }] });
   });
 
-  it('rejects `color` on a non-text element, and a text box `fill` (no box fill renders yet)', () => {
+  it('rejects `color` on a non-text element and a non-hex text colour', () => {
     const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 50, h: 50, fill: '#abcdef' };
     expect(sanitizeSlidePatch({ elements: [{ ...rect, color: '#000000' }] }, 'text')).toEqual({});
+    const text = { id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, content: 'x', color: 'red' };
+    expect(sanitizeSlidePatch({ elements: [text] }, 'text')).toEqual({}); // colour must be hex
+  });
+
+  it('drops a text box `fill` (none renders yet) instead of losing the whole elements edit', () => {
     const boxed = { id: 't', type: 'text', x: 0, y: 0, w: 50, h: 20, content: 'x', color: '#000000', fill: '#ffffff' };
-    expect(sanitizeSlidePatch({ elements: [boxed] }, 'text')).toEqual({});
-    expect(sanitizeSlidePatch({ elements: [{ ...boxed, color: 'red' }] }, 'text')).toEqual({}); // colour must be hex
+    const rect = { id: 'r', type: 'rect', x: 0, y: 0, w: 50, h: 50, fill: '#abcdef' };
+    const { fill, ...kept } = boxed;
+    expect(sanitizeSlidePatch({ elements: [boxed, rect] }, 'text')).toEqual({ elements: [kept, rect] });
   });
 
   it('accepts an image fit of cover / contain / stretch and rejects any other', () => {

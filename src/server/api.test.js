@@ -794,3 +794,17 @@ describe('model migration (text fill → color)', () => {
     expect(store.deck.slides.find((s) => s.id === 'a').elements[0]).toMatchObject({ color: '#ff0000' });
   });
 });
+
+describe('slide writes return the stored (migrated) slide', () => {
+  const legacyText = { id: 't', type: 'text', x: 0, y: 0, w: 10, h: 10, content: 'Hi', fill: '#ff0000' };
+  it('MCP add_slide and POST /api/slides echo the slide as stored', async () => {
+    const store = createDeckStore(deck());
+    const viaMcp = await handleApiRequest(store, req('POST', '/api/mcp/tools/call', { name: 'add_slide', arguments: { layout: 'blank', elements: [legacyText] } }));
+    expect(viaMcp.body.result.elements[0]).toMatchObject({ color: '#ff0000' });
+    expect(viaMcp.body.result.elements[0]).not.toHaveProperty('fill');
+    const viaRest = await handleApiRequest(store, req('POST', '/api/slides', { layout: 'blank', elements: [legacyText] }));
+    expect(viaRest.body.elements[0]).toMatchObject({ color: '#ff0000' });
+    expect(viaRest.body.elements[0]).not.toHaveProperty('fill');
+    expect(store.deck.slides.find((s) => s.id === viaRest.body.id)).toEqual(viaRest.body);
+  });
+});

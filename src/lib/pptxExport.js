@@ -127,12 +127,15 @@ function elementGeo(el) {
 // or letterboxes the image's NATURAL aspect into the box — so pptxgen needs
 // that aspect as the image's own w/h, with the box in `sizing`. A stretch
 // image, or one whose size can't be read from its header, stretches to the box.
+// Only the ratio matters, so it's passed scaled to a 1-inch long side: pptxgen
+// reads any number ≥ 100 as EMU, which would wreck a very tall/wide picture.
 const PPTX_SIZING = { cover: 'cover', contain: 'contain' };
 function imageSizing(el, geo) {
   const type = PPTX_SIZING[fitOf(el)];
   const size = type && dataImageSize(el.src);
   if (!size) return {};
-  return { w: geo.w, h: geo.w * (size.h / size.w), sizing: { type, w: geo.w, h: geo.h } };
+  const long = Math.max(size.w, size.h);
+  return { w: size.w / long, h: size.h / long, sizing: { type, w: geo.w, h: geo.h } };
 }
 
 // Draw a slide's free-form elements over whatever the layout builder produced,

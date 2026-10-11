@@ -286,7 +286,7 @@ export function ChartByType({ type, slide, editable = false, onCommitPatch }) {
   if (type === 'bar') return <BarChart {...cat} series={d.series}/>;
   if (type === 'area') return <AreaChart {...cat} series={d.series}/>;
   // donut's legend labels ARE the categories → renameCategory (no multi-series legend).
-  if (chartTypeOf({ chartType: type }) === 'donut') return <DonutChart categories={d.categories} values={d.series[0]?.values} editable={editable} onRenameCat={onRenameCat}/>;
+  if (type === 'donut' || type === 'pie') return <DonutChart categories={d.categories} values={d.series[0]?.values} editable={editable} onRenameCat={onRenameCat}/>;
   return <LineChart {...cat} series={d.series}/>;
 }
 

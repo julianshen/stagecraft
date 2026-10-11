@@ -4,18 +4,18 @@
 // (SVG, a malformed payload) → null, and the caller falls back to stretching.
 
 // Headers sit at the front: PNG/GIF/WebP need < 32 bytes, so decode a small
-// prefix first. Only a JPEG may need more — its SOF can trail an EXIF block —
-// so it's retried with a generous prefix, never the multi-MB image whole.
-// (Both are base64 char counts, multiples of 4.)
+// prefix (base64 chars, a multiple of 4). Only a JPEG may need more — its SOF
+// can trail any amount of EXIF/XMP/ICC metadata — so a JPEG is decoded whole
+// (once per picture, at export).
 const HEAD_CHARS = 64;
-const JPEG_CHARS = 256 * 1024;
 
 function bytesOf(dataUrl, chars) {
   if (typeof dataUrl !== 'string') return null;
   const m = /^data:image\/[\w.+-]+;base64,/i.exec(dataUrl);
   if (!m) return null;
   try {
-    const bin = atob(dataUrl.slice(m[0].length, m[0].length + chars));
+    const body = dataUrl.slice(m[0].length);
+    const bin = atob(chars ? body.slice(0, chars) : body);
     const out = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
     return out;
@@ -34,6 +34,7 @@ function jpegSize(b) {
   let at = 2; // past SOI
   while (at + 9 < b.length) {
     if (b[at] !== 0xff) return null;
+    while (b[at + 1] === 0xff) at++; // fill bytes may pad a marker
     const marker = b[at + 1];
     // SOF0–SOF15 carry the frame size, except DHT (C4), JPG (C8) and DAC (CC).
     if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
@@ -65,7 +66,7 @@ function sizeOf(b) {
 /** `{ w, h }` in pixels for a PNG/GIF/JPEG/WebP data URL, else null. */
 export function dataImageSize(dataUrl) {
   let b = bytesOf(dataUrl, HEAD_CHARS);
-  if (b && b[0] === 0xff && b[1] === 0xd8) b = bytesOf(dataUrl, JPEG_CHARS); // JPEG: scan further
+  if (b && b[0] === 0xff && b[1] === 0xd8) b = bytesOf(dataUrl); // JPEG: scan the whole file
   const size = b && sizeOf(b);
   return size && size.w > 0 && size.h > 0 ? size : null;
 }

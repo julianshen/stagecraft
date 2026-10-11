@@ -7,7 +7,7 @@
 
 import { LOCAL_DEFAULT_BASE } from '../lib/llmClient.js';
 import { appendSlide } from '../lib/deckOrder.js';
-import { normalizeDeck } from '../lib/normalizeDeck.js';
+import { normalizeDeck, normalizeSlide } from '../lib/normalizeDeck.js';
 
 let deckSeq = 0;
 function newDeckId() {
@@ -214,7 +214,8 @@ function runTool(store, name, args = {}) {
 
   switch (name) {
     case 'add_slide': {
-      const s = { id: newSlideId(), layout: 'text', title: 'New slide', ...args };
+      // Normalized here so the slide stored and the slide returned are one object.
+      const s = normalizeSlide({ id: newSlideId(), layout: 'text', title: 'New slide', ...args });
       // appendSlide keeps a closing 'thanks' slide last (same rule as the
       // editor toolbar); with no sections the slide joins the pool only.
       if (store.deck.sections?.length) store.deck = appendSlide(store.deck, s);
@@ -373,7 +374,7 @@ export async function handleApiRequest(store, req, deps = {}) {
     if (method === 'GET') return ok(store.deck?.slides || []);
     if (method === 'POST') {
       if (!store.deck) return ok({ error: 'No deck loaded' }, 400);
-      const slide = { id: newSlideId(), layout: 'text', title: 'New slide', ...body };
+      const slide = normalizeSlide({ id: newSlideId(), layout: 'text', title: 'New slide', ...body });
       // Same closer-stays-last rule as MCP add_slide and the editor toolbar.
       if (store.deck.sections?.length) store.deck = appendSlide(store.deck, slide);
       else store.deck.slides.push(slide);

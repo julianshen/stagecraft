@@ -2,13 +2,13 @@ import React from 'react';
 import { THEME_OPTIONS, accentColor, accentLabel } from '../menus/ThemeMenu.jsx';
 import { LayoutGrid } from '../menus/LayoutGrid.jsx';
 import { Select } from '../../ui/Primitives.jsx';
+import { HEADING_SCALES, resolveHeadingScale, effectiveTitlePx } from '../../../lib/headingScale.js';
 
 const SCALE_OPTIONS = HEADING_SCALES.map((s) => ({ value: String(s.value), label: `${s.label} (${s.value}×)` }));
 // The presets, plus the current scale when it isn't one (see below).
 const scaleOptions = (scale) => (HEADING_SCALES.some((s) => s.value === scale)
   ? SCALE_OPTIONS
   : [...SCALE_OPTIONS, { value: String(scale), label: `Custom (${scale}×)` }]);
-import { HEADING_SCALES, resolveHeadingScale, effectiveTitlePx } from '../../../lib/headingScale.js';
 
 // Insertable components → createComponentSlide ids (via onAddComponent).
 const COMPONENTS = [

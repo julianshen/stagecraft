@@ -12,9 +12,9 @@ describe('normalizeElement', () => {
     expect(normalizeElement(el)).toBe(el);
   });
 
-  it('does not move `fill` when `color` is already set (fill is then the box fill)', () => {
+  it('drops a text `fill` when `color` is already set — no text-box fill renders yet, and the gate rejects one', () => {
     const el = { id: 't', type: 'text', content: 'Hi', color: '#000000', fill: '#ffffff' };
-    expect(normalizeElement(el)).toBe(el);
+    expect(normalizeElement(el)).toEqual({ id: 't', type: 'text', content: 'Hi', color: '#000000' });
   });
 
   it('leaves shapes, images and non-objects alone', () => {
