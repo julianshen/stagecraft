@@ -177,6 +177,16 @@ describe('postProcess', () => {
     expect(await postProcess(buf, [{ gradients: {}, groups: [] }, { gradients: {}, groups: [] }])).toBe(buf);
   });
 
+  it('skips a plan whose slide part is missing instead of failing the export', async () => {
+    const zip = new JSZip();
+    zip.file('ppt/slides/slide1.xml', slide(sp(2, 'a')));
+    const buf = await zip.generateAsync({ type: 'arraybuffer' });
+    const work = { gradients: { a: { from: '000000', to: 'FFFFFF', angle: 90 } }, groups: [] };
+    const out = await JSZip.loadAsync(await postProcess(buf, [work, work])); // there is no slide2.xml
+    expect(await out.file('ppt/slides/slide1.xml').async('string')).toContain('<a:gradFill');
+    expect(out.file('ppt/slides/slide2.xml')).toBeNull();
+  });
+
   it('patches only the slides with work, by slide order', async () => {
     const zip = new JSZip();
     zip.file('ppt/slides/slide1.xml', slide(sp(2, 'a')));

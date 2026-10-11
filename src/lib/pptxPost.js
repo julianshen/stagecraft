@@ -53,7 +53,9 @@ export async function postProcess(data, plans) {
   for (const [i, plan] of plans.entries()) {
     if (!hasWork(plan)) continue;
     const name = `ppt/slides/slide${i + 1}.xml`;
-    zip.file(name, patchSlideXml(await zip.file(name).async('string'), plan));
+    const part = zip.file(name);
+    if (!part) continue; // no such slide: nothing to patch
+    zip.file(name, patchSlideXml(await part.async('string'), plan));
   }
   // Each part keeps the compression pptxgenjs gave it (images aren't re-deflated).
   return zip.generateAsync({ type: 'arraybuffer' });
