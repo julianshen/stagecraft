@@ -125,6 +125,11 @@ describe('dataImageSize', () => {
     expect(dataImageSize(`data:image/svg+xml;base64,${btoa(`${bom}<svg width="40" height="10"></svg>`)}`)).toEqual({ w: 40, h: 10 });
   });
 
+  it('reads an SVG with any amount of leading whitespace (the declared type says SVG)', () => {
+    const svg = `${' '.repeat(40)}\n\t<svg width="40" height="10"></svg>`;
+    expect(dataImageSize(`data:image/svg+xml;base64,${btoa(svg)}`)).toEqual({ w: 40, h: 10 });
+  });
+
   it('accepts media-type parameters before ;base64 (e.g. charset)', () => {
     const svg = btoa('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"></svg>');
     expect(dataImageSize(`data:image/svg+xml;charset=utf-8;base64,${svg}`)).toEqual({ w: 40, h: 20 });

@@ -129,10 +129,12 @@ function primaryIspe(b) {
   return null;
 }
 
-const isXml = (b) => /^(\xef\xbb\xbf)?\s*</.test(String.fromCharCode(...b.subarray(0, 16))); // SVG (optional UTF-8 BOM)
+// An SVG by its declared type, or — mislabelled — by markup within the head
+// (an optional UTF-8 BOM, then whitespace, then `<`).
+const isSvg = (dataUrl, head) => /^data:image\/svg\+xml[;,]/i.test(dataUrl) || /^(\xef\xbb\xbf)?\s*</.test(String.fromCharCode(...head));
 const isIsoBmff = (b) => ascii(b, 4, 'ftyp'); // AVIF / HEIC
 // Formats whose size can sit beyond the decoded head (see HEAD_CHARS).
-const needsWhole = (b) => (b[0] === 0xff && b[1] === 0xd8) || isIsoBmff(b) || isXml(b);
+const needsWhole = (b) => (b[0] === 0xff && b[1] === 0xd8) || isIsoBmff(b);
 
 function sizeOf(b) {
   if (b.length >= 26 && ascii(b, 0, 'BM')) {
@@ -141,7 +143,6 @@ function sizeOf(b) {
     return le32s(b, 14) === 12 ? { w: le16(b, 18), h: le16(b, 20) } : { w: Math.abs(le32s(b, 18)), h: Math.abs(le32s(b, 22)) };
   }
   if (isIsoBmff(b)) return primaryIspe(b);
-  if (isXml(b)) return svgSize(b);
   if (b.length >= 24 && b[0] === 0x89 && ascii(b, 1, 'PNG')) return { w: be32(b, 16), h: be32(b, 20) };
   if (b.length >= 10 && ascii(b, 0, 'GIF8')) return { w: le16(b, 6), h: le16(b, 8) };
   if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8) return jpegSize(b);
@@ -149,10 +150,11 @@ function sizeOf(b) {
   return null;
 }
 
-/** `{ w, h }` in pixels for a PNG/GIF/JPEG/WebP data URL, else null. */
+/** `{ w, h }` in pixels for a data-URL image (formats above), else null. */
 export function dataImageSize(dataUrl) {
   let b = bytesOf(dataUrl, HEAD_CHARS);
-  if (b && needsWhole(b)) b = bytesOf(dataUrl);
-  const size = b && sizeOf(b);
+  const svg = b && isSvg(dataUrl, b);
+  if (b && (svg || needsWhole(b))) b = bytesOf(dataUrl);
+  const size = b && (svg ? svgSize(b) : sizeOf(b));
   return size && size.w > 0 && size.h > 0 ? size : null;
 }
