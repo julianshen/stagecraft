@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
 import pptxgen from 'pptxgenjs';
-import { patchSlideXml, postProcess, linAngle } from './pptxPost.js';
+import { patchSlideXml, postProcess, linAngle, planFor } from './pptxPost.js';
 import { importPptx } from './pptxImport.js';
 import { NS, tree } from '../test/pptxFixture.js';
 
@@ -31,6 +31,32 @@ describe('linAngle (CSS linear-gradient angle → DrawingML a:lin ang)', () => {
     expect(linAngle(0)).toBe(270 * 60000);     // to top
     expect(linAngle(-45)).toBe(225 * 60000);   // normalised into [0, 360)
     expect(linAngle(450)).toBe(0);
+  });
+});
+
+describe('planFor (a slide\'s post-processing plan, read from its elements)', () => {
+  it('collects valid shape gradients (pptx hex) and group memberships in z-order', () => {
+    const slide = { id: 's', elements: [
+      { id: 'g', type: 'rect', gradient: { from: '#112233', to: '#aabbcc', angle: 45 } },
+      { id: 'a', type: 'rect', groupId: 'G' },
+      { id: 'pic', type: 'image', groupId: 'G' },
+      { id: 'b', type: 'ellipse', groupId: 'G' },
+      { id: 'solo', type: 'rect', groupId: 'H' },
+    ] };
+    expect(planFor(slide)).toEqual({
+      gradients: { g: { from: '112233', to: 'AABBCC', angle: 45 } },
+      groups: [['a', 'pic', 'b'], ['solo']], // the patcher skips names it can't find and one-member groups
+    });
+  });
+
+  it('skips malformed gradients, gradients on non-shapes, id-less elements and junk', () => {
+    expect(planFor({ elements: [
+      { id: 'bad', type: 'rect', gradient: { from: 'red', to: '#000000', angle: 0 } },
+      { id: 't', type: 'text', gradient: { from: '#000000', to: '#ffffff', angle: 0 } },
+      { type: 'rect', gradient: { from: '#000000', to: '#ffffff', angle: 0 }, groupId: 'G' },
+      null,
+    ] })).toEqual({ gradients: {}, groups: [] });
+    expect(planFor({})).toEqual({ gradients: {}, groups: [] });
   });
 });
 
@@ -104,6 +130,19 @@ describe('patchSlideXml — groups', () => {
     expect(childNames(spTree(out).getElementsByTagNameNS(P, 'grpSp')[0])).toEqual(['a', 'b']);
   });
 
+  it('reads each member\'s own frame: a nested group\'s grpSpPr, a graphic frame\'s p:xfrm', () => {
+    const inner = `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="5" name="inner"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>`
+      + `<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="50" cy="50"/><a:chOff x="0" y="0"/><a:chExt cx="50" cy="50"/></a:xfrm></p:grpSpPr>${sp(6, 'deep', { x: 900, y: 900 })}</p:grpSp>`;
+    const frame = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="7" name="tbl"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>`
+      + '<p:xfrm><a:off x="100" y="100"/><a:ext cx="100" cy="200"/></p:xfrm><a:graphic/></p:graphicFrame>';
+    const out = parse(patchSlideXml(slide(inner + frame), { groups: [['inner', 'tbl']] }));
+    const xf = [...spTree(out).children].find((c) => c.localName === 'grpSp' && c.getElementsByTagNameNS(P, 'cNvPr')[0].getAttribute('name').startsWith('Group'))
+      .getElementsByTagNameNS(P, 'grpSpPr')[0].getElementsByTagNameNS(A, 'xfrm')[0];
+    const val = (tag, a) => xf.getElementsByTagNameNS(A, tag)[0].getAttribute(a);
+    // 0..200 × 0..300: the nested group's own 50×50 frame (not its child at 900) + the frame's box
+    expect([val('off', 'x'), val('off', 'y'), val('ext', 'cx'), val('ext', 'cy')]).toEqual(['0', '0', '200', '300']);
+  });
+
   it('leaves a group alone unless at least two members are found', () => {
     const src = slide(sp(2, 'a') + sp(3, 'b'));
     expect(parse(patchSlideXml(src, { groups: [['a', 'missing']] })).getElementsByTagNameNS(P, 'grpSp')).toHaveLength(0);
@@ -113,7 +152,7 @@ describe('patchSlideXml — groups', () => {
 describe('postProcess', () => {
   it('returns the input untouched when no slide has work', async () => {
     const buf = new ArrayBuffer(4);
-    expect(await postProcess(buf, [{}, { gradients: {}, groups: [] }])).toBe(buf);
+    expect(await postProcess(buf, [{ gradients: {}, groups: [] }, { gradients: {}, groups: [] }])).toBe(buf);
   });
 
   it('patches only the slides with work, by slide order', async () => {
@@ -121,7 +160,7 @@ describe('postProcess', () => {
     zip.file('ppt/slides/slide1.xml', slide(sp(2, 'a')));
     zip.file('ppt/slides/slide2.xml', slide(sp(2, 'a')));
     const buf = await zip.generateAsync({ type: 'arraybuffer' });
-    const out = await JSZip.loadAsync(await postProcess(buf, [{}, { gradients: { a: { from: '000000', to: 'FFFFFF', angle: 90 } } }]));
+    const out = await JSZip.loadAsync(await postProcess(buf, [{ gradients: {}, groups: [] }, { gradients: { a: { from: '000000', to: 'FFFFFF', angle: 90 } }, groups: [] }]));
     expect(await out.file('ppt/slides/slide1.xml').async('string')).not.toContain('gradFill');
     expect(await out.file('ppt/slides/slide2.xml').async('string')).toContain('<a:gradFill');
   });

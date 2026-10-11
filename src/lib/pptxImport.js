@@ -21,6 +21,7 @@ import { isValidElement } from './deckUtils.js';
 import { SHAPES, shapeDef, clipPoints } from './shapes.js';
 import { MAX_IMAGE_BYTES } from './imageFile.js';
 import { clearOrientation } from './imageOrientation.js';
+import { parseXml, kids, kid, path, desc, attr, relAttr, blipRel, boolAttr, numAttr, xfrmBox } from './ooxml.js';
 
 const EMU_PER_PT = 12700;
 // Inflated-size budgets for the package's XML (a real slide part is KBs; a
@@ -32,50 +33,6 @@ const MAX_MEDIA_TOTAL_BYTES = 64 * 1024 * 1024;
 // Total data-URL characters across every picture copy the deck carries (each
 // element holds its own copy until there's a shared asset store).
 const MAX_OUTPUT_IMAGE_CHARS = 96 * 1024 * 1024;
-
-// ---- tiny XML helpers (namespace-agnostic: match on localName) ----
-const parseXml = (text) => new DOMParser().parseFromString(text, 'application/xml');
-const kids = (el, name) => (el ? [...el.children].filter((c) => c.localName === name) : []);
-function kid(el, name) {
-  if (el) for (const c of el.children) if (c.localName === name) return c;
-  return null;
-}
-// Walk a chain of child names: path(sp, 'spPr', 'xfrm', 'off').
-const path = (el, ...names) => names.reduce((cur, n) => kid(cur, n), el);
-function desc(el, name) {
-  if (!el) return null;
-  for (const c of el.children) {
-    if (c.localName === name) return c;
-    const d = desc(c, name);
-    if (d) return d;
-  }
-  return null;
-}
-// Attribute by local name, ignoring the prefix (r:id / r:embed / p14:dur).
-function attr(el, name) {
-  if (!el) return null;
-  for (const a of el.attributes) if (a.localName === name) return a.value;
-  return null;
-}
-// A relationship-namespace attribute (r:id / r:embed): a prefixed attribute, so
-// `<p:sldId id="256" r:id="rId2">` resolves to the rId, not the numeric id.
-function relAttr(el, name) {
-  if (!el) return null;
-  for (const a of el.attributes) if (a.localName === name && a.prefix) return a.value;
-  return null;
-}
-// A picture's relationship: embedded (r:embed) or linked (r:link — external).
-const blipRel = (blip) => relAttr(blip, 'embed') ?? relAttr(blip, 'link');
-// An xsd:boolean attribute: "1"/"true" or "0"/"false"; absent → `d`.
-const boolAttr = (el, name, d = false) => {
-  const v = attr(el, name);
-  return v == null ? d : v === '1' || v === 'true';
-};
-const numAttr = (el, name, d = null) => {
-  const s = attr(el, name);
-  const v = Number(s);
-  return s != null && Number.isFinite(v) ? v : d;
-};
 
 // ---- package parts + relationships ----
 const dirOf = (p) => p.slice(0, p.lastIndexOf('/') + 1);
@@ -280,18 +237,6 @@ function makeFit(cx, cy) {
 }
 const round2 = (v) => Math.round(v * 100) / 100;
 
-// An xfrm → EMU box (+ rotation/flips), mapped through the group transform chain.
-function xfrmBox(xfrm, groupT) {
-  if (!xfrm) return null;
-  const off = kid(xfrm, 'off'), ext = kid(xfrm, 'ext');
-  if (!off || !ext) return null;
-  const box = {
-    x: numAttr(off, 'x', 0), y: numAttr(off, 'y', 0), w: numAttr(ext, 'cx', 0), h: numAttr(ext, 'cy', 0),
-    rot: numAttr(xfrm, 'rot', 0) / 60000,
-    flipH: boolAttr(xfrm, 'flipH'), flipV: boolAttr(xfrm, 'flipV'),
-  };
-  return groupT ? groupT(box) : box;
-}
 const toPx = (box, fit) => ({
   x: round2(fit.ox + box.x * fit.k), y: round2(fit.oy + box.y * fit.k),
   w: round2(box.w * fit.k), h: round2(box.h * fit.k),
@@ -386,7 +331,6 @@ function outlinePoints(type, w, h) {
   return [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]];
 }
 
-const FLIP_WARNING = 'Mirrored (flipped) tables were imported with their cells mirrored but their text upright.';
 
 // ---- line (a:ln) ----
 const DASH = { dash: 'dashed', lgDash: 'dashed', sysDash: 'dashed', dashDot: 'dashed', lgDashDot: 'dashed', lgDashDotDot: 'dashed', sysDashDot: 'dashed', sysDashDotDot: 'dashed', dot: 'dotted', sysDot: 'dotted' };
@@ -647,8 +591,9 @@ class SlideReader {
     }
     const gid = group(true);
     this.push({ ...el, ...opacityOf(fillAlpha) }, gid);
-    this.push({ type: 'path', x: el.x, y: el.y, w: el.w, h: el.h, ...(el.rot ? { rot: el.rot } : {}),
-      points: outlinePoints(outline, el.w, el.h), ...stroke, ...opacityOf(strokeAlpha) }, gid);
+    // The outline takes the body's whole geometry — rotation and flips included.
+    const geo = Object.fromEntries(['x', 'y', 'w', 'h', 'rot', 'flipH', 'flipV'].filter((k) => el[k] != null).map((k) => [k, el[k]]));
+    this.push({ type: 'path', ...geo, points: outlinePoints(outline, el.w, el.h), ...stroke, ...opacityOf(strokeAlpha) }, gid);
   }
 
   shape(sp, groupT, groupId) {
@@ -829,7 +774,7 @@ class SlideReader {
   // A native table → one cell rect + text per cell, on the table's grid.
   table(tbl, box, groupId) {
     const gid = groupId || this.id('grp');
-    if (box.flipH || box.flipV) this.warn(FLIP_WARNING);
+    if (box.flipH || box.flipV) this.warn('Mirrored (flipped) tables were imported with their cells mirrored but their text upright.');
     if (desc(kid(tbl, 'tblPr'), 'tableStyleId')) this.warn('Table styles (banding, header fills) are not applied — only explicit cell fills.');
     const cols = kids(kid(tbl, 'tblGrid'), 'gridCol').map((c) => numAttr(c, 'w', 0));
     const rows = kids(tbl, 'tr');

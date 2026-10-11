@@ -560,6 +560,13 @@ describe('importPptx — review fixes', () => {
     expect(warnings.join(' ')).not.toMatch(/mirrored/i);
   });
 
+  it('keeps the flips on both halves of a shape split for differing fill/outline alpha', async () => {
+    const sp = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="A"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(0, 0, 10, 10, ' flipH="1"')}<a:prstGeom prst="triangle"/>`
+      + '<a:solidFill><a:srgbClr val="000000"><a:alpha val="50000"/></a:srgbClr></a:solidFill><a:ln w="12700"><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:ln></p:spPr></p:sp>';
+    const { slide } = await one(sp);
+    expect(slide.elements.map((e) => [e.type, e.flipH])).toEqual([['triangle', true], ['path', true]]);
+  });
+
   it('keeps a mirrored picture\'s flips, and leaves unflipped elements without flip keys', async () => {
     const pic = (id, extra) => `<p:pic><p:nvPicPr><p:cNvPr id="${id}" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdP"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10, extra)}</p:spPr></p:pic>`;
     const { slide, warnings } = await one(pic(4, ' flipV="1"') + pic(5, ''), { slide: { extraRels: [['rIdP', 'image', '../media/p.png']] } }, { media: { 'p.png': PNG } });

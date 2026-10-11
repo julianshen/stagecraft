@@ -24,3 +24,6 @@ export function mixHex(a, b) {
   const avg = (i) => Math.round((ch(ha, i) + ch(hb, i)) / 2).toString(16).padStart(2, '0');
   return `#${avg(0)}${avg(1)}${avg(2)}`;
 }
+
+/** A colour as pptx/DrawingML hex: upper-case RRGGBB without the '#'; toHex supplies the canonical hex + fallback, so a bad value can't break the export. */
+export const pptxHex = (c) => toHex(c).slice(1).toUpperCase();

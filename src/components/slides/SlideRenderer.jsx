@@ -418,7 +418,7 @@ const FLEX_FOR_VALIGN = { top: 'flex-start', middle: 'center', bottom: 'flex-end
 function ElementView({ el }) {
   const base = {
     position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h,
-    ...(elementTransform(el) ? { transform: elementTransform(el) } : {}),
+    transform: elementTransform(el), // undefined (no style) when unrotated and unflipped
     ...(el.opacity != null ? { opacity: Math.max(0, Math.min(100, el.opacity)) / 100 } : {}),
     // A drop shadow applies to any element type and follows the painted shape
     // (clip-path included), so it lives on the shared base style. A malformed

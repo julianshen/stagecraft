@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, autoArrangeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, pathFromStroke, dashArray, dashType, borderStyle, STROKE_DASHES, lineSpacingOf, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
-import { fontStack, elementTransform } from './elements.js';
+import { fontStack, elementTransform, shadowAngle } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -1166,5 +1166,22 @@ describe('elementTransform (rotation + flips, as the canvas draws them)', () => 
     expect(elementTransform({ type: 'text', flipH: true })).toBeUndefined();
     expect(elementTransform({ type: 'text', flipV: true })).toBe('rotate(180deg)');
     expect(elementTransform({ type: 'text', rot: 30, flipH: true, flipV: true })).toBe('rotate(210deg)');
+  });
+});
+
+describe('shadowAngle (the direction the canvas draws a shadow, after flips and rotation)', () => {
+  const sh = (x, y) => ({ color: '#000000', blur: 4, x, y });
+  it('is the offset\'s own direction (clockwise from +x, y-down) for a plain element', () => {
+    expect(shadowAngle({ type: 'rect', shadow: sh(10, 0) })).toBe(0);
+    expect(shadowAngle({ type: 'rect', shadow: sh(0, 10) })).toBe(90);
+  });
+  it('mirrors the offset with the element\'s flips, then adds its rotation', () => {
+    expect(shadowAngle({ type: 'rect', flipH: true, shadow: sh(10, 0) })).toBe(180);
+    expect(shadowAngle({ type: 'image', flipV: true, shadow: sh(0, 10) })).toBe(270);
+    expect(shadowAngle({ type: 'rect', rot: 30, flipH: true, shadow: sh(10, 0) })).toBe(210);
+  });
+  it('turns with flipped text the way the text turns (flipH none, flipV 180°)', () => {
+    expect(shadowAngle({ type: 'text', flipH: true, shadow: sh(10, 0) })).toBe(0);
+    expect(shadowAngle({ type: 'text', flipV: true, shadow: sh(10, 0) })).toBe(180);
   });
 });

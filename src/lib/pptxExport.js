@@ -6,13 +6,13 @@ import { resolveNotes } from '../data/deck.js';
 import { flattenDeck } from './deckOrder.js';
 import { CANVAS_BASELINE_PX } from './fontBaselines.js';
 import { resolveHeadingScale } from './headingScale.js';
-import { toHex, isHexColor, mixHex } from './color.js';
-import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType, lineSpacingOf, valignOf, INK as DEFAULT_INK, fitOf } from './elements.js';
+import { pptxHex, isHexColor, mixHex } from './color.js';
+import { SLIDE_W, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint, dashType, lineSpacingOf, valignOf, INK as DEFAULT_INK, fitOf, shadowAngle } from './elements.js';
 import { dataImageSize } from './imageSize.js';
 import { shapeDef, hasVisibleStroke } from './shapes.js';
 import { slideBgClass } from './slideScheme.js';
 import { uprightSlides } from './imageOrientation.js';
-import { postProcess } from './pptxPost.js';
+import { postProcess, planFor } from './pptxPost.js';
 
 // ---- deck theme accent (fallback to indigo) ----
 // The deck theme only tints accents; the slide background/ink come from the
@@ -35,7 +35,7 @@ const SCHEMES = new Map([
 ]);
 function schemeFor(slide, accent) {
   // A blank slide is light content on its own hex bgColor (white fallback, like the canvas).
-  if (slide.layout === 'blank') return { ...LIGHT, bg: isHexColor(slide.bgColor) ? pxHex(slide.bgColor) : LIGHT.bg };
+  if (slide.layout === 'blank') return { ...LIGHT, bg: isHexColor(slide.bgColor) ? pptxHex(slide.bgColor) : LIGHT.bg };
   const cls = slideBgClass(slide);
   if (cls === 'accent') return { ...INK, bg: accent, ink: 'FFFFFF', body: 'F0F0F0', muted: 'E6E6E6' };
   return SCHEMES.get(cls) || LIGHT; // an unknown class renders the white default
@@ -61,9 +61,6 @@ const keepZero = (v) => (v === 0 ? 1e-6 : v);
 // boundary: the deck is disk-persisted and may be agent/MCP-authored, so a
 // non-finite coord/size would otherwise write NaN into the .pptx and corrupt it.
 const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
-// An element's fill as a bare RRGGBB (pptx wants no '#'); toHex supplies the
-// canonical hex + indigo fallback so a bad value can't break the export.
-const pxHex = (fill) => toHex(fill).slice(1).toUpperCase();
 
 // Per-field/per-item formatting (slide.fmt, keyed by the renderer's E() path —
 // 'title', 'items.0.t', 'rows.1.4', …). Map a fmt record to pptx text-option
@@ -89,7 +86,7 @@ function fmtOpts(fmt) {
   // fmt.color and the toolbar emits #rrggbb, but an AI patch could set a named/
   // oklch colour toHex can't convert (it would fall back to indigo) — leave the
   // field's own colour rather than export a wrong one.
-  if (isHexColor(fmt.color)) o.color = pxHex(fmt.color);
+  if (isHexColor(fmt.color)) o.color = pptxHex(fmt.color);
   return o;
 }
 // The export pt size for a field: its hand-tuned pt baseline, scaled by the canvas
@@ -122,6 +119,7 @@ function elementGeo(el) {
   const g = { x: IN(num(el.x)), y: IN(num(el.y)), w: IN(num(el.w)), h: IN(num(el.h)) };
   const rot = num(el.rot);
   if (rot) g.rotate = rot; // pptx rotates about the shape centre, like the canvas
+  if (el.id) g.objectName = String(el.id); // what the post-processor's patches key on
   // Flips are native xfrm attributes (PowerPoint handles flipped text itself).
   if (el.flipH) g.flipH = true;
   if (el.flipV) g.flipV = true;
@@ -146,18 +144,13 @@ function imageSizing(el, geo) {
 // Draw a slide's free-form elements over whatever the layout builder produced,
 // so anything placed on the canvas survives export. Geometry/rotation/opacity
 // map 1:1; image objectFit and text auto-fit aren't reproduced exactly.
-// Returns the slide's post-processing plan (F-EXP-1, see pptxPost.js): what
-// pptxgenjs can't write — real gradients and groups — keyed by each element's
-// object name, which is its id.
+// Each element is named by its id, which the post-processor (pptxPost.js) keys on.
 function addElements(pptx, sld, slide) {
   const ST = pptx.ShapeType;
-  const plan = { gradients: {}, groups: [] };
-  const groups = new Map(); // groupId → the ids of its drawn members, in z-order
-  const drawn = (el) => { if (el.groupId) groups.set(el.groupId, [...(groups.get(el.groupId) || []), el.id]); };
   // The deck is persisted/agent-authorable, so tolerate a non-array or null entries.
   const elements = (Array.isArray(slide.elements) ? slide.elements : []).filter(Boolean);
   for (const el of elements) {
-    const geo = { ...elementGeo(el), ...(el.id ? { objectName: String(el.id) } : {}) };
+    const geo = elementGeo(el);
     const transparency = Number.isFinite(el.opacity) ? clampPct(100 - el.opacity) : undefined;
     const withOpacity = transparency != null ? { transparency } : {};
     // A drop shadow (any element type) → a pptx outer shadow. x/y px offset →
@@ -171,14 +164,14 @@ function addElements(pptx, sld, slide) {
     const op = clampPct(Number.isFinite(el.opacity) ? el.opacity : 100) / 100;
     const withShadow = isRenderableShadow(el.shadow) ? { shadow: {
       type: 'outer',
-      color: pxHex(el.shadow.color),
+      color: pptxHex(el.shadow.color),
       opacity: keepZero(Math.round(SHADOW_OPACITY * op * 100) / 100), // round half-up (toFixed has a float artifact at .175)
       blur: keepZero(PT(el.shadow.blur)),
       offset: keepZero(PT(Math.hypot(el.shadow.x, el.shadow.y))),
-      // Local offset direction (atan2, y-down so it reads clockwise like pptx
-      // dir) + el.rot, normalised to [0,360). The rotation is baked in because
-      // pptxgen 3.12 emits rotWithShape="0" — an absolute angle.
-      angle: keepZero(Math.round(((Math.atan2(el.shadow.y, el.shadow.x) * 180 / Math.PI + num(el.rot)) % 360 + 360) % 360)),
+      // The direction the canvas draws it (offset turned and mirrored with the
+      // element), baked in because pptxgen 3.12 emits rotWithShape="0" — an
+      // absolute angle.
+      angle: keepZero(Math.round(shadowAngle(el))),
     } } : {};
     if (el.type === 'text') {
       sld.addText(el.content || '', {
@@ -186,16 +179,12 @@ function addElements(pptx, sld, slide) {
         underline: !!el.underline, align: el.align || 'left', valign: valignOf(el), lineSpacingMultiple: lineSpacingOf(el),
         // Match ElementView's DEFAULT_INK text default (not the deck theme's white
         // ink) so a colour-less text element isn't invisible.
-        color: pxHex(el.color || DEFAULT_INK), fontFace: el.fontFamily || 'Inter', ...withOpacity, ...withShadow,
+        color: pptxHex(el.color || DEFAULT_INK), fontFace: el.fontFamily || 'Inter', ...withOpacity, ...withShadow,
       });
-      drawn(el);
       continue;
     }
     if (el.type === 'image') {
-      if (el.src) {
-        sld.addImage({ ...geo, ...imageSizing(el, geo), data: el.src, ...withOpacity, ...withShadow });
-        drawn(el);
-      }
+      if (el.src) sld.addImage({ ...geo, ...imageSizing(el, geo), data: el.src, ...withOpacity, ...withShadow });
       continue;
     }
     if (el.type === 'path') {
@@ -216,10 +205,9 @@ function addElements(pptx, sld, slide) {
       // the canvas's zero-width stroke does not draw.
       sld.addShape(ST.custGeom, {
         ...geo, points: pts,
-        ...(lw > 0 ? { line: { color: pxHex(el.stroke || DEFAULT_INK), width: lw, ...withOpacity, ...(dt ? { dashType: dt } : {}) } } : {}),
+        ...(lw > 0 ? { line: { color: pptxHex(el.stroke || DEFAULT_INK), width: lw, ...withOpacity, ...(dt ? { dashType: dt } : {}) } } : {}),
         ...withShadow,
       });
-      drawn(el);
       continue;
     }
     // Shapes (incl. line) carry a colour fill; the registry drives the mapping.
@@ -228,12 +216,10 @@ function addElements(pptx, sld, slide) {
     const def = shapeDef(el.type);
     // pptxgenjs writes only solid shape fills, so a gradient goes out as the
     // midpoint blend of its stops and the post-processor swaps in the real
-    // a:gradFill (by object name). A malformed gradient falls back to the solid
+    // a:gradFill (planFor). A malformed gradient falls back to the solid
     // `fill`, matching the canvas.
-    const grad = isRenderableGradient(el.gradient) && el.id ? el.gradient : null;
-    if (grad) plan.gradients[el.id] = { from: pxHex(grad.from), to: pxHex(grad.to), angle: grad.angle };
-    const fillColor = grad ? mixHex(grad.from, grad.to) : (el.fill || DEFAULT_INK);
-    const fill = { color: pxHex(fillColor), ...withOpacity };
+    const fillColor = isRenderableGradient(el.gradient) ? mixHex(el.gradient.from, el.gradient.to) : (el.fill || DEFAULT_INK);
+    const fill = { color: pptxHex(fillColor), ...withOpacity };
     const opts = { ...geo, fill, ...withShadow };
     // A box shape's stroke → a pptx line (colour + pt width), matching the
     // canvas CSS border. Only the box shapes carry it (clip shapes don't stroke
@@ -242,13 +228,10 @@ function addElements(pptx, sld, slide) {
       // ...withOpacity so a translucent shape's outline matches its canvas border
       // (the canvas applies the element opacity to the whole div, border included).
       const dt = dashType(el.strokeDash);
-      opts.line = { color: pxHex(el.stroke), width: PT(el.strokeWidth), ...withOpacity, ...(dt ? { dashType: dt } : {}) };
+      opts.line = { color: pptxHex(el.stroke), width: PT(el.strokeWidth), ...withOpacity, ...(dt ? { dashType: dt } : {}) };
     }
     sld.addShape(ST[def?.pptx] || ST.rect, opts);
-    drawn(el);
   }
-  plan.groups = [...groups.values()].filter((ids) => ids.length >= 2);
-  return plan;
 }
 
 // ---- per-layout slide builders ----
@@ -619,7 +602,8 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
     sld.background = { color: tc.bg };
     if (slide.layout !== 'blank') (BUILDERS.get(slide.layout) || addGenericSlide)(pptx, sld, slide, tc);
     // Overlay the free-form elements layer (any layout may carry it).
-    plans.push(addElements(pptx, sld, slide));
+    addElements(pptx, sld, slide);
+    plans.push(planFor(slide));
     if (includeNotes) {
       const n = resolveNotes(slide);
       if (n) sld.addNotes(n);

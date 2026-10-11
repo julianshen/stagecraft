@@ -6,7 +6,10 @@ const rec = vi.hoisted(() => ({ slides: [], sections: [], raw: new ArrayBuffer(8
 // The post-processor (F-EXP-1) is unit-tested on its own; here it records the
 // per-slide patch plans the export hands it and returns a marker package.
 const post = vi.hoisted(() => ({ plans: null, out: new ArrayBuffer(16) }));
-vi.mock('./pptxPost.js', () => ({ postProcess: async (data, plans) => { post.plans = plans; return data === rec.raw ? post.out : null; } }));
+vi.mock('./pptxPost.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  postProcess: async (data, plans) => { post.plans = plans; return data === rec.raw ? post.out : null; },
+}));
 vi.mock('pptxgenjs', () => {
   class FakePptx {
     constructor() {
@@ -39,6 +42,7 @@ vi.mock('pptxgenjs', () => {
 });
 
 import { exportToPPTX } from './pptxExport.js';
+import { planFor } from './pptxPost.js';
 import { CANVAS_BASELINE_PX } from './fontBaselines.js';
 import { CHART_SERIES_HEX } from './chartSpec.js';
 import { SEVERITY_HEX } from './riskSpec.js';
@@ -65,7 +69,7 @@ const deckWith = (slide) => ({
 
 // The download: an object URL for the post-processed package, clicked on a
 // temporary <a download>. jsdom has no object URLs, so they're stubbed here.
-const dl = vi.hoisted(() => ({ blobs: [], clicks: [] }));
+const dl = { blobs: [], clicks: [] };
 beforeEach(() => {
   rec.slides.length = 0; rec.sections.length = 0; post.plans = null;
   dl.blobs.length = 0; dl.clicks.length = 0;
@@ -537,6 +541,13 @@ describe('exportToPPTX — post-processing and download (F-EXP-1)', () => {
     expect(flips(s.texts.find((x) => x.t === 'T').o)).toEqual([undefined, true]); // PowerPoint turns flipped text itself
   });
 
+  it('exports a flipped element\'s shadow on the side the canvas draws it', async () => {
+    await exportToPPTX(deck2(blank('b', [
+      { id: 'r', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', flipH: true, shadow: { color: '#000000', blur: 4, x: 10, y: 0 } },
+    ])));
+    expect(last().shapes[0].o.shadow.angle).toBe(180); // offset +x, mirrored → points left
+  });
+
   it('names every exported element by its id, so the patches can find it', async () => {
     await exportToPPTX(deck2(blank('b', [
       { id: 't1', type: 'text', x: 0, y: 0, w: 100, h: 50, content: 'Hi', color: '#000000' },
@@ -550,21 +561,15 @@ describe('exportToPPTX — post-processing and download (F-EXP-1)', () => {
     expect(s.images[0].o.objectName).toBe('i1');
   });
 
-  it('hands the post-processor each slide\'s gradients and drawn groups, in slide order', async () => {
-    await exportToPPTX(deck2(
-      blank('one', [{ id: 'solo', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000' }]),
-      blank('two', [
-        { id: 'g', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', gradient: { from: '#112233', to: '#aabbcc', angle: 45 } },
-        { id: 'a', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', groupId: 'G' },
-        { id: 'skip', type: 'image', x: 0, y: 0, w: 10, h: 10, src: '', groupId: 'G' }, // not drawn
-        { id: 'b', type: 'ellipse', x: 0, y: 0, w: 10, h: 10, fill: '#000000', groupId: 'G' },
-        { id: 'lonely', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', groupId: 'H' }, // a one-member group stays ungrouped
-      ]),
-    ));
-    expect(post.plans).toEqual([
-      { gradients: {}, groups: [] },
-      { gradients: { g: { from: '112233', to: 'AABBCC', angle: 45 } }, groups: [['a', 'b']] },
+  it('hands the post-processor each slide\'s plan (planFor), in slide order', async () => {
+    const two = blank('two', [
+      { id: 'g', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', gradient: { from: '#112233', to: '#aabbcc', angle: 45 } },
+      { id: 'a', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', groupId: 'G' },
+      { id: 'b', type: 'ellipse', x: 0, y: 0, w: 10, h: 10, fill: '#000000', groupId: 'G' },
     ]);
+    await exportToPPTX(deck2(blank('one', [{ id: 'solo', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000' }]), two));
+    expect(post.plans).toEqual([{ gradients: {}, groups: [] }, planFor(two)]);
+    expect(post.plans[1].groups).toEqual([['a', 'b']]);
   });
 
   it('writes the package in memory, post-processes it and downloads the result', async () => {

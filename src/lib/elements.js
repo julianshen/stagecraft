@@ -47,17 +47,33 @@ export const isRenderableShadow = (s) => !!s && isHexColor(s.color)
 // export approximates it with the midpoint blend (pptxgen has no shape gradient
 // — a documented degradation). DEFAULT_GRADIENT seeds the Properties toggle.
 export const DEFAULT_GRADIENT = Object.freeze({ from: '#4f46e5', to: '#06b6d4', angle: 135 });
-// The CSS transform that draws an element's rotation and flips. CSS applies the
-// right-most function first, so `rotate(r) scale(sx, sy)` mirrors in the
-// element's own frame and then turns it — the OOXML order (an xfrm's flips are
-// applied before its rot). Text follows PowerPoint: a flipped text box's text
-// stays readable, so flipH changes nothing and flipV turns it 180°.
-export function elementTransform(el) {
+// How the canvas orients an element: its rotation plus the mirror signs of its
+// flips (flips apply in the element's own frame, before the rotation — the
+// OOXML order). Text follows PowerPoint: a flipped text box's text stays
+// readable, so flipH changes nothing and flipV turns it 180°.
+function orientation(el) {
   const text = el.type === 'text';
-  const rot = (Number(el.rot) || 0) + (text && el.flipV ? 180 : 0);
-  const sx = !text && el.flipH ? -1 : 1, sy = !text && el.flipV ? -1 : 1;
-  const parts = [rot ? `rotate(${rot}deg)` : '', sx < 0 || sy < 0 ? `scale(${sx}, ${sy})` : ''].filter(Boolean);
-  return parts.length ? parts.join(' ') : undefined;
+  return {
+    rot: (Number(el.rot) || 0) + (text && el.flipV ? 180 : 0),
+    sx: !text && el.flipH ? -1 : 1,
+    sy: !text && el.flipV ? -1 : 1,
+  };
+}
+
+// The CSS transform that draws it. CSS applies the right-most function first,
+// so `rotate(r) scale(sx, sy)` mirrors and then turns.
+export function elementTransform(el) {
+  const { rot, sx, sy } = orientation(el);
+  return [rot && `rotate(${rot}deg)`, (sx < 0 || sy < 0) && `scale(${sx}, ${sy})`].filter(Boolean).join(' ') || undefined;
+}
+
+// The direction its drop shadow points on the canvas, in degrees clockwise
+// from +x (y-down), [0, 360): the filter shares the transformed node, so the
+// local x/y offset turns and mirrors with the element.
+export function shadowAngle(el) {
+  const { rot, sx, sy } = orientation(el);
+  const deg = Math.atan2(el.shadow.y * sy, el.shadow.x * sx) * 180 / Math.PI + rot;
+  return ((deg % 360) + 360) % 360;
 }
 
 export const linearGradientCss = (g) => `linear-gradient(${g.angle}deg, ${g.from}, ${g.to})`;
