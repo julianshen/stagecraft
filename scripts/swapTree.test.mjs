@@ -65,6 +65,13 @@ describe('swapIn', () => {
     expect(fs.readdirSync(target).filter((n) => n.startsWith('.'))).toEqual([]);
   });
 
+  it('refuses to start over a leftover backup (an interrupted swap), leaving everything untouched', () => {
+    write(target, { '.swap-backup/core/a.ts': 'the only old copy' });
+    const before = read(target);
+    expect(() => swapIn(target, staging, owned, () => {})).toThrow(/\.swap-backup/);
+    expect(read(target)).toEqual(before);
+  });
+
   it('restores the old tree when the commit step fails', () => {
     const before = read(target);
     expect(() => swapIn(target, staging, owned, () => { throw new Error('manifest write failed'); })).toThrow('manifest write failed');

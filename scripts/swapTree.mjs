@@ -11,14 +11,18 @@ const BACKUP = '.swap-backup';
  * new tree is in (e.g. writing a manifest). The old entries are first moved
  * aside (renames within `target`, so instant); if moving them, copying or
  * `commit` throws, whatever came in is removed and whatever was moved goes back
- * before the error is rethrown. `copy` and `rename` are injectable for tests.
+ * before the error is rethrown. A process killed mid-swap leaves the old
+ * entries in the backup folder, and a later swap refuses to run over it.
+ * `copy` and `rename` are injectable for tests.
  */
 export function swapIn(target, staging, owned, commit, {
   copy = (from, to) => fs.cpSync(from, to, { recursive: true }),
   rename = fs.renameSync,
 } = {}) {
   const backup = path.join(target, BACKUP);
-  fs.rmSync(backup, { recursive: true, force: true });
+  // A leftover backup means an earlier swap was killed mid-way: it may hold the
+  // only copy of the old entries, so never delete it — stop and say so.
+  if (fs.existsSync(backup)) throw new Error(`${backup} exists: an earlier swap was interrupted. Restore its entries into ${target} (or \`git checkout\` it) and remove it, then retry.`);
   fs.mkdirSync(backup);
   const old = fs.readdirSync(target, { withFileTypes: true }).filter((e) => e.name !== BACKUP && owned(e)).map((e) => e.name);
   const incoming = fs.readdirSync(staging);
