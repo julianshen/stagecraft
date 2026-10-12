@@ -7,12 +7,18 @@ import path from 'node:path';
 // `import … from '…'` / `export … from '…'` (multi-line clauses included),
 // side-effect `import '…'`, and dynamic `import('…')`.
 const IMPORT = /\b(?:import|export)\s[^'";]*?\bfrom\s*(['"])([^'"]+)\1|\bimport\s*\(?\s*(['"])([^'"]+)\3/g;
-// Comments, skipping over string literals (whose `//` isn't a comment).
-const COMMENT_OR_STRING = /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
-const stripComments = (src) => src.replace(COMMENT_OR_STRING, (m, str) => str ?? '');
+// One left-to-right pass over the source: a string right after `from` /
+// `import` / `import(` (a module specifier) is kept; any other string or
+// template literal is blanked, so import-like text inside it can't match; and
+// comments are dropped (a `//` inside a string is not one).
+const TOKEN = /(\b(?:from|import)\s*\(?\s*)(['"])(?:\\.|(?!\2)[^\\\n])*\2|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
+const codeOnly = (src) => src.replace(TOKEN, (m, keyword) => {
+  if (keyword) return m; // a module specifier
+  return m[0] === '/' ? '' : '0'; // a comment goes; a string becomes a quote-free placeholder
+});
 
-/** The specifiers a module imports, re-exports from or loads dynamically (comments ignored). */
-export const importSpecifiers = (src) => [...stripComments(src).matchAll(IMPORT)].map((m) => m[2] ?? m[4]);
+/** The specifiers a module imports, re-exports from or loads dynamically (comments and other strings ignored). */
+export const importSpecifiers = (src) => [...codeOnly(src).matchAll(IMPORT)].map((m) => m[2] ?? m[4]);
 
 // A bare specifier's package: `pkg` or `@scope/pkg`, without any subpath.
 const packageOf = (spec) => spec.split('/').slice(0, spec.startsWith('@') ? 2 : 1).join('/');

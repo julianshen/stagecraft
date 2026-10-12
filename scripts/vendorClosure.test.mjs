@@ -35,6 +35,16 @@ describe('importSpecifiers', () => {
     ].join('\n');
     expect(importSpecifiers(src)).toEqual(['./real']);
   });
+
+  it('ignores import-like text inside ordinary strings and template literals', () => {
+    const src = [
+      `const doc = "use import('./example') to load"`,
+      "const msg = 'pick from \"./x\" first'",
+      "const t = `import './tpl'`",
+      "import { real } from './real'",
+    ].join('\n');
+    expect(importSpecifiers(src)).toEqual(['./real']);
+  });
 });
 
 describe('importClosure', () => {

@@ -28,12 +28,16 @@ const kb = (n) => Math.round(n / 102.4) / 10;
 for (const [name, code, alsoExternal] of RUNS) {
   const entry = path.resolve('spikes/k0/.bundle-entry.js'); // inside the project, so packages resolve
   fs.writeFileSync(entry, code);
-  const out = await build({
-    logLevel: 'silent', configFile: false, root: process.cwd(),
-    define: { 'process.env.NODE_ENV': '"production"' }, // as the app build does (library mode leaves it alone)
-    build: { write: false, minify: 'esbuild', lib: { entry, formats: ['es'], fileName: 'x' }, rollupOptions: { external: [/^react($|\/)/, /^react-dom($|\/)/, ...alsoExternal] } },
-  });
-  fs.rmSync(entry);
+  let out;
+  try {
+    out = await build({
+      logLevel: 'silent', configFile: false, root: process.cwd(),
+      define: { 'process.env.NODE_ENV': '"production"' }, // as the app build does (library mode leaves it alone)
+      build: { write: false, minify: 'esbuild', lib: { entry, formats: ['es'], fileName: 'x' }, rollupOptions: { external: [/^react($|\/)/, /^react-dom($|\/)/, ...alsoExternal] } },
+    });
+  } finally {
+    fs.rmSync(entry, { force: true }); // even when the build fails
+  }
   const js = out[0].output.filter((o) => o.type === 'chunk').map((o) => o.code).join('');
   console.log(`${name}: ${kb(js.length)} kB min, ${kb(gzipSync(js).length)} kB gzip`);
 }

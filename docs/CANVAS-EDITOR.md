@@ -207,7 +207,7 @@ Rough total: 7–10 weeks of focused work. K1–K4 already improve fidelity (pre
 - **Memory and performance.** Stage sized to the viewport, ≤ 3 layers, background layer cached, `perfectDrawEnabled(false)`, thumbnails as cached bitmaps (never live stages), `Konva.pixelRatio` capped on low-memory devices.
 - **Accessibility and browser features.** Canvas text is invisible to screen readers, browser find and spell-check. Mitigations: the hidden DOM mirror (§6.7), app-level find (F-TXT-4), spell-check deferred to F4 using the mirror.
 - **Test migration.** ~300 tests move to scene/browser assertions; the gate must not drop. Mitigation: migrate per milestone, keep both paths behind flags until K7.
-- **Two codebases.** officeview evolves independently. Mitigation: the subpath export with a pinned version; contributions go upstream.
+- **Two codebases.** officeview evolves independently. Mitigation: a pinned, unmodified vendored copy (`src/vendor/officeview`) re-synced with `npm run sync:officeview`; fixes go upstream first.
 
 **Open questions (product owner)**
 1. ~~Consume officeview as a dependency with a new `drawing` subpath export, or vendor a copy?~~ **Vendored** (K0, [ADR 0001](adr/0001-canvas-engine.md)).

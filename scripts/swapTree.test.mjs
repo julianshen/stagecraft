@@ -48,7 +48,19 @@ describe('swapIn', () => {
       fs.writeFileSync(path.join(to, 'core/a.ts'), 'half');
       throw new Error('ENOSPC');
     };
-    expect(() => swapIn(target, staging, owned, () => {}, failingCopy)).toThrow('ENOSPC');
+    expect(() => swapIn(target, staging, owned, () => {}, { copy: failingCopy })).toThrow('ENOSPC');
+    expect(read(target)).toEqual(before);
+    expect(fs.readdirSync(target).filter((n) => n.startsWith('.'))).toEqual([]);
+  });
+
+  it('restores the old tree when moving the old entries aside fails partway', () => {
+    const before = read(target);
+    let moves = 0;
+    const flakyRename = (from, to) => {
+      if (from.startsWith(target) && !from.includes('.swap-backup') && ++moves === 2) throw new Error('EBUSY');
+      fs.renameSync(from, to);
+    };
+    expect(() => swapIn(target, staging, owned, () => {}, { rename: flakyRename })).toThrow('EBUSY');
     expect(read(target)).toEqual(before);
     expect(fs.readdirSync(target).filter((n) => n.startsWith('.'))).toEqual([]);
   });
