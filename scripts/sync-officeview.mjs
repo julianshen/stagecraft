@@ -9,8 +9,9 @@
 // commit, the entry modules and extra files; the entries' import closure is
 // copied unmodified, with the same layout under src/, plus the licence files.
 // The wanted ref is always fetched into a temp clone — committed content only,
-// and a local repo's own checkout is never touched. Every file is staged
-// before the vendored trees are replaced, so a failed sync changes nothing.
+// and a local repo's own checkout is never touched. Every file is staged, then
+// swapped in with the old tree kept aside until the manifest is written, so a
+// failed sync changes nothing.
 // vendor.test.js re-derives the closure to check the copy and its packages.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -19,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { importClosure } from './vendorClosure.mjs';
+import { swapIn } from './swapTree.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VENDOR = path.join(ROOT, 'src/vendor/officeview');
@@ -55,13 +57,14 @@ try {
     fs.copyFileSync(from, path.join(staging, to)); // throws (before any change) on a missing source
   }
 
-  // Swap in: every vendored subtree and the licence go, the staged copy comes in.
-  // (Stagecraft's own files here — manifest, README, tests — are top-level files.)
-  for (const e of fs.readdirSync(VENDOR, { withFileTypes: true })) {
-    if (e.isDirectory() || e.name === 'LICENSE') fs.rmSync(path.join(VENDOR, e.name), { recursive: true, force: true });
-  }
-  fs.cpSync(staging, VENDOR, { recursive: true });
-  fs.writeFileSync(MANIFEST, `${JSON.stringify({ ...manifest, commit }, null, 2)}\n`);
+  // Swap in every vendored subtree and the licence (Stagecraft's own files
+  // here — manifest, README, tests — are top-level files and stay); the
+  // manifest is written last, and any failure restores the old tree.
+  const owned = (e) => e.isDirectory() || e.name === 'LICENSE';
+  swapIn(VENDOR, staging, owned, () => {
+    fs.writeFileSync(`${MANIFEST}.tmp`, `${JSON.stringify({ ...manifest, commit }, null, 2)}\n`);
+    fs.renameSync(`${MANIFEST}.tmp`, MANIFEST);
+  });
   console.log(`officeview ${commit.slice(0, 7)}: ${copies.length} files → ${path.relative(ROOT, VENDOR)}; packages: ${packages.join(', ') || 'none'}`);
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });

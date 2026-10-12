@@ -55,6 +55,7 @@ export default defineConfig({
         'src/lib/pptxPost.js',
         'src/lib/ooxml.js',
         'scripts/vendorClosure.mjs',
+        'scripts/swapTree.mjs',
         'src/hooks/useDeckSync.js',
         'src/hooks/useReorderDrag.js',
         'src/hooks/useToasts.js',
