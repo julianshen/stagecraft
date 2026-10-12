@@ -3,19 +3,15 @@
 import { it } from 'vitest';
 import Konva from 'konva';
 import { deck, SLIDE_W, SLIDE_H } from './deck.js';
-import { paintNode, paintSlide, resolveFont } from './paint.js';
+import { paintNode, paintSlide, resolveFont, ms } from './paint.js';
 import { layoutTextBody } from '../../src/vendor/officeview/drawing/text-layout';
 import { createTextBodyMeasurer } from '../../src/vendor/officeview/drawing/text-paint';
 
-const ms = (f) => {
-  const t = performance.now();
-  f();
-  return performance.now() - t;
-};
+const r2 = (v) => Math.round(v * 100) / 100;
+const mb = (bytes) => Math.round(bytes / 1e5) / 10;
 const stats = (xs) => {
   const s = [...xs].sort((a, b) => a - b);
-  const r = (v) => Math.round(v * 100) / 100;
-  return { median: r(s[Math.floor(s.length / 2)]), p95: r(s[Math.floor(s.length * 0.95)]), max: r(s.at(-1)) };
+  return { median: r2(s[Math.floor(s.length / 2)]), p95: r2(s[Math.floor(s.length * 0.95)]), max: r2(s.at(-1)) };
 };
 
 async function pictureBitmap() {
@@ -44,7 +40,7 @@ it('measures the canvas engine on a 40-slide deck', async () => {
   full.height = Math.round(SLIDE_H * scale);
   const fctx = full.getContext('2d');
   fctx.scale(scale, scale);
-  out.firstSlideColdMs = Math.round(ms(() => paintSlide(fctx, deck[0], { image, cache: null })) * 100) / 100;
+  out.firstSlideColdMs = r2(ms(() => paintSlide(fctx, deck[0], { image, cache: null })));
   out.fullSlideColdMs = stats(deck.map((s) => ms(() => paintSlide(fctx, s, { image, cache: null }))));
   const cache = new Map();
   deck.forEach((s) => paintSlide(fctx, s, { image, cache }));
@@ -70,7 +66,7 @@ it('measures the canvas engine on a 40-slide deck', async () => {
   out.thumbnails40ColdMs = thumbnails(new Map()).ms;
   const warm = thumbnails(cache);
   out.thumbnails40WarmMs = warm.ms;
-  out.thumbnailBitmapsMB = Math.round((warm.bitmaps.length * 640 * 360 * 4) / 1e5) / 10;
+  out.thumbnailBitmapsMB = mb(warm.bitmaps.length * 640 * 360 * 4);
 
   // 4. Konva editor stage, viewport-sized (1600×900 → scale 1600/1920), one
   //    Konva.Shape per node painting through the officeview painters; hit
@@ -94,7 +90,7 @@ it('measures the canvas engine on a 40-slide deck', async () => {
     },
   }));
   shapes.forEach((s) => content.add(s));
-  out.stageFirstDrawMs = Math.round(ms(() => content.draw()) * 100) / 100;
+  out.stageFirstDrawMs = r2(ms(() => content.draw()));
   const target = shapes[3];
   out.dragFrameContentLayerMs = stats(Array.from({ length: 120 }, (_, i) => {
     target.x(i * 2);
@@ -109,6 +105,6 @@ it('measures the canvas engine on a 40-slide deck', async () => {
   out.hitTestMs = stats(Array.from({ length: 200 }, (_, i) => ms(() => stage.getIntersection({ x: (i * 37) % 1600, y: (i * 53) % 900 }))));
   // Per layer: a scene canvas at DPR² plus a hit canvas at pixel ratio 1 (Konva's default).
   const perLayer = (dpr) => 1600 * 900 * 4 * (dpr ** 2 + 1);
-  out.stageBackingStoreMB = { dpr1: Math.round((2 * perLayer(1)) / 1e5) / 10, dpr2: Math.round((2 * perLayer(2)) / 1e5) / 10, dpr2ThreeLayers: Math.round((3 * perLayer(2)) / 1e5) / 10 };
+  out.stageBackingStoreMB = { dpr1: mb(2 * perLayer(1)), dpr2: mb(2 * perLayer(2)), dpr2ThreeLayers: mb(3 * perLayer(2)) };
   console.log(`K0_PERF ${JSON.stringify(out)}`);
 }, 120_000);

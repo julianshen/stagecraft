@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    // Explicit, so folders like spikes/ (on-demand benchmarks) never join the suite.
+    include: ['src/**/*.test.{js,jsx}', 'scripts/**/*.test.mjs'],
     setupFiles: ['./src/test/setup.js'],
     css: false,
     coverage: {

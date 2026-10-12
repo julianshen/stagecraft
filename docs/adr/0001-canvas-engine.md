@@ -14,12 +14,11 @@
    - `node scripts/sync-officeview.mjs` re-syncs it (`--ref` moves the pin). Fixes go upstream first.
    - The files stay TypeScript, and Vite/Vitest strip the types with esbuild. Stagecraft gains no `tsc` step.
    - The pin is `9c9518e` (2026-10-10): 18 source files, about 5.7k lines.
-3. **There are three Vitest projects** (`vitest.workspace.js`):
+3. **There are two Vitest projects** (`vitest.workspace.js`):
    - `unit`: the existing jsdom suite.
-   - `paint`: `*.paint.test.js` painter pixel probes.
-   - `browser`: `*.browser.test.jsx` Konva stage behaviour.
-   - `paint` and `browser` run in headless Chromium through Vitest browser mode + Playwright (pinned to 1.56.1, matching the preinstalled browser; CI runs `playwright install chromium`).
-   - `npm test` and `npm run coverage` run all three projects. `npm run test:canvas` runs only the Chromium projects.
+   - `chromium`: headless Chromium through Vitest browser mode + Playwright (`vitest.browser.js`). It runs the `*.paint.test.js` painter pixel probes and the `*.browser.test.jsx` Konva stage tests. The design doc's separate `paint` and `browser` projects are one project here, so a run launches one browser and pre-bundles dependencies once.
+   - Locally, the lockfile's Playwright (1.56.1) matches the preinstalled browser. CI installs and caches its own.
+   - `npm run coverage` (CI) runs both projects once. `npm run test:canvas` runs only `chromium`.
 4. **The perf budget below binds K1–K6.** Each milestone that touches a measured path re-runs the spike and records the numbers in its PR.
 
 ## What the spike showed

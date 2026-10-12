@@ -1,7 +1,7 @@
 // How many measurer calls one text box costs, and what a memoised measurer saves.
 import { it } from 'vitest';
 import { deck } from './deck.js';
-import { resolveFont } from './paint.js';
+import { resolveFont, ms } from './paint.js';
 import { layoutTextBody } from '../../src/vendor/officeview/drawing/text-layout';
 import { createTextBodyMeasurer } from '../../src/vendor/officeview/drawing/text-paint';
 
@@ -17,7 +17,7 @@ it('counts measurer calls per text box', () => {
     return memo.get(k);
   };
   const boxes = deck.flatMap((s) => s.filter((n) => n.kind === 'text'));
-  const time = (m) => { const t = performance.now(); boxes.forEach((n) => layoutTextBody(n.body, n.w, n.h, m)); return performance.now() - t; };
+  const time = (m) => ms(() => boxes.forEach((n) => layoutTextBody(n.body, n.w, n.h, m)));
   const rawMs = time(counted);
   const memoMs = time(memoised); // cold memo, shared across all 320 boxes
   const chars = boxes.reduce((a, n) => a + n.body.paragraphs.reduce((b, p) => b + p.runs.reduce((c, r) => c + r.text.length, 0), 0), 0);

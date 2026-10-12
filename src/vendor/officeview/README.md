@@ -8,13 +8,15 @@ and `drawing/NOTICE.md`). Design context: `docs/CANVAS-EDITOR.md` (Phase K).
 
 - **Do not edit `core/` or `drawing/` by hand.** Fix upstream, then re-sync.
 - `officeview.json` is the manifest: the repo, the pinned `commit`, the `entries`
-  Stagecraft imports, and the `files` the sync copied (their import closure).
+  Stagecraft imports and the licence `extraFiles`. The sync copies the entries'
+  import closure.
 - Re-sync the pin: `node scripts/sync-officeview.mjs`.
   Move the pin: `node scripts/sync-officeview.mjs --ref <sha|branch>`
   (or `--from <local checkout>`). To need another module, add it to `entries`.
 - The files are TypeScript. Vite/Vitest strip the types with esbuild; Stagecraft
-  itself stays JavaScript and has no `tsc` step. Their only package dependency is
-  `fast-xml-parser` (used by the XML-parsing paths).
-- `vendor.test.js` checks the manifest matches the files on disk and smoke-tests
-  the engine. The vendored code is not under the coverage gate (it carries
+  itself stays JavaScript and has no `tsc` step. Their only package dependency
+  is `fast-xml-parser` (used by the XML-parsing paths).
+- `vendor.test.js` re-derives the closure and checks it equals the files on disk,
+  that every package the closure imports is a runtime dependency in
+  `package.json`, and smoke-tests the engine. The vendored code is not under the coverage gate (it carries
   officeview's own tests upstream).

@@ -4,13 +4,23 @@ import { describe, it, expect } from 'vitest';
 import { resolvePreset } from './drawing/geometry';
 import { layoutTextBody } from './drawing/text-layout';
 import { SHAPES } from '../../lib/shapes.js';
+import { importClosure } from '../../../scripts/vendorClosure.mjs';
 import manifest from './officeview.json';
+import pkg from '../../../package.json';
+
+// The vendored files on disk, by path relative to this folder.
+const vendored = Object.fromEntries(Object.entries(import.meta.glob(['./core/**', './drawing/**'], { query: '?raw', import: 'default', eager: true }))
+  .map(([p, src]) => [p.slice(2), src]));
+const closure = importClosure((p) => vendored[p] ?? null, manifest.entries);
 
 describe('vendored officeview', () => {
-  it('is pinned to a full commit and lists exactly the files it vendors', () => {
+  it('is pinned to a full commit and holds exactly its entries\' import closure (+ licence files)', () => {
     expect(manifest.commit).toMatch(/^[0-9a-f]{40}$/);
-    const vendored = import.meta.glob(['./core/**', './drawing/**'], { query: '?raw', eager: false });
-    expect(Object.keys(vendored).map((p) => p.slice(2)).sort()).toEqual([...manifest.files].sort());
+    expect(Object.keys(vendored).sort()).toEqual([...closure.files, ...manifest.extraFiles].sort());
+  });
+
+  it('imports only packages Stagecraft installs as runtime dependencies', () => {
+    expect(closure.packages.filter((p) => !(p in pkg.dependencies))).toEqual([]);
   });
 
   it('resolves the preset geometry of every Stagecraft shape', () => {

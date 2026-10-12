@@ -5,24 +5,35 @@ import { layoutTextBody } from '../../src/vendor/officeview/drawing/text-layout'
 import { paintTextBody, createTextBodyMeasurer } from '../../src/vendor/officeview/drawing/text-paint';
 import { SLIDE_W, SLIDE_H } from './deck.js';
 
-export const resolveFont = () => '"Inter", "Helvetica Neue", Arial, sans-serif';
+// The app's --f-sans stack (src/styles/main.css), as a full CSS stack.
+export const resolveFont = () => '"Inter", -apple-system, BlinkMacSystemFont, sans-serif';
 
-// env.cache: per-node layout/geometry cache (decision 6); null = no caching.
+// env.cache: per-node geometry/layout cache (decision 6); null = recompute.
+const cached = (env, node, compute) => {
+  let v = env.cache?.get(node);
+  if (!v) {
+    v = compute();
+    env.cache?.set(node, v);
+  }
+  return v;
+};
+
+/** Wall-clock ms of a synchronous call. */
+export const ms = (f) => {
+  const t = performance.now();
+  f();
+  return performance.now() - t;
+};
+
 export function paintNode(ctx, node, env) {
   ctx.save();
   ctx.translate(node.x + node.w / 2, node.y + node.h / 2);
   if (node.rot) ctx.rotate((node.rot * Math.PI) / 180);
   ctx.translate(-node.w / 2, -node.h / 2);
   if (node.kind === 'shape') {
-    const geo = env.cache?.get(node) ?? resolvePreset(node.preset, node.w, node.h);
-    env.cache?.set(node, geo);
-    paintGeometry(ctx, geo, node.style, node.w, node.h);
+    paintGeometry(ctx, cached(env, node, () => resolvePreset(node.preset, node.w, node.h)), node.style, node.w, node.h);
   } else if (node.kind === 'text') {
-    let layout = env.cache?.get(node);
-    if (!layout) {
-      layout = layoutTextBody(node.body, node.w, node.h, createTextBodyMeasurer(ctx, resolveFont));
-      env.cache?.set(node, layout);
-    }
+    const layout = cached(env, node, () => layoutTextBody(node.body, node.w, node.h, createTextBodyMeasurer(ctx, resolveFont)));
     paintTextBody(node.body, ctx, 0, 0, node.w, node.h, resolveFont, undefined, { layout });
   } else {
     ctx.drawImage(env.image, 0, 0, node.w, node.h);

@@ -16,8 +16,20 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      # The paint/browser test projects run in headless Chromium (vitest.workspace.js).
-      - run: npx playwright install --with-deps chromium
-      - run: npm test
+      # The chromium test project runs in headless Chromium (vitest.workspace.js).
+      # The browser build is cached per Playwright version; its system packages
+      # are installed every run.
+      - id: playwright
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      # Runs every test project once, under the coverage gate.
       - run: npm run coverage
       - run: npm run build

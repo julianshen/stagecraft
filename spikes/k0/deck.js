@@ -1,3 +1,7 @@
+import { SLIDE_W, SLIDE_H } from '../../src/lib/elements.js';
+
+export { SLIDE_W, SLIDE_H };
+
 // A synthetic 40-slide deck shaped like a typical imported one: per slide 6
 // preset shapes (half gradient-filled, all outlined), 8 text boxes (2–3
 // paragraphs, 14–40 pt, mixed runs) and 2 pictures — 16 nodes, in slide px.
@@ -34,8 +38,6 @@ function textNode(s, i) {
 
 const pictureNode = (i) => ({ kind: 'image', x: 1500, y: 80 + i * 150, w: 320, h: 120, rot: 0 });
 
-export const SLIDE_W = 1920;
-export const SLIDE_H = 1080;
 export const deck = Array.from({ length: 40 }, (_, s) => [
   ...Array.from({ length: 6 }, (_, i) => shapeNode(s, i)),
   ...Array.from({ length: 8 }, (_, i) => textNode(s, i)),
