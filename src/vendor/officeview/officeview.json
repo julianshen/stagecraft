@@ -1,0 +1,38 @@
+{
+  "repo": "https://github.com/julianshen/officeview.git",
+  "commit": "9c9518e50bac0ed9622f934a87cccf47bcd52e42",
+  "entries": [
+    "drawing/geometry.ts",
+    "drawing/paint.ts",
+    "drawing/style.ts",
+    "drawing/text-layout.ts",
+    "drawing/text-paint.ts",
+    "core/fonts/register.ts"
+  ],
+  "extraFiles": [
+    "drawing/LICENSE",
+    "drawing/NOTICE.md"
+  ],
+  "files": [
+    "core/fonts/register.ts",
+    "core/fonts/types.ts",
+    "core/geometry.ts",
+    "core/text-metrics.ts",
+    "core/text-recording.ts",
+    "core/xml.ts",
+    "drawing/geometry-xml.ts",
+    "drawing/geometry.ts",
+    "drawing/paint.ts",
+    "drawing/pattern.ts",
+    "drawing/presets.json",
+    "drawing/style.ts",
+    "drawing/text-layout.ts",
+    "drawing/text-paint.ts",
+    "drawing/text-warp-catalog.ts",
+    "drawing/text-warp.ts",
+    "drawing/text.ts",
+    "drawing/vertical-orientation.ts",
+    "drawing/LICENSE",
+    "drawing/NOTICE.md"
+  ]
+}

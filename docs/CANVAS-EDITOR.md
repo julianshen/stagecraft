@@ -1,6 +1,6 @@
 # Canvas slide editor — design
 
-> Status: **design + plan** (nothing here is built unless marked ✅). It re-platforms slide rendering and the editing surface from DOM/CSS/SVG onto `<canvas>`, following the approach of [officeview](https://github.com/julianshen/officeview), and evaluates [Konva](https://konvajs.org/) as the interaction layer.
+> Status: **design + plan**; K0 ✅ ([ADR 0001](adr/0001-canvas-engine.md): option B confirmed, officeview vendored, perf budget). Nothing else here is built unless marked ✅. It re-platforms slide rendering and the editing surface from DOM/CSS/SVG onto `<canvas>`, following the approach of [officeview](https://github.com/julianshen/officeview), and evaluates [Konva](https://konvajs.org/) as the interaction layer.
 >
 > Companions:
 > - [`POWERPOINT-SPEC.md`](POWERPOINT-SPEC.md) — feature spec; its §4 delivery plan is revised to include this work as **Phase K**;
@@ -67,7 +67,7 @@ Directly reusable for Stagecraft (all pure TypeScript that takes a plain `Canvas
 
 Gaps we must build ourselves: officeview is **view-only** — no shape hit testing, no selection or transforms, no caret/edit model, no IME, no autofit, no bidi/UAX #14, layout recomputed on every paint, shape effects (shadow/glow) not painted, charts limited to a clustered bar.
 
-**How to consume it.** The valuable modules are not in officeview's public `exports`. Preferred: add a `officeview/drawing` subpath export (geometry, paint, style, text layout/paint, fonts) in officeview itself and depend on the published package, so fixes flow both ways. Fallback: vendor `src/drawing/*` + the `core/` helpers it needs under `src/vendor/officeview/` with its MIT licence and the Apache-2.0 POI / Unicode notices. Stagecraft stays JavaScript; it consumes the built ESM + `.d.ts`.
+**How to consume it.** ✅ (K0) **Vendored.** The valuable modules are not in officeview's public `exports`, and officeview isn't published to npm. So a pinned, unmodified copy of the import closure Stagecraft needs lives in `src/vendor/officeview/`, with its MIT licence and the Apache-2.0 POI notice. `scripts/sync-officeview.mjs` re-syncs it from the manifest, and fixes go upstream first. Stagecraft stays JavaScript: Vite/Vitest strip the vendored TypeScript with esbuild. (Considered and not chosen: a `officeview/drawing` subpath export consumed from npm or a git commit.)
 
 ## 4. What Konva gives us (and doesn't)
 
@@ -85,7 +85,7 @@ Gaps we must build ourselves: officeview is **view-only** — no shape hit testi
 | **Rich text** | ❌ | `Konva.Text` is single-style; mixed runs need our own layout |
 | Testing in jsdom | ❌ | Konva recommends a real browser (Vitest browser mode) for Stage tests |
 
-Costs: bundle size for Konva plus react-konva and `react-reconciler` (on the order of 50–70 kB gzipped; K0 measures it against today's build); a second React reconciler in the tree; memory (each layer is a full canvas — 1920×1080 at DPR 2 ≈ 33 MB/layer, so the stage must be sized to the viewport, not the slide, and capped at 3 layers).
+Costs: bundle size for Konva plus react-konva and `react-reconciler` (K0 measured **96 kB gzipped** with core-only imports, 120 kB with the default entry — [ADR 0001](adr/0001-canvas-engine.md); it loads lazily with the editor); a second React reconciler in the tree; memory (each layer is a full canvas — 1920×1080 at DPR 2 ≈ 33 MB/layer, so the stage must be sized to the viewport, not the slide, and capped at 3 layers).
 
 ## 5. Options and recommendation
 
@@ -187,9 +187,9 @@ Each milestone is its own PR, behind a `canvasRenderer` / `canvasEditor` setting
 
 | M | Scope | Size | Depends |
 |---|---|---|---|
-| K0 | **Spike + decision record.** officeview `drawing` subpath export (or vendoring); add `konva` + `react-konva@18`; Vitest `paint` and `browser` projects; perf budget on a 40-slide deck (first paint, drag fps, memory). Confirms or rejects option B. | S–M | — |
+| K0 ✅ | **Spike + decision record** ([ADR 0001](adr/0001-canvas-engine.md)). officeview vendored (`src/vendor/officeview`, `scripts/sync-officeview.mjs`); `konva` + `react-konva@18`; Vitest `paint` and `browser` projects (headless Chromium); perf budget on a 40-slide deck. Option B confirmed. Finding: text layout dominates a cold slide (~7 ms/box from repeated `measureText`), so K2 adds a measure cache. | S–M | — |
 | K1 | **Drawing core.** `src/canvas/`: scene builder for *elements* (all current types; groups via `groupId`; text ink read from the post-A3 `color` field), geometry from presets (our 11 shapes mapped to `prstGeom` names), fills/gradients/lines/dashes/arrows, images in every A3 fit mode (Fill/`cover`, Fit/`contain`, `stretch`, each with a parity test), opacity, rotation/flip, shadow; `paintSlide`; `<SlideCanvas>` with DPR; `ensureAssets` (fonts + image decode). `blank` slides render on canvas. | M | K0, A3 |
-| K2 | **Text engine + rich-text model.** officeview layout + measurer, font epochs, layout cache; insets, anchors, autofit (shrink on overflow, new), bullets. **Model (F-TXT-3):** the `paragraphs`/runs schema with its `deckUtils.js` validator, `normalizeDeck` migration (plain `content` → one run), MCP/Co-pilot schema, and PPTX export/import of runs and paragraph props — so rich text is a complete, round-tripping field before anything edits it. | L | K1 |
+| K2 | **Text engine + rich-text model.** officeview layout + measurer, **measure cache** (font + text, per font epoch — ADR 0001 budget: a cold slide ≤ 16 ms), font epochs, layout cache; insets, anchors, autofit (shrink on overflow, new), bullets. **Model (F-TXT-3):** the `paragraphs`/runs schema with its `deckUtils.js` validator, `normalizeDeck` migration (plain `content` → one run), MCP/Co-pilot schema, and PPTX export/import of runs and paragraph props — so rich text is a complete, round-tripping field before anything edits it. | L | K1 |
 | K3 | **Layouts and content as scenes.** Layout compilers for the 12 template layouts (`cover`, `agenda`, `divider`, `kpi`, `chart`, `split`, `table`, `text`, `list`, `roadmap`, `risks`, `thanks`; `blank` is already complete from K1, decision 3); chart painter from `chartSpec.js`; roadmap/risks painters; table grid painter; **`pptxExport.js` layout builders re-pointed at the compiled scene** (decision 8) with scene↔export parity tests. Pixel probes and scene↔export parity for all 13 layouts, `blank` included. | L | K2 |
 | K4 | **Read-only surfaces on canvas.** Thumbnails/sorter with a bitmap cache keyed by the render key (decision 2; optional worker), presenter (transitions via canvas compositing), Home slide-1 cards (U13), PDF export via canvas → jsPDF. | M | K3 |
 | K5 | **Konva editor stage.** react-konva Stage + 3 layers; select/drag/smart guides/Transformer (single, multi, group)/marquee/shape draw/pen/context-menu hit/zoom + Fit + pan (U8)/rulers/collab cursors; text via the DOM overlay (§7 first cut). Parity checklist = today's `CanvasSlide` tests. | L | K4 |
@@ -210,7 +210,7 @@ Rough total: 7–10 weeks of focused work. K1–K4 already improve fidelity (pre
 - **Two codebases.** officeview evolves independently. Mitigation: the subpath export with a pinned version; contributions go upstream.
 
 **Open questions (product owner)**
-1. Consume officeview as a dependency with a new `drawing` subpath export (recommended), or vendor a copy?
+1. ~~Consume officeview as a dependency with a new `drawing` subpath export, or vendor a copy?~~ **Vendored** (K0, [ADR 0001](adr/0001-canvas-engine.md)).
 2. Is option C (canvas painter, DOM interaction overlay) acceptable as an interim release if K5 runs long?
 3. Should the import path later switch to officeview's `parsePptx` (masters, themes, 187 presets, rich runs) with a converter to the Stagecraft model, replacing most of `pptxImport.js`?
 4. Is K6 (canvas-native text) required before Phase B content features, or may B3/B4 proceed on the K5 overlay?

@@ -52,6 +52,7 @@ export default defineConfig({
         'src/lib/imageOrientation.js',
         'src/lib/pptxPost.js',
         'src/lib/ooxml.js',
+        'scripts/vendorClosure.mjs',
         'src/hooks/useDeckSync.js',
         'src/hooks/useReorderDrag.js',
         'src/hooks/useToasts.js',

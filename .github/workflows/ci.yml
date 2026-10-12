@@ -16,6 +16,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # The paint/browser test projects run in headless Chromium (vitest.workspace.js).
+      - run: npx playwright install --with-deps chromium
       - run: npm test
       - run: npm run coverage
       - run: npm run build

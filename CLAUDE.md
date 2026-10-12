@@ -25,6 +25,8 @@ npm run preview    # serve the production build
 npm test           # run the test suite once (Vitest)
 npm run test:watch # TDD watch mode
 npm run coverage   # run with coverage; fails under the 90% threshold
+npm run test:canvas  # only the headless-Chromium projects (paint + browser)
+npm run sync:officeview  # re-vendor officeview's drawing engine at the pinned commit
 ```
 
 Run a single test file or case:
@@ -35,7 +37,7 @@ npx vitest run -t "adds a slide to the last section" # by test name (substring)
 
 `npm run build` (tsc-free Vite build) is a secondary structural check — if it transforms all modules cleanly the change is sound — but **tests are the primary gate** (see Testing & TDD policy).
 
-> Test harness: **Vitest + `@vitest/coverage-v8`**, with `jsdom` + `@testing-library/react` (config in `vitest.config.js`, globals + jest-dom matchers in `src/test/setup.js`). The 90% coverage gate is enforced against `coverage.include` — currently the unit-tested core (`src/server/api.js`, `src/lib/deckOrder.js`, `src/lib/llmClient.js`, `src/data/deck.js`). **When you add tests for more of the app, widen that `include` list** so the new code comes under the gate.
+> Test harness: **Vitest + `@vitest/coverage-v8`**, with `jsdom` + `@testing-library/react` (config in `vitest.config.js`, globals + jest-dom matchers in `src/test/setup.js`). `vitest.workspace.js` splits the suite into three projects: `unit` (jsdom — everything else), `paint` (`*.paint.test.js`, canvas pixel probes) and `browser` (`*.browser.test.jsx`, Konva stages). The last two run in headless Chromium via Vitest browser mode + Playwright (the preinstalled browser at `/opt/pw-browsers`; `playwright` is pinned to match it). The 90% coverage gate is enforced against `coverage.include` — currently the unit-tested core (`src/server/api.js`, `src/lib/deckOrder.js`, `src/lib/llmClient.js`, `src/data/deck.js`). **When you add tests for more of the app, widen that `include` list** so the new code comes under the gate.
 
 ## Testing & TDD policy (required)
 
@@ -103,6 +105,10 @@ A new `layout` must be wired in up to four places:
 3. `editor/Editor.jsx` — a creator branch in `addComponent` if it should be insertable from the toolbar.
 4. `lib/pptxExport.js` — a per-layout builder, or it won't export.
 
+## Vendored code
+
+`src/vendor/officeview/` is a pinned, unmodified copy of officeview's Canvas2D drawing engine (preset geometry, Office fills/lines, rich-text layout/paint) for the Phase K canvas renderer. It is TypeScript stripped by Vite's esbuild (Stagecraft has no `tsc`). **Don't edit it by hand**: fix upstream, then `npm run sync:officeview` (the manifest `officeview.json` holds the pin and entry modules). It is outside the coverage gate. Decision record: `docs/adr/0001-canvas-engine.md`.
+
 ## Reference docs
 
 - `SPEC.md` — full feature spec with per-feature implementation status.
@@ -110,3 +116,4 @@ A new `layout` must be wired in up to four places:
 - `design.md` — design tokens (typography, color, spacing, shadows, layouts, MCP API).
 - `docs/POWERPOINT-PARITY.md` — PowerPoint parity review + feature matrix/scorecard; `docs/POWERPOINT-SPEC.md` — UI review, per-feature PowerPoint-compatibility spec and phased delivery plan.
 - `docs/CANVAS-EDITOR.md` — design for moving slide rendering and the editor onto `<canvas>` (Konva stage + officeview drawing engine) — Phase K of the delivery plan.
+- `docs/adr/` — architecture decision records (0001: the canvas engine, with its perf budget).
