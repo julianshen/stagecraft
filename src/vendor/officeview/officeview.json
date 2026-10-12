@@ -11,6 +11,8 @@
   ],
   "extraFiles": [
     "drawing/LICENSE",
-    "drawing/NOTICE.md"
+    "drawing/NOTICE.md",
+    "drawing/unicode/LICENSE",
+    "drawing/unicode/NOTICE.md"
   ]
 }

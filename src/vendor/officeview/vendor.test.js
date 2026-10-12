@@ -19,6 +19,15 @@ describe('vendored officeview', () => {
     expect(Object.keys(vendored).sort()).toEqual([...closure.files, ...manifest.extraFiles].sort());
   });
 
+  it('carries every licence/notice file a vendored source cites (e.g. "See unicode/LICENSE")', () => {
+    const sources = Object.entries(vendored).filter(([file]) => file.endsWith('.ts'));
+    const cited = sources.flatMap(([file, src]) => [...src.matchAll(/\b([\w./-]*(?:LICENSE|NOTICE\.md))\b/g)]
+      .map((m) => m[1]).filter((ref) => ref.includes('/'))
+      .map((ref) => [file.split('/').slice(0, -1), ...ref.split('/')].flat().join('/')));
+    expect(cited.length).toBeGreaterThan(0);
+    expect([...new Set(cited)].filter((p) => !(p in vendored))).toEqual([]);
+  });
+
   it('imports only packages Stagecraft installs as runtime dependencies', () => {
     expect(closure.packages.filter((p) => !(p in pkg.dependencies))).toEqual([]);
   });

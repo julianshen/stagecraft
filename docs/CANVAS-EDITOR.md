@@ -67,7 +67,7 @@ Directly reusable for Stagecraft (all pure TypeScript that takes a plain `Canvas
 
 Gaps we must build ourselves: officeview is **view-only** — no shape hit testing, no selection or transforms, no caret/edit model, no IME, no autofit, no bidi/UAX #14, layout recomputed on every paint, shape effects (shadow/glow) not painted, charts limited to a clustered bar.
 
-**How to consume it.** ✅ (K0) **Vendored.** The valuable modules are not in officeview's public `exports`, and officeview isn't published to npm. So a pinned, unmodified copy of the import closure Stagecraft needs lives in `src/vendor/officeview/`, with its MIT licence and the Apache-2.0 POI notice. `scripts/sync-officeview.mjs` re-syncs it from the manifest, and fixes go upstream first. Stagecraft stays JavaScript: Vite/Vitest strip the vendored TypeScript with esbuild. (Considered and not chosen: a `officeview/drawing` subpath export consumed from npm or a git commit.)
+**How to consume it.** ✅ (K0) **Vendored.** The valuable modules are not in officeview's public `exports`, and officeview isn't published to npm. So a pinned, unmodified copy of the import closure Stagecraft needs lives in `src/vendor/officeview/`, with its MIT licence and the Apache-2.0 POI and Unicode License V3 notices. `scripts/sync-officeview.mjs` re-syncs it from the manifest, and fixes go upstream first. Stagecraft stays JavaScript: Vite/Vitest strip the vendored TypeScript with esbuild. (Considered and not chosen: a `officeview/drawing` subpath export consumed from npm or a git commit.)
 
 ## 4. What Konva gives us (and doesn't)
 

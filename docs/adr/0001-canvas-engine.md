@@ -10,7 +10,7 @@
 2. **officeview is vendored, not a dependency.** This answers open question 1 of `CANVAS-EDITOR.md`.
    - officeview isn't on npm, and its public exports don't include the drawing modules.
    - A pinned, unmodified copy of the import closure of the modules Phase K needs lives in `src/vendor/officeview/`.
-   - It carries officeview's MIT licence and the Apache-2.0 POI notice for `presets.json`.
+   - It carries officeview's MIT licence, the Apache-2.0 POI notice for `presets.json` and the Unicode License V3 notice for the vertical-orientation data.
    - `node scripts/sync-officeview.mjs` re-syncs it (`--ref` moves the pin). Fixes go upstream first.
    - The files stay TypeScript, and Vite/Vitest strip the types with esbuild. Stagecraft gains no `tsc` step.
    - The pin is `9c9518e` (2026-10-10): 18 source files, about 5.7k lines.
