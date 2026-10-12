@@ -18,8 +18,18 @@ it('counts measurer calls per text box', () => {
   };
   const boxes = deck.flatMap((s) => s.filter((n) => n.kind === 'text'));
   const time = (m) => ms(() => boxes.forEach((n) => layoutTextBody(n.body, n.w, n.h, m)));
-  const rawMs = time(counted);
-  const memoMs = time(memoised); // cold memo, shared across all 320 boxes
+  // Warm the layout engine and fonts first, then alternate the two variants so
+  // neither gets the JIT-warm slot; each memoised round starts from an empty memo.
+  time(raw);
+  const rounds = Array.from({ length: 3 }, () => {
+    const r = time(counted);
+    memo.clear();
+    return [r, time(memoised)];
+  });
+  const median = (xs) => [...xs].sort((a, b) => a - b)[1];
+  const rawMs = median(rounds.map((r) => r[0]));
+  const memoMs = median(rounds.map((r) => r[1]));
+  calls /= rounds.length;
   const chars = boxes.reduce((a, n) => a + n.body.paragraphs.reduce((b, p) => b + p.runs.reduce((c, r) => c + r.text.length, 0), 0), 0);
   console.log(`K0_MEASURE ${JSON.stringify({ boxes: boxes.length, charsPerBox: Math.round(chars / boxes.length), callsPerBox: Math.round(calls / boxes.length), msPerBoxRaw: +(rawMs / boxes.length).toFixed(2), msPerBoxMemo: +(memoMs / boxes.length).toFixed(2), memoEntries: memo.size })}`);
 });

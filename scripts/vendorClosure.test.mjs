@@ -20,6 +20,21 @@ describe('importSpecifiers', () => {
     ].join('\n');
     expect(importSpecifiers(src)).toEqual(['./a', '../core/c', './d', './e', './presets.json', 'fast-xml-parser', './fg']);
   });
+
+  it('includes side-effect and dynamic imports', () => {
+    expect(importSpecifiers("import './polyfill'\nconst m = await import('./lazy')\nimport \"pkg/side\"")).toEqual(['./polyfill', './lazy', 'pkg/side']);
+  });
+
+  it('ignores imports inside comments, but not comment-like text inside strings', () => {
+    const src = [
+      "// import { old } from './old'",
+      "/* export * from './gone'",
+      "   import './gone-too' */",
+      "const url = 'https://example.com/x' // trailing comment",
+      "import { real } from './real'",
+    ].join('\n');
+    expect(importSpecifiers(src)).toEqual(['./real']);
+  });
 });
 
 describe('importClosure', () => {

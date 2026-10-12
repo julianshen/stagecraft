@@ -30,7 +30,7 @@ The deck is synthetic but shaped like an imported one: 40 slides × 16 nodes. Ea
 | Full repaint, editor size (1600 CSS px wide, DPR 2), **cold** (text laid out) | 55–66 ms median, p95 ≈ 90 ms | Over a frame: text layout is ~90 % of it |
 | Full repaint, **layouts cached** | 1.4–1.9 ms median | Painting itself is cheap at any DPR |
 | Text layout, one slide (8 boxes) | ~50–60 ms (≈ 7 ms/box, **195 measurer calls/box**) | The cost is repeated `measureText` |
-| ↳ with a measurer memoised on (font, text) | **0.92 ms/box** (7.6× faster) | The synthetic deck's small vocabulary flatters the hit rate; real text still repeats words heavily |
+| ↳ with a measurer memoised on (font, text) | **≈ 1.05 ms/box** (≈ 7× faster; engine warmed, variants alternated, median of 3) | The synthetic deck's small vocabulary flatters the hit rate; real text still repeats words heavily |
 | 40 thumbnails (320×180 CSS at DPR 2) — cold / warm | **2.6 s** / 0.2 s | Cold thumbnails need the measure cache and chunking |
 | Thumbnail bitmaps at 640×360 | 37 MB | Size bitmaps to the displayed size × DPR |
 | Konva stage, first draw of a slide (16 `Konva.Shape`s calling the painters) | 11–31 ms | One-time |
@@ -55,7 +55,7 @@ The design doc estimated Konva at 50–70 kB gzip. It measures 96 kB even with c
 
 - **Interaction is not the bottleneck.** A whole-layer redraw per drag frame takes under 4 ms (p95), and hit tests are free. Konva's overhead over a hand-written option A is lost in the noise. What Konva saves — a hit graph for arbitrary geometry, a multi-node Transformer with rotation snapping, drag constraints, cursors and touch — is the code that option A would have to write and test. It also makes the coming handles (shape adjust, crop, connector ends) cheap.
 - **The real cost is text layout, and it's the same under every option.** A, B and C all paint text through the same officeview engine, so the measure cache is a K2 deliverable either way.
-- **The bundle cost is bounded and avoidable on the paths that don't edit.** Konva is only the editor's shell (decision 1). It loads in the editor's lazy chunk, so Home, presenter and export never pay for it. The painters are needed everywhere and belong in the main chunk. They drop to about 80 kB gzip once the 32 kB XML parser is split out of the preset path upstream.
+- **The bundle cost is bounded and avoidable on the paths that don't edit.** Konva is only the editor's shell (decision 1). It loads in the editor's lazy chunk, so Home, presenter and export never pay for it. The painters are needed everywhere and belong in the main chunk. They drop to about 80 kB gzip once the 32 kB XML parser leaves the paint path upstream. `core/xml.ts` (and so `fast-xml-parser`) is imported by `geometry.ts`, `style.ts` and `text.ts` for their DrawingML-parsing functions, so all three parse paths must move out (or load `core/xml` lazily).
 - **Option C stays the fallback** if K5 runs long: canvas painters (K1–K4) under the existing DOM interaction overlay.
 
 ## Perf budget (DPR 2, mid-range laptop; checked by re-running the spike)
@@ -68,7 +68,7 @@ The design doc estimated Konva at 50–70 kB gzip. It measures 96 kB even with c
 | 40 thumbnails cold, main-thread work | ≤ 600 ms total, in ≤ 16 ms chunks, visible slides first | 2.6 s (one block) | K2 (cache) + K4 (chunked/idle or worker) |
 | Thumbnail bitmap memory, 40 slides | ≤ 16 MB (display size × DPR) | 37 MB at 640×360 | K4 |
 | Editor stage backing store | ≤ 3 layers, viewport-sized (≤ 90 MB at DPR 2) | 58 MB (2 layers) | K5 |
-| Bundle: main chunk growth (painters) | ≤ 85 kB gzip | 112 kB | upstream split of `geometry.ts` XML parsing, then K1 |
+| Bundle: main chunk growth (painters) | ≤ 85 kB gzip | 112 kB | upstream: XML parsing out of `geometry.ts`/`style.ts`/`text.ts`, then K1 |
 | Bundle: editor chunk (Konva) | ≤ 100 kB gzip, lazy | 96 kB (core imports) | K5 (import from `ReactKonvaCore` + `konva/lib/Core` only) |
 
 ## Consequences
@@ -77,5 +77,5 @@ The design doc estimated Konva at 50–70 kB gzip. It measures 96 kB even with c
 - K2's scope gains the **measure cache**, keyed by font shorthand + text + tracking and invalidated by the font epoch. Its acceptance test is the "one slide cold" budget.
 - K4 renders thumbnails visible-first and in chunks, or in a worker over `OffscreenCanvas`. It sizes bitmaps to the rail.
 - K5 imports Konva only through `react-konva/es/ReactKonvaCore` + `konva/lib/Core` (and the shapes it uses), inside the lazily loaded editor chunk.
-- **Upstream (officeview):** split `parseGeometry`/`custGeom` XML parsing out of `drawing/geometry.ts`, so `resolvePreset` doesn't pull in `fast-xml-parser`. Then re-sync.
+- **Upstream (officeview):** move the DrawingML-parsing functions (`parseGeometry`/`custGeom` in `geometry.ts`, and the parsers in `style.ts` and `text.ts`) into parse-only modules, or load `core/xml` lazily, so the painters don't pull in `fast-xml-parser`. Then re-sync and re-run `spikes/k0/bundle.mjs`.
 - **Unanswered here** (still with the product owner): `CANVAS-EDITOR.md` open questions 2–4.

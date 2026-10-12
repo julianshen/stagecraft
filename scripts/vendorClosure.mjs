@@ -4,11 +4,15 @@
 // the source root, '/'-separated), each at most once.
 import path from 'node:path';
 
-// `import … from '…'` / `export … from '…'` (multi-line clauses included).
-const FROM = /\b(?:import|export)\s[^'";]*?\bfrom\s*['"]([^'"]+)['"]/g;
+// `import … from '…'` / `export … from '…'` (multi-line clauses included),
+// side-effect `import '…'`, and dynamic `import('…')`.
+const IMPORT = /\b(?:import|export)\s[^'";]*?\bfrom\s*(['"])([^'"]+)\1|\bimport\s*\(?\s*(['"])([^'"]+)\3/g;
+// Comments, skipping over string literals (whose `//` isn't a comment).
+const COMMENT_OR_STRING = /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
+const stripComments = (src) => src.replace(COMMENT_OR_STRING, (m, str) => str ?? '');
 
-/** The specifiers a module imports or re-exports from. */
-export const importSpecifiers = (src) => [...src.matchAll(FROM)].map((m) => m[1]);
+/** The specifiers a module imports, re-exports from or loads dynamically (comments ignored). */
+export const importSpecifiers = (src) => [...stripComments(src).matchAll(IMPORT)].map((m) => m[2] ?? m[4]);
 
 // A bare specifier's package: `pkg` or `@scope/pkg`, without any subpath.
 const packageOf = (spec) => spec.split('/').slice(0, spec.startsWith('@') ? 2 : 1).join('/');

@@ -1,4 +1,4 @@
-import { configDefaults, defineWorkspace } from 'vitest/config';
+import { defineWorkspace } from 'vitest/config';
 import { chromiumBrowser } from './vitest.browser.js';
 import base from './vitest.config.js';
 
@@ -11,7 +11,8 @@ import base from './vitest.config.js';
 const CHROMIUM_TESTS = ['src/**/*.paint.test.{js,jsx}', 'src/**/*.browser.test.{js,jsx}'];
 
 export default defineWorkspace([
-  { extends: './vitest.config.js', test: { name: 'unit', exclude: [...configDefaults.exclude, ...CHROMIUM_TESTS] } },
+  // `extends` concatenates arrays: this exclude adds to the base one.
+  { extends: './vitest.config.js', test: { name: 'unit', exclude: CHROMIUM_TESTS } },
   {
     // Not `extends`: that concatenates arrays, so the base `include` would join
     // this one. Take the base's plugins and setup instead.

@@ -1,19 +1,22 @@
 #!/usr/bin/env node
 // Re-vendor officeview's drawing engine into src/vendor/officeview/.
 //
-//   npm run sync:officeview                        # re-sync the pinned commit
-//   npm run sync:officeview -- --ref main          # move the pin to a new ref
-//   npm run sync:officeview -- --from ../officeview  # use a local checkout's HEAD
+//   npm run sync:officeview                          # re-sync the pinned commit
+//   npm run sync:officeview -- --ref main            # move the pin to a new ref
+//   npm run sync:officeview -- --from ../officeview  # a local repo's HEAD (or --ref)
 //
 // The manifest (src/vendor/officeview/officeview.json) names the repo, the pinned
 // commit, the entry modules and extra files; the entries' import closure is
 // copied unmodified, with the same layout under src/, plus the licence files.
+// The wanted ref is always fetched into a temp clone — committed content only,
+// and a local repo's own checkout is never touched. Every file is staged
+// before the vendored trees are replaced, so a failed sync changes nothing.
 // vendor.test.js re-derives the closure to check the copy and its packages.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { importClosure } from './vendorClosure.mjs';
 
@@ -24,18 +27,17 @@ const MANIFEST = path.join(VENDOR, 'officeview.json');
 const { values: opts } = parseArgs({ options: { ref: { type: 'string' }, from: { type: 'string' } } });
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
+const repo = opts.from ? pathToFileURL(path.resolve(opts.from)).href : manifest.repo;
+const ref = opts.ref ?? (opts.from ? 'HEAD' : manifest.commit);
 
-// A local checkout, or a shallow fetch of just the wanted ref into a temp dir.
-const temp = opts.from ? null : fs.mkdtempSync(path.join(os.tmpdir(), 'officeview-'));
-const checkout = opts.from ?? temp;
+const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'officeview-'));
 try {
-  if (temp) {
-    git(temp, 'init', '--quiet');
-    git(temp, 'fetch', '--quiet', '--depth', '1', manifest.repo, opts.ref ?? manifest.commit);
-    git(temp, 'checkout', '--quiet', 'FETCH_HEAD');
-  } else if (opts.ref) {
-    git(checkout, 'checkout', '--quiet', opts.ref);
-  }
+  const checkout = path.join(temp, 'repo');
+  const staging = path.join(temp, 'staging');
+  fs.mkdirSync(checkout);
+  git(checkout, 'init', '--quiet');
+  git(checkout, 'fetch', '--quiet', '--depth', '1', repo, ref);
+  git(checkout, 'checkout', '--quiet', 'FETCH_HEAD');
   const commit = git(checkout, 'rev-parse', 'HEAD');
 
   const src = path.join(checkout, 'src');
@@ -47,17 +49,20 @@ try {
     }
   };
   const { files, packages } = importClosure(read, manifest.entries);
-  const copied = [...files, ...manifest.extraFiles];
-
-  // Replace the vendored trees wholesale, so a module officeview dropped goes too.
-  for (const dir of new Set(copied.map((f) => f.split('/')[0]))) fs.rmSync(path.join(VENDOR, dir), { recursive: true, force: true });
-  for (const f of copied) {
-    fs.mkdirSync(path.dirname(path.join(VENDOR, f)), { recursive: true });
-    fs.copyFileSync(path.join(src, f), path.join(VENDOR, f));
+  const copies = [...[...files, ...manifest.extraFiles].map((f) => [path.join(src, f), f]), [path.join(checkout, 'LICENSE'), 'LICENSE']];
+  for (const [from, to] of copies) {
+    fs.mkdirSync(path.dirname(path.join(staging, to)), { recursive: true });
+    fs.copyFileSync(from, path.join(staging, to)); // throws (before any change) on a missing source
   }
-  fs.copyFileSync(path.join(checkout, 'LICENSE'), path.join(VENDOR, 'LICENSE'));
+
+  // Swap in: every vendored subtree and the licence go, the staged copy comes in.
+  // (Stagecraft's own files here — manifest, README, tests — are top-level files.)
+  for (const e of fs.readdirSync(VENDOR, { withFileTypes: true })) {
+    if (e.isDirectory() || e.name === 'LICENSE') fs.rmSync(path.join(VENDOR, e.name), { recursive: true, force: true });
+  }
+  fs.cpSync(staging, VENDOR, { recursive: true });
   fs.writeFileSync(MANIFEST, `${JSON.stringify({ ...manifest, commit }, null, 2)}\n`);
-  console.log(`officeview ${commit.slice(0, 7)}: ${copied.length} files → ${path.relative(ROOT, VENDOR)}; packages: ${packages.join(', ') || 'none'}`);
+  console.log(`officeview ${commit.slice(0, 7)}: ${copies.length} files → ${path.relative(ROOT, VENDOR)}; packages: ${packages.join(', ') || 'none'}`);
 } finally {
-  if (temp) fs.rmSync(temp, { recursive: true, force: true });
+  fs.rmSync(temp, { recursive: true, force: true });
 }

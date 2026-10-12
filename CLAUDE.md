@@ -22,7 +22,8 @@ npm run dev        # Vite dev server + the /api/* backend (same process) — def
 npm run build      # production build to dist/ (a >500kB chunk warning from pptxgenjs is expected, non-blocking)
 npm run preview    # serve the production build
 
-npm test           # run the test suite once (Vitest)
+npm test           # run the test suite once (Vitest) — both projects; needs Chromium (below)
+npm run test:unit  # only the jsdom project (no browser needed)
 npm run test:watch # TDD watch mode
 npm run coverage   # run with coverage; fails under the 90% threshold
 npm run test:canvas  # only the headless-Chromium project (canvas pixel probes + Konva stages)
@@ -37,7 +38,7 @@ npx vitest run -t "adds a slide to the last section" # by test name (substring)
 
 `npm run build` (tsc-free Vite build) is a secondary structural check — if it transforms all modules cleanly the change is sound — but **tests are the primary gate** (see Testing & TDD policy).
 
-> Test harness: **Vitest + `@vitest/coverage-v8`**, with `jsdom` + `@testing-library/react` (config in `vitest.config.js`, globals + jest-dom matchers in `src/test/setup.js`). `vitest.workspace.js` splits the suite into two projects: `unit` (jsdom — everything else) and `chromium` (`*.paint.test.js` canvas pixel probes and `*.browser.test.jsx` Konva stages, run in headless Chromium via Vitest browser mode + Playwright; config in `vitest.browser.js`). Locally Playwright uses the preinstalled browser at `/opt/pw-browsers` (the lockfile's `playwright` version matches it); CI installs its own. The 90% coverage gate is enforced against `coverage.include` — currently the unit-tested core (`src/server/api.js`, `src/lib/deckOrder.js`, `src/lib/llmClient.js`, `src/data/deck.js`). **When you add tests for more of the app, widen that `include` list** so the new code comes under the gate.
+> Test harness: **Vitest + `@vitest/coverage-v8`**, with `jsdom` + `@testing-library/react` (config in `vitest.config.js`, globals + jest-dom matchers in `src/test/setup.js`). `vitest.workspace.js` splits the suite into two projects: `unit` (jsdom — everything else) and `chromium` (`*.paint.test.js` canvas pixel probes and `*.browser.test.jsx` Konva stages, run in headless Chromium via Vitest browser mode + Playwright; config in `vitest.browser.js`). The `chromium` project needs Playwright's Chromium once per machine: `npx playwright install chromium` (CI caches its own; Claude Code cloud sessions have it preinstalled at `/opt/pw-browsers`, matching the lockfile's `playwright`). The 90% coverage gate is enforced against `coverage.include` — currently the unit-tested core (`src/server/api.js`, `src/lib/deckOrder.js`, `src/lib/llmClient.js`, `src/data/deck.js`). **When you add tests for more of the app, widen that `include` list** so the new code comes under the gate.
 
 ## Testing & TDD policy (required)
 
