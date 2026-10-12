@@ -1,0 +1,18 @@
+{
+  "repo": "https://github.com/julianshen/officeview.git",
+  "commit": "9c9518e50bac0ed9622f934a87cccf47bcd52e42",
+  "entries": [
+    "drawing/geometry.ts",
+    "drawing/paint.ts",
+    "drawing/style.ts",
+    "drawing/text-layout.ts",
+    "drawing/text-paint.ts",
+    "core/fonts/register.ts"
+  ],
+  "extraFiles": [
+    "drawing/LICENSE",
+    "drawing/NOTICE.md",
+    "drawing/unicode/LICENSE",
+    "drawing/unicode/NOTICE.md"
+  ]
+}

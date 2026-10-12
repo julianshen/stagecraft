@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    // spikes/ holds on-demand benchmarks with their own configs.
+    exclude: [...configDefaults.exclude, 'spikes/**'],
     setupFiles: ['./src/test/setup.js'],
     css: false,
     coverage: {
@@ -52,6 +54,8 @@ export default defineConfig({
         'src/lib/imageOrientation.js',
         'src/lib/pptxPost.js',
         'src/lib/ooxml.js',
+        'scripts/vendorClosure.mjs',
+        'scripts/swapTree.mjs',
         'src/hooks/useDeckSync.js',
         'src/hooks/useReorderDrag.js',
         'src/hooks/useToasts.js',
