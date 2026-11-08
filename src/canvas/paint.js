@@ -46,18 +46,34 @@ function prepared(env, node, make) {
   return p;
 }
 
-/** A text box's canvas font stack: its family (with the same substitutes the canvas uses) over the app sans. */
-export const canvasFont = (family) => (family ? fontStack(family, FONT_SANS) : FONT_SANS);
+/**
+ * A text box's canvas font stack: its family (with the same substitutes the
+ * canvas uses) over the app sans. A box with no family is given the app sans
+ * stack itself as its family (officeview would read none as Calibri), and that
+ * stack resolves to itself.
+ */
+export const canvasFont = (family) => (family && family !== FONT_SANS ? fontStack(family, FONT_SANS) : FONT_SANS);
 
-// A CSS drop shadow in the element's frame: canvas shadows ignore the
-// transform, so map the local offset (and the blur's scale) through it —
-// the offset then turns and mirrors with the element, as the CSS filter does.
-function applyShadow(ctx, s) {
+// A CSS drop shadow in the element's frame, as canvas shadow settings: canvas
+// shadows ignore the transform, so map the local offset (and the blur's
+// scale) through it — the offset then turns and mirrors with the element, as
+// the CSS filter does.
+function deviceShadow(ctx, s) {
   const m = ctx.getTransform();
-  ctx.shadowColor = css(s.color, s.alpha);
-  ctx.shadowOffsetX = m.a * s.x + m.c * s.y;
-  ctx.shadowOffsetY = m.b * s.x + m.d * s.y;
-  ctx.shadowBlur = s.blur * Math.hypot(m.a, m.b);
+  return {
+    color: css(s.color, s.alpha),
+    offsetX: m.a * s.x + m.c * s.y,
+    offsetY: m.b * s.x + m.d * s.y,
+    blurPx: s.blur * Math.hypot(m.a, m.b),
+  };
+}
+
+function applyShadow(ctx, s) {
+  const d = deviceShadow(ctx, s);
+  ctx.shadowColor = d.color;
+  ctx.shadowOffsetX = d.offsetX;
+  ctx.shadowOffsetY = d.offsetY;
+  ctx.shadowBlur = d.blurPx;
 }
 
 function drawingFill(fill) {
@@ -151,7 +167,7 @@ const textBody = (node) => {
   const color = css(node.color);
   return {
     paragraphs: node.content.split('\n').map((text) => ({
-      runs: [{ text, fontSizePt: node.fontSize * 0.75, bold: node.bold, italic: node.italic, color, fontFamily: node.fontFamily ?? '' }],
+      runs: [{ text, fontSizePt: node.fontSize * 0.75, bold: node.bold, italic: node.italic, color, fontFamily: node.fontFamily ?? FONT_SANS }],
       align: node.align, level: 0,
       lineSpacing: { kind: 'percent', value: node.lineSpacing / 1.2 }, // officeview's 100% is 1.2 em
     })),
@@ -166,6 +182,13 @@ function paintText(ctx, node, env) {
   if (p.epoch !== env.fontEpoch) {
     p.layout = layoutTextBody(p.body, node.w, node.h, createTextBodyMeasurer(ctx, canvasFont));
     p.epoch = env.fontEpoch;
+  }
+  // officeview sets each segment's shadow from its style (clearing it when there
+  // is none), so the box's shadow rides on its laid-out segments, mapped
+  // through this paint's transform (a thumbnail and the editor differ).
+  if (node.shadow) {
+    const textShadow = deviceShadow(ctx, node.shadow);
+    for (const line of p.layout.lines) for (const seg of line.segments) seg.style.textShadow = textShadow;
   }
   paintTextBody(p.body, ctx, 0, 0, node.w, node.h, canvasFont, undefined, { layout: p.layout });
 }
@@ -184,7 +207,8 @@ export function paintNode(ctx, node, env) {
     // export's per-fill and per-line transparency (where the DOM fades the
     // element as one group).
     ctx.globalAlpha *= node.opacity;
-    if (node.shadow && node.kind !== 'shape') applyShadow(ctx, node.shadow); // shapes cast theirs in paintGeometry
+    // Shapes cast theirs in paintGeometry, and text through its segments.
+    if (node.shadow && (node.kind === 'path' || node.kind === 'image')) applyShadow(ctx, node.shadow);
     PAINTERS[node.kind](ctx, node, env);
   } finally {
     ctx.restore();

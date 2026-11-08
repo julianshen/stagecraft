@@ -2,9 +2,10 @@
 // buildScene, painted at 1/4 scale onto a real canvas, sampled in slide px.
 import { describe, it, expect, beforeAll } from 'vitest';
 import { buildScene } from './scene.js';
-import { paintSlide, createPaintEnv } from './paint.js';
+import { paintSlide, createPaintEnv, canvasFont } from './paint.js';
+import { resolveTextFamily } from '../vendor/officeview/drawing/text-layout';
 import { pixelAt, near } from '../test/pixels.js';
-import { SHADOW_OPACITY } from '../lib/elements.js';
+import { SHADOW_OPACITY, FONT_SANS } from '../lib/elements.js';
 
 const SCALE = 0.25;
 const scene = (elements, extra = {}) => buildScene({ layout: 'blank', elements, ...extra });
@@ -115,6 +116,13 @@ describe('pen paths, opacity, orientation, shadows', () => {
     expect(near(at(800, 520), WHITE)).toBe(true);
   });
 
+  it('shadows text at the same strength, offset through the frame (officeview clears an unstyled run\'s shadow)', () => {
+    const at = paint(scene([{ id: 't', type: 'text', ...box, content: 'MMMM', color: '#000000', fontSize: 160, valign: 'top', shadow: { color: '#000000', blur: 0, x: 0, y: 300 } }]));
+    const xs = Array.from({ length: 50 }, (_, i) => box.x + i * 8), ys = Array.from({ length: 15 }, (_, i) => box.y + 320 + i * 8);
+    const shadowed = xs.flatMap((x) => ys.map((y) => at(x, y))).filter((px) => near(px, SHADOW_GREY, 4));
+    expect(shadowed.length).toBeGreaterThan(20); // the glyphs' shadow, 300 px below them
+  });
+
   it('casts the drop shadow in the element\'s own frame (it turns with the rotation)', () => {
     const shadow = { color: '#000000', blur: 0, x: 60, y: 0 };
     const flat = paint(scene([{ id: 's', type: 'rect', ...box, fill: '#ff0000', shadow }]));
@@ -204,6 +212,14 @@ describe('text', () => {
     });
     expect(first[0].layout).toBeTruthy();
     expect(first[1].geometry).toBeTruthy();
+  });
+
+  it('sets a text box with no family in the app sans (as its asset gate loads it), not officeview\'s Calibri default', () => {
+    const env = createPaintEnv();
+    const sc = scene([{ id: 't', type: 'text', ...box, content: 'Hello', color: '#000000' }]);
+    paint(sc, env);
+    const [run] = env.prepared.get(sc.nodes[0]).body.paragraphs[0].runs;
+    expect(canvasFont(resolveTextFamily(run))).toBe(FONT_SANS);
   });
 
   it('lays text out again once fonts arrive (a new font epoch), and only then', () => {

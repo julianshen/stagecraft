@@ -54,12 +54,6 @@ function loadInto(env, src, loadImage) {
   return env.pending.get(src);
 }
 
-/**
- * Make everything `scene` draws ready on `env`. Resolves to whether anything
- * changed (an image decoded, or a font arrived — which bumps `env.fontEpoch`,
- * so cached text layouts measured with the fallback are dropped), i.e. whether
- * a surface that already painted should paint again.
- */
 // Load one font spec into env.fonts, sharing the load with every caller that
 // asks while it is in flight; once settled it is 'done'. A face that arrives
 // bumps the font epoch once. A face the browser already has (fonts.check) is
