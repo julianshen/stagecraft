@@ -77,6 +77,8 @@ export function shadowAngle(el) {
 }
 
 export const linearGradientCss = (g) => `linear-gradient(${g.angle}deg, ${g.from}, ${g.to})`;
+/** A CSS `linear-gradient` angle (0° = up, clockwise) as DrawingML `a:lin ang` (0° = rightward, clockwise; 60000ths) — the export's gradient patch and the canvas painter share it. */
+export const linAngle = (cssDeg) => Math.round(((((cssDeg - 90) % 360) + 360) % 360) * 60000);
 // Is this gradient safe for both surfaces? Same gate-bypass reasoning as
 // isRenderableShadow: a malformed gradient falls back to the solid fill on the
 // canvas AND the export. Looser than the gate's isGradient (extra keys still
