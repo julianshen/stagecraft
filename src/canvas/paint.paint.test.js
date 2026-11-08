@@ -222,6 +222,15 @@ describe('text', () => {
     expect(canvasFont(resolveTextFamily(run))).toBe(FONT_SANS);
   });
 
+  it('keeps a blank line at the box\'s size: "A\\n\\nB" is three equal lines', () => {
+    const env = createPaintEnv();
+    const sc = scene([{ id: 't', type: 'text', ...box, content: 'A\n\nB', color: '#000000', fontSize: 80 }]);
+    paint(sc, env);
+    const [a, blank, b] = env.prepared.get(sc.nodes[0]).layout.lines.map((l) => l.baseline);
+    expect(blank - a).toBeCloseTo(96, 0); // 80 px × 1.2
+    expect(b - blank).toBeCloseTo(96, 0);
+  });
+
   it('lays text out again once fonts arrive (a new font epoch), and only then', () => {
     const env = createPaintEnv();
     const sc = scene([{ id: 't', type: 'text', ...box, content: 'Hello', color: '#000000' }]);

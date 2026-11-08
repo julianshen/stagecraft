@@ -163,11 +163,13 @@ function paintImage(ctx, node, env) {
 // K1's text: the plain content as one run per line, laid out by officeview.
 // K2 replaces this with the rich-text model (runs, bullets, insets, autofit,
 // underline) — until then weight 400/700 (the DOM uses 500/700) and no underline.
+// Each paragraph's end properties carry the box's style too: officeview sizes
+// an empty paragraph (a blank line) from them, not from its empty run.
 const textBody = (node) => {
-  const color = css(node.color);
+  const style = { fontSizePt: node.fontSize * 0.75, bold: node.bold, italic: node.italic, color: css(node.color), fontFamily: node.fontFamily ?? FONT_SANS };
   return {
     paragraphs: node.content.split('\n').map((text) => ({
-      runs: [{ text, fontSizePt: node.fontSize * 0.75, bold: node.bold, italic: node.italic, color, fontFamily: node.fontFamily ?? FONT_SANS }],
+      runs: [{ text, ...style }], endProperties: style,
       align: node.align, level: 0,
       lineSpacing: { kind: 'percent', value: node.lineSpacing / 1.2 }, // officeview's 100% is 1.2 em
     })),
