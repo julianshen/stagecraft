@@ -13,20 +13,22 @@ import { paintSlide } from '../../canvas/paint.js';
 import { ensureAssets, sharedPaintEnv } from '../../canvas/assets.js';
 
 const MAX_DPR = 3; // a 4×+ backing store costs memory for no visible gain
-const currentDpr = () => Math.min(globalThis.devicePixelRatio || 1, MAX_DPR);
+const currentDpr = () => globalThis.devicePixelRatio || 1;
 
 // The screen's pixel ratio, kept current: it changes when the window moves to
 // a display with another density (or on a pinch zoom), without any resize.
+// It is tracked uncapped, so the query re-arms at every new ratio (one past
+// the cap included); only the backing store is capped.
 function useDevicePixelRatio() {
   const [dpr, setDpr] = useState(currentDpr);
   useEffect(() => {
     if (typeof matchMedia !== 'function') return undefined;
-    const mql = matchMedia(`(resolution: ${globalThis.devicePixelRatio || 1}dppx)`);
+    const mql = matchMedia(`(resolution: ${dpr}dppx)`);
     const update = () => setDpr(currentDpr());
     mql.addEventListener('change', update);
     return () => mql.removeEventListener('change', update);
   }, [dpr]); // re-armed at each new ratio: the query matches one value
-  return dpr;
+  return Math.min(dpr, MAX_DPR);
 }
 
 /** The text a slide's scene shows, in z-order — the canvas's accessible label. */
@@ -48,7 +50,7 @@ export default function SlideCanvas({ slide, deck, width, env = sharedPaintEnv, 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (width != null) return undefined;
-    setMeasured(canvas.getBoundingClientRect().width);
+    setMeasured(canvas.offsetWidth); // the layout width, as the observer's contentRect (untransformed by a scaled ancestor)
     if (typeof ResizeObserver === 'undefined') return undefined;
     const ro = new ResizeObserver(([entry]) => setMeasured(entry.contentRect.width));
     ro.observe(canvas);

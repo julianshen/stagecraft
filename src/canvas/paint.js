@@ -192,6 +192,9 @@ function paintText(ctx, node, env) {
     const textShadow = deviceShadow(ctx, node.shadow);
     for (const line of p.layout.lines) for (const seg of line.segments) seg.style.textShadow = textShadow;
   }
+  // Not clipped to the box: text that overflows spills out, as PowerPoint shows
+  // the export (the DOM's overflow: hidden only approximated it). K2's autofit
+  // is what keeps text inside its box.
   paintTextBody(p.body, ctx, 0, 0, node.w, node.h, canvasFont, undefined, { layout: p.layout });
 }
 

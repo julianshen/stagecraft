@@ -24,4 +24,29 @@ describe('<SlideCanvas> and devicePixelRatio', () => {
     act(() => listeners.forEach((f) => f()));
     expect(canvas.width).toBe(400);
   });
+
+  it('keeps following the ratio past its cap: 3 → 4 (still drawn at 3) → 2 redraws at 2', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    // A real resolution query fires only when its match flips: when the ratio
+    // leaves or reaches the value it names.
+    const queries = new Map();
+    window.matchMedia = vi.fn((q) => ({
+      addEventListener: (_, f) => queries.set(f, q),
+      removeEventListener: (_, f) => queries.delete(f),
+    }));
+    const setDpr = (to) => {
+      const from = window.devicePixelRatio;
+      Object.defineProperty(window, 'devicePixelRatio', { value: to, configurable: true });
+      const flipped = [`(resolution: ${from}dppx)`, `(resolution: ${to}dppx)`];
+      act(() => [...queries].filter(([, q]) => flipped.includes(q)).forEach(([f]) => f()));
+    };
+    Object.defineProperty(window, 'devicePixelRatio', { value: 3, configurable: true });
+    const { container } = render(<SlideCanvas slide={{ id: 's', layout: 'blank' }} deck={{}} width={200} />);
+    const canvas = container.querySelector('canvas');
+    expect(canvas.width).toBe(600);
+    setDpr(4);
+    expect(canvas.width).toBe(600); // capped at 3
+    setDpr(2);
+    expect(canvas.width).toBe(400);
+  });
 });
