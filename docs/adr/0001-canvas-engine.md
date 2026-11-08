@@ -78,4 +78,5 @@ The design doc estimated Konva at 50–70 kB gzip. It measures 96 kB even with c
 - K4 renders thumbnails visible-first and in chunks, or in a worker over `OffscreenCanvas`. It sizes bitmaps to the rail.
 - K5 imports Konva only through `react-konva/es/ReactKonvaCore` + `konva/lib/Core` (and the shapes it uses), inside the lazily loaded editor chunk.
 - **Upstream (officeview):** move the DrawingML-parsing functions (`parseGeometry`/`custGeom` in `geometry.ts`, and the parsers in `style.ts` and `text.ts`) into parse-only modules, or load `core/xml` lazily, so the painters don't pull in `fast-xml-parser`. Then re-sync and re-run `spikes/k0/bundle.mjs`.
+- **Upstream (officeview), found in K1:** `paintGeometry`'s shadow pass fills the silhouette with the shadow colour, so the shadow's alpha applies twice. `src/canvas/paint.js` passes `√alpha` until that's fixed; `paint.paint.test.js` pins the exact shadow strength, so the fix shows up as a test failure there.
 - **Unanswered here** (still with the product owner): `CANVAS-EDITOR.md` open questions 2–4.

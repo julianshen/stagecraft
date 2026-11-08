@@ -61,8 +61,7 @@ describe('elementNode — the frame every node shares', () => {
     expect(node({ type: 'rect', fill: '#ff0000', shadow: { color: 'red', blur: 1, x: 0, y: 0 } }).shadow).toBeNull();
   });
 
-  it('skips elements nothing can draw: unknown types, missing boxes, junk', () => {
-    expect(elementNode({ id: 'u', type: 'sparkle', ...box })).toBeNull();
+  it('skips elements nothing can draw: missing boxes, junk', () => {
     expect(elementNode({ id: 'n', type: 'rect', x: 0, y: 0, w: NaN, h: 10 })).toBeNull();
     expect(elementNode(null)).toBeNull();
   });
@@ -91,9 +90,16 @@ describe('elementNode — shapes', () => {
       .toEqual({ kind: 'solid', color: '#ff0000' });
   });
 
-  it('uses the export fallback colour for a shape without a usable fill', () => {
-    expect(node({ type: 'rect' }).fill).toEqual({ kind: 'solid', color: '#4f46e5' });
+  it('resolves colours as the export does: none → ink, a non-hex value → the indigo fallback', () => {
+    expect(node({ type: 'rect' }).fill).toEqual({ kind: 'solid', color: INK });
     expect(node({ type: 'rect', fill: 'tomato' }).fill).toEqual({ kind: 'solid', color: '#4f46e5' });
+    expect(node({ type: 'rect', fill: '#abc' }).fill).toEqual({ kind: 'solid', color: '#aabbcc' });
+    expect(node({ type: 'text', content: 'x', color: 'red' }).color).toBe('#4f46e5');
+    expect(node({ type: 'path', points: [[0, 0], [1, 1]], stroke: 'red' }).color).toBe('#4f46e5');
+  });
+
+  it('draws an unknown element type as a plain rect, as the export writes it', () => {
+    expect(node({ type: 'callout', fill: '#ff0000' })).toMatchObject({ kind: 'shape', preset: 'rect', fill: { kind: 'solid', color: '#ff0000' }, line: null });
   });
 
   it('adds the outline only when it is visible, with its dash', () => {

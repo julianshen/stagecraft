@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ensureAssets, sceneAssets } from './assets.js';
+import { touchImage } from './paint.js';
 import { createPaintEnv } from './paint.js';
 import { buildScene } from './scene.js';
 
@@ -10,7 +11,7 @@ const deferred = () => {
   const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
   return { promise, resolve, reject };
 };
-const noFonts = { load: vi.fn(async () => []) };
+const noFonts = { check: () => false, load: vi.fn(async () => []) };
 
 describe('sceneAssets', () => {
   it('lists each image source and each text font once', () => {
@@ -62,18 +63,22 @@ describe('ensureAssets', () => {
     expect(loadImage).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps a bounded number of decoded images, dropping (and closing) the oldest first', async () => {
+  it('keeps a bounded number of decoded images, dropping the least recently used (never closing one a canvas may still draw)', async () => {
     const env = createPaintEnv({ imageLimit: 2 });
     const closed = [];
     const loadImage = async (src) => ({ src, close: () => closed.push(src) });
-    for (const src of ['data:a', 'data:b', 'data:c']) await ensureAssets(scene([{ id: src, type: 'image', ...box, src }]), env, { loadImage, fonts: noFonts });
-    expect([...env.images.keys()]).toEqual(['data:b', 'data:c']);
-    expect(closed).toEqual(['data:a']);
+    const show = (src) => ensureAssets(scene([{ id: src, type: 'image', ...box, src }]), env, { loadImage, fonts: noFonts });
+    await show('data:a');
+    await show('data:b');
+    touchImage(env, 'data:a'); // painted again: now the most recently used
+    await show('data:c');
+    expect([...env.images.keys()]).toEqual(['data:a', 'data:c']);
+    expect(closed).toEqual([]);
   });
 
   it('loads each font once, and bumps the font epoch when one arrives (stale layouts go)', async () => {
     const env = createPaintEnv();
-    const fonts = { load: vi.fn(async () => [{ family: 'Calibri' }]) };
+    const fonts = { check: () => false, load: vi.fn(async () => [{ family: 'Calibri' }]) };
     const sc = scene([{ id: 't', type: 'text', ...box, content: 'x', color: '#000000', fontFamily: 'Calibri' }]);
     expect(await ensureAssets(sc, env, { fonts })).toBe(true);
     expect(env.fontEpoch).toBe(1);
@@ -90,9 +95,31 @@ describe('ensureAssets', () => {
     expect(env.fontEpoch).toBe(0);
   });
 
+  it('tells every caller waiting on a font when it arrives, and bumps the epoch once', async () => {
+    const env = createPaintEnv();
+    const d = deferred();
+    const fonts = { check: () => false, load: vi.fn(() => d.promise) };
+    const sc = scene([{ id: 't', type: 'text', ...box, content: 'x', color: '#000000', fontFamily: 'Calibri' }]);
+    const first = ensureAssets(sc, env, { fonts });
+    const second = ensureAssets(sc, env, { fonts }); // e.g. a second thumbnail, or a rebuilt scene
+    d.resolve([{ family: 'Calibri' }]);
+    expect(await Promise.all([first, second])).toEqual([true, true]);
+    expect(fonts.load).toHaveBeenCalledTimes(1);
+    expect(env.fontEpoch).toBe(1);
+  });
+
+  it('skips a font the browser already has (no load, no epoch bump, nothing to repaint)', async () => {
+    const env = createPaintEnv();
+    const fonts = { check: () => true, load: vi.fn(async () => [{ family: 'Inter' }]) };
+    const sc = scene([{ id: 't', type: 'text', ...box, content: 'x', color: '#000000' }]);
+    expect(await ensureAssets(sc, env, { fonts })).toBe(false);
+    expect(fonts.load).not.toHaveBeenCalled();
+    expect(env.fontEpoch).toBe(0);
+  });
+
   it('treats a font that fails to load as loaded (the fallback is what gets measured)', async () => {
     const env = createPaintEnv();
-    const fonts = { load: vi.fn(async () => { throw new Error('network'); }) };
+    const fonts = { check: () => false, load: vi.fn(async () => { throw new Error('network'); }) };
     const sc = scene([{ id: 't', type: 'text', ...box, content: 'x', color: '#000000', fontFamily: 'Nope' }]);
     expect(await ensureAssets(sc, env, { fonts })).toBe(false);
     await ensureAssets(sc, env, { fonts });

@@ -29,22 +29,25 @@ const shadowOf = (el) => (isRenderableShadow(el.shadow)
   ? { color: el.shadow.color, alpha: SHADOW_OPACITY, blur: el.shadow.blur, x: el.shadow.x, y: el.shadow.y }
   : null);
 
-// A shape's fill: a valid gradient, else its hex fill, else `fallback` (the
-// export's toHex fallback for shapes; ink for a line, as the canvas draws it).
-function fillOf(el, fallback) {
+// A colour as the export resolves it (pptxHex(value || ink)): none → ink, a
+// hex → itself, anything else → toHex's indigo fallback.
+const colorOf = (v) => (v ? toHex(v) : INK);
+
+// A shape's fill: a valid gradient, else its fill colour.
+function fillOf(el) {
   if (isRenderableGradient(el.gradient)) return { kind: 'gradient', from: el.gradient.from, to: el.gradient.to, angle: el.gradient.angle };
-  return { kind: 'solid', color: isHexColor(el.fill) ? el.fill : fallback };
+  return { kind: 'solid', color: colorOf(el.fill) };
 }
 
 function shapeNode(el, def) {
-  if (def.line) return { kind: 'shape', preset: 'rect', adjust: {}, fill: fillOf(el, INK), line: null };
+  if (def.line) return { kind: 'shape', preset: 'rect', adjust: {}, fill: fillOf(el), line: null };
   // A box with a corner radius (the registry's `radius`, px) is drawn as roundRect at that radius.
   const { radius } = def;
   const preset = radius ? 'roundRect' : def.pptx;
   // roundRect's `adj` is the corner radius as a fraction (×100000) of the shorter side, at most half.
   const adjust = radius ? { adj: Math.min(50000, (radius / Math.min(el.w, el.h)) * 100000) } : {};
   const line = hasVisibleStroke(el) ? { color: toHex(el.stroke), width: el.strokeWidth, dash: dashOf(el.strokeDash) } : null;
-  return { kind: 'shape', preset, adjust, fill: fillOf(el, toHex(null)), line };
+  return { kind: 'shape', preset, adjust, fill: fillOf(el), line };
 }
 
 function pathNode(el) {
@@ -52,7 +55,7 @@ function pathNode(el) {
   if (points.length < 2) return null; // nothing to stroke (the export skips it too)
   return {
     kind: 'path', points,
-    color: isHexColor(el.stroke) ? el.stroke : INK,
+    color: colorOf(el.stroke),
     width: Number.isFinite(el.strokeWidth) ? el.strokeWidth : 2,
     dash: dashOf(el.strokeDash),
   };
@@ -63,7 +66,7 @@ const imageNode = (el) => ({ kind: 'image', src: typeof el.src === 'string' && e
 const textNode = (el) => ({
   kind: 'text',
   content: typeof el.content === 'string' ? el.content : '',
-  color: isHexColor(el.color) ? el.color : INK,
+  color: colorOf(el.color),
   fontSize: Number.isFinite(el.fontSize) && el.fontSize > 0 ? el.fontSize : 48,
   bold: !!el.bold,
   italic: !!el.italic,
@@ -77,11 +80,11 @@ function contentOf(el) {
   if (el.type === 'text') return textNode(el);
   if (el.type === 'image') return imageNode(el);
   if (el.type === 'path') return pathNode(el);
-  const def = shapeDef(el.type);
-  return def ? shapeNode(el, def) : null;
+  // An unknown type draws as a plain rect, as the export writes it (ST.rect).
+  return shapeNode(el, shapeDef(el.type) ?? { pptx: 'rect' });
 }
 
-/** One element's draw node, or null when there is nothing to draw (junk, unknown type, bad box). */
+/** One element's draw node, or null when there is nothing to draw (junk, or a box that isn't finite). */
 export function elementNode(el) {
   if (!el || typeof el !== 'object' || !finite(el.x, el.y, el.w, el.h)) return null;
   const content = contentOf(el);

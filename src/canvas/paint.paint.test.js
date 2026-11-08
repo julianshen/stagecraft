@@ -4,6 +4,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { buildScene } from './scene.js';
 import { paintSlide, createPaintEnv } from './paint.js';
 import { pixelAt, near } from '../test/pixels.js';
+import { SHADOW_OPACITY } from '../lib/elements.js';
 
 const SCALE = 0.25;
 const scene = (elements, extra = {}) => buildScene({ layout: 'blank', elements, ...extra });
@@ -21,6 +22,8 @@ const WHITE = [255, 255, 255];
 const RED = [255, 0, 0];
 const BLUE = [0, 0, 255];
 const box = { x: 400, y: 200, w: 800, h: 400 }; // centre (800, 400)
+// A black shadow at the shared softness over white: 255 × (1 − SHADOW_OPACITY).
+const SHADOW_GREY = Array(3).fill(Math.round(255 * (1 - SHADOW_OPACITY)));
 
 describe('background and shapes', () => {
   it('fills the slide background (blank bgColor)', () => {
@@ -100,14 +103,26 @@ describe('pen paths, opacity, orientation, shadows', () => {
     expect(near(arrow(true)(box.x + 630, y), WHITE)).toBe(true);
   });
 
+  it('casts one shadow from the whole silhouette: an outline\'s shadow never darkens its own fill', () => {
+    const at = paint(scene([{ id: 's', type: 'rect', ...box, fill: '#ff0000', stroke: '#0000ff', strokeWidth: 8, shadow: { color: '#000000', blur: 0, x: 0, y: 40 } }]));
+    expect(near(at(800, box.y + 20), RED)).toBe(true); // just inside the top outline, where its shadow would fall
+    expect(near(at(800, box.y + box.h + 30), SHADOW_GREY, 4)).toBe(true); // the shadow below the shape, at exactly its strength
+  });
+
+  it('shadows a pen stroke, a picture or text too, at the same strength', () => {
+    const at = paint(scene([{ id: 'p', type: 'path', x: 400, y: 400, w: 800, h: 0, points: [[0, 0], [1, 0]], stroke: '#000000', strokeWidth: 16, shadow: { color: '#000000', blur: 0, x: 0, y: 60 } }]));
+    expect(near(at(800, 460), SHADOW_GREY, 4)).toBe(true);
+    expect(near(at(800, 520), WHITE)).toBe(true);
+  });
+
   it('casts the drop shadow in the element\'s own frame (it turns with the rotation)', () => {
     const shadow = { color: '#000000', blur: 0, x: 60, y: 0 };
     const flat = paint(scene([{ id: 's', type: 'rect', ...box, fill: '#ff0000', shadow }]));
-    expect(flat(box.x + box.w + 30, 400)[0]).toBeLessThan(200); // shadow to the right
+    expect(near(flat(box.x + box.w + 30, 400), SHADOW_GREY, 4)).toBe(true); // shadow to the right, at exactly its strength
     expect(near(flat(800, box.y - 30), WHITE)).toBe(true);
     // Turned 90°, the local +x offset points down the slide.
     const turned = paint(scene([{ id: 's', type: 'rect', x: 600, y: 200, w: 400, h: 400, fill: '#ff0000', shadow, rot: 90 }]));
-    expect(turned(800, 630)[0]).toBeLessThan(200);
+    expect(near(turned(800, 630), SHADOW_GREY, 4)).toBe(true);
     expect(near(turned(1030, 400), WHITE)).toBe(true);
   });
 });

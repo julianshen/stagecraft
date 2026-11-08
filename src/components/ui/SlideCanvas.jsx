@@ -13,6 +13,21 @@ import { paintSlide } from '../../canvas/paint.js';
 import { ensureAssets, sharedPaintEnv } from '../../canvas/assets.js';
 
 const MAX_DPR = 3; // a 4×+ backing store costs memory for no visible gain
+const currentDpr = () => Math.min(globalThis.devicePixelRatio || 1, MAX_DPR);
+
+// The screen's pixel ratio, kept current: it changes when the window moves to
+// a display with another density (or on a pinch zoom), without any resize.
+function useDevicePixelRatio() {
+  const [dpr, setDpr] = useState(currentDpr);
+  useEffect(() => {
+    if (typeof matchMedia !== 'function') return undefined;
+    const mql = matchMedia(`(resolution: ${globalThis.devicePixelRatio || 1}dppx)`);
+    const update = () => setDpr(currentDpr());
+    mql.addEventListener('change', update);
+    return () => mql.removeEventListener('change', update);
+  }, [dpr]); // re-armed at each new ratio: the query matches one value
+  return dpr;
+}
 
 /** The text a slide's scene shows, in z-order — the canvas's accessible label. */
 export const sceneText = (scene) => scene.nodes.filter((n) => n.kind === 'text').map((n) => n.content.trim()).filter(Boolean).join('. ');
@@ -21,6 +36,7 @@ export default function SlideCanvas({ slide, deck, width, env = sharedPaintEnv, 
   const canvasRef = useRef(null);
   const paintRef = useRef(() => {});
   const [measured, setMeasured] = useState(0);
+  const dpr = useDevicePixelRatio();
   // The deck's slide size is the only deck input a K1 scene reads (K3's layout
   // compilers widen this to the full render key, decision 2), so an unrelated
   // deck edit doesn't rebuild — and repaint — every thumbnail.
@@ -43,7 +59,6 @@ export default function SlideCanvas({ slide, deck, width, env = sharedPaintEnv, 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!(cssW > 0)) return;
-    const dpr = Math.min(globalThis.devicePixelRatio || 1, MAX_DPR);
     const pw = Math.round(cssW * dpr), ph = Math.round((cssW * scene.h * dpr) / scene.w);
     if (canvas.width !== pw || canvas.height !== ph) {
       canvas.width = pw;
@@ -57,14 +72,16 @@ export default function SlideCanvas({ slide, deck, width, env = sharedPaintEnv, 
       paintSlide(ctx, scene, env);
     };
     paintRef.current();
-  }, [scene, cssW, env]);
+  }, [scene, cssW, dpr, env]);
 
   // Repaint once the scene's pictures have decoded and its fonts have loaded.
+  // Re-checked after a resize too: a picture the bounded image cache dropped
+  // while this canvas sat unpainted decodes again (a cheap no-op otherwise).
   useEffect(() => {
     let live = true;
     ensureAssets(scene, env).then((changed) => { if (changed && live) paintRef.current(); });
     return () => { live = false; };
-  }, [scene, env]);
+  }, [scene, cssW, env]);
 
   // Free the backing store when the canvas goes (thumbnail rails mount many).
   // The canvas is captured on mount: React clears the ref before this cleanup runs.
@@ -77,7 +94,7 @@ export default function SlideCanvas({ slide, deck, width, env = sharedPaintEnv, 
     <canvas
       ref={canvasRef}
       role="img"
-      aria-label={label ?? sceneText(scene)}
+      aria-label={label ?? (sceneText(scene) || (typeof slide?.title === 'string' ? slide.title : ''))}
       className={className}
       style={{ display: 'block', width: width ?? '100%', aspectRatio: `${scene.w} / ${scene.h}`, ...style }}
     />

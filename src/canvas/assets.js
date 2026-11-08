@@ -34,16 +34,13 @@ export async function decodeImage(src) {
   return img;
 }
 
-// Store a decode, keeping at most env.imageLimit: the oldest goes first (and an
-// ImageBitmap is closed, freeing its pixels now). A dropped picture that is
-// still on a slide decodes again on its next ensureAssets.
+// Store a decode, keeping at most env.imageLimit. The least recently painted
+// goes first (paint's touchImage keeps on-screen pictures fresh); it isn't
+// closed, since a canvas may still draw it, and it decodes again on the next
+// ensureAssets that needs it.
 function store(env, src, img) {
   env.images.set(src, img);
-  while (env.images.size > env.imageLimit) {
-    const [oldest, drawable] = env.images.entries().next().value;
-    env.images.delete(oldest);
-    drawable?.close?.();
-  }
+  while (env.images.size > env.imageLimit) env.images.delete(env.images.keys().next().value);
 }
 
 // Decode `src` into env.images (false on failure), sharing an in-flight decode.
@@ -63,18 +60,41 @@ function loadInto(env, src, loadImage) {
  * so cached text layouts measured with the fallback are dropped), i.e. whether
  * a surface that already painted should paint again.
  */
+// Load one font spec into env.fonts, sharing the load with every caller that
+// asks while it is in flight; once settled it is 'done'. A face that arrives
+// bumps the font epoch once. A face the browser already has (fonts.check) is
+// done at once, with nothing to repaint.
+function loadFont(env, spec, fonts) {
+  const known = env.fonts.get(spec);
+  if (known === 'done') return false;
+  if (known) return known;
+  if (fonts.check?.(spec)) {
+    env.fonts.set(spec, 'done');
+    return false;
+  }
+  const loading = Promise.resolve()
+    .then(() => fonts.load(spec))
+    .then((faces) => faces.length > 0, () => false) // a failure leaves the fallback, which is what then measures
+    .then((arrived) => {
+      if (arrived) env.fontEpoch += 1;
+      env.fonts.set(spec, 'done');
+      return arrived;
+    });
+  env.fonts.set(spec, loading);
+  return loading;
+}
+
+/**
+ * Make everything `scene` draws ready on `env`. Resolves to whether anything
+ * changed (an image decoded, or a font arrived — which bumps `env.fontEpoch`,
+ * so cached text layouts measured with the fallback are dropped), i.e. whether
+ * a surface that already painted should paint again.
+ */
 export async function ensureAssets(scene, env = sharedPaintEnv, { loadImage = decodeImage, fonts = globalThis.document?.fonts } = {}) {
   const { images, fonts: specs } = sceneAssets(scene);
-  const decoded = images.filter((src) => !env.images.has(src)).map((src) => loadInto(env, src, loadImage));
-  const loading = fonts?.load ? specs.filter((s) => !env.fonts.has(s)).map(async (spec) => {
-    env.fonts.add(spec); // once per spec, loaded or not: a failure leaves the fallback, which is what then measures
-    try {
-      return (await fonts.load(spec)).length > 0;
-    } catch {
-      return false;
-    }
-  }) : [];
-  const [imagesChanged, fontsChanged] = await Promise.all([Promise.all(decoded), Promise.all(loading)]);
-  if (fontsChanged.some(Boolean)) env.fontEpoch += 1;
-  return imagesChanged.some(Boolean) || fontsChanged.some(Boolean);
+  const changes = [
+    ...images.filter((src) => !env.images.has(src)).map((src) => loadInto(env, src, loadImage)),
+    ...(fonts?.load ? specs.map((spec) => loadFont(env, spec, fonts)) : []),
+  ];
+  return (await Promise.all(changes)).some(Boolean);
 }

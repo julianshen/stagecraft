@@ -80,5 +80,8 @@ describe('<SlideCanvas>', () => {
     expect(getByRole('img').getAttribute('aria-label')).toBe('Quarterly results. Up 12%');
     const { getAllByRole } = render(<SlideCanvas slide={blank([])} deck={{}} width={480} label="Slide 3" />);
     expect(getAllByRole('img')[1].getAttribute('aria-label')).toBe('Slide 3');
+    // A slide without text on its canvas yet (a template layout before K3) falls back to its title.
+    const { getAllByRole: again } = render(<SlideCanvas slide={{ id: 'c', layout: 'cover', title: 'Q3 Review' }} deck={{}} width={480} />);
+    expect(again('img')[2].getAttribute('aria-label')).toBe('Q3 Review');
   });
 });

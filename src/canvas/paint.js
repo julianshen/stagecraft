@@ -19,14 +19,14 @@ const ANCHOR = { top: 't', middle: 'ctr', bottom: 'b' };
 
 /**
  * A fresh paint env: decoded images (src → drawable, or false once a decode
- * failed; at most `imageLimit`, oldest dropped first) with their in-flight decodes, the font specs already asked for and
+ * failed; at most `imageLimit`, least recently painted dropped first) with their in-flight decodes, each font spec's load (or 'done'), and
  * the epoch that bumps when fonts arrive (assets.js), and `prepared` — each
  * node's painter-ready form (officeview style, geometry, text layout), made
  * once per node. Scenes are immutable and rebuilt only when their slide
  * changes, so this lives exactly as long as the nodes it describes.
  */
 export const createPaintEnv = ({ imageLimit = 256 } = {}) => ({
-  images: new Map(), imageLimit, pending: new Map(), fonts: new Set(), fontEpoch: 0,
+  images: new Map(), imageLimit, pending: new Map(), fonts: new Map(), fontEpoch: 0,
   prepared: new WeakMap(),
 });
 
@@ -69,11 +69,20 @@ function drawingFill(fill) {
   };
 }
 
+// A shape's shadow goes through officeview's silhouette pass (all shadows
+// first, then the fill and outline over them), so an outline's shadow can't
+// fall across its own fill; rotWithShape maps the offset through the frame.
+// That pass fills the silhouette with the shadow colour itself, so its alpha
+// applies twice (shadowColor × source): hand it √alpha so the shadow lands at
+// exactly `alpha`, as the CSS filter and the export draw it. (Upstream fix
+// pending — paint.paint.test.js pins the shadow's exact strength.)
+const silhouetteAlpha = (alpha) => Math.sqrt(alpha);
 const prepareShape = (node) => ({
   geometry: resolvePreset(node.preset, node.w, node.h, node.adjust),
   style: {
     fill: drawingFill(node.fill),
     ...(node.line && { line: { width: node.line.width, fill: { kind: 'solid', color: rgba(node.line.color) }, dash: SHAPE_DASH[node.line.dash] } }),
+    ...(node.shadow && { shadow: { color: rgba(node.shadow.color, silhouetteAlpha(node.shadow.alpha)), blurPx: node.shadow.blur, offsetX: node.shadow.x, offsetY: node.shadow.y, rotWithShape: true } }),
     issues: [],
   },
 });
@@ -109,9 +118,19 @@ function paintPlaceholder(ctx, { w, h }) {
   ctx.fillText(IMAGE_PLACEHOLDER.label, w / 2, h / 2);
 }
 
+/** A decoded image, marked as just used — the image cache drops the least recently used first. */
+export function touchImage(env, src) {
+  const img = env.images.get(src);
+  if (img !== undefined) {
+    env.images.delete(src);
+    env.images.set(src, img);
+  }
+  return img;
+}
+
 // Fill / Fit / Stretch, as CSS object-fit cover / contain / fill draw them.
 function paintImage(ctx, node, env) {
-  const img = node.src ? env.images.get(node.src) : null;
+  const img = node.src ? touchImage(env, node.src) : null;
   if (!img) { paintPlaceholder(ctx, node); return; } // none, not decoded yet, or failed
   const { w, h, fit } = node;
   const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
@@ -161,8 +180,11 @@ export function paintNode(ctx, node, env) {
     if (node.rot) ctx.rotate((node.rot * Math.PI) / 180);
     if (node.sx < 0 || node.sy < 0) ctx.scale(node.sx, node.sy);
     ctx.translate(-node.w / 2, -node.h / 2);
+    // Opacity applies to each fill and outline, as PowerPoint applies the
+    // export's per-fill and per-line transparency (where the DOM fades the
+    // element as one group).
     ctx.globalAlpha *= node.opacity;
-    if (node.shadow) applyShadow(ctx, node.shadow);
+    if (node.shadow && node.kind !== 'shape') applyShadow(ctx, node.shadow); // shapes cast theirs in paintGeometry
     PAINTERS[node.kind](ctx, node, env);
   } finally {
     ctx.restore();
