@@ -62,7 +62,7 @@ The design doc estimated Konva at 50–70 kB gzip. It measures 96 kB even with c
 
 | Path | Budget | Today | Owner |
 |---|---|---|---|
-| Repaint of a laid-out slide | ≤ 4 ms | 1.4–1.9 ms; K1 painter: 0.8 ms median, 1.2 ms p95 ✅ (`spikes/k1`) | K1 |
+| Repaint of a laid-out slide | ≤ 4 ms | 1.4–1.9 ms; K1 painter (pictures decoded): 0.7 ms median, 1.5 ms p95 ✅ (`spikes/k1`) | K1 |
 | Drag / transform frame (p95) | ≤ 8 ms | ≤ 3.9 ms | K5 |
 | One slide cold (layout + paint) | ≤ 16 ms | 55–66 ms; K1 painter (16 nodes, 8 text boxes): ≈ 30 ms median | **K2: measure cache + per-node layout cache (decision 6)** |
 | 40 thumbnails cold, main-thread work | ≤ 600 ms total, in ≤ 16 ms chunks, visible slides first | 2.6 s (one block) | K2 (cache) + K4 (chunked/idle or worker) |
