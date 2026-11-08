@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
 import pptxgen from 'pptxgenjs';
-import { patchSlideXml, postProcess, linAngle, planFor, objectNameOf } from './pptxPost.js';
+import { patchSlideXml, postProcess, planFor, objectNameOf } from './pptxPost.js';
+import { linAngle } from './elements.js';
 import { importPptx } from './pptxImport.js';
 import { NS, tree } from '../test/pptxFixture.js';
 

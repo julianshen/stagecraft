@@ -18,29 +18,12 @@ import { shapeDef, hasVisibleStroke } from '../lib/shapes.js';
 import { isHexColor, toHex } from '../lib/color.js';
 import {
   INK, SHADOW_OPACITY, isRenderableShadow, isRenderableGradient, isFinitePoint,
-  lineSpacingOf, valignOf, fitOf, STROKE_DASHES,
+  lineSpacingOf, valignOf, fitOf, opacityOf, orientation, STROKE_DASHES,
 } from '../lib/elements.js';
-
-/** The DOM renderer's corner radius (px) for the rounded box shapes, drawn here as roundRect. */
-export const ROUNDED_RADIUS = Object.freeze({ shape: 8, rounded: 28 });
 
 const ALIGNS = ['left', 'center', 'right'];
 const finite = (...vs) => vs.every(Number.isFinite);
 const dashOf = (d) => (STROKE_DASHES.includes(d) ? d : 'solid');
-
-// How an element is oriented: its rotation plus mirror signs. Text follows
-// PowerPoint — a flipped text box stays readable, so flipH changes nothing and
-// flipV turns it 180° (the same rule as elementTransform in lib/elements.js).
-function orientation(el) {
-  const text = el.type === 'text';
-  return {
-    rot: (Number(el.rot) || 0) + (text && el.flipV ? 180 : 0),
-    sx: !text && el.flipH ? -1 : 1,
-    sy: !text && el.flipV ? -1 : 1,
-  };
-}
-
-const opacityOf = (el) => (el.opacity == null || !Number.isFinite(el.opacity) ? 1 : Math.max(0, Math.min(100, el.opacity)) / 100);
 
 const shadowOf = (el) => (isRenderableShadow(el.shadow)
   ? { color: el.shadow.color, alpha: SHADOW_OPACITY, blur: el.shadow.blur, x: el.shadow.x, y: el.shadow.y }
@@ -55,7 +38,8 @@ function fillOf(el, fallback) {
 
 function shapeNode(el, def) {
   if (def.line) return { kind: 'shape', preset: 'rect', adjust: {}, fill: fillOf(el, INK), line: null };
-  const radius = ROUNDED_RADIUS[el.type];
+  // A box with a corner radius (the registry's `radius`, px) is drawn as roundRect at that radius.
+  const { radius } = def;
   const preset = radius ? 'roundRect' : def.pptx;
   // roundRect's `adj` is the corner radius as a fraction (×100000) of the shorter side, at most half.
   const adjust = radius ? { adj: Math.min(50000, (radius / Math.min(el.w, el.h)) * 100000) } : {};
@@ -110,12 +94,12 @@ export function elementNode(el) {
 }
 
 /**
- * A slide's scene: its size (from the deck), background, and element nodes in
- * z-order. `template` marks layouts whose own content (and background) K3
- * compiles; until then their scene is just white plus their elements.
+ * A slide's scene at `dims` (the deck's slideDims): its size, background, and
+ * element nodes in z-order. `template` marks layouts whose own content (and
+ * background) K3 compiles; until then their scene is just white plus their
+ * elements.
  */
-export function buildScene(slide, deck) {
-  const { w, h } = slideDims(deck);
+export function buildScene(slide, { w, h } = slideDims()) {
   const blank = slide?.layout === 'blank';
   const elements = Array.isArray(slide?.elements) ? slide.elements : [];
   return {

@@ -51,7 +51,7 @@ export const DEFAULT_GRADIENT = Object.freeze({ from: '#4f46e5', to: '#06b6d4', 
 // flips (flips apply in the element's own frame, before the rotation — the
 // OOXML order). Text follows PowerPoint: a flipped text box's text stays
 // readable, so flipH changes nothing and flipV turns it 180°.
-function orientation(el) {
+export function orientation(el) {
   const text = el.type === 'text';
   return {
     rot: (Number(el.rot) || 0) + (text && el.flipV ? 180 : 0),
@@ -209,14 +209,15 @@ export function pathFromStroke(pts) {
 // and the pptx export (line dashType) all agree on the same vocabulary.
 export const STROKE_DASHES = Object.freeze(['solid', 'dashed', 'dotted']);
 
-// SVG stroke-dasharray for a pen path's polyline (null = solid). Proportional to
-// the stroke width so the pattern scales with it; the polyline's round caps turn
-// the zero-length dotted dashes into round dots.
+// A pen path's dash pattern in px (empty = solid): proportional to the stroke
+// width so the pattern scales with it; the round caps turn the zero-length
+// dotted dashes into round dots. The SVG polyline joins it into a
+// stroke-dasharray; the canvas painter passes it to setLineDash.
 export function dashArray(dash, strokeWidth) {
   const w = strokeWidth > 0 ? strokeWidth : 2;
-  if (dash === 'dashed') return `${w * 3} ${w * 2}`;
-  if (dash === 'dotted') return `0 ${w * 2}`;
-  return null;
+  if (dash === 'dashed') return [w * 3, w * 2];
+  if (dash === 'dotted') return [0, w * 2];
+  return [];
 }
 
 // pptxgen line dashType (undefined = solid) — 'dash'/'sysDot' approximate the canvas.
@@ -237,6 +238,12 @@ export const borderStyle = (dash) => (dash === 'dashed' || dash === 'dotted' ? d
 // agree, and a degenerate 0/negative value falls back rather than overlapping text.
 export const lineSpacingOf = (el) => (Number.isFinite(el.lineSpacing) && el.lineSpacing > 0 ? el.lineSpacing : 1.2);
 
+// An element's opacity as 0–1 (its 0–100 `opacity`, clamped; absent or junk → opaque).
+export const opacityOf = (el) => (Number.isFinite(el.opacity) ? clamp(el.opacity, 0, 100) / 100 : 1);
+
+// What an image without a picture shows, so it stays visible and selectable.
+export const IMAGE_PLACEHOLDER = Object.freeze({ fill: '#eceae4', ink: '#9a978f', label: 'No image', fontSize: 18 });
+
 // A text element's vertical anchor (PowerPoint top/middle/bottom). Absent or
 // malformed → middle, the canvas's original centring — single-sourced so the gate,
 // the canvas flex alignment, the export valign and the Properties control agree.
@@ -256,6 +263,8 @@ export const objectFitOf = (el) => ({ cover: 'cover', contain: 'contain', stretc
 // fonts the browser often lacks, so the authored family is followed by its
 // metric-compatible open substitute (same widths → same line breaks) and the
 // right generic family — never the browser's default serif for a sans font.
+// `sans` is the sans fallback: the app's CSS variable by default; the canvas,
+// which can't read CSS variables, passes the literal stack (FONT_SANS).
 // The export writes the bare family (PowerPoint resolves it natively).
 const FONT_SUBSTITUTE = {
   calibri: 'Carlito', cambria: 'Caladea', arial: 'Arimo', helvetica: 'Arimo',
@@ -263,11 +272,15 @@ const FONT_SUBSTITUTE = {
 };
 const SERIF_FONTS = new Set(['cambria', 'georgia', 'times new roman', 'times', 'garamond', 'palatino linotype', 'book antiqua', 'constantia']);
 const MONO_FONTS = new Set(['consolas', 'courier new', 'courier', 'lucida console', 'menlo', 'monaco']);
-export function fontStack(family) {
+// The app's font stacks as literals, for surfaces that can't read CSS
+// variables (the canvas). They mirror --f-sans / --f-mono in main.css.
+export const FONT_SANS = '"Inter", -apple-system, BlinkMacSystemFont, sans-serif';
+export const FONT_MONO = '"JetBrains Mono", ui-monospace, Menlo, monospace';
+export function fontStack(family, sans = 'var(--f-sans), sans-serif') {
   const name = typeof family === 'string' ? family.replace(/["\\]/g, '').trim() : '';
   if (!name) return undefined;
   const key = name.toLowerCase();
-  const generic = SERIF_FONTS.has(key) ? 'serif' : MONO_FONTS.has(key) ? 'monospace' : 'var(--f-sans), sans-serif';
+  const generic = SERIF_FONTS.has(key) ? 'serif' : MONO_FONTS.has(key) ? 'monospace' : sans;
   const sub = FONT_SUBSTITUTE[key];
   return [`"${name}"`, ...(sub ? [`"${sub}"`] : []), generic].join(', ');
 }

@@ -34,12 +34,24 @@ export async function decodeImage(src) {
   return img;
 }
 
+// Store a decode, keeping at most env.imageLimit: the oldest goes first (and an
+// ImageBitmap is closed, freeing its pixels now). A dropped picture that is
+// still on a slide decodes again on its next ensureAssets.
+function store(env, src, img) {
+  env.images.set(src, img);
+  while (env.images.size > env.imageLimit) {
+    const [oldest, drawable] = env.images.entries().next().value;
+    env.images.delete(oldest);
+    drawable?.close?.();
+  }
+}
+
 // Decode `src` into env.images (false on failure), sharing an in-flight decode.
 function loadInto(env, src, loadImage) {
   if (!env.pending.has(src)) {
     env.pending.set(src, Promise.resolve()
       .then(() => loadImage(src))
-      .then((img) => { env.images.set(src, img); return true; }, () => { env.images.set(src, false); return false; })
+      .then((img) => { store(env, src, img); return true; }, () => { store(env, src, false); return false; })
       .finally(() => env.pending.delete(src)));
   }
   return env.pending.get(src);
@@ -53,7 +65,7 @@ function loadInto(env, src, loadImage) {
  */
 export async function ensureAssets(scene, env = sharedPaintEnv, { loadImage = decodeImage, fonts = globalThis.document?.fonts } = {}) {
   const { images, fonts: specs } = sceneAssets(scene);
-  const decoded = images.filter((src) => !env.images.has(src) || env.pending.has(src)).map((src) => loadInto(env, src, loadImage));
+  const decoded = images.filter((src) => !env.images.has(src)).map((src) => loadInto(env, src, loadImage));
   const loading = fonts?.load ? specs.filter((s) => !env.fonts.has(s)).map(async (spec) => {
     env.fonts.add(spec); // once per spec, loaded or not: a failure leaves the fallback, which is what then measures
     try {

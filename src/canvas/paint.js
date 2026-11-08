@@ -4,55 +4,50 @@
 // the presenter and PDF export all paint with the same code.
 //
 // The caller sets the transform (fit scale × devicePixelRatio); everything here
-// works in slide px. Geometry and text layouts are cached on the paint env, so
-// repainting a slide (a drag, a zoom) lays nothing out again.
+// works in slide px. Each node is prepared once (geometry, style, text layout)
+// on the paint env, so repainting a slide (a drag, a zoom) lays nothing out again.
 import { resolvePreset } from '../vendor/officeview/drawing/geometry';
 import { paintGeometry } from '../vendor/officeview/drawing/paint';
 import { layoutTextBody } from '../vendor/officeview/drawing/text-layout';
 import { paintTextBody, createTextBodyMeasurer } from '../vendor/officeview/drawing/text-paint';
-import { toHex } from '../lib/color.js';
-import { dashArray, fontStack, linAngle } from '../lib/elements.js';
+import { hexToRgb } from '../lib/color.js';
+import { dashArray, fontStack, linAngle, FONT_SANS, FONT_MONO, IMAGE_PLACEHOLDER } from '../lib/elements.js';
 
-// The canvas's font stacks: the app's --f-sans / --f-mono values (main.css) —
-// a canvas font can't read a CSS variable.
-const SANS = '"Inter", -apple-system, BlinkMacSystemFont, sans-serif';
-const MONO = '"JetBrains Mono", ui-monospace, Menlo, monospace';
-const PLACEHOLDER = { fill: '#eceae4', ink: '#9a978f', label: 'No image' };
 // The outline dashes as PowerPoint presets (what the export's dashType writes).
 const SHAPE_DASH = { solid: 'solid', dashed: 'dash', dotted: 'sysDot' };
 const ANCHOR = { top: 't', middle: 'ctr', bottom: 'b' };
-const CACHE_LIMIT = 2000; // per cache, per env
 
 /**
  * A fresh paint env: decoded images (src → drawable, or false once a decode
- * failed) with their in-flight decodes, the font specs already asked for and
- * the epoch that bumps when fonts arrive (assets.js), and the paint caches.
+ * failed; at most `imageLimit`, oldest dropped first) with their in-flight decodes, the font specs already asked for and
+ * the epoch that bumps when fonts arrive (assets.js), and `prepared` — each
+ * node's painter-ready form (officeview style, geometry, text layout), made
+ * once per node. Scenes are immutable and rebuilt only when their slide
+ * changes, so this lives exactly as long as the nodes it describes.
  */
-export const createPaintEnv = ({ cacheLimit = CACHE_LIMIT } = {}) => ({
-  images: new Map(), pending: new Map(), fonts: new Set(), fontEpoch: 0,
-  geometry: new Map(), layouts: new Map(), cacheLimit,
+export const createPaintEnv = ({ imageLimit = 256 } = {}) => ({
+  images: new Map(), imageLimit, pending: new Map(), fonts: new Set(), fontEpoch: 0,
+  prepared: new WeakMap(),
 });
 
-// Bounded memo: a long session can't grow a cache without limit (oldest out first).
-function memo(map, limit, key, compute) {
-  if (map.has(key)) return map.get(key);
-  const value = compute();
-  if (map.size >= limit) map.delete(map.keys().next().value);
-  map.set(key, value);
-  return value;
-}
-
-const rgb = (hex, a = 1) => {
-  const h = toHex(hex);
-  return { r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16), a };
-};
+const rgba = (hex, a = 1) => ({ ...hexToRgb(hex), a });
 const css = (hex, a = 1) => {
-  const { r, g, b } = rgb(hex);
+  const { r, g, b } = hexToRgb(hex);
   return `rgba(${r},${g},${b},${a})`;
 };
 
+// A node's painter-ready form, made on its first paint.
+function prepared(env, node, make) {
+  let p = env.prepared.get(node);
+  if (!p) {
+    p = make(node);
+    env.prepared.set(node, p);
+  }
+  return p;
+}
+
 /** A text box's canvas font stack: its family (with the same substitutes the canvas uses) over the app sans. */
-export const canvasFont = (family) => (family ? fontStack(family).replace('var(--f-sans), sans-serif', SANS) : SANS);
+export const canvasFont = (family) => (family ? fontStack(family, FONT_SANS) : FONT_SANS);
 
 // A CSS drop shadow in the element's frame: canvas shadows ignore the
 // transform, so map the local offset (and the blur's scale) through it —
@@ -66,42 +61,52 @@ function applyShadow(ctx, s) {
 }
 
 function drawingFill(fill) {
-  if (fill.kind === 'solid') return { kind: 'solid', color: rgb(fill.color) };
+  if (fill.kind === 'solid') return { kind: 'solid', color: rgba(fill.color) };
   return {
     kind: 'gradient', gradient: 'linear', scaled: false,
     angle: (linAngle(fill.angle) / 60000) * (Math.PI / 180), // the export's a:lin ang, in radians
-    stops: [{ position: 0, color: rgb(fill.from) }, { position: 1, color: rgb(fill.to) }],
+    stops: [{ position: 0, color: rgba(fill.from) }, { position: 1, color: rgba(fill.to) }],
   };
 }
 
+const prepareShape = (node) => ({
+  geometry: resolvePreset(node.preset, node.w, node.h, node.adjust),
+  style: {
+    fill: drawingFill(node.fill),
+    ...(node.line && { line: { width: node.line.width, fill: { kind: 'solid', color: rgba(node.line.color) }, dash: SHAPE_DASH[node.line.dash] } }),
+    issues: [],
+  },
+});
+
 function paintShape(ctx, node, env) {
-  const { preset, adjust, w, h } = node;
-  const geometry = memo(env.geometry, env.cacheLimit, `${preset}|${w}|${h}|${adjust.adj ?? ''}`, () => resolvePreset(preset, w, h, adjust));
-  const line = node.line && { width: node.line.width, fill: { kind: 'solid', color: rgb(node.line.color) }, dash: SHAPE_DASH[node.line.dash] };
-  paintGeometry(ctx, geometry, { fill: drawingFill(node.fill), ...(line && { line }), issues: [] }, w, h);
+  const { geometry, style } = prepared(env, node, prepareShape);
+  paintGeometry(ctx, geometry, style, node.w, node.h);
 }
 
 // A pen stroke: round caps and joins, and the canvas's own dash pattern.
-function paintPath(ctx, { points, w, h, color, width, dash }) {
+function paintPath(ctx, node, env) {
+  const { points, w, h, width } = node;
   if (!(width > 0)) return;
+  const { stroke, dash } = prepared(env, node, (n) => ({ stroke: css(n.color), dash: dashArray(n.dash, n.width) }));
   ctx.beginPath();
-  points.forEach(([x, y], i) => (i ? ctx.lineTo(x * w, y * h) : ctx.moveTo(x * w, y * h)));
-  ctx.strokeStyle = css(color);
+  ctx.moveTo(points[0][0] * w, points[0][1] * h);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0] * w, points[i][1] * h);
+  ctx.strokeStyle = stroke;
   ctx.lineWidth = width;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.setLineDash((dashArray(dash, width) || '').split(' ').filter(Boolean).map(Number));
+  ctx.setLineDash(dash);
   ctx.stroke();
 }
 
 function paintPlaceholder(ctx, { w, h }) {
-  ctx.fillStyle = PLACEHOLDER.fill;
+  ctx.fillStyle = IMAGE_PLACEHOLDER.fill;
   ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = PLACEHOLDER.ink;
-  ctx.font = `18px ${MONO}`;
+  ctx.fillStyle = IMAGE_PLACEHOLDER.ink;
+  ctx.font = `${IMAGE_PLACEHOLDER.fontSize}px ${FONT_MONO}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(PLACEHOLDER.label, w / 2, h / 2);
+  ctx.fillText(IMAGE_PLACEHOLDER.label, w / 2, h / 2);
 }
 
 // Fill / Fit / Stretch, as CSS object-fit cover / contain / fill draw them.
@@ -123,21 +128,27 @@ function paintImage(ctx, node, env) {
 // K1's text: the plain content as one run per line, laid out by officeview.
 // K2 replaces this with the rich-text model (runs, bullets, insets, autofit,
 // underline) — until then weight 400/700 (the DOM uses 500/700) and no underline.
-const textBody = (node) => ({
-  paragraphs: node.content.split('\n').map((text) => ({
-    runs: [{ text, fontSizePt: node.fontSize * 0.75, bold: node.bold, italic: node.italic, color: css(node.color), fontFamily: node.fontFamily ?? '' }],
-    align: node.align, level: 0,
-    lineSpacing: { kind: 'percent', value: node.lineSpacing / 1.2 }, // officeview's 100% is 1.2 em
-  })),
-  anchor: ANCHOR[node.valign], insetLeftEmu: 0, insetRightEmu: 0, insetTopEmu: 0, insetBottomEmu: 0, wrap: true,
-});
+const textBody = (node) => {
+  const color = css(node.color);
+  return {
+    paragraphs: node.content.split('\n').map((text) => ({
+      runs: [{ text, fontSizePt: node.fontSize * 0.75, bold: node.bold, italic: node.italic, color, fontFamily: node.fontFamily ?? '' }],
+      align: node.align, level: 0,
+      lineSpacing: { kind: 'percent', value: node.lineSpacing / 1.2 }, // officeview's 100% is 1.2 em
+    })),
+    anchor: ANCHOR[node.valign], insetLeftEmu: 0, insetRightEmu: 0, insetTopEmu: 0, insetBottomEmu: 0, wrap: true,
+  };
+};
 
 function paintText(ctx, node, env) {
   if (!node.content) return;
-  const body = textBody(node);
-  const key = JSON.stringify([node.content, node.fontSize, node.bold, node.italic, node.align, node.valign, node.fontFamily, node.lineSpacing, node.w, node.h, env.fontEpoch]);
-  const layout = memo(env.layouts, env.cacheLimit, key, () => layoutTextBody(body, node.w, node.h, createTextBodyMeasurer(ctx, canvasFont)));
-  paintTextBody(body, ctx, 0, 0, node.w, node.h, canvasFont, undefined, { layout });
+  const p = prepared(env, node, (n) => ({ body: textBody(n), layout: null, epoch: -1 }));
+  // Laid out once per node, and again only when fonts arrive (measured with the fallback before).
+  if (p.epoch !== env.fontEpoch) {
+    p.layout = layoutTextBody(p.body, node.w, node.h, createTextBodyMeasurer(ctx, canvasFont));
+    p.epoch = env.fontEpoch;
+  }
+  paintTextBody(p.body, ctx, 0, 0, node.w, node.h, canvasFont, undefined, { layout: p.layout });
 }
 
 const PAINTERS = { shape: paintShape, path: paintPath, image: paintImage, text: paintText };

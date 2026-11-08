@@ -4,13 +4,11 @@ import { describe, it, expect } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import SlideCanvas from './SlideCanvas.jsx';
 import { createPaintEnv } from '../../canvas/paint.js';
+import { pixelAt } from '../../test/pixels.js';
 
 const blank = (elements, extra = {}) => ({ id: 's', layout: 'blank', elements, ...extra });
 // The RGBA at slide point (x, y) on a rendered SlideCanvas.
-const pixelAt = (canvas, x, y) => {
-  const k = canvas.width / 1920;
-  return [...canvas.getContext('2d').getImageData(Math.floor(x * k), Math.floor(y * k), 1, 1).data];
-};
+const canvasPixel = (canvas, x, y) => pixelAt(canvas.getContext('2d'), canvas.width / 1920, x, y);
 
 // A 1×1 red PNG, made by the browser itself.
 const redPng = () => {
@@ -45,15 +43,27 @@ describe('<SlideCanvas>', () => {
     const slide = blank([{ id: 'r', type: 'rect', x: 0, y: 0, w: 960, h: 1080, fill: '#ff0000' }], { bgColor: '#0000ff' });
     const { container } = render(<div style={{ width: 480 }}><SlideCanvas slide={slide} deck={{}} env={createPaintEnv()} /></div>);
     const canvas = container.querySelector('canvas');
-    expect(pixelAt(canvas, 400, 500).slice(0, 3)).toEqual([255, 0, 0]);
-    expect(pixelAt(canvas, 1500, 500).slice(0, 3)).toEqual([0, 0, 255]);
+    expect(canvasPixel(canvas, 400, 500).slice(0, 3)).toEqual([255, 0, 0]);
+    expect(canvasPixel(canvas, 1500, 500).slice(0, 3)).toEqual([0, 0, 255]);
+  });
+
+  it('repaints a changed slide in the same backing store (no reallocation at an unchanged size)', () => {
+    const red = blank([{ id: 'r', type: 'rect', x: 0, y: 0, w: 1920, h: 1080, fill: '#ff0000' }]);
+    const blue = blank([{ id: 'r', type: 'rect', x: 0, y: 0, w: 1920, h: 1080, fill: '#0000ff' }]);
+    const env = createPaintEnv();
+    const { container, rerender } = render(<SlideCanvas slide={red} deck={{}} width={480} env={env} />);
+    const canvas = container.querySelector('canvas');
+    const size = [canvas.width, canvas.height];
+    rerender(<SlideCanvas slide={blue} deck={{}} width={480} env={env} />);
+    expect([canvas.width, canvas.height]).toEqual(size);
+    expect(canvasPixel(canvas, 960, 540).slice(0, 3)).toEqual([0, 0, 255]);
   });
 
   it('repaints once a picture has decoded (the placeholder shows meanwhile)', async () => {
     const slide = blank([{ id: 'i', type: 'image', x: 0, y: 0, w: 1920, h: 1080, src: redPng(), fit: 'stretch' }]);
     const { container } = render(<div style={{ width: 480 }}><SlideCanvas slide={slide} deck={{}} env={createPaintEnv()} /></div>);
     const canvas = container.querySelector('canvas');
-    await waitFor(() => expect(pixelAt(canvas, 960, 540).slice(0, 3)).toEqual([255, 0, 0]));
+    await waitFor(() => expect(canvasPixel(canvas, 960, 540).slice(0, 3)).toEqual([255, 0, 0]));
   });
 
   it('frees its backing store when it unmounts (rails mount many)', () => {

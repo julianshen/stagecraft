@@ -8,28 +8,30 @@
 // height the deck's slide size.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { buildScene } from '../../canvas/scene.js';
+import { slideDims } from '../../lib/slideDims.js';
 import { paintSlide } from '../../canvas/paint.js';
 import { ensureAssets, sharedPaintEnv } from '../../canvas/assets.js';
 
 const MAX_DPR = 3; // a 4×+ backing store costs memory for no visible gain
 
 /** The text a slide's scene shows, in z-order — the canvas's accessible label. */
-export const sceneText = (scene) => scene.nodes.filter((n) => n.kind === 'text' && n.content.trim()).map((n) => n.content.trim()).join('. ');
+export const sceneText = (scene) => scene.nodes.filter((n) => n.kind === 'text').map((n) => n.content.trim()).filter(Boolean).join('. ');
 
 export default function SlideCanvas({ slide, deck, width, env = sharedPaintEnv, label, className, style }) {
   const canvasRef = useRef(null);
+  const paintRef = useRef(() => {});
   const [measured, setMeasured] = useState(0);
-  const deckH = deck?.size?.h;
-  // Keyed on the deck's slide size, the only deck input a K1 scene reads (K3's
-  // layout compilers widen this to the full render key, decision 2), so an
-  // unrelated deck edit doesn't rebuild and repaint every thumbnail.
-  const scene = useMemo(() => buildScene(slide, deck), [slide, deckH]);
+  // The deck's slide size is the only deck input a K1 scene reads (K3's layout
+  // compilers widen this to the full render key, decision 2), so an unrelated
+  // deck edit doesn't rebuild — and repaint — every thumbnail.
+  const { w: slideW, h: slideH } = slideDims(deck);
+  const scene = useMemo(() => buildScene(slide, { w: slideW, h: slideH }), [slide, slideW, slideH]);
   const cssW = width ?? measured;
 
   // Track the container's width (unless one was given).
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
-    if (width != null || !canvas) return undefined;
+    if (width != null) return undefined;
     setMeasured(canvas.getBoundingClientRect().width);
     if (typeof ResizeObserver === 'undefined') return undefined;
     const ro = new ResizeObserver(([entry]) => setMeasured(entry.contentRect.width));
@@ -37,25 +39,32 @@ export default function SlideCanvas({ slide, deck, width, env = sharedPaintEnv, 
     return () => ro.disconnect();
   }, [width]);
 
-  // Paint now, and again once the scene's assets are ready.
+  // Size the backing store (only when its pixel size changes) and paint.
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !(cssW > 0)) return undefined;
+    if (!(cssW > 0)) return;
     const dpr = Math.min(globalThis.devicePixelRatio || 1, MAX_DPR);
-    canvas.width = Math.round(cssW * dpr);
-    canvas.height = Math.round((cssW * scene.h * dpr) / scene.w);
-    const paint = () => {
+    const pw = Math.round(cssW * dpr), ph = Math.round((cssW * scene.h * dpr) / scene.w);
+    if (canvas.width !== pw || canvas.height !== ph) {
+      canvas.width = pw;
+      canvas.height = ph;
+    }
+    paintRef.current = () => {
       const ctx = canvas.getContext('2d');
       if (!ctx) return; // no canvas support (jsdom)
       const k = canvas.width / scene.w;
       ctx.setTransform(k, 0, 0, k, 0, 0);
       paintSlide(ctx, scene, env);
     };
-    paint();
-    let live = true;
-    ensureAssets(scene, env).then((changed) => { if (changed && live) paint(); });
-    return () => { live = false; };
+    paintRef.current();
   }, [scene, cssW, env]);
+
+  // Repaint once the scene's pictures have decoded and its fonts have loaded.
+  useEffect(() => {
+    let live = true;
+    ensureAssets(scene, env).then((changed) => { if (changed && live) paintRef.current(); });
+    return () => { live = false; };
+  }, [scene, env]);
 
   // Free the backing store when the canvas goes (thumbnail rails mount many).
   // The canvas is captured on mount: React clears the ref before this cleanup runs.

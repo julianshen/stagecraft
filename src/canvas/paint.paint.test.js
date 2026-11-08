@@ -3,9 +3,10 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { buildScene } from './scene.js';
 import { paintSlide, createPaintEnv } from './paint.js';
+import { pixelAt, near } from '../test/pixels.js';
 
 const SCALE = 0.25;
-const scene = (elements, extra = {}) => buildScene({ layout: 'blank', elements, ...extra }, {});
+const scene = (elements, extra = {}) => buildScene({ layout: 'blank', elements, ...extra });
 
 function paint(sc, env = createPaintEnv()) {
   const canvas = document.createElement('canvas');
@@ -14,10 +15,8 @@ function paint(sc, env = createPaintEnv()) {
   const ctx = canvas.getContext('2d');
   ctx.scale(SCALE, SCALE);
   paintSlide(ctx, sc, env);
-  // The RGBA at slide point (x, y).
-  return (x, y) => [...ctx.getImageData(Math.floor(x * SCALE), Math.floor(y * SCALE), 1, 1).data];
+  return (x, y) => pixelAt(ctx, SCALE, x, y);
 }
-const near = (actual, expected, tol = 12) => actual.slice(0, 3).every((c, i) => Math.abs(c - expected[i]) <= tol);
 const WHITE = [255, 255, 255];
 const RED = [255, 0, 0];
 const BLUE = [0, 0, 255];
@@ -168,29 +167,37 @@ describe('text', () => {
     expect(ink(bottomRight, range(box.x, box.x + 200), range(box.y, box.y + 200))).toBe(false);
   });
 
-  it('draws nothing for an empty text box or a zero-width pen stroke (and lays nothing out)', () => {
+  it('draws nothing for an empty text box or a zero-width pen stroke (and prepares nothing to)', () => {
     const env = createPaintEnv();
-    const at = paint(scene([
+    const sc = scene([
       { id: 't', type: 'text', ...box, content: '', color: '#000000' },
       { id: 'p', type: 'path', ...box, points: [[0, 0], [1, 1]], stroke: '#0000ff', strokeWidth: 0 },
-    ]), env);
-    expect(near(at(800, 400), WHITE)).toBe(true);
-    expect(env.layouts.size).toBe(0);
+    ]);
+    expect(near(paint(sc, env)(800, 400), WHITE)).toBe(true);
+    sc.nodes.forEach((n) => expect(env.prepared.has(n)).toBe(false));
   });
 
-  it('keeps each cache bounded, dropping the oldest entry first', () => {
-    const env = createPaintEnv({ cacheLimit: 2 });
-    for (const w of [100, 200, 300]) paint(scene([{ id: 's', type: 'star', x: 0, y: 0, w, h: 100, fill: '#ff0000' }]), env);
-    expect([...env.geometry.keys()]).toEqual(['star5|200|100|', 'star5|300|100|']);
-  });
-
-  it('caches geometry and text layout, so a repaint lays nothing out again', () => {
+  it('prepares each node once, so a repaint lays nothing out again', () => {
     const env = createPaintEnv();
     const sc = scene([{ id: 't', type: 'text', ...box, content: 'Hello', color: '#000000' }, { id: 's', type: 'star', ...box, fill: '#ff0000' }]);
     paint(sc, env);
-    const sizes = [env.layouts.size, env.geometry.size];
+    const first = sc.nodes.map((n) => ({ ...env.prepared.get(n) }));
     paint(sc, env);
-    expect([env.layouts.size, env.geometry.size]).toEqual(sizes);
-    expect(sizes).toEqual([1, 1]);
+    sc.nodes.forEach((n, i) => {
+      expect(env.prepared.get(n).layout ?? null).toBe(first[i].layout ?? null);
+      expect(env.prepared.get(n).geometry ?? null).toBe(first[i].geometry ?? null);
+    });
+    expect(first[0].layout).toBeTruthy();
+    expect(first[1].geometry).toBeTruthy();
+  });
+
+  it('lays text out again once fonts arrive (a new font epoch), and only then', () => {
+    const env = createPaintEnv();
+    const sc = scene([{ id: 't', type: 'text', ...box, content: 'Hello', color: '#000000' }]);
+    paint(sc, env);
+    const before = env.prepared.get(sc.nodes[0]).layout;
+    env.fontEpoch += 1;
+    paint(sc, env);
+    expect(env.prepared.get(sc.nodes[0]).layout).not.toBe(before);
   });
 });

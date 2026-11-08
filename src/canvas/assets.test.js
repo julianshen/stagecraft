@@ -4,7 +4,7 @@ import { createPaintEnv } from './paint.js';
 import { buildScene } from './scene.js';
 
 const box = { x: 0, y: 0, w: 100, h: 100 };
-const scene = (elements) => buildScene({ layout: 'blank', elements }, {});
+const scene = (elements) => buildScene({ layout: 'blank', elements });
 const deferred = () => {
   let resolve, reject;
   const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
@@ -60,6 +60,15 @@ describe('ensureAssets', () => {
     expect(env.images.get('data:bad')).toBe(false);
     await ensureAssets(sc, env, { loadImage, fonts: noFonts });
     expect(loadImage).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a bounded number of decoded images, dropping (and closing) the oldest first', async () => {
+    const env = createPaintEnv({ imageLimit: 2 });
+    const closed = [];
+    const loadImage = async (src) => ({ src, close: () => closed.push(src) });
+    for (const src of ['data:a', 'data:b', 'data:c']) await ensureAssets(scene([{ id: src, type: 'image', ...box, src }]), env, { loadImage, fonts: noFonts });
+    expect([...env.images.keys()]).toEqual(['data:b', 'data:c']);
+    expect(closed).toEqual(['data:a']);
   });
 
   it('loads each font once, and bumps the font epoch when one arrives (stale layouts go)', async () => {

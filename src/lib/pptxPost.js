@@ -14,8 +14,6 @@
 import JSZip from 'jszip';
 import { parseXml, kid, path, xfrmBox } from './ooxml.js';
 import { isRenderableGradient, linAngle } from './elements.js';
-
-export { linAngle }; // its home is elements.js, shared with the canvas painter
 import { isFillableShape } from './shapes.js';
 import { pptxHex } from './color.js';
 

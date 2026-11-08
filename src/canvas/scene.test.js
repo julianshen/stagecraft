@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildScene, elementNode, ROUNDED_RADIUS } from './scene.js';
+import { buildScene, elementNode } from './scene.js';
+import { SHAPES } from '../lib/shapes.js';
 import { slideDims } from '../lib/slideDims.js';
 import { INK, SHADOW_OPACITY } from '../lib/elements.js';
 
@@ -20,25 +21,25 @@ describe('slideDims', () => {
 describe('buildScene', () => {
   it('lays a blank slide out at the deck size with its background and every element, in z-order', () => {
     const slide = { layout: 'blank', bgColor: '#FFEEDD', elements: [{ id: 'a', type: 'rect', ...box, fill: '#ff0000' }, null, { id: 'b', type: 'text', ...box, content: 'Hi', color: '#000000' }] };
-    const scene = buildScene(slide, { size: { h: 1440 } });
+    const scene = buildScene(slide, slideDims({ size: { h: 1440 } }));
     expect(scene).toMatchObject({ w: 1920, h: 1440, background: '#FFEEDD', template: false });
     expect(scene.nodes.map((n) => n.id)).toEqual(['a', 'b']);
   });
 
   it('falls back to white for a missing or malformed blank background, as the canvas and export do', () => {
-    expect(buildScene({ layout: 'blank' }, {}).background).toBe('#ffffff');
-    expect(buildScene({ layout: 'blank', bgColor: 'red' }, {}).background).toBe('#ffffff');
+    expect(buildScene({ layout: 'blank' }).background).toBe('#ffffff');
+    expect(buildScene({ layout: 'blank', bgColor: 'red' }).background).toBe('#ffffff');
   });
 
   it('marks template layouts, whose content is compiled in K3, and still draws their elements', () => {
-    const scene = buildScene({ layout: 'text', elements: [{ id: 'a', type: 'rect', ...box, fill: '#00ff00' }] }, {});
+    const scene = buildScene({ layout: 'text', elements: [{ id: 'a', type: 'rect', ...box, fill: '#00ff00' }] });
     expect(scene.template).toBe(true);
     expect(scene.nodes).toHaveLength(1);
   });
 
   it('survives a missing slide or a non-array elements field', () => {
-    expect(buildScene(undefined, {}).nodes).toEqual([]);
-    expect(buildScene({ layout: 'blank', elements: 'junk' }, {}).nodes).toEqual([]);
+    expect(buildScene(undefined).nodes).toEqual([]);
+    expect(buildScene({ layout: 'blank', elements: 'junk' }).nodes).toEqual([]);
   });
 });
 
@@ -78,7 +79,7 @@ describe('elementNode — shapes', () => {
 
   it('draws the rounded boxes at their canvas corner radius (8 px "shape", 28 px "rounded") as roundRect', () => {
     // roundRect's adj is the radius as a fraction (×100000) of the shorter side.
-    expect(node({ type: 'shape', fill: '#ff0000' })).toMatchObject({ preset: 'roundRect', adjust: { adj: (ROUNDED_RADIUS.shape / 200) * 100000 } });
+    expect(node({ type: 'shape', fill: '#ff0000' })).toMatchObject({ preset: 'roundRect', adjust: { adj: (SHAPES.shape.radius / 200) * 100000 } });
     expect(node({ type: 'rounded', fill: '#ff0000' }).adjust).toEqual({ adj: (28 / 200) * 100000 });
     expect(node({ type: 'rounded', fill: '#ff0000', w: 20, h: 20 }).adjust).toEqual({ adj: 50000 }); // capped at a full half-side
   });

@@ -20,7 +20,7 @@ const slide = (s) => ({
 const stats = (xs) => { const s = [...xs].sort((a, b) => a - b); return { median: +s[s.length >> 1].toFixed(2), p95: +s[Math.floor(s.length * 0.95)].toFixed(2) }; };
 
 it('measures the K1 painter', () => {
-  const scenes = Array.from({ length: 40 }, (_, s) => buildScene(slide(s), {}));
+  const scenes = Array.from({ length: 40 }, (_, s) => buildScene(slide(s)));
   const k = (1600 * devicePixelRatio) / 1920;
   const c = document.createElement('canvas');
   c.width = Math.round(1920 * k); c.height = Math.round(1080 * k);
@@ -29,7 +29,7 @@ it('measures the K1 painter', () => {
   const env = createPaintEnv();
   const cold = scenes.map((sc) => ms(() => paintSlide(ctx, sc, env)));
   const warm = scenes.map((sc) => ms(() => paintSlide(ctx, sc, env)));
-  const build = scenes.map((_, s) => ms(() => buildScene(slide(s), {})));
+  const build = scenes.map((_, s) => ms(() => buildScene(slide(s))));
   const inked = ctx.getImageData(0, 0, c.width, c.height).data.filter((v, i) => i % 4 === 0 && v < 60).length;
-  console.log(`K1_PERF ${JSON.stringify({ dpr: devicePixelRatio, layouts: env.layouts.size, darkPixels: inked, coldSlideMs: stats(cold), repaintMs: stats(warm), buildSceneMs: stats(build) })}`);
+  console.log(`K1_PERF ${JSON.stringify({ dpr: devicePixelRatio, darkPixels: inked, coldSlideMs: stats(cold), repaintMs: stats(warm), buildSceneMs: stats(build) })}`);
 }, 120_000);

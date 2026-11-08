@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toHex, isHexColor, mixHex } from './color.js';
+import { toHex, isHexColor, mixHex, hexToRgb } from './color.js';
 
 describe('isHexColor', () => {
   it('accepts #rgb and #rrggbb (any case)', () => {
@@ -31,6 +31,14 @@ describe('toHex', () => {
     expect(toHex('red')).toBe('#4f46e5');
     expect(toHex(undefined)).toBe('#4f46e5');
     expect(toHex('#12')).toBe('#4f46e5');
+  });
+});
+
+describe('hexToRgb', () => {
+  it('splits a colour into 0–255 channels, expanding shorthand and falling back like toHex', () => {
+    expect(hexToRgb('#ff8000')).toEqual({ r: 255, g: 128, b: 0 });
+    expect(hexToRgb('#0f0')).toEqual({ r: 0, g: 255, b: 0 });
+    expect(hexToRgb('tomato')).toEqual(hexToRgb('#4f46e5'));
   });
 });
 
