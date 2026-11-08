@@ -62,9 +62,9 @@ The design doc estimated Konva at 50–70 kB gzip. It measures 96 kB even with c
 
 | Path | Budget | Today | Owner |
 |---|---|---|---|
-| Repaint of a laid-out slide | ≤ 4 ms | 1.4–1.9 ms | K1 |
+| Repaint of a laid-out slide | ≤ 4 ms | 1.4–1.9 ms; K1 painter (pictures decoded): 0.7 ms median, 1.5 ms p95 ✅ (`spikes/k1`) | K1 |
 | Drag / transform frame (p95) | ≤ 8 ms | ≤ 3.9 ms | K5 |
-| One slide cold (layout + paint) | ≤ 16 ms | 55–66 ms | **K2: measure cache + per-node layout cache (decision 6)** |
+| One slide cold (layout + paint) | ≤ 16 ms | 55–66 ms; K1 painter (16 nodes, 8 text boxes): ≈ 30 ms median | **K2: measure cache + per-node layout cache (decision 6)** |
 | 40 thumbnails cold, main-thread work | ≤ 600 ms total, in ≤ 16 ms chunks, visible slides first | 2.6 s (one block) | K2 (cache) + K4 (chunked/idle or worker) |
 | Thumbnail bitmap memory, 40 slides | ≤ 16 MB (display size × DPR) | 37 MB at 640×360 | K4 |
 | Editor stage backing store | ≤ 3 layers, viewport-sized (≤ 90 MB at DPR 2) | 58 MB (2 layers) | K5 |
@@ -78,4 +78,6 @@ The design doc estimated Konva at 50–70 kB gzip. It measures 96 kB even with c
 - K4 renders thumbnails visible-first and in chunks, or in a worker over `OffscreenCanvas`. It sizes bitmaps to the rail.
 - K5 imports Konva only through `react-konva/es/ReactKonvaCore` + `konva/lib/Core` (and the shapes it uses), inside the lazily loaded editor chunk.
 - **Upstream (officeview):** move the DrawingML-parsing functions (`parseGeometry`/`custGeom` in `geometry.ts`, and the parsers in `style.ts` and `text.ts`) into parse-only modules, or load `core/xml` lazily, so the painters don't pull in `fast-xml-parser`. Then re-sync and re-run `spikes/k0/bundle.mjs`.
+- **Upstream (officeview), found in K1:** `paintGeometry`'s shadow pass fills the silhouette with the shadow colour, so the shadow's alpha applies twice. `src/canvas/paint.js` passes `√alpha` until that's fixed; `paint.paint.test.js` pins the exact shadow strength, so the fix shows up as a test failure there.
+- **Upstream (officeview), found in K1:** `applyTextShadow` clamps a text shadow to ±200 px offset and 100 px blur in *device* pixels, so a very large text shadow shrinks as the paint scale grows. At DPR 2 full screen, the clamp starts at about 100 slide px of offset or 50 of blur; the default shadow is 8 and 16. Shapes, pictures and pen strokes aren't affected. Fix upstream (clamp in the caller's space, or let the caller opt out), or paint shadowed text through a layer in K2.
 - **Unanswered here** (still with the product owner): `CANVAS-EDITOR.md` open questions 2–4.

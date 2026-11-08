@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { snap, SHADOW_OPACITY, dropShadowCss, isRenderableShadow, DEFAULT_GRADIENT, linearGradientCss, isRenderableGradient, expandToGroups, groupElements, ungroupElements, resizeGroup, rotateGroup, createElement, moveElement, resizeElement, updateSlideElements, clampElement, alignElements, distributeElements, autoArrangeElements, elementsInMarquee, rotateElement, reorderElement, duplicateElements, cloneElements, assignElementIds, mergeOverlay, hitBox, snapDrawnBox, pathFromStroke, dashArray, dashType, borderStyle, STROKE_DASHES, lineSpacingOf, SLIDE_W, SLIDE_H, GRID, MIN_SIZE, MIN_LINE_THICKNESS, HIT_MIN } from './elements.js';
-import { fontStack, elementTransform, shadowAngle } from './elements.js';
+import { fontStack, elementTransform, shadowAngle, opacityOf, FONT_SANS } from './elements.js';
 
 describe('snap', () => {
   it('snaps to the nearest grid multiple', () => {
@@ -849,11 +849,19 @@ describe('stroke dash', () => {
     expect(STROKE_DASHES).toEqual(['solid', 'dashed', 'dotted']);
     expect(Object.isFrozen(STROKE_DASHES)).toBe(true);
   });
-  it('maps a dash style to an SVG dash array scaled by the stroke width (null for solid)', () => {
-    expect(dashArray('solid', 2)).toBeNull();
-    expect(dashArray(undefined, 2)).toBeNull();
-    expect(dashArray('dashed', 2)).toBe('6 4');  // 3w 2w
-    expect(dashArray('dotted', 3)).toBe('0 6');  // round-cap dots, 2w apart
+  it('maps a dash style to a dash pattern in px scaled by the stroke width (empty for solid)', () => {
+    expect(dashArray('solid', 2)).toEqual([]);
+    expect(dashArray(undefined, 2)).toEqual([]);
+    expect(dashArray('dashed', 2)).toEqual([6, 4]);  // 3w 2w
+    expect(dashArray('dotted', 3)).toEqual([0, 6]);  // round-cap dots, 2w apart
+    expect(dashArray('dashed', 0)).toEqual([6, 4]);  // a non-positive width uses the default 2
+  });
+  it('reads opacity as 0–1: clamped, absent or junk → opaque', () => {
+    expect(opacityOf({ opacity: 40 })).toBe(0.4);
+    expect(opacityOf({ opacity: 250 })).toBe(1);
+    expect(opacityOf({ opacity: -3 })).toBe(0);
+    expect(opacityOf({})).toBe(1);
+    expect(opacityOf({ opacity: 'half' })).toBe(1);
   });
   it('maps a dash style to a pptxgen line dashType (undefined for solid)', () => {
     expect(dashType('solid')).toBeUndefined();
@@ -1145,6 +1153,10 @@ describe('fontStack (Office font fallbacks on the canvas)', () => {
   });
   it('keeps an unknown family first with the app sans behind it', () => {
     expect(fontStack('Brand Sans')).toBe('"Brand Sans", var(--f-sans), sans-serif');
+  });
+  it('takes the sans fallback as a parameter, for surfaces without CSS variables', () => {
+    expect(fontStack('Calibri', FONT_SANS)).toBe(`"Calibri", "Carlito", ${FONT_SANS}`);
+    expect(fontStack('Cambria', FONT_SANS)).toBe('"Cambria", "Caladea", serif');
   });
   it('returns undefined for no family, and strips quotes that would break the stack', () => {
     expect(fontStack(undefined)).toBeUndefined();

@@ -13,7 +13,7 @@
 // (pptxgenjs writes them as ppt/slides/slideN.xml).
 import JSZip from 'jszip';
 import { parseXml, kid, path, xfrmBox } from './ooxml.js';
-import { isRenderableGradient } from './elements.js';
+import { isRenderableGradient, linAngle } from './elements.js';
 import { isFillableShape } from './shapes.js';
 import { pptxHex } from './color.js';
 
@@ -106,8 +106,6 @@ function drawableOf(cNvPr) {
   return n || null;
 }
 
-/** A CSS `linear-gradient` angle (0° = up, clockwise) as DrawingML `a:lin ang` (0° = rightward, clockwise; 60000ths). */
-export const linAngle = (cssDeg) => Math.round(((((cssDeg - 90) % 360) + 360) % 360) * 60000);
 
 const node = (doc, ns, tag, attrs = {}, children = []) => {
   const n = doc.createElementNS(ns, tag);

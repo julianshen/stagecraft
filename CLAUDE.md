@@ -38,7 +38,7 @@ npx vitest run -t "adds a slide to the last section" # by test name (substring)
 
 `npm run build` (tsc-free Vite build) is a secondary structural check — if it transforms all modules cleanly the change is sound — but **tests are the primary gate** (see Testing & TDD policy).
 
-> Test harness: **Vitest + `@vitest/coverage-v8`**, with `jsdom` + `@testing-library/react` (config in `vitest.config.js`, globals + jest-dom matchers in `src/test/setup.js`). `vitest.workspace.js` splits the suite into two projects: `unit` (jsdom — everything else) and `chromium` (`*.paint.test.js` canvas pixel probes and `*.browser.test.jsx` Konva stages, run in headless Chromium via Vitest browser mode + Playwright; config in `vitest.browser.js`). The `chromium` project needs Playwright's Chromium once per machine: `npx playwright install chromium` (CI caches its own; Claude Code cloud sessions have it preinstalled at `/opt/pw-browsers`, matching the lockfile's `playwright`). The 90% coverage gate is enforced against `coverage.include` — currently the unit-tested core (`src/server/api.js`, `src/lib/deckOrder.js`, `src/lib/llmClient.js`, `src/data/deck.js`). **When you add tests for more of the app, widen that `include` list** so the new code comes under the gate.
+> Test harness: **Vitest + `@vitest/coverage-v8`**, with `jsdom` + `@testing-library/react` (config in `vitest.config.js`, globals + jest-dom matchers in `src/test/setup.js`). `vitest.workspace.js` splits the suite into two projects: `unit` (jsdom — everything else) and `chromium` (`*.paint.test.js` canvas pixel probes and `*.browser.test.jsx` Konva stages, run in headless Chromium via Vitest browser mode + Playwright; config in `vitest.browser.js`). The `chromium` project needs Playwright's Chromium once per machine: `npx playwright install chromium` (CI caches its own). If the machine's preinstalled Chromium isn't the build the lockfile's `playwright` expects (Claude Code cloud sessions ship one at `/opt/pw-browsers`), point the tests at it: `CHROMIUM_PATH=/opt/pw-browsers/chromium npm test`. The 90% coverage gate is enforced against `coverage.include` — currently the unit-tested core (`src/server/api.js`, `src/lib/deckOrder.js`, `src/lib/llmClient.js`, `src/data/deck.js`). **When you add tests for more of the app, widen that `include` list** so the new code comes under the gate.
 
 ## Testing & TDD policy (required)
 
@@ -105,6 +105,10 @@ A new `layout` must be wired in up to four places:
 2. `editor/SlideEditor.jsx` — `LAYOUT_OPTIONS` / `LAYOUT_LABELS` so it appears in the Layout menu.
 3. `editor/Editor.jsx` — a creator branch in `addComponent` if it should be insertable from the toolbar.
 4. `lib/pptxExport.js` — a per-layout builder, or it won't export.
+
+## Canvas renderer (Phase K, in progress)
+
+`src/canvas/` is the canvas drawing core that will replace the DOM slide renderer (`docs/CANVAS-EDITOR.md`). `scene.js` turns a slide into plain draw nodes, using the same defaults and fallbacks as `SlideRenderer` and the export. `paint.js` paints them through the vendored officeview engine. `assets.js` decodes images and loads fonts (`ensureAssets`), and `ui/SlideCanvas.jsx` is the DPR-aware read-only surface. Size slides with `slideDims(deck)` (`lib/slideDims.js`), never a hard-coded 1080. No UI uses the canvas yet; K4 switches the read-only surfaces behind a setting.
 
 ## Vendored code
 

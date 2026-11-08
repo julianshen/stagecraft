@@ -11,7 +11,7 @@ import { headingPx } from '../../lib/headingScale.js';
 import { shapeDef, hasVisibleStroke, clipPoints } from '../../lib/shapes.js';
 import { isHexColor } from '../../lib/color.js';
 import { slideBgClass } from '../../lib/slideScheme.js';
-import { elementTransform, dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf, fontStack, valignOf, objectFitOf, INK_CSS } from '../../lib/elements.js';
+import { elementTransform, dropShadowCss, isRenderableShadow, linearGradientCss, isRenderableGradient, isFinitePoint, dashArray, borderStyle, lineSpacingOf, fontStack, valignOf, objectFitOf, opacityOf, IMAGE_PLACEHOLDER, INK_CSS } from '../../lib/elements.js';
 
 // The deck fields the slide render tree reads (chrome + cover/divider fallbacks,
 // plus `headingScale`, which sizes every title via headingPx). This is the memo
@@ -407,7 +407,7 @@ function StrokeSvg({ points, closed = false, style, stroke, strokeWidth, strokeD
   return (
     <svg style={{ ...style, overflow: 'visible' }} viewBox="0 0 1 1" preserveAspectRatio="none">
       <Tag points={valid.map(([px, py]) => `${px},${py}`).join(' ')} fill="none" stroke={stroke} strokeWidth={strokeWidth}
-        strokeDasharray={dashArray(strokeDash, strokeWidth) || undefined}
+        strokeDasharray={dashArray(strokeDash, strokeWidth).join(' ') || undefined}
         vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
@@ -419,7 +419,7 @@ function ElementView({ el }) {
   const base = {
     position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h,
     transform: elementTransform(el), // undefined (no style) when unrotated and unflipped
-    ...(el.opacity != null ? { opacity: Math.max(0, Math.min(100, el.opacity)) / 100 } : {}),
+    ...(el.opacity != null ? { opacity: opacityOf(el) } : {}),
     // A drop shadow applies to any element type and follows the painted shape
     // (clip-path included), so it lives on the shared base style. A malformed
     // shadow (gate-bypassing write) is skipped on the same predicate the export
@@ -454,7 +454,7 @@ function ElementView({ el }) {
     // keeps the native image drag from hijacking the canvas drag.
     return el.src
       ? <img src={el.src} alt="" draggable={false} style={{ ...base, objectFit: objectFitOf(el) }} />
-      : <div style={{ ...base, display: 'grid', placeItems: 'center', background: '#eceae4', color: '#9a978f', fontFamily: 'var(--f-mono)', fontSize: 18 }}>No image</div>;
+      : <div style={{ ...base, display: 'grid', placeItems: 'center', background: IMAGE_PLACEHOLDER.fill, color: IMAGE_PLACEHOLDER.ink, fontFamily: 'var(--f-mono)', fontSize: IMAGE_PLACEHOLDER.fontSize }}>{IMAGE_PLACEHOLDER.label}</div>;
   }
   if (el.type === 'path') {
     // A freehand pen stroke: an open SVG polyline of the 0..1 points, riding

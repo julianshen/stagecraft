@@ -19,10 +19,15 @@ export const isHexColor = (v) => typeof v === 'string' && /^#[0-9a-f]{3}([0-9a-f
 // gradient), so the PPTX colour sits between the two CSS stops. toHex normalises
 // each input (expands shorthand, indigo fallback) so the channels are never NaN.
 export function mixHex(a, b) {
-  const ha = toHex(a), hb = toHex(b);
-  const ch = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
-  const avg = (i) => Math.round((ch(ha, i) + ch(hb, i)) / 2).toString(16).padStart(2, '0');
-  return `#${avg(0)}${avg(1)}${avg(2)}`;
+  const ca = hexToRgb(a), cb = hexToRgb(b);
+  const avg = (k) => Math.round((ca[k] + cb[k]) / 2).toString(16).padStart(2, '0');
+  return `#${avg('r')}${avg('g')}${avg('b')}`;
+}
+
+/** A colour's { r, g, b } channels (0–255), via toHex (so shorthand expands and junk falls back to indigo). */
+export function hexToRgb(c) {
+  const h = toHex(c);
+  return { r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) };
 }
 
 /** A colour as pptx/DrawingML hex: upper-case RRGGBB without the '#'; toHex supplies the canonical hex + fallback, so a bad value can't break the export. */
