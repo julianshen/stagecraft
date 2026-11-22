@@ -1763,27 +1763,19 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
     const el = event.currentTarget;
     const next = mapSelection(el.selectionStart ?? 0, el.selectionEnd ?? 0, revision);
     activeSelectionRef.current = Boolean(next);
-    if (colorDraftRef.current?.status === 'cancelled') colorDraftRef.current = null;
     setRangeState(next);
   }
 
   const hasRange = Boolean(rangeState?.range) && !disabled;
   const applyRange = format => onApply(rangeState.range, format, rangeState.startRevision);
-  const captureColorDraft = () => {
+  const startColorInteraction = () => {
     if (!hasRange) return;
-    if (!colorDraftRef.current || colorDraftRef.current.status === 'cancelled') {
-      colorDraftRef.current = { status: 'active', range: rangeState.range, revision: rangeState.startRevision };
-    }
+    colorDraftRef.current = { status: 'active', range: rangeState.range, revision: rangeState.startRevision };
   };
-  const captureColorDraftRef = useRef(null);
-  captureColorDraftRef.current = captureColorDraft;
   const colorCommitRef = useRef(null);
   colorCommitRef.current = value => {
     const draft = colorDraftRef.current;
-    if (draft?.status === 'cancelled') {
-      colorDraftRef.current = null;
-      return;
-    }
+    if (draft?.status === 'cancelled') return;
     if (draft?.status === 'active') {
       colorDraftRef.current = null;
       onApply(draft.range, { color: value }, draft.revision);
@@ -1795,20 +1787,13 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
   useEffect(() => {
     const el = colorRef.current;
     if (!el) return undefined;
-    const onNativeInput = () => {
-      captureColorDraftRef.current?.();
-    };
     const onNativeChange = event => {
       const next = event.currentTarget.value.toLowerCase();
-      setRangeColor(next);
+      if (colorDraftRef.current?.status !== 'cancelled') setRangeColor(next);
       colorCommitRef.current?.(next);
     };
-    el.addEventListener('input', onNativeInput);
     el.addEventListener('change', onNativeChange);
-    return () => {
-      el.removeEventListener('input', onNativeInput);
-      el.removeEventListener('change', onNativeChange);
-    };
+    return () => el.removeEventListener('change', onNativeChange);
   }, []);
 
   return (
@@ -1879,11 +1864,13 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
             type="color"
             disabled={!hasRange}
             value={rangeColor}
-            onFocus={captureColorDraft}
+            onFocus={startColorInteraction}
+            onPointerDown={startColorInteraction}
             onBlur={() => { colorDraftRef.current = null; }}
             onChange={e => {
-              captureColorDraft();
-              setRangeColor(e.target.value.toLowerCase());
+              if (colorDraftRef.current?.status !== 'cancelled') {
+                setRangeColor(e.target.value.toLowerCase());
+              }
             }}
           />
         </label>

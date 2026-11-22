@@ -1997,6 +1997,7 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     expect(screen.getByRole('button', { name: 'Range bold' })).not.toBeDisabled();
 
     const colorInput = screen.getByLabelText('Range color');
+    fireEvent.focus(colorInput);
     colorInput.value = '#112233';
     fireEvent.input(colorInput, { target: { value: '#112233' } });
     expect(editor.getSnapshot().revision).toBe(1);
@@ -2006,8 +2007,19 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     });
     expect(editor.getSnapshot().revision).toBe(2);
 
-    fireEvent.change(colorInput, { target: { value: '#112233' } });
+    // Subsequent input + change from the still-open cancelled picker must NOT re-arm or commit
+    colorInput.value = '#445566';
+    fireEvent.input(colorInput, { target: { value: '#445566' } });
+    fireEvent.change(colorInput, { target: { value: '#445566' } });
     expect(editor.getSnapshot().revision).toBe(2);
     expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs).toHaveLength(1);
+
+    // After blur + new focus, a fresh color interaction succeeds at the new revision
+    fireEvent.blur(colorInput);
+    fireEvent.focus(colorInput);
+    colorInput.value = '#224488';
+    fireEvent.change(colorInput, { target: { value: '#224488' } });
+    expect(editor.getSnapshot().revision).toBe(3);
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[0].style.color).toBe('#224488');
   });
 });
