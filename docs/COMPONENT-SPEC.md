@@ -137,7 +137,7 @@ Requires a presentation provider. The panel is inspectable in read-only mode. Wi
 
 Run text changes dispatch immediately from inspector fields. Geometry/name/font-size controls may retain local drafts until blur/Enter; supported drafts reset on relevant snapshot, read-only, or owner changes. Name and notes drafts are tied to editor/source identity so matching slide IDs in a replacement document do not inherit a prior draft.
 
-PPTX `Inherit` removes a direct run-format override; ODP `Original` removes a session override. Authored text structures use canonical paragraph/run IDs and retain their unrelated supported properties. The [canonical document contract](CANONICAL-DOCUMENTS.md) describes the core commands and native format restrictions. Core paragraph, text-body layout, and range-format commands are available to host integrations, but this workspace has no built-in controls or presentation-hook wrappers for them. Numeric drafts are invalidated by relevant revision/owner/read-only changes. Table controls do not add/remove rows/columns, merge cells, or author arbitrary table styles. Image crop/replacement/effects and alt-text editing are not built-in controls.
+PPTX `Inherit` removes a direct run-format override; ODP `Original` removes a session override. Authored text structures use canonical paragraph/run IDs and retain their unrelated supported properties. Built-in inspector controls and `usePresentationEditor()` hook wrappers (`setParagraphFormat`, `setTextBodyLayout`, `setRunRangeFormat`) expose paragraph formatting, text-body layout (for text objects and shapes that carry `object.text`, not textless shapes), and cross-run range formatting alongside per-run controls. Range selection maps normalized textarea UTF-16 boundaries (including `\r\n` and surrogate pairs) back to Unicode code-point offsets within canonical runs, and `null` resets clear direct properties; in ODP, removing or disabling a bullet at `level > 0` clears `level` atomically in the same command. Numeric drafts are invalidated by relevant revision/owner/read-only changes. Font-family controls write the Latin typeface (`fontFamily`) and preserve East Asian/complex-script fonts; autofit settings are saved for export without measured canvas shrink/resize simulation. See [Text editing contract](TEXT-EDITING.md) and [Canonical documents](CANONICAL-DOCUMENTS.md) for core commands and native format restrictions. Table controls do not add/remove rows/columns, merge cells, or author arbitrary table styles. Image crop/replacement/effects and alt-text editing are not built-in controls.
 
 ### Portable chart inspector and preview
 
@@ -177,6 +177,9 @@ Actions use stable IDs and the current snapshot revision unless explicitly overr
 | `setPaint(fill)` | Selected eligible rect/ellipse solid fill |
 | `setRunText(runId, text, revision?): boolean` | Single existing run; explicit revision supports draft protection |
 | `setRunFormat(runId, {bold?, italic?, fontSize?, fontFamily?, color?}, revision?)` | Values may be null to restore supported inherited/original formatting |
+| `setParagraphFormat(paragraphId, format, revision?): boolean` | Eligible paragraph alignment, spacing, indents, level, and bullet/numbering; null resets direct values |
+| `setTextBodyLayout(objectId, layout, revision?): boolean` | Eligible text-body autofit, wrap, vertical anchor, and insets (`insets: null` clears all insets) |
+| `setRunRangeFormat(objectId, range, format, revision?): boolean` | Cross-run formatting using Unicode code-point run offsets in authored object text |
 | `setSlideProperties({name?, background?, notes?}, slideId?): boolean` | Background is `{type:'solid', color}` or null; notes may be null |
 | `setText(paragraphs, objectId?, slideId?): boolean` | Authored text/shape paragraph structure replacement |
 | `setTableCell(cellId, paragraphs, objectId?, slideId?, revision?): boolean` | Authored cell text replacement |
@@ -216,6 +219,9 @@ A failed visible/match/when predicate omits its contribution; a failed disabled 
 |---|---|
 | `existing-run-text` | `document.setRunText` |
 | `existing-run-format` | `document.setRunFormat` |
+| `paragraph-format` | `document.setParagraphFormat` |
+| `text-body-layout` | `document.setTextBodyLayout` (requires `object.text`) |
+| `run-range-format` | `document.setRunRangeFormat` (authored `object.text` only) |
 | `slide-structure` | `presentation.addSlide`, `removeSlide`, `moveSlide` |
 | `slide-properties` | `presentation.setSlideProperties` |
 | `object-structure` | `presentation.addObject`, `removeObject`, `moveObject` |

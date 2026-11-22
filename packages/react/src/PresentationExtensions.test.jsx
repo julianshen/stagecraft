@@ -1498,4 +1498,210 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     expect(style.bullet).toEqual({ type: 'none' });
     expect(style.level).toBeUndefined();
   });
+
+  it('preserves level when selecting a real bullet in ODP, removing bullet in PPTX, or removing bullet at level 0 in ODP', () => {
+    const makeDoc = (sourceFormat, level) => createDocument({
+      id: `list-${sourceFormat}-${level}`,
+      extensions: { sourceFormat },
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 't-list',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              style: { level, bullet: { type: 'char', char: '•' } },
+              runs: [{ id: 'r1', text: 'Item', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        }],
+      }],
+    });
+
+    // 1. ODP real bullet at level 2 keeps level 2
+    const odpReal = createEditor({ document: makeDoc('odp', 2), plugins: [documentPlugin, presentationPlugin] });
+    const odpSource = { capabilities: { readOnly: false, edits: ['paragraph-format'] }, export: vi.fn() };
+    const { unmount: u1 } = render(<EditorProvider editor={odpReal}><PresentationEditor source={odpSource} /></EditorProvider>);
+    fireEvent.click(screen.getAllByLabelText('Select object t-list')[0]);
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'number:arabicPeriod' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(odpReal.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style).toEqual({
+      level: 2,
+      bullet: { type: 'number', format: 'arabicPeriod' },
+    });
+    u1();
+
+    // 2. PPTX bullet removal at level 2 keeps level 2
+    const pptxNone = createEditor({ document: makeDoc('pptx', 2), plugins: [documentPlugin, presentationPlugin] });
+    const pptxSource = { capabilities: { readOnly: false, edits: ['paragraph-format'] }, export: vi.fn() };
+    const { unmount: u2 } = render(<EditorProvider editor={pptxNone}><PresentationEditor source={pptxSource} /></EditorProvider>);
+    fireEvent.click(screen.getAllByLabelText('Select object t-list')[0]);
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'none' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(pptxNone.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style).toEqual({
+      level: 2,
+      bullet: { type: 'none' },
+    });
+    u2();
+
+    // 3. ODP bullet removal at level 0 succeeds
+    const odpLevel0 = createEditor({ document: makeDoc('odp', 0), plugins: [documentPlugin, presentationPlugin] });
+    render(<EditorProvider editor={odpLevel0}><PresentationEditor source={odpSource} /></EditorProvider>);
+    fireEvent.click(screen.getAllByLabelText('Select object t-list')[0]);
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'none' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(odpLevel0.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style).toEqual({
+      level: 0,
+      bullet: { type: 'none' },
+    });
+  });
+
+  it('maps normalized textarea CRLF selection boundaries back to canonical run code-point offsets for CRLF, surrogate pairs, and cross-paragraph ranges', () => {
+    const doc = createDocument({
+      id: 'crlf-range-deck',
+      slides: [{
+        id: 's1',
+        objects: [
+          {
+            id: 't-crlf-in-run',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+            extensions: { stagecraftAuthored: true },
+            text: {
+              paragraphs: [{
+                id: 'p1',
+                runs: [{ id: 'r1', text: 'A\r\nB', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+              }],
+            },
+          },
+          {
+            id: 't-crlf-boundary',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 200 * PT, width: 300 * PT, height: 120 * PT },
+            extensions: { stagecraftAuthored: true },
+            text: {
+              paragraphs: [{
+                id: 'p2',
+                runs: [
+                  { id: 'rb1', text: 'X\r', editable: true, style: {}, extensions: { stagecraftAuthored: true } },
+                  { id: 'rb2', text: '\nYZ', editable: true, style: {}, extensions: { stagecraftAuthored: true } },
+                ],
+              }],
+            },
+          },
+          {
+            id: 't-surrogate-cross',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 340 * PT, width: 300 * PT, height: 120 * PT },
+            extensions: { stagecraftAuthored: true },
+            text: {
+              paragraphs: [
+                {
+                  id: 'ps1',
+                  runs: [{ id: 'rs1', text: '😀A', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+                },
+                {
+                  id: 'ps2',
+                  runs: [{ id: 'rs2', text: 'B😀C', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+                },
+              ],
+            },
+          },
+        ],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = { capabilities: { readOnly: false, edits: ['run-range-format'] }, export: vi.fn() };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    // 1. CRLF inside a run: 'A\r\nB' -> textarea displays 'A\nB', selecting [2, 3) selects 'B'
+    fireEvent.click(screen.getAllByLabelText('Select object t-crlf-in-run')[0]);
+    let rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 2;
+    rangeArea.selectionEnd = 3;
+    fireEvent.select(rangeArea);
+    fireEvent.click(screen.getByRole('button', { name: 'Range bold' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    const runsInRun = editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs;
+    expect(runsInRun.map(r => [r.text, r.style.b])).toEqual([['A\r\n', undefined], ['B', '1']]);
+
+    // 2. CRLF across a run boundary: 'X\r' + '\nYZ' -> textarea displays 'X\nYZ', selecting [2, 4) selects 'YZ'
+    fireEvent.click(screen.getAllByLabelText('Select object t-crlf-boundary')[0]);
+    rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 2;
+    rangeArea.selectionEnd = 4;
+    fireEvent.select(rangeArea);
+    fireEvent.click(screen.getByRole('button', { name: 'Range bold' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    const runsBoundary = editor.getSnapshot().document.slides[0].objects[1].text.paragraphs[0].runs;
+    expect(runsBoundary.map(r => [r.text, r.style.b])).toEqual([['X\r', undefined], ['\n', undefined], ['YZ', '1']]);
+
+    // 3. Surrogate pairs + cross-paragraph: '😀A\nB😀C' -> UTF-16 [2, 5) selects 'A\nB'
+    fireEvent.click(screen.getAllByLabelText('Select object t-surrogate-cross')[0]);
+    rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 2;
+    rangeArea.selectionEnd = 5;
+    fireEvent.select(rangeArea);
+    fireEvent.click(screen.getByRole('button', { name: 'Range bold' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    const crossParas = editor.getSnapshot().document.slides[0].objects[2].text.paragraphs;
+    expect(crossParas[0].runs.map(r => [r.text, r.style.b])).toEqual([['😀', undefined], ['A', '1']]);
+    expect(crossParas[1].runs.map(r => [r.text, r.style.b])).toEqual([['B', '1'], ['😀C', undefined]]);
+  });
+
+  it('hides body-layout controls on textless inserted shapes while keeping them on shapes with text', () => {
+    const doc = createDocument({
+      id: 'shape-layout-deck',
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 'shape-with-text',
+          type: 'shape',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 200 * PT, height: 100 * PT },
+          shape: 'rect',
+          fill: '#4472c4',
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              runs: [{ id: 'r1', text: 'Label', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = {
+      capabilities: { readOnly: false, edits: ['object-structure', 'text-body-layout'] },
+      export: vi.fn(),
+    };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    // Shape with text exposes Text autofit and commits via real document.setTextBodyLayout
+    fireEvent.click(screen.getAllByLabelText('Select object shape-with-text')[0]);
+    expect(screen.getByLabelText('Text autofit')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Text autofit'), { target: { value: 'resize' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(editor.getSnapshot().document.slides[0].objects[0].bodyLayout).toEqual({ autofit: 'resize' });
+
+    // Inserting a textless Rectangle does NOT expose Text body layout controls
+    fireEvent.click(screen.getByRole('tab', { name: 'Insert' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rectangle' }));
+    const insertedRect = editor.getSnapshot().document.slides[0].objects.find(o => o.id !== 'shape-with-text');
+    expect(insertedRect.text).toBeUndefined();
+    expect(screen.queryByLabelText('Text autofit')).toBeNull();
+  });
 });

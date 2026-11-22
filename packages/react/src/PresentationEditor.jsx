@@ -650,37 +650,58 @@ function utf16ToCodePointOffset(str, utf16Index) {
   return cp;
 }
 
-function mapCodePointSpanToRange(paragraphs, startCp, endCp) {
-  if (!Array.isArray(paragraphs) || !paragraphs.length || startCp >= endCp) return null;
+function mapDisplaySelectionToCanonicalRange(paragraphs, startUtf16, endUtf16) {
+  if (!Array.isArray(paragraphs) || !paragraphs.length || startUtf16 >= endUtf16) return null;
+  let displayCursor = 0;
   let startPos = null;
   let endPos = null;
-  let cursor = 0;
+  let lastNonEmptyEnd = null;
+
   for (let pIdx = 0; pIdx < paragraphs.length; pIdx += 1) {
     const p = paragraphs[pIdx];
     const runs = p.runs ?? [];
+    // Flatten code points within this paragraph while keeping each run's id & code-point offset
+    const units = [];
     for (let rIdx = 0; rIdx < runs.length; rIdx += 1) {
       const r = runs[rIdx];
-      const len = Array.from(r.text ?? '').length;
-      const runStart = cursor;
-      const runEnd = cursor + len;
-      if (!startPos && startCp >= runStart && startCp <= runEnd) {
-        if (startCp === runEnd && rIdx < runs.length - 1) {
-          // Prefer start of next run when selection begins at boundary
-        } else {
-          startPos = { paragraphId: p.id, runId: r.id, offset: startCp - runStart };
-        }
+      const text = r.text ?? '';
+      let cpOffset = 0;
+      for (let i = 0; i < text.length; ) {
+        const code = text.codePointAt(i);
+        const utf16Len = code > 0xffff ? 2 : 1;
+        units.push({ paragraphId: p.id, runId: r.id, cpOffset, cp: code });
+        i += utf16Len;
+        cpOffset += 1;
       }
-      if (!endPos && endCp >= runStart && endCp <= runEnd) {
-        if (endCp === runStart && rIdx > 0) {
-          // Prefer end of previous run if already matched, else 0
-        } else {
-          endPos = { paragraphId: p.id, runId: r.id, offset: endCp - runStart };
-        }
-      }
-      cursor = runEnd;
     }
-    if (pIdx < paragraphs.length - 1) cursor += 1; // '\n' separator
+
+    for (let u = 0; u < units.length; u += 1) {
+      const cur = units[u];
+      const next = units[u + 1];
+      const isCrlf = cur.cp === 0x0d && next?.cp === 0x0a;
+      const dStart = displayCursor;
+      const dLen = isCrlf ? 1 : (cur.cp > 0xffff ? 2 : 1);
+      const dEnd = dStart + dLen;
+
+      const stepStart = { paragraphId: cur.paragraphId, runId: cur.runId, offset: cur.cpOffset };
+      const endUnit = isCrlf ? next : cur;
+      const stepEnd = { paragraphId: endUnit.paragraphId, runId: endUnit.runId, offset: endUnit.cpOffset + 1 };
+
+      if (!startPos && dStart === startUtf16) startPos = stepStart;
+      if (!endPos && dEnd === endUtf16) endPos = stepEnd;
+      if (!endPos && dStart === endUtf16 && u === 0 && pIdx > 0) endPos = stepStart;
+
+      lastNonEmptyEnd = stepEnd;
+      displayCursor = dEnd;
+      if (isCrlf) u += 1;
+    }
+
+    if (pIdx < paragraphs.length - 1) {
+      if (!startPos && displayCursor === startUtf16 && lastNonEmptyEnd) startPos = lastNonEmptyEnd;
+      displayCursor += 1; // '\n' paragraph separator
+    }
   }
+
   if (!startPos || !endPos) return null;
   return { start: startPos, end: endPos };
 }
@@ -1836,9 +1857,12 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
   function handleSelect(event) {
     if (disabled) return;
     const el = event.currentTarget;
-    const startCp = utf16ToCodePointOffset(fullText, el.selectionStart ?? 0);
-    const endCp = utf16ToCodePointOffset(fullText, el.selectionEnd ?? 0);
-    const mapped = mapCodePointSpanToRange(paragraphs, startCp, endCp);
+    const selStart = el.selectionStart ?? 0;
+    const selEnd = el.selectionEnd ?? 0;
+    const mapped = mapDisplaySelectionToCanonicalRange(paragraphs, selStart, selEnd);
+    const displayValue = el.value ?? fullText;
+    const startCp = utf16ToCodePointOffset(displayValue, selStart);
+    const endCp = utf16ToCodePointOffset(displayValue, selEnd);
     setRangeState(mapped ? { range: mapped, startCp, endCp, startRevision: revision } : null);
   }
 
@@ -1932,7 +1956,8 @@ export function AttributePanel({
     canSlideProps = ui.can('slide-properties'),
     canFill = (authored(object) || object?.extensions?.editableFill === true) && object?.type === 'shape' && ['rect', 'ellipse'].includes(object.shape),
     isOdpDoc = ui.snapshot.document?.extensions?.sourceFormat === 'odp' || object?.source?.format === 'odp',
-    canBodyLayout = ['text', 'shape'].includes(object?.type) && ui.can('text-body-layout'),
+    hasTextBody = ['text', 'shape'].includes(object?.type) && !!object?.text,
+    canBodyLayout = hasTextBody && ui.can('text-body-layout'),
     canParaFormat = ui.can('paragraph-format'),
     canRangeFormat = isAuthoredText && ui.can('run-range-format'),
     reportPredicateError = usePluginErrorReporter(ui.reportError),
@@ -2042,7 +2067,7 @@ export function AttributePanel({
           onError={ui.reportError}
         />
       )}
-      {['text', 'shape'].includes(object.type) && ui.hasCommand('document.setTextBodyLayout') && (
+      {hasTextBody && ui.hasCommand('document.setTextBodyLayout') && (
         <TextBodyLayoutFields
           object={object}
           editor={ui.editor}

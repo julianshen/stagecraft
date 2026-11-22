@@ -58,11 +58,12 @@ function CustomToolbar() {
   const canPara: boolean = ui.can('paragraph-format') && ui.can('text-body-layout') && ui.can('run-range-format');
   const paraFmt: ParagraphFormatInput = { alignment: 'center', bullet: { type: 'none' } };
   const bodyLayout: TextBodyLayoutInput = { autofit: 'resize', insets: { left: 12700 } };
+  const resetInsets: TextBodyLayoutInput = { insets: null };
   const rangeInput: RunRangeInput = {
     start: { paragraphId: 'p', runId: 'r', offset: 0 },
     end: { paragraphId: 'p', runId: 'r', offset: 1 },
   };
-  void (canPara && ui.setParagraphFormat('p', paraFmt) && ui.setTextBodyLayout('o', bodyLayout) && ui.setRunRangeFormat('o', rangeInput, { bold: true }));
+  void (canPara && ui.setParagraphFormat('p', paraFmt) && ui.setTextBodyLayout('o', bodyLayout) && ui.setTextBodyLayout('o', resetInsets) && ui.setRunRangeFormat('o', rangeInput, { bold: true }));
   return <button onClick={() => ui.addObject('text')}>Text</button>;
 }
 export const visual = <EditorProvider editor={visualEditor}>

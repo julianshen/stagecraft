@@ -8,6 +8,7 @@ import type {
   DocumentSlide,
   RunFormat,
   SlideProperties,
+  TextBodyLayoutPatch,
 } from '@stagecraft/core/document';
 import type { SourceExport, SourceSession } from '@stagecraft/source';
 
@@ -134,17 +135,7 @@ export interface ParagraphFormatInput {
   bullet?: ParagraphBullet | null;
 }
 
-export interface TextBodyLayoutInput {
-  autofit?: 'none' | 'shrink' | 'resize' | null;
-  wrap?: 'square' | 'none' | null;
-  anchor?: 'top' | 'middle' | 'bottom' | null;
-  insets?: {
-    left?: number | null;
-    top?: number | null;
-    right?: number | null;
-    bottom?: number | null;
-  };
-}
+export type TextBodyLayoutInput = TextBodyLayoutPatch;
 
 export interface RunRangeEndpoint {
   paragraphId: string;
