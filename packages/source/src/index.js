@@ -166,14 +166,22 @@ export async function openPresentation(source, options = {}) {
             // FU-CR: native run-text edits are written one run at a time, so a split CRLF must be
             // coalesced against the paragraph's post-edit runs (the snapshot) — computed from the
             // canonical paragraph, not per change. Empty runs are skipped by the lookahead.
-            const runContexts = new Map();
+            const runContexts = new Map(), baselineRunById = new Map();
             for (const owner of [...snapshot.slides, ...snapshot.layouts, ...snapshot.masters]) {
                 const visit = objects => { for (const object of objects ?? []) {
                     const paragraphs = [...(object.text?.paragraphs ?? []), ...(object.table?.rows ?? []).flatMap(row => (row.cells ?? []).flatMap(cell => cell.text?.paragraphs ?? []))];
                     for (const paragraph of paragraphs) {
                         const texts = paragraph.runs.map(run => ({ text: run.text }));
-                        paragraph.runs.forEach((run, index) => runContexts.set(run, { texts, index }));
+                        paragraph.runs.forEach((run, index) => runContexts.set(run, { texts, index, runs: paragraph.runs }));
                     }
+                    visit(object.children);
+                } };
+                visit(owner.objects);
+            }
+            for (const owner of [...baseline.slides, ...baseline.layouts, ...baseline.masters]) {
+                const visit = objects => { for (const object of objects ?? []) {
+                    const paragraphs = [...(object.text?.paragraphs ?? []), ...(object.table?.rows ?? []).flatMap(row => (row.cells ?? []).flatMap(cell => cell.text?.paragraphs ?? []))];
+                    for (const paragraph of paragraphs) for (const run of paragraph.runs) baselineRunById.set(run.id, run);
                     visit(object.children);
                 } };
                 visit(owner.objects);
@@ -181,6 +189,30 @@ export async function openPresentation(source, options = {}) {
             const writtenRunText = run => {
                 const context = runContexts.get(run);
                 return context ? coalesceSplitBreaks(context.texts.map((entry, index) => index === context.index ? { text: run.text } : entry))[context.index] : run.text;
+            };
+            const emitRunTextChange = (changes, slot, run, written, extra = {}) => {
+                changes.push({ ...slot, text: written, ...extra });
+                // FU-CR fix4: a native CR can live in an UNCHANGED run (a source &#13; reference
+                // survives parsing). When this edit starts with LF right after such a run, the
+                // untouched CR renders a second break: emit a supplemental change carrying that
+                // run's coalesced text. Documented fallback: if the CR-bearing run has no writable
+                // slot, or already has a change in this export, it stays as-is — an extra blank
+                // line is better than failing the export.
+                const context = runContexts.get(run);
+                if (!context || !written.startsWith('\n')) return;
+                let previous = context.index - 1;
+                while (previous >= 0 && context.texts[previous].text === '') previous--;
+                const previousRun = previous >= 0 ? context.runs[previous] : null;
+                if (!previousRun || !previousRun.text.endsWith('\r')) return;
+                const baselinePrevious = baselineRunById.get(previousRun.id);
+                const previousSlot = baselinePrevious ? editableSlots.get(baselinePrevious) : undefined;
+                if (!previousSlot) return;
+                if (changes.some(change => change.path === previousSlot.path)) return;
+                changes.push({
+                    ...previousSlot,
+                    text: coalesceSplitBreaks(context.texts.map((entry, index) => index === previous ? { text: previousRun.text } : entry))[previous],
+                    ...(slot.kind === 'odp' ? { overrides: {}, replaceText: true } : {}),
+                });
             };
             const delta = authoringDiff(baseline, snapshot, (a,b) => diff(a,b));
             function diff(a, b) {
@@ -203,7 +235,7 @@ export async function openPresentation(source, options = {}) {
                         else if (key === 'style') diff(a.style, { ...b.style, overrides: a.style.overrides });
                         else diff(a[key], b[key]);
                     }
-                    if (a.text !== b.text || Object.keys(overrides).length) changes.push({ ...slot, text: writtenRunText(b), overrides, replaceText: a.text !== b.text });
+                    if (a.text !== b.text || Object.keys(overrides).length) emitRunTextChange(changes, slot, b, writtenRunText(b), { overrides, replaceText: a.text !== b.text });
                     return;
                 }
                 for (const key of ak) {
@@ -230,7 +262,7 @@ export async function openPresentation(source, options = {}) {
                     }
                     else if (key === 'text' && typeof a.text === 'string' && editableSlots.has(a) && a.text !== b.text) {
                         validText(b.text);
-                        changes.push({ ...editableSlots.get(a), text: writtenRunText(b) });
+                        emitRunTextChange(changes, editableSlots.get(a), b, writtenRunText(b));
                     }
                     else
                         diff(a[key], b[key]);
