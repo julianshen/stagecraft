@@ -1711,10 +1711,8 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
   const [rangeFont, setRangeFont] = useState('');
   const [rangeColor, setRangeColor] = useState('#000000');
   const textareaRef = useRef(null);
-  const colorRef = useRef(null);
   const ownerRef = useRef({ editor, source, slideId, objectId: object.id, disabled });
   const activeSelectionRef = useRef(false);
-  const colorDraftRef = useRef(null);
 
   function mapSelection(selStart, selEnd, rev) {
     const mapped = mapDisplaySelectionToCanonicalRange(paragraphs, selStart, selEnd);
@@ -1733,13 +1731,8 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
     ownerRef.current = { editor, source, slideId, objectId: object.id, disabled };
     setRangeSize('');
     setRangeFont('');
-    if (colorDraftRef.current?.status === 'active') {
-      colorDraftRef.current = { status: 'cancelled' };
-      setRangeColor('#000000');
-    }
     if (ownerChanged) {
       activeSelectionRef.current = false;
-      colorDraftRef.current = null;
       if (textareaRef.current) {
         textareaRef.current.selectionStart = 0;
         textareaRef.current.selectionEnd = 0;
@@ -1764,37 +1757,11 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
     const next = mapSelection(el.selectionStart ?? 0, el.selectionEnd ?? 0, revision);
     activeSelectionRef.current = Boolean(next);
     setRangeState(next);
+    setRangeColor('#000000');
   }
 
   const hasRange = Boolean(rangeState?.range) && !disabled;
   const applyRange = format => onApply(rangeState.range, format, rangeState.startRevision);
-  const startColorInteraction = () => {
-    if (!hasRange) return;
-    colorDraftRef.current = { status: 'active', range: rangeState.range, revision: rangeState.startRevision };
-  };
-  const colorCommitRef = useRef(null);
-  colorCommitRef.current = value => {
-    const draft = colorDraftRef.current;
-    if (draft?.status === 'cancelled') return;
-    if (draft?.status === 'active') {
-      colorDraftRef.current = null;
-      onApply(draft.range, { color: value }, draft.revision);
-      return;
-    }
-    if (hasRange) applyRange({ color: value });
-  };
-
-  useEffect(() => {
-    const el = colorRef.current;
-    if (!el) return undefined;
-    const onNativeChange = event => {
-      const next = event.currentTarget.value.toLowerCase();
-      if (colorDraftRef.current?.status !== 'cancelled') setRangeColor(next);
-      colorCommitRef.current?.(next);
-    };
-    el.addEventListener('change', onNativeChange);
-    return () => el.removeEventListener('change', onNativeChange);
-  }, []);
 
   return (
     <fieldset className="stagecraft-presentation-range-format" disabled={disabled}>
@@ -1859,21 +1826,21 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
         <label>
           Range color
           <input
-            ref={colorRef}
             aria-label="Range color"
             type="color"
             disabled={!hasRange}
             value={rangeColor}
-            onFocus={startColorInteraction}
-            onPointerDown={startColorInteraction}
-            onBlur={() => { colorDraftRef.current = null; }}
-            onChange={e => {
-              if (colorDraftRef.current?.status !== 'cancelled') {
-                setRangeColor(e.target.value.toLowerCase());
-              }
-            }}
+            onChange={e => setRangeColor(e.target.value.toLowerCase())}
           />
         </label>
+        <button
+          type="button"
+          aria-label="Range apply colour"
+          disabled={!hasRange}
+          onClick={() => applyRange({ color: rangeColor.toLowerCase() })}
+        >
+          Apply colour
+        </button>
       </div>
       <small>Range font sets the Latin typeface; East Asian and complex-script fonts are preserved.</small>
     </fieldset>

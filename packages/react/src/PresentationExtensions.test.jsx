@@ -1830,13 +1830,13 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     fireEvent.click(screen.getByRole('button', { name: 'Range reset bold' }));
     expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.b).toBeUndefined();
 
-    // Color picker: input event alone does not commit; change event commits (including #000000)
+    // Color picker is a pure local draft; Apply colour button commits (including #000000)
     const revBeforeColor = editor.getSnapshot().revision;
     const colorInput = screen.getByLabelText('Range color');
     fireEvent.input(colorInput, { target: { value: '#112233' } });
-    expect(editor.getSnapshot().revision).toBe(revBeforeColor);
-    colorInput.value = '#000000';
     fireEvent.change(colorInput, { target: { value: '#000000' } });
+    expect(editor.getSnapshot().revision).toBe(revBeforeColor);
+    fireEvent.click(screen.getByRole('button', { name: 'Range apply colour' }));
     expect(editor.getSnapshot().revision).toBe(revBeforeColor + 1);
     expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.color).toBe('#000000');
 
@@ -1990,7 +1990,7 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     });
     expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
 
-    // 2. Re-arm selection, start color input at rev 1, concurrent revision lands (rev 2), then change event must NOT apply stale color
+    // 2. Re-arm selection; picker events (focus, pointerdown, input, change) never dispatch without Apply colour
     rangeArea.selectionStart = 0;
     rangeArea.selectionEnd = 4;
     fireEvent.select(rangeArea);
@@ -1998,8 +1998,9 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
 
     const colorInput = screen.getByLabelText('Range color');
     fireEvent.focus(colorInput);
-    colorInput.value = '#112233';
+    fireEvent.pointerDown(colorInput);
     fireEvent.input(colorInput, { target: { value: '#112233' } });
+    fireEvent.change(colorInput, { target: { value: '#112233' } });
     expect(editor.getSnapshot().revision).toBe(1);
 
     act(() => {
@@ -2007,19 +2008,21 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     });
     expect(editor.getSnapshot().revision).toBe(2);
 
-    // Subsequent input + change from the still-open cancelled picker must NOT re-arm or commit
-    colorInput.value = '#445566';
+    fireEvent.pointerDown(colorInput);
+    fireEvent.focus(colorInput);
     fireEvent.input(colorInput, { target: { value: '#445566' } });
     fireEvent.change(colorInput, { target: { value: '#445566' } });
     expect(editor.getSnapshot().revision).toBe(2);
     expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs).toHaveLength(1);
 
-    // After blur + new focus, a fresh color interaction succeeds at the new revision
-    fireEvent.blur(colorInput);
-    fireEvent.focus(colorInput);
-    colorInput.value = '#224488';
+    // Explicit Apply colour commits the current draft once at the current revision
     fireEvent.change(colorInput, { target: { value: '#224488' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Range apply colour' }));
     expect(editor.getSnapshot().revision).toBe(3);
     expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[0].style.color).toBe('#224488');
+
+    // readOnly disables Apply colour
+    rerender(<EditorProvider editor={editor}><PresentationEditor source={source} readOnly /></EditorProvider>);
+    expect(screen.getByRole('button', { name: 'Range apply colour' })).toBeDisabled();
   });
 });
