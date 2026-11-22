@@ -3,11 +3,19 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": false,
-    "types": []
+    "types": [],
+    "jsx": "react-jsx"
   },
-  "include": ["foundation.ts"]
+  "include": [
+    "foundation.ts",
+    "react-workspace.tsx"
+  ]
 }

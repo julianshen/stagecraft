@@ -4,19 +4,35 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.js",
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./editor": {
+      "types": "./src/EditorProvider.d.ts",
+      "default": "./src/EditorProvider.jsx"
+    },
     "./styles.css": "./src/styles/main.css",
     "./components/*": "./src/components/*",
     "./hooks/*": "./src/hooks/*",
     "./lib/*": "./src/lib/*",
-    "./styles/*": "./src/styles/*"
+    "./styles/*": "./src/styles/*",
+    "./canonical": {
+      "types": "./src/CanonicalEditorSurface.d.ts",
+      "default": "./src/CanonicalEditorSurface.jsx"
+    },
+    "./presentation": {
+      "types": "./src/PresentationEditor.d.ts",
+      "default": "./src/PresentationEditor.jsx"
+    }
   },
   "files": [
     "src"
   ],
   "dependencies": {
     "@stagecraft/core": "0.1.0",
-    "@stagecraft/renderer": "0.1.0"
+    "@stagecraft/renderer": "0.1.0",
+    "@stagecraft/source": "0.1.0"
   },
   "peerDependencies": {
     "react": "^18.3.1",

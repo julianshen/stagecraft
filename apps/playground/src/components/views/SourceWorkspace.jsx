@@ -1,0 +1,111 @@
+import { useEffect, useRef, useState } from 'react';
+import { createEditor } from '@stagecraft/core/editor';
+import { documentPlugin, presentationPlugin, validateDocument } from '@stagecraft/core/document';
+import { EditorProvider } from '@stagecraft/react/editor';
+import { PresentationEditor } from '@stagecraft/react/presentation';
+import { openPresentation } from '@stagecraft/source';
+import { writePptx } from '@stagecraft/pptx';
+import { writeOdp } from '@stagecraft/odp';
+import './SourceWorkspace.css';
+
+export function downloadSource(result, { fileName, format }) {
+  const mime = format === 'pptx'
+    ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    : 'application/vnd.oasis.opendocument.presentation';
+  const url = URL.createObjectURL(new Blob([result.bytes], { type: mime }));
+  try {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName.replace(/[\\/:\x00-\x1f]/g, '_');
+    link.click();
+  } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
+}
+
+/** Local-only reference host. These retained source sessions are never sent to a backend. */
+export default function SourceWorkspace({ openSource = openPresentation, save = downloadSource }) {
+  const [resource, setResource] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const active = useRef(null);
+  const pending = useRef(null);
+  const generation = useRef(0);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      generation.current++;
+      pending.current?.abort();
+      pending.current = null;
+      active.current?.source.dispose();
+      active.current?.editor.dispose();
+      active.current = null;
+    };
+  }, []);
+
+  async function openFile(file, prepare) {
+    if (!file) return;
+    const request = ++generation.current;
+    pending.current?.abort();
+    pending.current = null;
+    const format = /\.(pptx|odp)$/i.exec(file.name)?.[1].toLowerCase();
+    if (!format) { setError('Choose a .pptx or .odp file.'); setLoading(false); return; }
+    const controller = new AbortController();
+    pending.current = controller;
+    setLoading(true); setError('');
+    let source, editor;
+    const current = () => mounted.current && request === generation.current;
+    try {
+      if (prepare) file = await prepare();
+      if (!current()) return;
+      source = await openSource(file, { format, signal: controller.signal });
+      if (!current()) { source.dispose(); return; }
+      editor = createEditor({ document: source.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+      const next = { source, editor, fileName: file.name, format, id: request };
+      const previous = active.current;
+      active.current = next;
+      setResource(next);
+      previous?.source.dispose();
+      previous?.editor.dispose();
+    } catch (cause) {
+      source?.dispose();
+      editor?.dispose();
+      if (current()) setError(cause instanceof Error ? cause.message : 'Could not open this presentation.');
+    } finally {
+      if (current()) { pending.current = null; setLoading(false); }
+    }
+  }
+
+  function newFile(format) {
+    const name = `Untitled.${format}`;
+    const deck = { title: 'Untitled', sections: [{ id: 'section', name: 'Slides', slides: ['slide'] }], slides: [{ id: 'slide', layout: 'blank', elements: [] }] };
+    void openFile({ name }, async () => new File([await (format === 'pptx' ? writePptx(deck) : writeOdp(deck))], name));
+  }
+
+  return <main className="stagecraft-source-workspace">
+    <header>
+      <div><h1>Presentation editor</h1><p>Create a deck or open a local PPTX/ODP file.</p></div>
+      <a href="/">Back to playground</a>
+      <button onClick={() => newFile('pptx')}>New PPTX</button>
+      <button onClick={() => newFile('odp')}>New ODP</button>
+      <label className="source-open">Open PPTX or ODP
+        <input aria-label="Open PPTX or ODP" type="file" accept=".pptx,.odp" onChange={event => {
+          const file = event.target.files?.[0]; event.target.value = ''; void openFile(file);
+        }} />
+      </label>
+    </header>
+    {loading && <p role="status">Opening presentation…</p>}
+    {error && <p role="alert">{error}</p>}
+    {resource ? <section aria-label={resource.fileName}>
+      <p className="source-file-name">{resource.fileName} · Local file · Export creates a copy</p>
+      <EditorProvider key={resource.id} editor={resource.editor}>
+        <PresentationEditor source={resource.source} onExport={(result, { revision }) => save(result, { fileName: resource.fileName, format: resource.format, revision })} />
+      </EditorProvider>
+    </section> : <section className="source-empty">
+      <h2>Your presentation stays local</h2>
+      <p>Create slides, add text and shapes, or edit supported native content. The preview is simplified; unsupported native content is retained.</p>
+      <p>Signed documents open read-only. This workspace does not use the playground’s deck storage.</p>
+    </section>}
+  </main>;
+}

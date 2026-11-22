@@ -1,6 +1,6 @@
 # Stagecraft library workspaces
 
-Stagecraft provides private source packages and a Vite playground. The existing React editor uses the legacy deck schema. A separate headless foundation supplies canonical documents, plugin transactions, host-controlled I/O and native PPTX/ODP source sessions. Canonical React UI, protected-server and agent APIs are outside this milestone.
+Stagecraft provides private source packages and a Vite playground. The existing React editor uses the legacy deck schema. A separate headless foundation supplies canonical documents, plugin transactions, host-controlled I/O and native PPTX/ODP source sessions. Reusable canonical React workspace components sit on this foundation. Protected-server and agent APIs are outside this milestone.
 
 | Workspace | Ownership |
 | --- | --- |
@@ -45,7 +45,25 @@ editor.dispose();
 source.dispose();
 ```
 
-Native authoring commands are a source foundation for later UI. `StagecraftEditor` still expects a legacy deck; do not pass it a canonical document. Conversion through `pptxAdapter` or `odpAdapter` uses `@stagecraft/io` and does not retain original package parts. See [Canonical documents and native sources](docs/CANONICAL-DOCUMENTS.md) for command contracts, migration, I/O and source-session lifecycles.
+`StagecraftEditor` still expects a legacy deck; do not pass it a canonical document. Conversion through `pptxAdapter` or `odpAdapter` uses `@stagecraft/io` and does not retain original package parts. See [Canonical documents and native sources](docs/CANONICAL-DOCUMENTS.md) for command contracts, migration, I/O and source-session lifecycles.
+
+Compose a canonical editing workspace with the same editor/source pair:
+
+```jsx
+import { EditorProvider } from '@stagecraft/react/editor';
+import { PresentationEditor } from '@stagecraft/react/presentation';
+
+<EditorProvider editor={editor}>
+  <PresentationEditor source={source}
+    showToolbar showSlideList showAttributePanel showNotesPanel={false}
+    showDeckList decks={decks} activeDeckId={activeDeckId} onDeckSelect={openDeck}
+    onExport={(result, context) => saveBytes(result.bytes, context)} />
+</EditorProvider>
+```
+
+`DeckList` works independently. `PresentationToolbar`, `SlideList`, `PresentationCanvas`, `AttributePanel`, and `NotesPanel` can be composed under `PresentationEditorProvider`. Developers control region mounting with the `show*` props and extend toolbar, inspector, and object previews through UI plugins. The host owns editor/source disposal and loading/saving. See the [component specification](docs/COMPONENT-SPEC.md) for props, hooks, callbacks, lifecycle and limits, and [extension guide](docs/EXTENSIONS.md) for plugins. Advanced paragraph, text-body layout and cross-run selection controls are deferred; their headless commands remain available.
+
+Run `npm run dev` and open `/?mode=source` for the local PPTX/ODP reference workspace. This demo hosts the reusable components without uploading source files.
 
 Unchanged source export returns exact input bytes; supported edits preserve untouched entry bytes, not the entire edited ZIP. Source sessions grant access to the whole original package and are unsuitable for redacted clients. Native rendering and font inheritance are incomplete; font-family authoring covers Latin/Western fonts, not full East Asian or complex-script typography. Full PowerPoint/Impress compatibility is not claimed.
 
@@ -56,6 +74,7 @@ Run `npm install` at the repository root. `npm run dev`, `npm run build` and `np
 Validation:
 
 - `npm run coverage`: existing unit and Chromium suites, retaining the 90% gates.
+- `npm run test:types`: strict headless and React consumer declaration checks.
 - `npm run build`: package dependency/boundary checks and playground build.
 - `npm run test:consumer`: separate Vite entry importing public packages without playground configuration.
 - `npm run check:boundaries`: dependency direction, declared imports and workspace export resolution.

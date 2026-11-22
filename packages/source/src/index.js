@@ -102,7 +102,7 @@ export async function openPresentation(source, options = {}) {
     let disposed = false;
     /** assetId -> { bytes, contentType } for host-registered image bytes. Never enters canonical JSON. */
     const images = new Map();
-    let registeredBytes = 0;
+    let registeredBytes = 0, nextImageId = 0;
     const imageFor = assetId => (images.get(assetId) ?? previews.get(assetId) ?? null);
     const registerImage = input => {
         check();
@@ -115,10 +115,32 @@ export async function openPresentation(source, options = {}) {
         if (input.contentType !== undefined && input.contentType !== contentType) throw new Error('Image content type does not match its bytes');
         if (images.size >= IMAGE_LIMITS.maxImages) throw new Error('Image count limit reached');
         if (registeredBytes + raw.length > IMAGE_LIMITS.maxTotalBytes) throw new Error('Image total byte limit reached');
-        const assetId = `image-asset-${images.size + 1}-${Date.now().toString(36)}`;
+        // Monotonic sequence: a released registration shrinks `images`, so size-derived ids could
+        // collide with a surviving registration within the same millisecond and overwrite its bytes.
+        const assetId = `image-asset-${++nextImageId}`;
         images.set(assetId, { bytes: raw.slice(), contentType });
         registeredBytes += raw.length;
-        return { assetId, contentType };
+        let state = 'registered';
+        return {
+            assetId, contentType,
+            /** Marks the bytes as consumed by a committed edit; its undo history keeps them reachable. */
+            commit() {
+                check();
+                if (state === 'released') throw new Error('Image registration was released');
+                state = 'committed';
+            },
+            /** Frees quota for a registration that never reached a committed edit (denied/failed dispatch). */
+            release() {
+                check();
+                if (state !== 'registered') return false;
+                const image = images.get(assetId);
+                if (!image) return false;
+                images.delete(assetId);
+                registeredBytes -= image.bytes.length;
+                state = 'released';
+                return true;
+            },
+        };
     };
     /** Copied bytes for host previews; the session keeps its own private copy. */
     const getImage = assetId => {
