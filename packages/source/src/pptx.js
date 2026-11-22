@@ -1,5 +1,5 @@
 import { createDocument } from '@stagecraft/core/document';
-import { is, all, child, children, attr, attrs, source, id, xmlPart, locate } from './xml.js';
+import { is, all, child, children, attr, attrs, source, id, xmlPart, locate, resolvePptxTarget } from './xml.js';
 import { readPptxChartData } from './chart-authoring.js';
 import { readPptxParagraphStyle, readPptxBodyLayout } from './authoring.js';
 const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/';
@@ -43,33 +43,6 @@ function notesBodyText(notes) {
     }
     return lines.join('\n');
 }
-function resolve(owner, raw) {
-    if (!raw || /[\\?#\x00-\x20]/.test(raw))
-        throw new Error('Unsafe relationship target');
-    let decoded;
-    try {
-        decoded = decodeURIComponent(raw);
-    }
-    catch {
-        throw new Error('Invalid relationship encoding');
-    }
-    if (/[\\?#:\x00-\x1f]/.test(decoded) || /%[0-9a-f]{2}/i.test(decoded))
-        throw new Error('Ambiguous relationship target');
-    const parts = decoded.startsWith('/') ? [] : owner === '[package]' ? [] : owner.split('/').slice(0, -1);
-    for (const s of decoded.replace(/^\//, '').split('/')) {
-        if (s === '..') {
-            if (!parts.length)
-                throw new Error('Relationship escapes package');
-            parts.pop();
-        }
-        else if (s !== '.') {
-            if (!s)
-                throw new Error('Empty relationship segment');
-            parts.push(s);
-        }
-    }
-    return parts.join('/');
-}
 export async function readPptx(zip, xml, mapping) {
     const types = await xmlPart(zip, '[Content_Types].xml', xml);
     if (!is(types.documentElement, 'ct', 'Types'))
@@ -92,7 +65,7 @@ export async function readPptx(zip, xml, mapping) {
                 throw new Error('Invalid relationship');
             seen.add(rid);
             const raw = n.getAttribute('Target');
-            const target = mode === 'Internal' ? resolve(owner, raw) : raw;
+            const target = mode === 'Internal' ? resolvePptxTarget(owner, raw) : raw;
             if (!target || mode === 'Internal' && !zip.file(target))
                 throw new Error('Missing relationship target');
             d.relationships.push({ id: `rel:${owner}:${rid}`, ownerPart: owner, type, target, mode: mode.toLowerCase() });

@@ -1,6 +1,6 @@
 import { validateAuthoredObject, validateAuthoredSlide, isParagraphFormatValue } from '@stagecraft/core/document';
 import { jsonEqual as equal } from '@stagecraft/core/lib/jsonEqual.js';
-import { NS, is, child, children, all, attr, attrs, locate, xmlPart, validText } from './xml.js';
+import { NS, is, child, children, all, attr, attrs, locate, xmlPart, validText, resolvePptxTarget } from './xml.js';
 import { patchOdp } from './odp.js';
 import { odpFormattingWriter, reservedOdpStyleNames } from './odp-format.js';
 import { createPptxChartParts, createOdpChartParts } from './chart-authoring.js';
@@ -235,9 +235,7 @@ function pptxParagraphs(doc, text, ns) {
 function pptxTable(doc, object, nextId) {
     const frame=element(doc,'p','graphicFrame'), nv=append(frame,'p','nvGraphicFramePr');
     append(nv,'p','cNvPr',{id:nextId,name:`Stagecraft table ${nextId}`});append(nv,'p','cNvGraphicFramePr');append(nv,'p','nvPr');
-    const xfrm=append(frame,'p','xfrm');
-    append(xfrm,'a','off',{x:object.geometry.x,y:object.geometry.y});
-    append(xfrm,'a','ext',{cx:object.geometry.width,cy:object.geometry.height});
+    pptxGeometry(frame,object.geometry);
     const data=append(append(frame,'a','graphic'),'a','graphicData',{uri:'http://schemas.openxmlformats.org/drawingml/2006/table'});
     const tbl=append(data,'a','tbl');
     append(tbl,'a','tblPr',{firstRow:1,bandRow:1});
@@ -290,7 +288,7 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
     }
     const format=baseline.slides[0]?.source.format ?? baseline.masters[0]?.source.format;
     const media=new Map(); // assetId -> {part, contentType}
-    const relative=(from,to)=>{const a=from.split('/').slice(0,-1),b=to.split('/');while(a.length&&a[0]===b[0]){a.shift();b.shift();}return '../'.repeat(a.length)+b.join('/');};
+    const relative=(from,to)=>{const a=from.split('/').slice(0,-1),b=to.split('/');while(a.length&&a[0]===b[0]){a.shift();b.shift();}return '../'.repeat(a.length)+b.map(encodeURIComponent).join('/');};
     return async () => {
         const dirty=new Set(), mark=part=>dirty.add(part);
         for(const {object,geometry} of delta.geometries) { (format==='pptx'?pptxGeometry:odpGeometry)(nodes.get(object),geometry);mark(object.source.part); }
@@ -385,7 +383,7 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                 return media.get(assetId);
             };
             const imageRel=(part,R)=>assetId=>{
-                const source=ensureMedia(assetId), existing=children(R.documentElement).find(n=>n.getAttribute('Type')===REL+'image'&&relative(part,n.getAttribute('Target'))===source.part);
+                const source=ensureMedia(assetId), existing=children(R.documentElement).find(n=>n.getAttribute('Type')===REL+'image'&&n.getAttribute('TargetMode')!=='External'&&resolvePptxTarget(part,n.getAttribute('Target'))===source.part);
                 if(existing) return existing.getAttribute('Id');
                 // Uniqueness is per owning part, so two images on one slide can never collide.
                 const ids=new Set(children(R.documentElement).map(n=>n.getAttribute('Id')));
@@ -396,9 +394,8 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
             };
             const slideRelsDoc=async part=>{
                 const path=part.replace(/(^|\/)([^/]+)$/, '$1_rels/$2.rels');
-                let doc=zip.file(path)?await getDoc(path):null;
-                if(!doc){doc=xml.parse(`<Relationships xmlns="${NS.rel}"/>`);zip.file(path,xml.serialize(doc));}
-                return {path,doc};
+                if(!zip.file(path)) zip.file(path,`<Relationships xmlns="${NS.rel}"/>`);
+                return {path,doc:await getDoc(path)};
             };
             let list=child(presentation.documentElement,'p','sldIdLst');
             if(!list)list=append(presentation.documentElement,'p','sldIdLst');
@@ -834,14 +831,6 @@ const REL_NOTES = REL + 'notesSlide';
 const REL_NOTES_MASTER = REL + 'notesMaster';
 const NOTES_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml';
 const NOTES_MASTER_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml';
-const resolveFrom = (base, target) => {
-    const parts = base.split('/').slice(0, -1);
-    for (const segment of target.replace(/^\//, '').split('/')) {
-        if (segment === '..') parts.pop();
-        else if (segment !== '.') parts.push(segment);
-    }
-    return parts.join('/');
-};
 /** Replace only a notes slide's body-placeholder text; everything else in the part is preserved. */
 function patchNotesBody(doc, text) {
     const cSld = child(doc.documentElement, 'p', 'cSld');
@@ -962,7 +951,7 @@ async function applyPptxSlideProperties({xml,getDoc,zip,baseline,slideProperties
             append(types.documentElement, 'ct', 'Override', { PartName: '/' + masterPath, ContentType: NOTES_MASTER_CONTENT_TYPE });
             const masterRelsPath = masterPath.replace(/(^|\/)([^/]+)$/, '$1_rels/$2.rels');
             const masterRels = xml.parse(`<Relationships xmlns="${NS.rel}"/>`);
-            if (themeRel) append(masterRels.documentElement, 'rel', 'Relationship', { Id: 'rId1', Type: REL + 'theme', Target: relative(masterPath, resolveFrom(main, themeRel.getAttribute('Target'))) });
+            if (themeRel) append(masterRels.documentElement, 'rel', 'Relationship', { Id: 'rId1', Type: REL + 'theme', Target: relative(masterPath, resolvePptxTarget(main, themeRel.getAttribute('Target'))) });
             zip.file(masterRelsPath, xml.serialize(masterRels));
             mark(masterRelsPath);
             let masterRelId = 1;
@@ -979,7 +968,7 @@ async function applyPptxSlideProperties({xml,getDoc,zip,baseline,slideProperties
             mark(main);
             masterRel = children(rels.documentElement).find(n => n.getAttribute('Type') === REL_NOTES_MASTER);
         }
-        const masterPath = resolveFrom(main, masterRel.getAttribute('Target'));
+        const masterPath = resolvePptxTarget(main, masterRel.getAttribute('Target'));
         const notesRelsPath = notesPart.replace(/(^|\/)([^/]+)$/, '$1_rels/$2.rels');
         const notesRels = xml.parse(`<Relationships xmlns="${NS.rel}"/>`);
         append(notesRels.documentElement, 'rel', 'Relationship', { Id: 'rId1', Type: REL + 'slide', Target: relative(notesPart, part) });

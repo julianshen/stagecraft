@@ -43,3 +43,27 @@ it.each(['table', 'chart'])('edits imported native %s graphic-frame geometry wit
     expect(child(frame, 'p', 'spPr')).toBeUndefined();
   } finally { session.dispose(); editor.dispose(); reopened?.dispose(); }
 });
+
+
+it('preserves rotation when creating an authored PPTX table', async () => {
+  const seed = await openPresentation(await writePptx({ sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [] }] }), { format: 'pptx' });
+  const editor = createEditor({ document: seed.document, validateDocument, plugins: [presentationPlugin] });
+  let reopened;
+  try {
+    const geometry = { x: 12700, y: 25400, width: 6000000, height: 3000000, rotation: -22.5 };
+    editor.dispatch('presentation.addObject', { slideId: seed.document.slides[0].id, object: {
+      id: 'rotated-table', type: 'table', geometry, extensions: { stagecraftAuthored: true },
+      table: { columns: [{ id: 'column', width: geometry.width }], rows: [{ id: 'row', cells: [{ id: 'cell', text: {
+        paragraphs: [{ id: 'paragraph', runs: [{ id: 'run', text: 'Rotated cell', editable: true, style: {}, extensions: { stagecraftAuthored: true } }] }],
+      } }] }] },
+    } });
+    const output = await seed.export(editor.getSnapshot().document);
+    reopened = await openPresentation(output.bytes, { format: 'pptx' });
+    expect(reopened.document.slides[0].objects[0].geometry).toEqual(geometry);
+    const zip = await JSZip.loadAsync(output.bytes);
+    const doc = new DOMParser().parseFromString(await zip.file(seed.document.slides[0].source.part).async('string'), 'application/xml');
+    const frame = all(doc, 'p', 'graphicFrame')[0];
+    expect(Array.from(frame.children).map(node => node.localName)).toEqual(['nvGraphicFramePr', 'xfrm', 'graphic']);
+    expect(child(frame, 'p', 'xfrm').getAttribute('rot')).toBe('-1350000');
+  } finally { seed.dispose(); editor.dispose(); reopened?.dispose(); }
+});

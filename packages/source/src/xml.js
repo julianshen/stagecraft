@@ -43,3 +43,32 @@ export async function xmlPart(zip, part, xml) {
         throw new Error(`Missing package part: ${part}`);
     return xml.parse(await entry.async('string'));
 }
+
+/** Resolve internal PPTX targets identically when reading and authoring package relationships. */
+export function resolvePptxTarget(owner, raw) {
+    if (!raw || /[\\?#\x00-\x20]/.test(raw))
+        throw new Error('Unsafe relationship target');
+    let decoded;
+    try {
+        decoded = decodeURIComponent(raw);
+    }
+    catch {
+        throw new Error('Invalid relationship encoding');
+    }
+    if (/[\\?#:\x00-\x1f]/.test(decoded) || /%[0-9a-f]{2}/i.test(decoded))
+        throw new Error('Ambiguous relationship target');
+    const parts = decoded.startsWith('/') ? [] : owner === '[package]' ? [] : owner.split('/').slice(0, -1);
+    for (const s of decoded.replace(/^\//, '').split('/')) {
+        if (s === '..') {
+            if (!parts.length)
+                throw new Error('Relationship escapes package');
+            parts.pop();
+        }
+        else if (s !== '.') {
+            if (!s)
+                throw new Error('Empty relationship segment');
+            parts.push(s);
+        }
+    }
+    return parts.join('/');
+}

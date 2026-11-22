@@ -111,3 +111,54 @@ describe.each(['placeholder', 'text body'])('PPTX notes missing %s', missing => 
     expect(result.dirtyParts).toEqual([notesPart]);
   });
 });
+
+describe.each([false, true])('notes relationship target resolution (create master: %s)', createMaster => {
+  it.each(['absolute', 'encoded-root', 'encoded-relative', 'encoded-space'])('reuses %s targets with the reader path semantics', async variant => {
+    const zip = await JSZip.loadAsync(await withoutNotes(createMaster, false));
+    if (variant === 'encoded-space') {
+      const directory = createMaster ? 'theme' : 'notesMasters';
+      const oldName = createMaster ? 'theme1.xml' : 'notesMaster1.xml';
+      const newName = createMaster ? 'theme one.xml' : 'notes Master1.xml';
+      const oldPart = `ppt/${directory}/${oldName}`, newPart = `ppt/${directory}/${newName}`;
+      zip.file(newPart, await zip.file(oldPart).async('uint8array'));
+      zip.remove(oldPart);
+      const oldOwnerRels = `ppt/${directory}/_rels/${oldName}.rels`;
+      if (zip.file(oldOwnerRels)) {
+        zip.file(`ppt/${directory}/_rels/${newName}.rels`, await zip.file(oldOwnerRels).async('uint8array'));
+        zip.remove(oldOwnerRels);
+      }
+      for (const name of Object.keys(zip.files).filter(name => name.endsWith('.rels'))) {
+        const rels = parse(await zip.file(name).async('string'));
+        for (const relation of Array.from(rels.documentElement.children)) {
+          const target = relation.getAttribute('Target');
+          if (target?.endsWith(oldName)) relation.setAttribute('Target', target.slice(0, -oldName.length) + encodeURIComponent(newName));
+        }
+        zip.file(name, serialize(rels));
+      }
+      const types = parse(await zip.file('[Content_Types].xml').async('string'));
+      for (const override of Array.from(types.getElementsByTagNameNS(NS.ct, 'Override'))) {
+        if (override.getAttribute('PartName') === '/' + oldPart) override.setAttribute('PartName', '/' + newPart);
+      }
+      zip.file('[Content_Types].xml', serialize(types));
+    }
+    const relationships = parse(await zip.file(relPart).async('string'));
+    const type = `${NS.r}/${createMaster ? 'theme' : 'notesMaster'}`;
+    const relation = Array.from(relationships.documentElement.children).find(node => node.getAttribute('Type') === type);
+    const relativeTarget = relation.getAttribute('Target');
+    const encodedTarget = relativeTarget.replace(/notesMasters|theme/, name => `%${name.charCodeAt(0).toString(16)}${name.slice(1)}`);
+    relation.setAttribute('Target', variant === 'absolute' ? `/ppt/${relativeTarget}`
+      : variant === 'encoded-root' ? `%2Fppt%2F${encodedTarget}` : encodedTarget);
+    zip.file(relPart, serialize(relationships));
+    const session = await openPresentation(await zip.generateAsync({ type: 'uint8array' }), { format: 'pptx' });
+    const next = structuredClone(session.document);
+    next.slides[0].notes = 'Notes with a resolved relationship';
+    const result = await session.export(next);
+    const reopened = await openPresentation(result.bytes, { format: 'pptx' });
+    expect(reopened.document.slides[0].notes).toBe(next.slides[0].notes);
+    const resultZip = await JSZip.loadAsync(result.bytes);
+    const generatedRelsPath = createMaster ? 'ppt/notesMasters/_rels/notesMaster1.xml.rels' : 'ppt/notesSlides/_rels/notesSlide1.xml.rels';
+    const generatedRels = parse(await resultZip.file(generatedRelsPath).async('string'));
+    const generatedRelation = Array.from(generatedRels.documentElement.children).find(node => node.getAttribute('Type') === type);
+    expect(generatedRelation.getAttribute('Target')).toBe(`../${relativeTarget}`);
+  });
+});
