@@ -293,7 +293,11 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
     return async () => {
         const dirty=new Set(), mark=part=>dirty.add(part);
         for(const {object,geometry} of delta.geometries) { (format==='pptx'?pptxGeometry:odpGeometry)(nodes.get(object),geometry);mark(object.source.part); }
-        for(const {object,fill} of delta.fills) { (format==='pptx'?patchPptxFill:patchOdpFill)(object,fill,nodes.get(object));mark(object.source.part); }
+        for(const {object,fill} of delta.fills) {
+            if(format==='pptx') patchPptxFill(object,fill,nodes.get(object));
+            else patchOdpFill(object,fill,nodes.get(object),await getDoc('styles.xml'));
+            mark(object.source.part);
+        }
         for(const {object,paragraph,style} of delta.paragraphFormats ?? []) {
             const node=nodes.get(paragraph); if(!node) throw new Error('Missing mapped paragraph node');
             applyPptxParagraphFormat(node, paragraph.style ?? {}, style ?? {});
@@ -646,11 +650,21 @@ function patchPptxFill(object,fill,node) {
     void object;
 }
 /** Rewrite the local graphic style's solid fill for a native ODP shape. */
-function patchOdpFill(object,fill,node) {
+function patchOdpFill(object,fill,node,stylesDoc) {
     const styleName=attr(node,'draw','style-name'), doc=node.ownerDocument;
-    const style=all(doc,'style','style').find(s=>attr(s,'style','name')===styleName&&attr(s,'style','family')==='graphic');
+    const candidates=all(doc,'style','style').filter(s=>attr(s,'style','name')===styleName&&attr(s,'style','family')==='graphic');
+    if(candidates.length!==1) throw new Error('Unsupported native fill target');
+    // Native graphic styles can be shared across shapes and slides.
+    const style=candidates[0].cloneNode(true);
     const properties=child(style,'style','graphic-properties');
     if(!properties) throw new Error('Unsupported native fill target');
+    const reserved=new Set(reservedOdpStyleNames(doc,stylesDoc));
+    let index=1,name;do{name=`StagecraftFill${index++}`;}while(reserved.has(name));
+    style.setAttributeNS(NS.style,'style:name',name);
+    let automatic=child(doc.documentElement,'office','automatic-styles');
+    if(!automatic){automatic=element(doc,'office','automatic-styles');doc.documentElement.insertBefore(automatic,child(doc.documentElement,'office','body'));}
+    automatic.appendChild(style);
+    node.setAttributeNS(NS.draw,'draw:style-name',name);
     properties.setAttributeNS(NS.draw,'draw:fill','solid');
     properties.setAttributeNS(NS.draw,'draw:fill-color',fill);
     void object;
@@ -874,7 +888,7 @@ function patchNotesBody(doc, text) {
  * Existing notes parts are patched in place (only the body text changes); a part is created only
  * when the slide has none, together with a notes master when the presentation has none.
  */
-async function applyPptxSlideProperties({xml,getDoc,zip,baseline,slideProperties,mark,main,rels,types,presentation,relative,newSlideNotes=new Map()}) {
+async function applyPptxSlideProperties({xml,getDoc,zip,baseline,slideProperties,mark,main,rels,relPart,types,presentation,relative,newSlideNotes=new Map()}) {
     // Newly created slides carry their properties at creation except notes, which need rels/parts.
     const pending=[...slideProperties, ...[...newSlideNotes].map(([id,entry])=>({slide:{id,source:{part:entry.part}},properties:{notes:entry.notes}}))];
     for (const {slide, properties} of pending) {
@@ -925,16 +939,16 @@ async function applyPptxSlideProperties({xml,getDoc,zip,baseline,slideProperties
         zip.file(notesPart, xml.serialize(notesDoc));
         mark(notesPart);
         append(types.documentElement, 'ct', 'Override', { PartName: '/' + notesPart, ContentType: NOTES_CONTENT_TYPE });
+        mark('[Content_Types].xml');
         // Slide -> notes back-reference.
         const slideRelsPath = part.replace(/(^|\/)([^/]+)$/, '$1_rels/$2.rels');
-        let slideRels = zip.file(slideRelsPath) ? await getDoc(slideRelsPath) : null;
-        if (!slideRels) {
-            slideRels = xml.parse(`<Relationships xmlns="${NS.rel}"/>`);
-            zip.file(slideRelsPath, xml.serialize(slideRels));
-        }
+        const hasSlideRels = Boolean(zip.file(slideRelsPath));
+        const slideRels = hasSlideRels ? await getDoc(slideRelsPath) : xml.parse(`<Relationships xmlns="${NS.rel}"/>`);
         let slideRid = 1;
         while (children(slideRels.documentElement).some(n => n.getAttribute('Id') === `rId${slideRid}`)) slideRid++;
         append(slideRels.documentElement, 'rel', 'Relationship', { Id: `rId${slideRid}`, Type: REL_NOTES, Target: relative(part, notesPart) });
+        // New relationship documents are not in getDoc's serialization cache.
+        if (!hasSlideRels) zip.file(slideRelsPath, xml.serialize(slideRels));
         mark(slideRelsPath);
         // Notes master: reuse the presentation's, else create one alongside the existing theme.
         let masterRel = children(rels.documentElement).find(n => n.getAttribute('Type') === REL_NOTES_MASTER);
@@ -955,6 +969,7 @@ async function applyPptxSlideProperties({xml,getDoc,zip,baseline,slideProperties
             while (children(rels.documentElement).some(n => n.getAttribute('Id') === `rIdNotesMaster${masterRelId}`)) masterRelId++;
             const id = `rIdNotesMaster${masterRelId}`;
             append(rels.documentElement, 'rel', 'Relationship', { Id: id, Type: REL_NOTES_MASTER, Target: relative(main, masterPath) });
+            mark(relPart);
             let masterList = child(presentation.documentElement, 'p', 'notesMasterIdLst');
             if (!masterList) {
                 masterList = element(presentation, 'p', 'notesMasterIdLst');
