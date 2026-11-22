@@ -25,7 +25,15 @@ export type SourceCapability =
     | 'object-table' | 'object-image' | 'object-chart'
     | 'paragraph-format' | 'text-body-layout' | 'run-range-format';
 /** Host-supplied image bytes. PNG or JPEG only; validated by magic and byte/count limits. */
-export interface RegisteredImage { assetId: string; contentType: 'image/png' | 'image/jpeg' }
+export interface RegisteredImage {
+    assetId: string;
+    contentType: 'image/png' | 'image/jpeg';
+    /** Marks the bytes as consumed by a committed edit; the edit's undo history keeps them reachable. Throws after release(). */
+    commit(): void;
+    /** Frees the quota of a registration that never reached a committed edit (denied/failed dispatch).
+     *  Idempotent; refuses (false) committed or already-released bytes. Throws when the session is disposed. */
+    release(): boolean;
+}
 export interface ImageBytes { bytes: Uint8Array; contentType: 'image/png' | 'image/jpeg' }
 export interface SourceSession {
     document: CanonicalDocument;

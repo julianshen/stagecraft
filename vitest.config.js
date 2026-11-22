@@ -26,6 +26,12 @@ export default defineConfig({
         'packages/pptx/src/adapter.js',
 
         'packages/react/src/StagecraftEditor.jsx',
+        'packages/react/src/EditorProvider.jsx',
+        'packages/react/src/CanonicalEditorSurface.jsx',
+        'packages/react/src/PresentationEditor.jsx',
+        'packages/react/src/PresentationChart.jsx',
+        'packages/react/src/presentationPlugins.jsx',
+        'apps/playground/src/components/views/SourceWorkspace.jsx',
         'packages/react/src/lib/accentTokens.js',
         'apps/playground/src/server/api.js',
         'packages/core/src/lib/deckOrder.js',

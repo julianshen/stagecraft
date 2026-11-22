@@ -1,0 +1,43 @@
+.stagecraft-presentation { --stagecraft-presentation-surface:#fff; --stagecraft-presentation-background:#eef1f6; --stagecraft-presentation-text:#172033; --stagecraft-presentation-accent:#2563eb; --stagecraft-presentation-border:#d6dce7; color:var(--stagecraft-presentation-text); background:var(--stagecraft-presentation-background); font:14px/1.45 system-ui,sans-serif; border:1px solid var(--stagecraft-presentation-border); border-radius:10px; overflow:hidden; }
+.stagecraft-presentation-toolbar,.stagecraft-presentation-slides,.stagecraft-presentation-decks,.stagecraft-presentation-attributes { background:var(--stagecraft-presentation-surface,#fff); color:var(--stagecraft-presentation-text,#172033); padding:12px; }
+.stagecraft-presentation-toolbar { border-bottom:1px solid var(--stagecraft-presentation-border,#d6dce7); }
+.stagecraft-presentation-toolbar [role=toolbar],.stagecraft-presentation-toolbar [role=tablist],.stagecraft-presentation-slide-actions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.stagecraft-presentation-toolbar [role=toolbar] { min-height:52px; padding-top:8px; }
+.stagecraft-presentation-toolbar button,.stagecraft-presentation-slides button,.stagecraft-presentation-decks button { font:inherit; padding:7px 10px; border:1px solid var(--stagecraft-presentation-border,#d6dce7); border-radius:5px; background:var(--stagecraft-presentation-surface,#fff); color:inherit; cursor:pointer; }
+.stagecraft-presentation-toolbar button:disabled,.stagecraft-presentation-slides button:disabled,.stagecraft-presentation-decks button:disabled { opacity:.45; cursor:default; }
+.stagecraft-presentation-toolbar [aria-selected=true],.stagecraft-presentation-slides [aria-current],.stagecraft-presentation-decks [aria-current] { border-color:var(--stagecraft-presentation-accent,#2563eb); box-shadow:inset 0 -2px var(--stagecraft-presentation-accent,#2563eb); }
+.stagecraft-presentation-workspace { display:flex; align-items:stretch; min-height:580px; }
+.stagecraft-presentation-slides,.stagecraft-presentation-decks { flex:0 0 190px; max-height:800px; overflow:auto; border-right:1px solid var(--stagecraft-presentation-border,#d6dce7); }
+.stagecraft-presentation-decks button,.stagecraft-presentation-decks small { display:block; width:100%; text-align:left; }
+.stagecraft-presentation-thumbnail { display:block; width:100%; margin-top:12px; }
+.stagecraft-presentation-thumbnail svg { width:100%; display:block; background:white; }
+.stagecraft-presentation-canvas { flex:1 1 0; min-width:0; padding:28px; overflow:auto; position:relative; background:var(--stagecraft-presentation-background,#eef1f6); }
+.stagecraft-presentation-canvas:focus-visible { outline:2px solid var(--stagecraft-presentation-accent,#2563eb); outline-offset:-2px; }
+.stagecraft-presentation-paper { background:white; box-shadow:0 4px 20px #17203320; max-width:none; margin:0 auto; }
+.stagecraft-presentation-paper svg { width:100%; display:block; touch-action:none; }
+.stagecraft-presentation-object { width:100%; height:100%; overflow:hidden; color:#172033; font:16px sans-serif; white-space:pre-wrap; overflow-wrap:anywhere; }
+.stagecraft-presentation-object p { margin:0; }
+.stagecraft-presentation-placeholder { font-size:12px; color:#64748b; background:#f1f5f9; }
+.stagecraft-presentation-notice { max-width:65em; font-size:12px; color:#64748b; }
+.stagecraft-presentation-attributes { flex:0 0 240px; max-height:800px; overflow:auto; border-left:1px solid var(--stagecraft-presentation-border,#d6dce7); }
+.stagecraft-presentation-attributes h2 { font-size:16px; margin:0 0 12px; }
+.stagecraft-presentation-attributes label { display:block; margin:8px 0; }
+.stagecraft-presentation-attributes input,.stagecraft-presentation-attributes textarea,.stagecraft-presentation-attributes select { display:block; width:100%; box-sizing:border-box; font:inherit; }
+.stagecraft-presentation-attributes fieldset { min-width:0; border:1px solid var(--stagecraft-presentation-border,#d6dce7); margin:10px 0; }
+.stagecraft-presentation-toolbar input { width:65px; }
+.stagecraft-presentation-notes { background:var(--stagecraft-presentation-surface,#fff); color:var(--stagecraft-presentation-text,#172033); border-top:1px solid var(--stagecraft-presentation-border,#d6dce7); padding:10px 12px; }
+.stagecraft-presentation-notes label { display:block; font-size:12px; }
+.stagecraft-presentation-notes textarea { display:block; width:100%; min-height:56px; margin-top:4px; box-sizing:border-box; font:inherit; }
+.stagecraft-presentation-table { width:100%; height:100%; border-collapse:collapse; table-layout:fixed; }
+.stagecraft-presentation-table td { border:1px solid var(--stagecraft-presentation-border,#94a3b8); padding:4px; vertical-align:top; }
+.stagecraft-presentation-image { width:100%; height:100%; object-fit:contain; display:block; }
+.stagecraft-presentation-inline-editor { width:100%; height:100%; box-sizing:border-box; resize:none; font:16px sans-serif; padding:4px; border:2px solid var(--stagecraft-presentation-accent,#2563eb); background:rgba(255,255,255,.94); color:#172033; }
+.stagecraft-presentation-chart-row { display:flex; gap:6px; align-items:center; margin:4px 0; }
+.stagecraft-presentation-chart-group { margin-top:8px; }
+.stagecraft-presentation-chart-series { border-top:1px solid var(--stagecraft-presentation-border,#d6dce7); padding-top:6px; margin-top:6px; }
+.stagecraft-presentation-bullet { margin-right:4px; }
+.stagecraft-presentation-paragraph { border-top:1px solid var(--stagecraft-presentation-border,#d6dce7); padding-top:6px; margin-top:6px; }
+.stagecraft-presentation-paragraph-head { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:4px; font-size:12px; }
+.stagecraft-presentation-plugin-section { border-top:1px solid var(--stagecraft-presentation-border,#d6dce7); margin-top:10px; padding-top:8px; }
+.stagecraft-presentation-plugin-section h3 { font-size:13px; margin:0 0 6px; }
+@media(max-width:800px) { .stagecraft-presentation-workspace { flex-wrap:wrap; } .stagecraft-presentation-slides { flex-basis:120px; } .stagecraft-presentation-attributes { flex-basis:100%; max-height:none; } .stagecraft-presentation-canvas { padding:12px; } }

@@ -1,0 +1,20 @@
+.stagecraft-canonical { color: #202637; background: #eef1f7; font: 14px/1.5 system-ui, sans-serif; padding: 16px; border: 1px solid #ccd3e0; border-radius: 12px; }
+.stagecraft-canonical .stagecraft-canonical-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.stagecraft-canonical button { padding: 8px 14px; border: 1px solid #b8c3d6; border-radius: 6px; background: white; color: #202637; cursor: pointer; }
+.stagecraft-canonical button:disabled { opacity: .5; cursor: default; }
+.stagecraft-canonical button[aria-current] { background: #dce7ff; border-color: #325ed4; }
+.stagecraft-canonical .stagecraft-canonical-workspace { display: grid; grid-template-columns: 150px minmax(200px, 1fr) 250px; gap: 16px; align-items: start; }
+.stagecraft-canonical nav, .stagecraft-canonical aside { display: grid; gap: 10px; max-height: 650px; overflow: auto; }
+.stagecraft-canonical textarea { display: block; box-sizing: border-box; width: 100%; min-height: 76px; padding: 8px; border: 1px solid #b8c3d6; border-radius: 6px; font: inherit; }
+.stagecraft-canonical textarea[readonly] { background: #e4e8ef; }
+.stagecraft-canonical .stagecraft-canonical-preview svg { display: block; width: 100%; box-shadow: 0 2px 12px #20263720; }
+.stagecraft-canonical .stagecraft-canonical-text { font: 48px/1.2 Arial, sans-serif; color: #111; white-space: pre-wrap; overflow-wrap: anywhere; }
+.stagecraft-canonical .stagecraft-canonical-text p { margin: 0; }
+.stagecraft-canonical .stagecraft-canonical-placeholder { border: 2px dashed #9ca9bf; background: #eef1f7; font-size: 24px; }
+.stagecraft-canonical .stagecraft-canonical-notice { color: #526078; }
+.stagecraft-canonical [role=alert] { color: #a52323; }
+@media (max-width: 850px) { .stagecraft-canonical .stagecraft-canonical-workspace { grid-template-columns: 1fr; } .stagecraft-canonical nav { display: flex; } }
+.stagecraft-canonical .stagecraft-canonical-format { display: grid; gap: 6px; border: 1px solid #ccd3e0; margin: 8px 0 12px; padding: 8px; }
+.stagecraft-canonical .stagecraft-canonical-format label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.stagecraft-canonical .stagecraft-canonical-format input, .stagecraft-canonical .stagecraft-canonical-format select { width: 105px; min-width: 0; padding: 4px; color: #202637; background: white; border: 1px solid #b8c3d6; border-radius: 4px; }
+.stagecraft-canonical .stagecraft-canonical-format:disabled { opacity: .6; }
