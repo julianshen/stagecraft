@@ -1284,11 +1284,11 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     fireEvent.select(rangeArea);
     expect(screen.getByRole('button', { name: 'Range bold' })).not.toBeDisabled();
 
-    // Unrelated revision bump invalidates range selection UI
+    // Unrelated revision bump re-maps range selection with fresh startRevision instead of disabling
     act(() => {
       editor.dispatch('document.setTextBodyLayout', { objectId: 't-live', layout: { autofit: 'none' } });
     });
-    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Range bold' })).not.toBeDisabled();
   });
 
   it('numbers contiguous matching list items starting at 1 by level, supports bullet {type:none}, and discloses autofit preview', () => {
@@ -1777,5 +1777,153 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     const insertedRect = editor.getSnapshot().document.slides[0].objects.find(o => o.id !== 'shape-with-text');
     expect(insertedRect.text).toBeUndefined();
     expect(screen.queryByLabelText('Text autofit')).toBeNull();
+  });
+
+  it('commits range color on change (including #000000), preserves selection across Bold->Italic->Unbold->Reset, and shows canonical code-point label after CR', () => {
+    const doc = createDocument({
+      id: 'range-ux-deck',
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 't-ux',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              runs: [{ id: 'r1', text: 'A\r\nB', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = { capabilities: { readOnly: false, edits: ['run-range-format'] }, export: vi.fn() };
+
+    const { rerender } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    fireEvent.click(screen.getAllByLabelText('Select object t-ux')[0]);
+    const rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 2;
+    rangeArea.selectionEnd = 3;
+    fireEvent.select(rangeArea);
+
+    // Canonical code-point label: 'A'(0), '\r'(1), '\n'(2), 'B'(3..4)
+    expect(screen.getByText('Selected code points 3–4')).toBeTruthy();
+
+    // Sequential actions work without reselecting
+    fireEvent.click(screen.getByRole('button', { name: 'Range bold' }));
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.b).toBe('1');
+    fireEvent.click(screen.getByRole('button', { name: 'Range italic' }));
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.i).toBe('1');
+    fireEvent.click(screen.getByRole('button', { name: 'Range unbold' }));
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.b).toBe('0');
+    fireEvent.click(screen.getByRole('button', { name: 'Range reset bold' }));
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.b).toBeUndefined();
+
+    // Color picker: input event alone does not commit; change event commits (including #000000)
+    const revBeforeColor = editor.getSnapshot().revision;
+    const colorInput = screen.getByLabelText('Range color');
+    fireEvent.input(colorInput, { target: { value: '#112233' } });
+    expect(editor.getSnapshot().revision).toBe(revBeforeColor);
+    colorInput.value = '#000000';
+    fireEvent.change(colorInput, { target: { value: '#000000' } });
+    expect(editor.getSnapshot().revision).toBe(revBeforeColor + 1);
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.color).toBe('#000000');
+
+    // Stale-draft safety: readOnly clears range selection
+    rerender(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} readOnly />
+      </EditorProvider>
+    );
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+  });
+
+  it('renders dynamic bullet option, ODP shrink (unsupported) option, isOdpDoc precedence, and non-pptx native read-only paragraphs', () => {
+    const doc = createDocument({
+      id: 'review-meta-deck',
+      extensions: { sourceFormat: 'odp' },
+      slides: [{
+        id: 's1',
+        objects: [
+          {
+            id: 't-odp-shrink',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+            extensions: { stagecraftAuthored: true },
+            bodyLayout: { autofit: 'shrink' },
+            text: {
+              paragraphs: [{
+                id: 'p-dash',
+                style: { bullet: { type: 'char', char: '–' } },
+                runs: [{ id: 'r-dash', text: 'Dash', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+              }],
+            },
+          },
+          {
+            id: 't-pptx-in-odp',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 200 * PT, width: 300 * PT, height: 120 * PT },
+            source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [0] },
+            text: {
+              paragraphs: [{
+                id: 'p-pptx',
+                source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [0, 0] },
+                runs: [{ id: 'r-pptx', text: 'PPTX', editable: true, source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [0, 0, 0] }, style: {} }],
+              }],
+            },
+          },
+          {
+            id: 't-unknown-native',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 340 * PT, width: 300 * PT, height: 120 * PT },
+            source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [1] },
+            text: {
+              paragraphs: [{
+                id: 'p-unk',
+                runs: [{ id: 'r-unk', text: 'Unknown', editable: false, style: {} }],
+              }],
+            },
+          },
+        ],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = {
+      capabilities: { readOnly: false, edits: ['paragraph-format', 'text-body-layout'] },
+      export: vi.fn(),
+    };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    // 1. Dynamic bullet option + ODP autofit 'shrink' shown as disabled "Shrink (unsupported)"
+    fireEvent.click(screen.getAllByLabelText('Select object t-odp-shrink')[0]);
+    const bulletSelect = screen.getByLabelText('Paragraph 1 bullet');
+    expect(bulletSelect).toHaveValue('char:–');
+    expect(within(bulletSelect).getByRole('option', { name: 'Bullet (–)' })).toBeTruthy();
+
+    const autofitSelect = screen.getByLabelText('Text autofit');
+    expect(autofitSelect).toHaveValue('shrink');
+    const shrinkOpt = within(autofitSelect).getByRole('option', { name: 'Shrink (unsupported)' });
+    expect(shrinkOpt).toBeDisabled();
+
+    // 2. isOdpDoc precedence: object.source.format === 'pptx' overrides doc.extensions.sourceFormat === 'odp'
+    fireEvent.click(screen.getAllByLabelText('Select object t-pptx-in-odp')[0]);
+    expect(screen.getByLabelText('Text wrap')).toBeTruthy();
+    expect(screen.getByLabelText('Paragraph 1 alignment')).not.toBeDisabled();
+
+    // 3. Non-pptx native paragraph (no source.format) is disabled in ParagraphFormatFields
+    fireEvent.click(screen.getAllByLabelText('Select object t-unknown-native')[0]);
+    expect(screen.getByLabelText('Paragraph 1 alignment')).toBeDisabled();
   });
 });

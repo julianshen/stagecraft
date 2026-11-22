@@ -105,3 +105,21 @@ export function mapDisplaySelectionToCanonicalRange(paragraphs, startUtf16, endU
   if (order >= 0) return null;
   return { start: start.pos, end: end.pos };
 }
+
+/** Computes canonical Unicode code-point start/end offsets across paragraphs for a mapped RunRange. */
+export function canonicalRangeCodePointSpan(paragraphs, range) {
+  if (!Array.isArray(paragraphs) || !range?.start || !range?.end) return null;
+  let cursor = 0;
+  let startCp = null;
+  let endCp = null;
+  for (let pIdx = 0; pIdx < paragraphs.length; pIdx += 1) {
+    const p = paragraphs[pIdx];
+    for (const r of p.runs ?? []) {
+      if (p.id === range.start.paragraphId && r.id === range.start.runId) startCp = cursor + range.start.offset;
+      if (p.id === range.end.paragraphId && r.id === range.end.runId) endCp = cursor + range.end.offset;
+      cursor += Array.from(r.text ?? '').length;
+    }
+    if (pIdx < paragraphs.length - 1) cursor += 1;
+  }
+  return startCp !== null && endCp !== null ? { startCp, endCp } : null;
+}

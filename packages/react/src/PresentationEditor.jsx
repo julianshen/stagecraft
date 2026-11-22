@@ -19,7 +19,7 @@ export {
   createPresentationPluginRegistry,
 } from './presentationPlugins.jsx';
 import { isParagraphFormatValue } from '@stagecraft/core/document';
-import { mapDisplaySelectionToCanonicalRange, utf16ToCodePointOffset } from './textSelection.js';
+import { canonicalRangeCodePointSpan, mapDisplaySelectionToCanonicalRange } from './textSelection.js';
 import './PresentationEditor.css';
 const Context = createContext(null);
 const PT = 12700;
@@ -1502,7 +1502,19 @@ const PARAGRAPH_NUMBER_FIELDS = [
 const paragraphDraft = (field, style) => (field.emu ? emuToPt(style[field.key]) : style[field.key] === undefined ? '' : String(style[field.key]));
 const paragraphDrafts = style => Object.fromEntries(PARAGRAPH_NUMBER_FIELDS.map(field => [field.key, paragraphDraft(field, style)]));
 
-function ParagraphFormatFields({ paragraph, index, editor, source, revision, disabled, isOdpNative = false, isOdpDoc, onCommit, onError }) {
+const BULLET_OPTIONS = [
+  ['', 'Reset / Inherit'],
+  ['none', 'None (disable)'],
+  ['char:•', 'Bullet (•)'],
+  ['number:arabicPeriod', '1. 2. 3.'],
+  ['number:arabicParenR', '1) 2) 3)'],
+  ['number:lowerAlphaPeriod', 'a. b. c.'],
+  ['number:upperAlphaPeriod', 'A. B. C.'],
+  ['number:lowerRomanPeriod', 'i. ii. iii.'],
+  ['number:upperRomanPeriod', 'I. II. III.'],
+];
+
+function ParagraphFormatFields({ paragraph, index, editor, source, revision, disabled, isOdpNative = false, isReadOnlyNative = isOdpNative, isOdpDoc, onCommit, onError }) {
   const s = paragraph.style ?? {};
   const [drafts, setDrafts] = useState(() => paragraphDrafts(s));
   const startRevRef = useRef(revision);
@@ -1512,9 +1524,11 @@ function ParagraphFormatFields({ paragraph, index, editor, source, revision, dis
     setDrafts(paragraphDrafts(s));
   }, [editor, source, paragraph.id, revision, s.spaceBefore, s.spaceAfter, s.lineSpacing, s.level, s.indentStart, s.indentEnd, s.firstLineIndent, disabled]);
 
-  const effectiveDisabled = disabled || isOdpNative;
+  const effectiveDisabled = disabled || isReadOnlyNative;
   const captureRev = () => { startRevRef.current = revision; };
   const commit = format => onCommit(format, startRevRef.current);
+  const currentBullet = bulletValue(s.bullet);
+  const hasKnownBullet = BULLET_OPTIONS.some(([val]) => val === currentBullet);
 
   function commitField(field) {
     const draft = drafts[field.key];
@@ -1533,7 +1547,7 @@ function ParagraphFormatFields({ paragraph, index, editor, source, revision, dis
   return (
     <fieldset className="stagecraft-presentation-para-format" disabled={effectiveDisabled}>
       <legend>Paragraph {index + 1} format</legend>
-      {isOdpNative && <small>Native ODP paragraph formatting is read-only.</small>}
+      {isOdpNative ? <small>Native ODP paragraph formatting is read-only.</small> : isReadOnlyNative ? <small>Native paragraph formatting is read-only.</small> : null}
       <label>
         Alignment
         <select
@@ -1552,22 +1566,19 @@ function ParagraphFormatFields({ paragraph, index, editor, source, revision, dis
         Bullet
         <select
           aria-label={`Paragraph ${index + 1} bullet`}
-          value={bulletValue(s.bullet)}
+          value={currentBullet}
           onChange={e => {
             const nextBullet = parseBulletValue(e.target.value);
             const clearsOdpLevel = isOdpDoc && (s.level ?? 0) > 0 && (nextBullet === null || nextBullet.type === 'none');
             commit(clearsOdpLevel ? { bullet: nextBullet, level: null } : { bullet: nextBullet });
           }}
         >
-          <option value="">Reset / Inherit</option>
-          <option value="none">None (disable)</option>
-          <option value="char:•">Bullet (•)</option>
-          <option value="number:arabicPeriod">1. 2. 3.</option>
-          <option value="number:arabicParenR">1) 2) 3)</option>
-          <option value="number:lowerAlphaPeriod">a. b. c.</option>
-          <option value="number:upperAlphaPeriod">A. B. C.</option>
-          <option value="number:lowerRomanPeriod">i. ii. iii.</option>
-          <option value="number:upperRomanPeriod">I. II. III.</option>
+          {BULLET_OPTIONS.map(([val, label]) => <option key={val || 'reset'} value={val}>{label}</option>)}
+          {currentBullet && !hasKnownBullet && (
+            <option value={currentBullet}>
+              {s.bullet?.type === 'char' ? `Bullet (${s.bullet.char})` : currentBullet}
+            </option>
+          )}
         </select>
       </label>
       {PARAGRAPH_NUMBER_FIELDS.map(field => (
@@ -1594,7 +1605,6 @@ function ParagraphFormatFields({ paragraph, index, editor, source, revision, dis
 function TextBodyLayoutFields({ object, editor, source, revision, isOdpDoc, disabled, onCommit, onError }) {
   const layout = object.bodyLayout ?? {};
   const autofitVal = layout.autofit ?? '';
-  const safeOdpAutofit = isOdpDoc && autofitVal === 'shrink' ? '' : autofitVal;
   const ins = layout.insets ?? {};
   const [insets, setInsets] = useState({
     left: emuToPt(ins.left),
@@ -1621,12 +1631,12 @@ function TextBodyLayoutFields({ object, editor, source, revision, isOdpDoc, disa
         Autofit
         <select
           aria-label="Text autofit"
-          value={safeOdpAutofit}
+          value={autofitVal}
           onChange={e => onCommit({ autofit: e.target.value || null }, revision)}
         >
           <option value="">Reset / Inherit</option>
           <option value="none">None</option>
-          {!isOdpDoc && <option value="shrink">Shrink text</option>}
+          {!isOdpDoc ? <option value="shrink">Shrink text</option> : autofitVal === 'shrink' ? <option value="shrink" disabled>Shrink (unsupported)</option> : null}
           <option value="resize">Resize shape</option>
         </select>
       </label>
@@ -1699,26 +1709,61 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
   const [rangeState, setRangeState] = useState(null);
   const [rangeSize, setRangeSize] = useState('');
   const [rangeFont, setRangeFont] = useState('');
+  const [rangeColor, setRangeColor] = useState('#000000');
+  const textareaRef = useRef(null);
+  const colorRef = useRef(null);
+  const ownerRef = useRef({ editor, source, slideId, objectId: object.id, disabled });
+
+  function mapSelection(selStart, selEnd, rev) {
+    const mapped = mapDisplaySelectionToCanonicalRange(paragraphs, selStart, selEnd);
+    const span = mapped ? canonicalRangeCodePointSpan(paragraphs, mapped) : null;
+    return mapped && span ? { range: mapped, startCp: span.startCp, endCp: span.endCp, startRevision: rev } : null;
+  }
 
   useEffect(() => {
-    setRangeState(null);
+    const prev = ownerRef.current;
+    const ownerChanged = prev.editor !== editor
+      || prev.source !== source
+      || prev.slideId !== slideId
+      || prev.objectId !== object.id
+      || prev.disabled !== disabled
+      || disabled;
+    ownerRef.current = { editor, source, slideId, objectId: object.id, disabled };
     setRangeSize('');
     setRangeFont('');
+    if (ownerChanged) {
+      setRangeState(null);
+      setRangeColor('#000000');
+      return;
+    }
+    const el = textareaRef.current;
+    setRangeState(el ? mapSelection(el.selectionStart ?? 0, el.selectionEnd ?? 0, revision) : null);
   }, [editor, source, slideId, object.id, object.text, revision, disabled]);
 
   function handleSelect(event) {
     if (disabled) return;
     const el = event.currentTarget;
-    const selStart = el.selectionStart ?? 0;
-    const selEnd = el.selectionEnd ?? 0;
-    const mapped = mapDisplaySelectionToCanonicalRange(paragraphs, selStart, selEnd);
-    const startCp = utf16ToCodePointOffset(fullText, selStart);
-    const endCp = utf16ToCodePointOffset(fullText, selEnd);
-    setRangeState(mapped ? { range: mapped, startCp, endCp, startRevision: revision } : null);
+    setRangeState(mapSelection(el.selectionStart ?? 0, el.selectionEnd ?? 0, revision));
   }
 
   const hasRange = Boolean(rangeState?.range) && !disabled;
   const applyRange = format => onApply(rangeState.range, format, rangeState.startRevision);
+  const colorCommitRef = useRef(null);
+  colorCommitRef.current = value => {
+    if (hasRange) applyRange({ color: value });
+  };
+
+  useEffect(() => {
+    const el = colorRef.current;
+    if (!el) return undefined;
+    const onNativeChange = event => {
+      const next = event.currentTarget.value.toLowerCase();
+      setRangeColor(next);
+      colorCommitRef.current?.(next);
+    };
+    el.addEventListener('change', onNativeChange);
+    return () => el.removeEventListener('change', onNativeChange);
+  }, []);
 
   return (
     <fieldset className="stagecraft-presentation-range-format" disabled={disabled}>
@@ -1726,6 +1771,7 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
       <label>
         Select text range
         <textarea
+          ref={textareaRef}
           aria-label="Select text range"
           readOnly
           value={fullText}
@@ -1739,7 +1785,11 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
       </small>
       <div className="stagecraft-presentation-range-actions">
         <button type="button" aria-label="Range bold" disabled={!hasRange} onClick={() => applyRange({ bold: true })}>Bold</button>
+        <button type="button" aria-label="Range unbold" disabled={!hasRange} onClick={() => applyRange({ bold: false })}>Unbold</button>
+        <button type="button" aria-label="Range reset bold" disabled={!hasRange} onClick={() => applyRange({ bold: null })}>Reset bold</button>
         <button type="button" aria-label="Range italic" disabled={!hasRange} onClick={() => applyRange({ italic: true })}>Italic</button>
+        <button type="button" aria-label="Range unitalic" disabled={!hasRange} onClick={() => applyRange({ italic: false })}>Unitalic</button>
+        <button type="button" aria-label="Range reset italic" disabled={!hasRange} onClick={() => applyRange({ italic: null })}>Reset italic</button>
         <label>
           Range size (pt)
           <input
@@ -1778,13 +1828,12 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
         <label>
           Range color
           <input
+            ref={colorRef}
             aria-label="Range color"
             type="color"
             disabled={!hasRange}
-            defaultValue="#000000"
-            onChange={e => {
-              if (hasRange) applyRange({ color: e.target.value.toLowerCase() });
-            }}
+            value={rangeColor}
+            onChange={e => setRangeColor(e.target.value.toLowerCase())}
           />
         </label>
       </div>
@@ -1807,7 +1856,7 @@ export function AttributePanel({
     canRichText = isAuthoredText && ui.can('object-text'),
     canSlideProps = ui.can('slide-properties'),
     canFill = (authored(object) || object?.extensions?.editableFill === true) && object?.type === 'shape' && ['rect', 'ellipse'].includes(object.shape),
-    isOdpDoc = ui.snapshot.document?.extensions?.sourceFormat === 'odp' || object?.source?.format === 'odp',
+    isOdpDoc = (object?.source?.format ?? ui.snapshot.document?.extensions?.sourceFormat) === 'odp',
     hasTextBody = ['text', 'shape'].includes(object?.type) && !!object?.text,
     canBodyLayout = hasTextBody && ui.can('text-body-layout'),
     canParaFormat = ui.can('paragraph-format'),
@@ -2053,6 +2102,7 @@ export function AttributePanel({
                 revision={ui.snapshot.revision}
                 disabled={!canParaFormat}
                 isOdpNative={paragraph.source?.format === 'odp' || isOdpDoc}
+                isReadOnlyNative={paragraph.extensions?.stagecraftAuthored !== true && paragraph.source?.format !== 'pptx'}
                 isOdpDoc={isOdpDoc}
                 onCommit={(format, rev) => ui.setParagraphFormat(paragraph.id, format, rev)}
                 onError={ui.reportError}

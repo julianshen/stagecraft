@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapDisplaySelectionToCanonicalRange, utf16ToCodePointOffset } from './textSelection.js';
+import { canonicalRangeCodePointSpan, mapDisplaySelectionToCanonicalRange, utf16ToCodePointOffset } from './textSelection.js';
 
 const para = (id, ...texts) => ({ id, runs: texts.map((text, i) => ({ id: `${id}r${i}`, text })) });
 
@@ -39,5 +39,15 @@ describe('mapDisplaySelectionToCanonicalRange', () => {
     expect(mapDisplaySelectionToCanonicalRange(paragraphs, 3, 4)).toBeNull();
     expect(mapDisplaySelectionToCanonicalRange(paragraphs, 2, 3)).toBeNull();
     expect(mapDisplaySelectionToCanonicalRange([], 0, 1)).toBeNull();
+  });
+});
+
+describe('canonicalRangeCodePointSpan', () => {
+  it('computes canonical code-point offsets including CR and surrogate pairs', () => {
+    const paragraphs = [para('a', 'A\r\nB'), para('b', '😀C')];
+    expect(canonicalRangeCodePointSpan(paragraphs, {
+      start: { paragraphId: 'a', runId: 'ar0', offset: 3 },
+      end: { paragraphId: 'b', runId: 'br0', offset: 1 },
+    })).toEqual({ startCp: 3, endCp: 6 });
   });
 });
