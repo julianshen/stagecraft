@@ -94,6 +94,40 @@ it.each(['pptx', 'odp'])('does not coalesce a CR/LF pair across paragraph bounda
   if (format === 'odp') expect((xml.match(/<text:line-break/g) ?? []).length).toBe(2);
 });
 
+it.each(['pptx', 'odp'])('coalesces a split CRLF written through native run edits (%s)', async format => {
+  // Seed an authored object, reopen it: the runs are now native (source-backed) and are edited
+  // through document.setRunText — the native-edit path, not the authoring writers.
+  const seed = await (format === 'pptx' ? writePptx : writeOdp)({ title: 'Deck', sections: [{ id: 'sec', name: 'Section', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [] }] });
+  const source = await openPresentation(seed, { format });
+  const editor = createEditor({ document: source.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+  let native, nativeEditor, reopened;
+  try {
+    editor.dispatch('presentation.addObject', { slideId: source.document.slides[0].id, object: {
+      id: 'crlf', type: 'text', geometry: { x: 12700, y: 25400, width: 1270000, height: 635000 },
+      extensions: { stagecraftAuthored: true },
+      text: { paragraphs: [{ id: 'crlf-p', runs: [run('r1', 'A'), run('r2', 'MID'), run('r3', 'B')] }] },
+    } });
+    const first = await source.export(editor.getSnapshot().document);
+    native = await openPresentation(first.bytes, { format });
+    nativeEditor = createEditor({ document: native.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+    const runs = native.document.slides[0].objects.find(o => o.type === 'text').text.paragraphs[0].runs;
+    expect(runs.map(r => r.text)).toEqual(['A', 'MID', 'B']);
+    nativeEditor.dispatch('document.setRunText', { runId: runs[0].id, text: 'A\r' });
+    nativeEditor.dispatch('document.setRunText', { runId: runs[1].id, text: '' });
+    nativeEditor.dispatch('document.setRunText', { runId: runs[2].id, text: '\nB' });
+    const result = await native.export(nativeEditor.getSnapshot().document);
+    const report = breakReport(await (await JSZip.loadAsync(result.bytes)).file(format === 'pptx' ? 'ppt/slides/slide1.xml' : 'content.xml').async('string'), format);
+    // The post-edit paragraph runs are A\r, '' and \nB: one break, empty run skipped.
+    expect(report.count).toBe(1);
+    expect(report.text).toBe('A\nB');
+    reopened = await openPresentation(result.bytes, { format });
+    const reopenedRuns = reopened.document.slides[0].objects.find(o => o.type === 'text').text.paragraphs[0].runs;
+    expect(reopenedRuns.map(r => r.text).join('').replace(/\r\n/g, '\n').replace(/\r/g, '\n')).toBe('A\nB');
+  } finally {
+    reopened?.dispose(); nativeEditor?.dispose(); native?.dispose(); editor.dispose(); source.dispose();
+  }
+});
+
 it.each(['pptx', 'odp'])('writes CRLF slide notes as single breaks (%s)', async format => {
   const write = format === 'pptx' ? writePptx : writeOdp;
   const bytes = await write({ title: 'Deck', sections: [{ id: 'sec', name: 'Section', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [] }] });

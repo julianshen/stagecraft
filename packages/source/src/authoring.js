@@ -13,7 +13,7 @@ const REL = NS.r + '/';
 // a CR/LF pair across two paragraphs is canonical content and is written as-is. The canonical
 // reopen therefore carries the folded text (the CR is lost) — accepted: native rendering wins
 // over byte identity, and the folded display is unchanged.
-const coalesceSplitBreaks = runs => runs.map((run, index) => {
+export const coalesceSplitBreaks = runs => runs.map((run, index) => {
   let next = index + 1;
   while (next < runs.length && runs[next].text === '') next++;
   return run.text.endsWith('\r') && runs[next]?.text.startsWith('\n') ? run.text.slice(0, -1) : run.text;

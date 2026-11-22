@@ -6,7 +6,7 @@ import { inspectZip } from '@stagecraft/io/zip';
 import { runtime, xmlPart, locate, validText, all, child, children, NS } from './xml.js';
 import { readPptx } from './pptx.js';
 import { readOdp, patchOdp } from './odp.js';
-import { authoringDiff, prepareAuthoring } from './authoring.js';
+import { authoringDiff, prepareAuthoring, coalesceSplitBreaks } from './authoring.js';
 import { odpFormattingWriter } from './odp-format.js';
 const clone = value => cloneJson(value);
 // CT_TextCharacterProperties is ordered. Insert edited children without rebuilding retained XML.
@@ -163,6 +163,25 @@ export async function openPresentation(source, options = {}) {
             // Synchronous clone/validation/diff precede the first await.
             validateDocument(document);
             const snapshot = clone(document), changes = [];
+            // FU-CR: native run-text edits are written one run at a time, so a split CRLF must be
+            // coalesced against the paragraph's post-edit runs (the snapshot) — computed from the
+            // canonical paragraph, not per change. Empty runs are skipped by the lookahead.
+            const runContexts = new Map();
+            for (const owner of [...snapshot.slides, ...snapshot.layouts, ...snapshot.masters]) {
+                const visit = objects => { for (const object of objects ?? []) {
+                    const paragraphs = [...(object.text?.paragraphs ?? []), ...(object.table?.rows ?? []).flatMap(row => (row.cells ?? []).flatMap(cell => cell.text?.paragraphs ?? []))];
+                    for (const paragraph of paragraphs) {
+                        const texts = paragraph.runs.map(run => ({ text: run.text }));
+                        paragraph.runs.forEach((run, index) => runContexts.set(run, { texts, index }));
+                    }
+                    visit(object.children);
+                } };
+                visit(owner.objects);
+            }
+            const writtenRunText = run => {
+                const context = runContexts.get(run);
+                return context ? coalesceSplitBreaks(context.texts.map((entry, index) => index === context.index ? { text: run.text } : entry))[context.index] : run.text;
+            };
             const delta = authoringDiff(baseline, snapshot, (a,b) => diff(a,b));
             function diff(a, b) {
                 if (delta.hook(a,b)) return;
@@ -184,7 +203,7 @@ export async function openPresentation(source, options = {}) {
                         else if (key === 'style') diff(a.style, { ...b.style, overrides: a.style.overrides });
                         else diff(a[key], b[key]);
                     }
-                    if (a.text !== b.text || Object.keys(overrides).length) changes.push({ ...slot, text: b.text, overrides, replaceText: a.text !== b.text });
+                    if (a.text !== b.text || Object.keys(overrides).length) changes.push({ ...slot, text: writtenRunText(b), overrides, replaceText: a.text !== b.text });
                     return;
                 }
                 for (const key of ak) {
@@ -211,7 +230,7 @@ export async function openPresentation(source, options = {}) {
                     }
                     else if (key === 'text' && typeof a.text === 'string' && editableSlots.has(a) && a.text !== b.text) {
                         validText(b.text);
-                        changes.push({ ...editableSlots.get(a), text: b.text });
+                        changes.push({ ...editableSlots.get(a), text: writtenRunText(b) });
                     }
                     else
                         diff(a[key], b[key]);
