@@ -276,6 +276,15 @@ describe('protected sessions', () => {
     projected = { a: symbolArray() };
     await expect(session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
+  it('passes the mutation origin to the undo/redo dry run', async () => {
+    // A kernel policy that only allows remote-origin mutations must see the same origin on the
+    // dry run that computes the authorization candidate, or every session undo/redo would fail.
+    const editor = createEditor({ document: { title: 'x' }, plugins: [{ id: 't', version: '1', commands: [{ id: 'title', apply(d, p) { d.title = p; return d; } }] }], authorize: ({ meta }) => meta?.origin === 'remote' });
+    const session = createProtectedSession({ editor, identity: { id: 'trusted' }, authorize: () => true, project: ({ snapshot }) => ({ title: snapshot.document.title }) });
+    expect(await session.dispatch({ type: 'title', payload: 'moved', expectedRevision: 0 })).toMatchObject({ revision: 1 });
+    expect(await session.undo({ expectedRevision: 1 })).toMatchObject({ revision: 2, document: { title: 'x' } });
+    expect(await session.redo({ expectedRevision: 2 })).toMatchObject({ revision: 3, document: { title: 'moved' } });
+  });
   it('rejects an in-flight operation after close', async () => {
     const gate = deferred();
     const { session, editor } = fixture({ authorize: () => gate.promise });

@@ -145,7 +145,9 @@ export function createProtectedSession({ editor, identity, authorize, project, c
       // identity learns nothing about the revision (it receives UNAUTHORIZED either way).
       let candidate, deferred;
       if (operation === 'undo' || operation === 'redo') {
-        try { candidate = editor[operation]({ expectedRevision: input.expectedRevision, dryRun: true }); }
+        // The dry run computing the authorization candidate carries the same origin as the real
+        // mutation, so kernel policies keyed on meta.origin apply identically to both.
+        try { candidate = editor[operation]({ expectedRevision: input.expectedRevision, dryRun: true, origin: 'remote' }); }
         catch (error) { deferred = error; }
       }
       await permit(operation, snapshot, candidate ? { ...input, candidate: { document: candidate.document, revision: candidate.revision } } : input);
