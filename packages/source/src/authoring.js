@@ -38,6 +38,16 @@ function validateLayoutChange(before = {}, after = {}) {
     }
 }
 
+function* sourceObjects(document) {
+    function* descend(objects) {
+        for (const object of objects ?? []) {
+            yield object;
+            yield* descend(object.children);
+        }
+    }
+    for (const owner of [...document.slides, ...document.layouts, ...document.masters]) yield* descend(owner.objects);
+}
+
 /** Structural authorization is based exclusively on the retained private baseline. */
 export function authoringDiff(baseline, snapshot, diff) {
     if (!snapshot.slides.length) throw new Error('Native export requires at least one slide');
@@ -54,10 +64,11 @@ export function authoringDiff(baseline, snapshot, diff) {
     for (const slide of baseline.slides) owners.set(slide.objects, slide);
     /** Per-baseline-object edit rules: which keys this writer can rewrite in place. */
     const objectRules = new Map();
-    for (const object of baseline.slides.flatMap(s => s.objects)) {
+    const slideObjects = new Set(baseline.slides.flatMap(s => s.objects));
+    for (const object of sourceObjects(baseline)) {
         objectRules.set(object, {
-            geometry: object.extensions?.editableGeometry === true,
-            fill: object.extensions?.editableFill === true && ['rect', 'ellipse'].includes(object.shape),
+            geometry: slideObjects.has(object) && object.extensions?.editableGeometry === true,
+            fill: slideObjects.has(object) && object.extensions?.editableFill === true && ['rect', 'ellipse'].includes(object.shape),
             // Directly representable text formatting: PPTX paragraphs/bodyPr are attribute-based.
             paragraphs: object.text !== undefined && object.source?.format === 'pptx',
             bodyLayout: object.text !== undefined && (object.source?.format === 'pptx' || object.source?.format === 'odp')
@@ -281,10 +292,10 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
     const nodes=new Map();
     for(const slide of baseline.slides) {
         nodes.set(slide,locate(await getDoc(slide.source.part),slide.source.path));
-        for(const object of slide.objects) {
-            nodes.set(object,locate(await getDoc(object.source.part),object.source.path));
-            for(const paragraph of object.text?.paragraphs ?? []) if(paragraph.source) nodes.set(paragraph,locate(await getDoc(paragraph.source.part),paragraph.source.path));
-        }
+    }
+    for(const object of sourceObjects(baseline)) {
+        nodes.set(object,locate(await getDoc(object.source.part),object.source.path));
+        for(const paragraph of object.text?.paragraphs ?? []) if(paragraph.source) nodes.set(paragraph,locate(await getDoc(paragraph.source.part),paragraph.source.path));
     }
     const format=baseline.slides[0]?.source.format ?? baseline.masters[0]?.source.format;
     const media=new Map(); // assetId -> {part, contentType}
@@ -328,7 +339,7 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                 let index=1,name;do{name=`StagecraftBody${index++}`;}while(reserved.has(name));
                 style.setAttributeNS(NS.style,'style:name',name);
                 let automatic=child(docNode.documentElement,'office','automatic-styles');
-                if(!automatic){automatic=element(docNode,'office','automatic-styles');docNode.documentElement.insertBefore(automatic,child(docNode.documentElement,'office','body'));}
+                if(!automatic){automatic=element(docNode,'office','automatic-styles');docNode.documentElement.insertBefore(automatic,child(docNode.documentElement,'office','master-styles') ?? child(docNode.documentElement,'office','body'));}
                 automatic.appendChild(style);
                 node.setAttributeNS(NS.draw,'draw:style-name',name);
                 let properties=child(style,'style','graphic-properties');

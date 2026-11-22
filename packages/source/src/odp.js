@@ -28,14 +28,23 @@ export function odfText(node, limit = 1048576) {
     return out;
 }
 /** Canonical, previewable ODP table (read-only: native cells are not authored). */
-export function readOdpTable(node, part) {
+export function readOdpTable(node, part, findStyle = () => undefined) {
     const table = child(node, 'table', 'table');
     if (!table)
         return null;
     const columns = children(table).filter(n => is(n, 'table', 'table-column')).map(n => {
-        const raw = attr(n, 'style', 'column-width');
-        const numeric = Number(raw.replace(/[^\d.]/g, ''));
-        return { id: id(part, n, 'column'), width: raw && Number.isFinite(numeric) && numeric > 0 ? Math.max(1, Math.round(numeric)) : 0 };
+        let raw = attr(n, 'style', 'column-width');
+        let style = findStyle(part, 'table-column', attr(n, 'table', 'style-name'));
+        const seen = new Set();
+        while (!raw && style && !seen.has(style) && seen.size < 64) {
+            seen.add(style);
+            raw = attr(child(style, 'style', 'table-column-properties'), 'style', 'column-width');
+            style = findStyle('styles.xml', 'table-column', attr(style, 'style', 'parent-style-name'));
+        }
+        let width = 0;
+        try { const value = length(raw); if (Number.isSafeInteger(value) && value > 0) width = value; }
+        catch { /* Missing or unsupported native widths retain the unit-width fallback. */ }
+        return { id: id(part, n, 'column'), width };
     });
     const rows = children(table).filter(n => is(n, 'table', 'table-row')).map(tr => ({
         id: id(part, tr, 'row'),
@@ -318,7 +327,7 @@ export async function readOdp(zip, xml, mapping) {    if (await zip.file('mimety
                     o.extensions.editableFill = true;
             }
             if (is(n, 'draw', 'frame') || is(n, 'draw', 'g')) {
-                const table = readOdpTable(n, part);
+                const table = readOdpTable(n, part, findStyle);
                 if (table) { o.type = 'table'; o.table = table; }
             }
             // Text-body autofit lives on the frame's local graphic style (auto-grow = fit to size).
