@@ -564,6 +564,14 @@ function setParagraphFormat(document, payload) {
     paragraph.style[key] = copy(value);
     if (PARAGRAPH_RAW_KEYS[key]) delete paragraph.style[PARAGRAPH_RAW_KEYS[key]];
   }
+  // A level-1+ ODP paragraph without a bullet cannot be represented outside a text:list, so bullet
+  // removal must clear the level in the same command; the state is rejected atomically instead of
+  // breaking export later ('Non-list ODP paragraph levels are unsupported').
+  const format = object.source?.format ?? d.extensions?.sourceFormat;
+  if (format === 'odp') {
+    const bullet = paragraph.style.bullet;
+    if ((paragraph.style.level ?? 0) > 0 && (!bullet || bullet.type === 'none')) fail('UNSUPPORTED_EDIT');
+  }
   return d;
 }
 function setTextBodyLayout(document, payload) {
@@ -1044,19 +1052,32 @@ const authoredTableSchema = {
 const authoredImageSchema = {
   type: 'object', additionalProperties: false, required: ['assetId'], properties: { assetId: idSchema, alt: { type: 'string', maxLength: 512 } }
 };
+const authoredInsetSchema = { type: 'integer', minimum: 0, maximum: 10000000 };
+const authoredBodyLayoutSchema = {
+  type: 'object', additionalProperties: false, minProperties: 1,
+  properties: {
+    autofit: { enum: ['none', 'shrink', 'resize'] },
+    wrap: { enum: ['square', 'none'] },
+    anchor: { enum: ['top', 'middle', 'bottom'] },
+    insets: {
+      type: 'object', additionalProperties: false, minProperties: 1,
+      properties: { left: authoredInsetSchema, top: authoredInsetSchema, right: authoredInsetSchema, bottom: authoredInsetSchema }
+    }
+  }
+};
 const authoredObjectSchema = {
   type: 'object', additionalProperties: false, required: ['id', 'type', 'geometry', 'extensions'],
   properties: {
     id: idSchema, type: { enum: ['text', 'shape', 'table', 'image', 'chart'] }, geometry: geometrySchema, extensions: authoredExtensionsSchema,
     shape: { enum: ['rect', 'ellipse'] }, fill: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
-    text: authoredTextSchema, table: authoredTableSchema, image: authoredImageSchema, chart: chartSchema
+    text: authoredTextSchema, bodyLayout: authoredBodyLayoutSchema, table: authoredTableSchema, image: authoredImageSchema, chart: chartSchema
   },
   oneOf: [
     { required: ['text'], properties: { type: { const: 'text' } }, not: { anyOf: [{ required: ['shape'] }, { required: ['fill'] }, { required: ['table'] }, { required: ['image'] }, { required: ['chart'] }] } },
     { required: ['shape', 'fill'], properties: { type: { const: 'shape' } }, not: { anyOf: [{ required: ['table'] }, { required: ['image'] }, { required: ['chart'] }] } },
-    { required: ['table'], properties: { type: { const: 'table' } }, not: { anyOf: [{ required: ['text'] }, { required: ['shape'] }, { required: ['fill'] }, { required: ['image'] }, { required: ['chart'] }] } },
-    { required: ['image'], properties: { type: { const: 'image' } }, not: { anyOf: [{ required: ['text'] }, { required: ['shape'] }, { required: ['fill'] }, { required: ['table'] }, { required: ['chart'] }] } },
-    { required: ['chart'], properties: { type: { const: 'chart' } }, not: { anyOf: [{ required: ['text'] }, { required: ['shape'] }, { required: ['fill'] }, { required: ['table'] }, { required: ['image'] }] } }
+    { required: ['table'], properties: { type: { const: 'table' } }, not: { anyOf: [{ required: ['text'] }, { required: ['bodyLayout'] }, { required: ['shape'] }, { required: ['fill'] }, { required: ['image'] }, { required: ['chart'] }] } },
+    { required: ['image'], properties: { type: { const: 'image' } }, not: { anyOf: [{ required: ['text'] }, { required: ['bodyLayout'] }, { required: ['shape'] }, { required: ['fill'] }, { required: ['table'] }, { required: ['chart'] }] } },
+    { required: ['chart'], properties: { type: { const: 'chart' } }, not: { anyOf: [{ required: ['text'] }, { required: ['bodyLayout'] }, { required: ['shape'] }, { required: ['fill'] }, { required: ['table'] }, { required: ['image'] }] } }
   ]
 };
 const backgroundSchema = { type: 'object', additionalProperties: false, required: ['type', 'color'], properties: {

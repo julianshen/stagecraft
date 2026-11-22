@@ -51,6 +51,8 @@ Font-family authoring is limited to the Latin/Western font contract. In PPTX it 
 
 ODP existing-run formatting uses run-local overrides and newly named automatic text styles rather than modifying shared styles. Clearing an override restores the imported baseline, which changes when exported bytes are reopened. Derived appearance metadata is read-only for export. Retained source/style fields and unrelated native properties are preserved where the supported writer does not change them.
 
+For authored ODP paragraphs, removing a bullet at a nonzero list level requires resetting `level` to `null` or `0` in the same `document.setParagraphFormat` command. Retaining a nonzero level without a bullet is unsupported and rejects the transaction without changing the document.
+
 `source.registerImage({ bytes, contentType })` accepts validated PNG/JPEG bytes and returns an asset ID for `presentation.addImage`. Limits are 5 MiB per image, 32 MiB and 64 registered images per session. Bytes stay outside canonical JSON. `getImage(assetId)` returns copied preview bytes or `null`; `images` lists available previews. Some retained images cannot be previewed within these bounds.
 
 ## Retained source sessions
