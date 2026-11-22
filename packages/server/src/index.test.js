@@ -151,6 +151,21 @@ describe('protected sessions', () => {
     expect(() => fixture({ context: 'nope' })).toThrow(TypeError);
     expect(() => fixture({ exportDocument: 7 })).toThrow(TypeError);
   });
+  it('rejects invalid mutation input through promises with sanitized public codes', async () => {
+    const { editor, session } = fixture();
+    for (const [operation, request] of [
+      ['transact', { commands: [{ type: 'title', payload: 'x' }], expectedRevision: 0, bad: new Date() }],
+      ['undo', { expectedRevision: 0, x: new Date() }],
+      ['redo', { expectedRevision: 0, x: new Date() }],
+      ['undo', { expectedRevision: 0, constructor: 'x' }],
+    ]) {
+      const pending = session[operation](request);
+      expect(pending).toBeInstanceOf(Promise);
+      await expect(pending).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    }
+    expect(editor.getSnapshot().revision).toBe(0);
+    expect(editor.getSnapshot().document.title).toBe('public');
+  });
   it('uses trusted identity, filters commands, and closes without disposing editor', async () => {
     const identity = { id: 'original' };
     const authorize = vi.fn(({ identity, operation }) => identity.id === 'original' && operation !== 'tool');

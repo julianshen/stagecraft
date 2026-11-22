@@ -33,7 +33,12 @@ export interface SessionOptions<D, P> {
   context?(input: { document: P; revision: number; request: unknown }): unknown | Promise<unknown>;
   /** Return JSON metadata such as an authorized artifact ID; send binary data via a host transport. */
   exportDocument?(input: { document: P; revision: number; request: unknown }): unknown | Promise<unknown>;
+  /** Response byte budget (including the protocol envelope); must be ≥ 192 to carry error receipts. Default 1048576. */
   maxResponseBytes?: number;
+  /** Request byte budget; session inputs validate against it with INVALID_REQUEST semantics before any rewrap. Default 1048576. */
+  maxRequestBytes?: number;
+  /** Response node budget; the protocol envelope reserves three nodes inside it. Must be ≥ 16 to carry error receipts. Default 100000. */
+  maxResponseNodes?: number;
 }
 export function createProtectedSession<D, P>(options: SessionOptions<D, P>): Session<P>;
 
@@ -53,7 +58,10 @@ export interface RemoteSessionOptions {
   /** Transport carries JSON envelopes and supplies host authentication and routing. */
   request(message: SessionProtocolRequest): unknown | Promise<unknown>;
   maxRequestBytes?: number;
+  /** Response byte budget (including the protocol envelope); must be ≥ 192 to carry error receipts. Default 1048576. */
   maxResponseBytes?: number;
+  /** Response node budget; the protocol envelope reserves three nodes inside it. Must be ≥ 16 to carry error receipts. Default 100000. */
+  maxResponseNodes?: number;
 }
 /** close() rejects pending work locally; it does not cancel an already committed host operation. */
 export function createRemoteSession<P = unknown>(options: RemoteSessionOptions): Session<P>;

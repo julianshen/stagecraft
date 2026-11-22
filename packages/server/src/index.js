@@ -33,7 +33,7 @@ function strictJson(value, maxBytes, code, maxDepth = 64, maxNodes = 100000) {
       }
       for (const key of Reflect.ownKeys(item)) {
         if (Array.isArray(item) && key === 'length') continue;
-        if (typeof key !== 'string') throw new SessionError(code);
+        if (typeof key !== 'string' || key === '__proto__' || key === 'prototype' || key === 'constructor') throw new SessionError(code);
         const descriptor = Object.getOwnPropertyDescriptor(item, key);
         if (!descriptor || !('value' in descriptor)) throw new SessionError(code);
         if (!descriptor.enumerable) throw new SessionError(code);
@@ -63,6 +63,7 @@ const RESULT_ENVELOPE_BYTES = JSON.stringify({ version: 1, ok: true, result: 0 }
  * maximum revision digits) is ~127 bytes. Limits below 192 could not deliver their own
  * post-commit error, so they are rejected before execution instead of accepted and lossy. */
 const MINIMUM_RESPONSE_BYTES = 192;
+const MINIMUM_RESPONSE_NODES = 16;
 
 function limitOption(limit) {
   if (!Number.isSafeInteger(limit) || limit < 1) throw new TypeError('A positive JSON byte limit is required');
@@ -75,7 +76,11 @@ function responseLimitOption(limit) {
   return limit;
 }
 function nodeOption(nodes) {
-  if (!Number.isSafeInteger(nodes) || nodes < 1) throw new TypeError('A positive node limit is required');
+  // The error envelope alone counts eight nodes (root/version/ok/error + code/committed/
+  // outcome/revision); smaller budgets could not deliver their own post-commit receipt.
+  if (!Number.isSafeInteger(nodes) || nodes < MINIMUM_RESPONSE_NODES) {
+    throw new TypeError(`A response node limit of at least ${MINIMUM_RESPONSE_NODES} is required to carry error receipts`);
+  }
   return nodes;
 }
 
@@ -196,9 +201,11 @@ export function createProtectedSession({ editor, identity, authorize, project, c
       const { type, payload = null, expectedRevision, dryRun } = input;
       return runMutation('transact', { commands: [{ type, payload }], ...(expectedRevision === undefined ? {} : { expectedRevision }), ...(dryRun === undefined ? {} : { dryRun }) });
     },
-    transact: request => runMutation('transact', validateInput(request)),
-    undo: request => runMutation('undo', validateInput(request)),
-    redo: request => runMutation('redo', validateInput(request)),
+    // Async wrappers: invalid request input must reject the returned promise through the
+    // sanitized catch, never escape as a synchronous throw or a raw non-Session error.
+    transact: async request => runMutation('transact', validateInput(request)),
+    undo: async request => runMutation('undo', validateInput(request)),
+    redo: async request => runMutation('redo', validateInput(request)),
     async listCommands() {
       try {
         check();

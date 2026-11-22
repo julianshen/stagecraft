@@ -111,6 +111,18 @@ describe('remote session protocol', () => {
     // The supported minimum itself constructs fine.
     expect(() => createProtectedSession({ editor, identity: {}, authorize: () => true, project: ({ snapshot }) => snapshot.document, maxResponseBytes: 192 })).not.toThrow();
   });
+  it('rejects node budgets too small to carry an error receipt on both ends', async () => {
+    const editor = createEditor({ document: { title: 'x' }, plugins: [{ id: 't', version: '1', commands: [{ id: 'title', apply: (d, v) => ({ ...d, title: v }) }] }] });
+    for (const nodes of [4, 7]) {
+      expect(() => createProtectedSession({ editor, identity: {}, authorize: () => true, project: () => 0, maxResponseNodes: nodes })).toThrow(/node limit/);
+      expect(() => createRemoteSession({ request: () => ({}), maxResponseNodes: nodes })).toThrow(/node limit/);
+    }
+    // The supported minimum carries the eight-node receipt end to end.
+    const session = createProtectedSession({ editor, identity: {}, authorize: () => true, project: () => 0, maxResponseNodes: 16 });
+    const handler = createSessionRequestHandler(session);
+    const remote = createRemoteSession({ request: async message => JSON.parse(JSON.stringify(await handler(JSON.parse(JSON.stringify(message))))) , maxResponseNodes: 16 });
+    expect(await remote.dispatch({ type: 'title', payload: 'fits', expectedRevision: 0 })).toMatchObject({ revision: 1 });
+  });
   it('validates read and discovery success shapes against the protocol', async () => {
     await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: 17 }) }).read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
     await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: { document: {}, revision: -1 } }) }).read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });

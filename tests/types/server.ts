@@ -22,6 +22,8 @@ const session: Session<{ title: string }> = createProtectedSession({
   context: ({ document, revision, request }) => ({ title: document.title, revision, hasRequest: request !== undefined }),
   exportDocument: ({ document, revision }) => ({ artifact: document.title, revision }),
   maxResponseBytes: 65536,
+  maxRequestBytes: 4096,
+  maxResponseNodes: 200000,
 });
 
 async function receipts(): Promise<void> {
@@ -50,6 +52,7 @@ const remote: Session<{ title: string }> = createRemoteSession<{ title: string }
   request: message => handler(message),
   maxRequestBytes: 4096,
   maxResponseBytes: 65536,
+  maxResponseNodes: 200000,
 });
 
 const failure = new SessionError('OPERATION_FAILED', 2, true, 'committed');
