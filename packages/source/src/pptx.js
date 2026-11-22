@@ -3,6 +3,8 @@ import { is, all, child, children, attr, attrs, source, id, xmlPart, locate, res
 import { readPptxChartData } from './chart-authoring.js';
 import { readPptxParagraphStyle, readPptxBodyLayout } from './authoring.js';
 const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/';
+const paragraphRuns = p => children(p).filter(n => !is(n, 'a', 'pPr') && !is(n, 'a', 'endParaRPr'));
+const runText = r => child(r, 'a', 't')?.textContent ?? (is(r, 'a', 'br') ? '\n' : r.textContent ?? '');
 /** Canonical, previewable table from an a:tbl node (read-only: native cells are not authored). */
 function readTable(frame, part) {
     const tbl = child(child(child(frame, 'a', 'graphic'), 'a', 'graphicData'), 'a', 'tbl');
@@ -23,10 +25,10 @@ function readTable(frame, part) {
 function readCellText(cell, part) {
     const paragraphs = children(child(cell, 'a', 'txBody')).filter(n => is(n, 'a', 'p')).map(p => ({
         id: id(part, p),
-        runs: children(p).filter(n => is(n, 'a', 'r')).map(r => ({
-            id: id(part, r), text: child(r, 'a', 't')?.textContent ?? '', editable: false, style: attrs(child(r, 'a', 'rPr'))
+        runs: paragraphRuns(p).map(r => ({
+            id: id(part, r), text: runText(r), editable: false, style: attrs(child(r, 'a', 'rPr'))
         }))
-    })).filter(paragraph => paragraph.runs.length);
+    }));
     if (!paragraphs.length)
         paragraphs.push({ id: id(part, cell, 'empty'), runs: [{ id: id(part, cell, 'empty-run'), text: '', editable: false, style: {} }] });
     return { paragraphs };
@@ -39,7 +41,7 @@ function notesBodyText(notes) {
         if (!placeholder || (placeholder.getAttribute('type') ?? 'body') !== 'body')
             continue;
         for (const p of children(child(sp, 'p', 'txBody')).filter(n => is(n, 'a', 'p')))
-            lines.push(children(p).filter(n => is(n, 'a', 'r')).map(r => child(r, 'a', 't')?.textContent ?? '').join(''));
+            lines.push(paragraphRuns(p).map(runText).join(''));
     }
     return lines.join('\n');
 }
@@ -160,9 +162,9 @@ export async function readPptx(zip, xml, mapping) {
                 // A filled geometric sp keeps its shape identity so authored shape text and paint
                 // survive a reopen; an unfilled sp with text is a text box.
                 o.type = isGeometricShape && plainFill ? 'shape' : 'text';
-                o.text = { paragraphs: children(textBody).filter(n => is(n, 'a', 'p')).map(p => ({ id: id(part, p), source: source('pptx', part, p), style: readPptxParagraphStyle(p), runs: children(p).filter(n => !is(n, 'a', 'pPr') && !is(n, 'a', 'endParaRPr')).map(r => {
+                o.text = { paragraphs: children(textBody).filter(n => is(n, 'a', 'p')).map(p => ({ id: id(part, p), source: source('pptx', part, p), style: readPptxParagraphStyle(p), runs: paragraphRuns(p).map(r => {
                             const t = child(r, 'a', 't'), editable = is(r, 'a', 'r') && !!t && children(r).filter(c => is(c, 'a', 'rPr')).length <= 1 && children(r).every(c => is(c, 'a', 'rPr') || c === t) && children(t).length === 0;
-                            const run = { id: id(part, r), text: t?.textContent ?? (is(r, 'a', 'br') ? '\n' : r.textContent ?? ''), editable, source: source('pptx', part, t ?? r), style: attrs(child(r, 'a', 'rPr')) };
+                            const run = { id: id(part, r), text: runText(r), editable, source: source('pptx', part, t ?? r), style: attrs(child(r, 'a', 'rPr')) };
                             const runProperties = child(r, 'a', 'rPr');
                             const family = child(runProperties, 'a', 'latin')?.getAttribute('typeface');
                             const colour = child(child(runProperties, 'a', 'solidFill'), 'a', 'srgbClr');
