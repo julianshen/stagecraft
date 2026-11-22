@@ -1547,7 +1547,7 @@ function ParagraphFormatFields({ paragraph, index, editor, source, revision, dis
   return (
     <fieldset className="stagecraft-presentation-para-format" disabled={effectiveDisabled}>
       <legend>Paragraph {index + 1} format</legend>
-      {isOdpNative ? <small>Native ODP paragraph formatting is read-only.</small> : isReadOnlyNative ? <small>Native paragraph formatting is read-only.</small> : null}
+      {isReadOnlyNative && <small>{isOdpNative ? 'Native ODP paragraph formatting is read-only.' : 'Native paragraph formatting is read-only.'}</small>}
       <label>
         Alignment
         <select
@@ -1576,7 +1576,11 @@ function ParagraphFormatFields({ paragraph, index, editor, source, revision, dis
           {BULLET_OPTIONS.map(([val, label]) => <option key={val || 'reset'} value={val}>{label}</option>)}
           {currentBullet && !hasKnownBullet && (
             <option value={currentBullet}>
-              {s.bullet?.type === 'char' ? `Bullet (${s.bullet.char})` : currentBullet}
+              {s.bullet?.type === 'char'
+                ? `Bullet (${s.bullet.char})`
+                : s.bullet?.type === 'number'
+                  ? `Number (${s.bullet.format})`
+                  : currentBullet}
             </option>
           )}
         </select>
@@ -1711,7 +1715,7 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
   const [rangeFont, setRangeFont] = useState('');
   const [rangeColor, setRangeColor] = useState('#000000');
   const textareaRef = useRef(null);
-  const ownerRef = useRef({ editor, source, slideId, objectId: object.id, disabled });
+  const ownerRef = useRef({ editor, source, slideId, objectId: object.id, disabled, fullText });
   const activeSelectionRef = useRef(false);
 
   function mapSelection(selStart, selEnd, rev) {
@@ -1728,10 +1732,11 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
       || prev.objectId !== object.id
       || prev.disabled !== disabled
       || disabled;
-    ownerRef.current = { editor, source, slideId, objectId: object.id, disabled };
+    const textChanged = prev.fullText !== fullText;
+    ownerRef.current = { editor, source, slideId, objectId: object.id, disabled, fullText };
     setRangeSize('');
     setRangeFont('');
-    if (ownerChanged) {
+    if (ownerChanged || textChanged) {
       activeSelectionRef.current = false;
       if (textareaRef.current) {
         textareaRef.current.selectionStart = 0;
@@ -1749,7 +1754,7 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
     const remapped = el ? mapSelection(el.selectionStart ?? 0, el.selectionEnd ?? 0, revision) : null;
     activeSelectionRef.current = Boolean(remapped);
     setRangeState(remapped);
-  }, [editor, source, slideId, object.id, object.text, revision, disabled]);
+  }, [editor, source, slideId, object.id, object.text, fullText, revision, disabled]);
 
   function handleSelect(event) {
     if (disabled) return;
