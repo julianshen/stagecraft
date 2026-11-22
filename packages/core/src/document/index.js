@@ -397,7 +397,7 @@ export function toLegacyDeck(document) {
     diagnostics
   };
 }
-const validRunTextPayload = payload => record(payload) && nonempty(payload.runId) && typeof payload.text === 'string' && Object.keys(payload).every(key => key === 'runId' || key === 'text');
+const validRunTextPayload = payload => record(payload) && nonempty(payload.runId) && typeof payload.text === 'string' && xmlValidChars(payload.text) && Object.keys(payload).every(key => key === 'runId' || key === 'text');
 function updateRun(document, payload, update) {
   validateDocument(document);
   const d = copy(document);
@@ -435,7 +435,7 @@ const xmlValidChars = value => {
       continue;
     }
     if (code >= 0xdc00 && code <= 0xdfff) return false;
-    if (code === 0xfffe || code === 0xffff || code === 0x7f) return false;
+    if (code === 0xfffe || code === 0xffff) return false;
     if (code < 0x20 && code !== 9 && code !== 10 && code !== 13) return false;
   }
   return true;
@@ -481,7 +481,7 @@ export function isParagraphFormatValue(key, value) {
       const keys = Object.keys(value);
       if (value.type === 'none') return keys.length === 1;
       if (value.type === 'char') {
-        if (keys.length !== 2 || !keys.includes('char') || typeof value.char !== 'string' || !value.char || !xmlValidChars(value.char)) return false;
+        if (keys.length !== 2 || !keys.includes('char') || typeof value.char !== 'string' || !value.char || !xmlValidChars(value.char) || value.char.includes('\u007f')) return false;
         const graphemes = typeof Intl !== 'undefined' && Intl.Segmenter
           ? [...new Intl.Segmenter().segment(value.char)].length
           : [...value.char].length; // one grapheme cluster: 'ab' and combination marks are invalid
@@ -910,7 +910,7 @@ const authoredText = (value, ids) => {
       exact(run, ['id', 'text', 'editable', 'style', 'extensions']);
       authoredIdentity(run, ids);
       authoredExtensions(run.extensions);
-      if (typeof run.text !== 'string' || run.editable !== true || run.text.length > MAX_AUTHORED_RUN_LENGTH)
+      if (typeof run.text !== 'string' || !xmlValidChars(run.text) || run.editable !== true || run.text.length > MAX_AUTHORED_RUN_LENGTH)
         fail('INVALID_AUTHORED_SCHEMA');
       exact(run.style, [], ['b', 'i', 'sz', 'typeface', 'color']);
       for (const [key, v] of Object.entries(run.style)) {

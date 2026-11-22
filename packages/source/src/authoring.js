@@ -50,7 +50,7 @@ function* sourceObjects(document) {
 
 /** Structural authorization is based exclusively on the retained private baseline. */
 export function authoringDiff(baseline, snapshot, diff) {
-    if (!snapshot.slides.length) throw new Error('Native export requires at least one slide');
+    if (!snapshot.slides.length && !equal(baseline, snapshot)) throw new Error('Native export requires at least one slide');
     const structures = [], geometries = [], fills = [], slideProperties = [], paragraphFormats = [], bodyLayouts = [];
     const ids = new Set();
     function collect(value) {
