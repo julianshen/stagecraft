@@ -167,6 +167,7 @@ export async function openPresentation(source, options = {}) {
             // coalesced against the paragraph's post-edit runs (the snapshot) — computed from the
             // canonical paragraph, not per change. Empty runs are skipped by the lookahead.
             const runContexts = new Map(), baselineRunById = new Map();
+            const changeRun = new Map(), textChangedRuns = new Set(), otherChangedRuns = new Set(), changedParagraphs = new Set();
             for (const owner of [...snapshot.slides, ...snapshot.layouts, ...snapshot.masters]) {
                 const visit = objects => { for (const object of objects ?? []) {
                     const paragraphs = [...(object.text?.paragraphs ?? []), ...(object.table?.rows ?? []).flatMap(row => (row.cells ?? []).flatMap(cell => cell.text?.paragraphs ?? []))];
@@ -186,34 +187,13 @@ export async function openPresentation(source, options = {}) {
                 } };
                 visit(owner.objects);
             }
-            const writtenRunText = run => {
-                const context = runContexts.get(run);
-                return context ? coalesceSplitBreaks(context.texts.map((entry, index) => index === context.index ? { text: run.text } : entry))[context.index] : run.text;
-            };
-            const emitRunTextChange = (changes, slot, run, written, extra = {}) => {
-                changes.push({ ...slot, text: written, ...extra });
-                // FU-CR fix4: a native CR can live in an UNCHANGED run (a source &#13; reference
-                // survives parsing). When this edit starts with LF right after such a run, the
-                // untouched CR renders a second break: emit a supplemental change carrying that
-                // run's coalesced text. Documented fallback: if the CR-bearing run has no writable
-                // slot, or already has a change in this export, it stays as-is — an extra blank
-                // line is better than failing the export.
-                const context = runContexts.get(run);
-                if (!context || !written.startsWith('\n')) return;
-                let previous = context.index - 1;
-                while (previous >= 0 && context.texts[previous].text === '') previous--;
-                const previousRun = previous >= 0 ? context.runs[previous] : null;
-                if (!previousRun || !previousRun.text.endsWith('\r')) return;
-                const baselinePrevious = baselineRunById.get(previousRun.id);
-                const previousSlot = baselinePrevious ? editableSlots.get(baselinePrevious) : undefined;
-                if (!previousSlot) return;
-                if (changes.some(change => change.path === previousSlot.path)) return;
-                changes.push({
-                    ...previousSlot,
-                    text: coalesceSplitBreaks(context.texts.map((entry, index) => index === previous ? { text: previousRun.text } : entry))[previous],
-                    ...(slot.kind === 'odp' ? { overrides: {}, replaceText: true } : {}),
-                });
-            };
+            // FU-CR fix5: ONE general rule, applied after the diff. Every paragraph containing a
+            // text-changed run (text or emptiness) is coalesced as a whole over its post-edit run
+            // texts; then every run in it whose coalesced written text differs from what the file
+            // currently holds gets its change replaced (or a new change emitted, writable slot
+            // required). Documented fallback: a run without a writable slot — or one whose only
+            // change is formatting, which cannot also carry text — stays as-is; an extra blank
+            // line is better than failing the export.
             const delta = authoringDiff(baseline, snapshot, (a,b) => diff(a,b));
             function diff(a, b) {
                 if (delta.hook(a,b)) return;
@@ -235,7 +215,13 @@ export async function openPresentation(source, options = {}) {
                         else if (key === 'style') diff(a.style, { ...b.style, overrides: a.style.overrides });
                         else diff(a[key], b[key]);
                     }
-                    if (a.text !== b.text || Object.keys(overrides).length) emitRunTextChange(changes, slot, b, writtenRunText(b), { overrides, replaceText: a.text !== b.text });
+                    if (a.text !== b.text || Object.keys(overrides).length) {
+                        const change = { ...slot, text: b.text, overrides, replaceText: a.text !== b.text };
+                        changes.push(change);
+                        changeRun.set(change, b);
+                        if (a.text !== b.text) { textChangedRuns.add(b); changedParagraphs.add(runContexts.get(b)?.runs); }
+                        else otherChangedRuns.add(b);
+                    }
                     return;
                 }
                 for (const key of ak) {
@@ -262,7 +248,11 @@ export async function openPresentation(source, options = {}) {
                     }
                     else if (key === 'text' && typeof a.text === 'string' && editableSlots.has(a) && a.text !== b.text) {
                         validText(b.text);
-                        emitRunTextChange(changes, editableSlots.get(a), b, writtenRunText(b));
+                        const change = { ...editableSlots.get(a), text: b.text };
+                        changes.push(change);
+                        changeRun.set(change, b);
+                        textChangedRuns.add(b);
+                        changedParagraphs.add(runContexts.get(b)?.runs);
                     }
                     else
                         diff(a[key], b[key]);
@@ -290,6 +280,26 @@ export async function openPresentation(source, options = {}) {
             const docs = new Map();
             const getDoc = async part => { if (!docs.has(part)) docs.set(part, await xmlPart(working, part, xml)); return docs.get(part); };
             const applyAuthoring = authored ? await prepareAuthoring(working, xml, baseline, delta, getDoc, assets) : null;
+            // FU-CR fix5: coalesce every changed paragraph as a whole, then reconcile each of
+            // its runs against the coalesced written text.
+            for (const runs of changedParagraphs) {
+                if (!runs) continue;
+                const written = coalesceSplitBreaks(runs.map(run => ({ text: run.text })));
+                for (const [index, run] of runs.entries()) {
+                    const change = changes.find(change => changeRun.get(change) === run);
+                    console.log('PP-STEP', index, 'change', !!change, 'same', written[index] === run.text, 'other', otherChangedRuns.has(run), 'inCtx', runContexts.has(run));
+                    if (change) { change.text = written[index]; continue; }
+                    if (written[index] === run.text) continue;
+                    if (otherChangedRuns.has(run)) continue;
+                    const baselineRun = baselineRunById.get(run.id);
+                    console.log('PP-EMIT?', index, JSON.stringify(run.text), '->', JSON.stringify(written[index]), 'baselineRun', !!baselineRun, 'slot', !!(baselineRun && editableSlots.get(baselineRun)));
+                    const slot = baselineRun ? editableSlots.get(baselineRun) : undefined;
+                    if (!slot) continue;
+                    const newChange = { ...slot, text: written[index], ...(slot.kind === 'odp' ? { overrides: {}, replaceText: true } : {}) };
+                    changes.push(newChange);
+                    changeRun.set(newChange, run);
+                }
+            }
             let dirtyParts = [...new Set(changes.map(c => c.part))].sort();
             for (const part of dirtyParts) {
                 const doc = await getDoc(part);

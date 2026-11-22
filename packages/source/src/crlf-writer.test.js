@@ -217,6 +217,83 @@ it('leaves an unwritable native CR run as-is instead of failing the export', asy
   } finally { nativeEditor.dispose(); native.dispose(); }
 });
 
+// FU-CR fix5: ONE general rule — every paragraph with a text-changed run is coalesced as a
+// whole, so any run whose coalesced written text differs from the file's current content is
+// rewritten (writable slot required; otherwise the documented fallback). These cases were missed
+// by fix4's next-run-only special case.
+async function midEmptyFixture(format, { editCrRun = false, secondEmpty = false } = {}) {
+  const write = format === 'pptx' ? writePptx : writeOdp;
+  const styled = format === 'odp';
+  const runs = [
+    { ...run('r1', 'A'), ...(styled ? { style: { b: '1' } } : {}) },
+    { ...run('r2', 'MID'), ...(styled ? { style: { i: '1' } } : {}) },
+    ...(secondEmpty ? [{ ...run('r2b', 'MID2'), ...(styled ? { style: { b: '1' } } : {}) }] : []),
+    { ...(run('r3', '\nB')), ...(styled ? { style: { i: '1' } } : {}) },
+  ];
+  const seed = await write({ title: 'Deck', sections: [{ id: 'sec', name: 'Section', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [] }] });
+  const source = await openPresentation(seed, { format });
+  const editor = createEditor({ document: source.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+  let first;
+  try {
+    editor.dispatch('presentation.addObject', { slideId: source.document.slides[0].id, object: {
+      id: 'crlf', type: 'text', geometry: { x: 12700, y: 25400, width: 1270000, height: 635000 },
+      extensions: { stagecraftAuthored: true }, text: { paragraphs: [{ id: 'crlf-p', runs }] },
+    } });
+    first = (await source.export(editor.getSnapshot().document)).bytes;
+  } finally { editor.dispose(); source.dispose(); }
+  const zip = await JSZip.loadAsync(first);
+  const part = format === 'pptx' ? 'ppt/slides/slide1.xml' : 'content.xml';
+  let xml = await zip.file(part).async('string');
+  xml = format === 'pptx' ? xml.replace('<a:t>A</a:t>', '<a:t>A&#13;</a:t>') : xml.replace('>A</text:span>', '>A&#13;</text:span>');
+  zip.file(part, xml);
+  return openPresentation(await zip.generateAsync({ type: 'uint8array' }), { format });
+}
+
+const runTexts = document => document.slides[0].objects.find(o => o.type === 'text').text.paragraphs[0].runs.map(r => r.text);
+const nativeRun = (document, text) => document.slides[0].objects.find(o => o.type === 'text').text.paragraphs[0].runs.find(r => r.text === text);
+
+it.each(['pptx', 'odp'])('coalesces when a middle run is emptied beside an untouched native CR (%s)', async format => {
+  const native = await midEmptyFixture(format);
+  const nativeEditor = createEditor({ document: native.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+  let reopened;
+  try {
+    expect(runTexts(native.document)).toEqual(expect.arrayContaining(['A\r', 'MID']));
+    nativeEditor.dispatch('document.setRunText', { runId: nativeRun(native.document, 'MID').id, text: '' });
+    const result = await native.export(nativeEditor.getSnapshot().document);
+    const report = breakReport(await (await JSZip.loadAsync(result.bytes)).file(format === 'pptx' ? 'ppt/slides/slide1.xml' : 'content.xml').async('string'), format);
+    expect(report.count).toBe(1);
+    expect(report.text).toBe('A\nB');
+    reopened = await openPresentation(result.bytes, { format });
+    expect(runTexts(reopened.document).join('').replace(/\r\n/g, '\n').replace(/\r/g, '\n')).toBe('A\nB');
+  } finally { reopened?.dispose(); nativeEditor.dispose(); native.dispose(); }
+});
+
+it.each(['pptx', 'odp'])('coalesces when a middle run is emptied and the CR run itself is edited (%s)', async format => {
+  const native = await midEmptyFixture(format, { editCrRun: true });
+  const nativeEditor = createEditor({ document: native.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+  try {
+    nativeEditor.dispatch('document.setRunText', { runId: nativeRun(native.document, 'A\r').id, text: 'X\r' });
+    nativeEditor.dispatch('document.setRunText', { runId: nativeRun(native.document, 'MID').id, text: '' });
+    const result = await native.export(nativeEditor.getSnapshot().document);
+    const report = breakReport(await (await JSZip.loadAsync(result.bytes)).file(format === 'pptx' ? 'ppt/slides/slide1.xml' : 'content.xml').async('string'), format);
+    expect(report.count).toBe(1);
+    expect(report.text).toBe('X\nB');
+  } finally { nativeEditor.dispose(); native.dispose(); }
+});
+
+it.each(['pptx', 'odp'])('coalesces when multiple middle runs are emptied (%s)', async format => {
+  const native = await midEmptyFixture(format, { secondEmpty: true });
+  const nativeEditor = createEditor({ document: native.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+  try {
+    nativeEditor.dispatch('document.setRunText', { runId: nativeRun(native.document, 'MID').id, text: '' });
+    nativeEditor.dispatch('document.setRunText', { runId: nativeRun(native.document, 'MID2').id, text: '' });
+    const result = await native.export(nativeEditor.getSnapshot().document);
+    const report = breakReport(await (await JSZip.loadAsync(result.bytes)).file(format === 'pptx' ? 'ppt/slides/slide1.xml' : 'content.xml').async('string'), format);
+    expect(report.count).toBe(1);
+    expect(report.text).toBe('A\nB');
+  } finally { nativeEditor.dispose(); native.dispose(); }
+});
+
 it.each(['pptx', 'odp'])('writes CRLF slide notes as single breaks (%s)', async format => {
   const write = format === 'pptx' ? writePptx : writeOdp;
   const bytes = await write({ title: 'Deck', sections: [{ id: 'sec', name: 'Section', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [] }] });
