@@ -1,7 +1,13 @@
 // Tiny DrawingML/PresentationML XML helpers shared by the importer and the
 // export post-processor. Namespace-agnostic: elements and attributes match on
 // their localName, so a part's prefixes don't matter.
-export const parseXml = (text) => new DOMParser().parseFromString(text, 'application/xml');
+export function parseXml(text, runtime) {
+  if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(text.replace(/\0/g, ''))) throw new Error('DTD and entity declarations are unsupported');
+  if (!runtime?.parse && typeof DOMParser === 'undefined') throw new Error('An XML runtime { parse, serialize } is required outside the browser');
+  const doc = runtime?.parse ? runtime.parse(text) : new DOMParser().parseFromString(text, 'application/xml');
+  if (!doc?.documentElement || doc.getElementsByTagName('parsererror').length) throw new Error('Invalid XML part');
+  return doc;
+}
 export const kids = (el, name) => (el ? [...el.children].filter((c) => c.localName === name) : []);
 export function kid(el, name) {
   if (el) for (const c of el.children) if (c.localName === name) return c;

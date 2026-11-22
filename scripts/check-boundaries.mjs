@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { importSpecifiers } from './vendorClosure.mjs';
 
-const allowed = { core: [], renderer: ['core'], react: ['core', 'renderer'], pptx: ['core'], playground: ['core', 'react', 'pptx'] };
+const allowed = { core: [], renderer: ['core'], react: ['core', 'renderer'], pptx: ['core', 'io'], io: [], source: ['core', 'io'], odp: ['core', 'io'], playground: ['core', 'react', 'pptx'] };
 const errors = [];
 function walk(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {

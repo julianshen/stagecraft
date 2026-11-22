@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.js",
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
     "./lib/*": "./src/lib/*"
   },
   "files": [
@@ -13,6 +16,7 @@
   "dependencies": {
     "@stagecraft/core": "0.1.0",
     "jszip": "^3.10.2",
-    "pptxgenjs": "^3.12.0"
+    "pptxgenjs": "^3.12.0",
+    "@stagecraft/io": "0.1.0"
   }
 }

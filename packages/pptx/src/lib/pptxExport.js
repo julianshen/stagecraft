@@ -1,4 +1,5 @@
 import pptxgen from 'pptxgenjs';
+import { throwIfAborted } from '@stagecraft/io';
 import { chartSpec, CHART_SERIES_HEX } from '@stagecraft/core/lib/chartSpec.js';
 import { SEVERITY_HEX } from '@stagecraft/core/lib/riskSpec.js';
 import { roadmapModel, ROADMAP_HEX, ROADMAP_LABELS, ROADMAP_STATES } from '@stagecraft/core/lib/roadmapSpec.js';
@@ -528,7 +529,7 @@ const BUILDERS = new Map([
 ]);
 
 // ---- main export function ----
-const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+export const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 
 // Save a file the way pptxgenjs' own writeFile does in the browser: a
 // temporary <a download> on an object URL.
@@ -546,10 +547,13 @@ function download(blob, fileName) {
 }
 
 /**
- * Export a deck object to a .pptx file using pptxgenjs.
+ * Write PPTX bytes without downloading or accessing browser image APIs.
+ * Supply xml for grouped/gradient shapes outside browsers, and prepareImages
+ * when the host needs raster EXIF normalization.
  * @param {Object} deck — SAMPLE_DECK-shaped object
  */
-export async function exportToPPTX(deck, { includeNotes = true, range = null } = {}) {
+export async function writePptx(deck, { includeNotes = true, range = null, xml, prepareImages, signal } = {}) {
+  throwIfAborted(signal);
   const pptx = new pptxgen();
   pptx.layout = 'LAYOUT_16x9';
   pptx.title = deck.title || 'Stagecraft Presentation';
@@ -573,8 +577,9 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
     const a = clampIdx(range.from, 1), b = clampIdx(range.to, len);
     slides = flat.slice(Math.min(a, b) - 1, Math.max(a, b));
   }
-  // Rotated (EXIF) JPEGs export upright, as the canvas shows them — only the exported slides' pictures.
-  slides = await uprightSlides(slides);
+  // Image decoding belongs to the host; the browser wrapper supplies EXIF normalization.
+  if (prepareImages) slides = await prepareImages(slides);
+  throwIfAborted(signal);
 
   // PowerPoint sections mirror the deck's sections. pptxgenjs files any slide
   // added without a sectionTitle into a "Default-N" section once one exists, so
@@ -612,10 +617,17 @@ export async function exportToPPTX(deck, { includeNotes = true, range = null } =
     }
   }
 
+  const raw = await pptx.write({ outputType: 'arraybuffer' });
+  throwIfAborted(signal);
+  const data = await postProcess(raw, plans, { xml, signal });
+  throwIfAborted(signal);
+  return new Uint8Array(data);
+}
+
+/** Browser compatibility wrapper; hosts can use writePptx for explicit saving. */
+export async function exportToPPTX(deck, options = {}) {
+  const data = await writePptx(deck, { prepareImages: uprightSlides, ...options });
   const fileName = `${(deck.title || 'presentation').replace(/[^a-z0-9]/gi, '_')}.pptx`;
-  // Written in memory so the post-processor can patch what pptxgenjs can't
-  // express (F-EXP-1), then downloaded.
-  const data = await postProcess(await pptx.write({ outputType: 'arraybuffer' }), plans);
   download(new Blob([data], { type: PPTX_MIME }), fileName);
   return fileName;
 }

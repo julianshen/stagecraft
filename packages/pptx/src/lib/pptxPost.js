@@ -12,6 +12,7 @@
 // [[name, …], …] }`; plans line up with the slides in export order
 // (pptxgenjs writes them as ppt/slides/slideN.xml).
 import JSZip from 'jszip';
+import { throwIfAborted } from '@stagecraft/io';
 import { parseXml, kid, path, xfrmBox } from './ooxml.js';
 import { isRenderableGradient, linAngle } from '@stagecraft/core/lib/elements.js';
 import { isFillableShape } from '@stagecraft/core/lib/shapes.js';
@@ -61,23 +62,25 @@ export function planFor(slide) {
 }
 
 /** The pptxgenjs package `data` with each slide's plan applied; `data` itself when there is nothing to do. */
-export async function postProcess(data, plans) {
+export async function postProcess(data, plans, { xml, signal } = {}) {
+  throwIfAborted(signal);
   if (!plans.some(hasWork)) return data;
   const zip = await JSZip.loadAsync(data);
   for (const [i, plan] of plans.entries()) {
+    throwIfAborted(signal);
     if (!hasWork(plan)) continue;
     const name = `ppt/slides/slide${i + 1}.xml`;
     const part = zip.file(name);
     if (!part) continue; // no such slide: nothing to patch
-    zip.file(name, patchSlideXml(await part.async('string'), plan));
+    zip.file(name, patchSlideXml(await part.async('string'), plan, xml));
   }
   // Each part keeps the compression pptxgenjs gave it (images aren't re-deflated).
   return zip.generateAsync({ type: 'arraybuffer' });
 }
 
 /** One slide's XML with its gradients and groups applied. */
-export function patchSlideXml(xml, { gradients = {}, groups = [] } = {}) {
-  const doc = parseXml(xml);
+export function patchSlideXml(xml, { gradients = {}, groups = [] } = {}, runtime) {
+  const doc = parseXml(xml, runtime);
   const cNvPrs = [...doc.getElementsByTagNameNS(P, 'cNvPr')];
   // Only a unique name is patched: a duplicated element id, or one that
   // happens to match a pptxgenjs default name ("Text 3"), is ambiguous.
@@ -94,7 +97,7 @@ export function patchSlideXml(xml, { gradients = {}, groups = [] } = {}) {
   }
   // XMLSerializer drops the XML declaration; PowerPoint's own parts carry one.
   const decl = /^<\?xml[^>]*\?>/.exec(xml)?.[0] ?? '';
-  return decl + new XMLSerializer().serializeToString(doc).replace(/^<\?xml[^>]*\?>/, '');
+  return decl + (runtime?.serialize ? runtime.serialize(doc) : new XMLSerializer().serializeToString(doc)).replace(/^<\?xml[^>]*\?>/, '');
 }
 
 // The drawing object (p:sp / p:pic / p:graphicFrame / p:cxnSp / p:grpSp) a
@@ -155,7 +158,7 @@ function adjacent(members) {
 // Returns whether a group was made (it needs two adjacent members).
 function applyGroup(doc, members, id) {
   if (members.length < 2) return false;
-  members.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+  members.sort((a, b) => (a.compareDocumentPosition(b) & 4 /* DOCUMENT_POSITION_FOLLOWING */ ? -1 : 1));
   if (!adjacent(members)) return false;
   const boxes = members.map(boundsOf);
   const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y));
