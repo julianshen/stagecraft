@@ -294,6 +294,45 @@ it.each(['pptx', 'odp'])('coalesces when multiple middle runs are emptied (%s)',
   } finally { nativeEditor.dispose(); native.dispose(); }
 });
 
+it('applies the coalesced text of an ODP run whose only change is formatting', async () => {
+  // The CR run's text is untouched; only its formatting changes in the same export as the
+  // neighbor's LF edit. The coalesced text must still be written (replaceText promoted).
+  const native = await nativeCrFixture('odp');
+  const nativeEditor = createEditor({ document: native.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+  try {
+    const runs = native.document.slides[0].objects.find(o => o.type === 'text').text.paragraphs[0].runs;
+    nativeEditor.dispatch('document.setRunFormat', { runId: runs[0].id, format: { italic: true } });
+    nativeEditor.dispatch('document.setRunText', { runId: runs[1].id, text: '\nB' });
+    const result = await native.export(nativeEditor.getSnapshot().document);
+    const report = breakReport(await (await JSZip.loadAsync(result.bytes)).file('content.xml').async('string'), 'odp');
+    expect(report.count).toBe(1);
+    expect(report.text).toBe('A\nB');
+    const reopened = await openPresentation(result.bytes, { format: 'odp' });
+    try {
+      const reopenedRuns = reopened.document.slides[0].objects.find(o => o.type === 'text').text.paragraphs[0].runs;
+      expect(reopenedRuns.map(r => r.text).join('').replace(/\r\n/g, '\n').replace(/\r/g, '\n')).toBe('A\nB');
+      // The reader surfaces span styling through odpAppearance, not style.overrides.
+      expect(reopenedRuns[0].extensions.odpAppearance).toMatchObject({ bold: true, italic: true });
+    } finally { reopened.dispose(); }
+  } finally { nativeEditor.dispose(); native.dispose(); }
+});
+
+it('keeps the documented fallback for a PPTX run whose only change is formatting', async () => {
+  // A PPTX formatting-only change cannot also carry text (the apply branches are either/or), so
+  // the CR stays: an extra blank line is better than failing or restructuring the export.
+  const native = await nativeCrFixture('pptx');
+  const nativeEditor = createEditor({ document: native.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+  try {
+    const runs = native.document.slides[0].objects.find(o => o.type === 'text').text.paragraphs[0].runs;
+    nativeEditor.dispatch('document.setRunFormat', { runId: runs[0].id, format: { italic: true } });
+    nativeEditor.dispatch('document.setRunText', { runId: runs[1].id, text: '\nB' });
+    const result = await native.export(nativeEditor.getSnapshot().document);
+    const report = breakReport(await (await JSZip.loadAsync(result.bytes)).file('ppt/slides/slide1.xml').async('string'), 'pptx');
+    expect(report.count).toBe(2);
+    expect(report.text).toBe('A\nB');
+  } finally { nativeEditor.dispose(); native.dispose(); }
+});
+
 it.each(['pptx', 'odp'])('writes CRLF slide notes as single breaks (%s)', async format => {
   const write = format === 'pptx' ? writePptx : writeOdp;
   const bytes = await write({ title: 'Deck', sections: [{ id: 'sec', name: 'Section', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [] }] });

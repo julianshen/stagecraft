@@ -244,7 +244,11 @@ export async function openPresentation(source, options = {}) {
                                 : !['0', '1', 'true', 'false'].includes(value)))) throw new Error('Invalid direct run formatting');
                             patch[attribute] = value ?? null;
                         }
-                        if (Object.keys(patch).length) changes.push({ ...editableSlots.get(a), formatting: patch });
+                        if (Object.keys(patch).length) {
+                            const change = { ...editableSlots.get(a), formatting: patch };
+                            changes.push(change);
+                            otherChangedRuns.add(b);
+                        }
                     }
                     else if (key === 'text' && typeof a.text === 'string' && editableSlots.has(a) && a.text !== b.text) {
                         validText(b.text);
@@ -287,12 +291,17 @@ export async function openPresentation(source, options = {}) {
                 const written = coalesceSplitBreaks(runs.map(run => ({ text: run.text })));
                 for (const [index, run] of runs.entries()) {
                     const change = changes.find(change => changeRun.get(change) === run);
-                    console.log('PP-STEP', index, 'change', !!change, 'same', written[index] === run.text, 'other', otherChangedRuns.has(run), 'inCtx', runContexts.has(run));
-                    if (change) { change.text = written[index]; continue; }
+                    if (change) {
+                        change.text = written[index];
+                        // An ODP change whose only edit was formatting carries replaceText:false;
+                        // once the coalesced text differs from the run's current text, the file
+                        // must be rewritten, so promote it.
+                        if (written[index] !== run.text) change.replaceText = true;
+                        continue;
+                    }
                     if (written[index] === run.text) continue;
                     if (otherChangedRuns.has(run)) continue;
                     const baselineRun = baselineRunById.get(run.id);
-                    console.log('PP-EMIT?', index, JSON.stringify(run.text), '->', JSON.stringify(written[index]), 'baselineRun', !!baselineRun, 'slot', !!(baselineRun && editableSlots.get(baselineRun)));
                     const slot = baselineRun ? editableSlots.get(baselineRun) : undefined;
                     if (!slot) continue;
                     const newChange = { ...slot, text: written[index], ...(slot.kind === 'odp' ? { overrides: {}, replaceText: true } : {}) };
