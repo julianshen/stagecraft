@@ -27,18 +27,24 @@ function strictJson(value, maxBytes, code, maxDepth = 64, maxNodes = 100000) {
     const [item, depth] = pending.pop();
     if (++nodes > maxNodes || depth > maxDepth) throw new SessionError(code);
     if (item && typeof item === 'object') {
+      let indices = 0;
       if (!Array.isArray(item)) {
         const prototype = Object.getPrototypeOf(item);
         if (prototype !== Object.prototype && prototype !== null) throw new SessionError(code);
       }
       for (const key of Reflect.ownKeys(item)) {
-        if (Array.isArray(item) && key === 'length') continue;
-        if (typeof key !== 'string' || key === '__proto__' || key === 'prototype' || key === 'constructor') throw new SessionError(code);
+        // Mirror the kernel's array rules exactly: dense arrays carry index keys only.
+        if (Array.isArray(item)) {
+          if (key === 'length') continue;
+          if (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= item.length) throw new SessionError(code);
+          indices++;
+        } else if (typeof key !== 'string' || key === '__proto__' || key === 'prototype' || key === 'constructor') throw new SessionError(code);
         const descriptor = Object.getOwnPropertyDescriptor(item, key);
         if (!descriptor || !('value' in descriptor)) throw new SessionError(code);
         if (!descriptor.enumerable) throw new SessionError(code);
         pending.push([descriptor.value, depth + 1]);
       }
+      if (Array.isArray(item) && indices !== item.length) throw new SessionError(code);
     } else if (item === undefined || typeof item === 'function' || typeof item === 'bigint' || typeof item === 'symbol') throw new SessionError(code);
     else if (typeof item === 'number' && !Number.isFinite(item)) throw new SessionError(code);
   }
@@ -109,6 +115,12 @@ export function createProtectedSession({ editor, identity, authorize, project, c
       if (error instanceof SessionError && error.code === 'RESPONSE_LIMIT') throw new SessionError('INVALID_REQUEST');
       throw error;
     }
+  };
+  // No non-Session error can ever surface from session entry points: every input validation
+  // passes through the sanitizer belt as well as the traversal's own codes.
+  const sanitizedInput = request => {
+    try { return validateInput(request); }
+    catch (error) { throw sanitize(error); }
   };
   async function permit(operation, snapshot, request) {
     check();
@@ -203,9 +215,9 @@ export function createProtectedSession({ editor, identity, authorize, project, c
     },
     // Async wrappers: invalid request input must reject the returned promise through the
     // sanitized catch, never escape as a synchronous throw or a raw non-Session error.
-    transact: async request => runMutation('transact', validateInput(request)),
-    undo: async request => runMutation('undo', validateInput(request)),
-    redo: async request => runMutation('redo', validateInput(request)),
+    transact: async request => runMutation('transact', sanitizedInput(request)),
+    undo: async request => runMutation('undo', sanitizedInput(request)),
+    redo: async request => runMutation('redo', sanitizedInput(request)),
     async listCommands() {
       try {
         check();

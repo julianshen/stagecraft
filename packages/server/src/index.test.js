@@ -151,6 +151,31 @@ describe('protected sessions', () => {
     expect(() => fixture({ context: 'nope' })).toThrow(TypeError);
     expect(() => fixture({ exportDocument: 7 })).toThrow(TypeError);
   });
+  it('rejects sparse and non-index array request input with public codes on every mutation entry', async () => {
+    const { editor, session } = fixture();
+    const sparse = [, 1];
+    const extraKey = [1, 2]; extraKey.extra = 'x';
+    const stretched = [1]; stretched.length = 3;
+    for (const [operation, request] of [
+      ['transact', { commands: sparse, expectedRevision: 0 }],
+      ['undo', { expectedRevision: 0, x: extraKey }],
+      ['redo', { expectedRevision: 0, x: stretched }],
+      ['dispatch', { type: 'title', payload: sparse, expectedRevision: 0 }],
+    ]) {
+      const pending = session[operation](request);
+      expect(pending).toBeInstanceOf(Promise);
+      await expect(pending).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    }
+    expect(editor.getSnapshot().revision).toBe(0);
+  });
+  it('rejects sparse and non-index array protected outputs with the response code', async () => {
+    const extraKey = [1, 2]; extraKey.extra = 'x';
+    const stretched = [1]; stretched.length = 2;
+    await expect(fixture({ project: () => sparseOutput() }).session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(fixture({ project: () => extraKey }).session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(fixture({ project: () => stretched }).session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+  function sparseOutput() { return [, 1]; }
   it('rejects invalid mutation input through promises with sanitized public codes', async () => {
     const { editor, session } = fixture();
     for (const [operation, request] of [
