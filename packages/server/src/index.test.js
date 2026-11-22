@@ -149,10 +149,38 @@ describe('protected sessions', () => {
       return true;
     }, project: ({ snapshot }) => snapshot.document });
     const pending = session.listCommands();
-    while (!calls.includes('tool:a')) await Promise.resolve();
+    for (let i = 0; i < 100 && !calls.includes('tool:a'); i++) await new Promise(resolve => setTimeout(resolve, 0));
+    expect(calls).toContain('tool:a');
     session.close(); gate.resolve(true);
     await expect(pending).rejects.toMatchObject({ code: 'SESSION_CLOSED' });
     expect(calls).toEqual(['tools:', 'tool:a']);
+  });
+  it('checks closure after a denied discovery policy too', async () => {
+    const gate = deferred(); const calls = [];
+    const editor = createEditor({ document: { title: 'x' }, plugins: [{ id: 'multi', version: '1', commands: [
+      { id: 'a', apply: draft => draft }, { id: 'b', apply: draft => draft },
+    ] }] });
+    // Discovery itself stays authorized; only the per-command policies deny.
+    const session = createProtectedSession({ editor, identity: { id: 'trusted' }, authorize: ({ operation, request }) => {
+      calls.push(`${operation}:${request?.type ?? ''}`);
+      if (operation === 'tool' && request.type === 'a') return gate.promise;
+      return operation !== 'tool';
+    }, project: ({ snapshot }) => snapshot.document });
+    const pending = session.listCommands();
+    for (let i = 0; i < 100 && !calls.includes('tool:a'); i++) await new Promise(resolve => setTimeout(resolve, 0));
+    expect(calls).toContain('tool:a');
+    session.close(); gate.resolve(false);
+    await expect(pending).rejects.toMatchObject({ code: 'SESSION_CLOSED' });
+    expect(calls).toEqual(['tools:', 'tool:a']);
+  });
+  it('does not deliver mutation success after closure in the post-commit projection window', async () => {
+    const editor = createEditor({ document: { title: 'public' }, plugins: [{ id: 'test', version: '1', commands: [{ id: 'title', apply(d, p) { d.title = p; return d; } }] }] });
+    let session;
+    session = createProtectedSession({ editor, identity: { id: 'trusted' }, authorize: () => true,
+      project: ({ snapshot }) => { queueMicrotask(() => queueMicrotask(() => session.close())); return { title: snapshot.document.title }; } });
+    const pending = session.dispatch({ type: 'title', payload: 'committed', expectedRevision: 0 });
+    await expect(pending).rejects.toMatchObject({ code: 'SESSION_CLOSED', committed: true, revision: 1 });
+    expect(editor.getSnapshot().revision).toBe(1);
   });
   it('rejects an in-flight operation after close', async () => {
     const gate = deferred();

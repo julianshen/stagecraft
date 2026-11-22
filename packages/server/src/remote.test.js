@@ -65,6 +65,31 @@ describe('remote session protocol', () => {
     await expect(createRemoteSession({ request() { throw Error('PRIVATE'); } }).read()).rejects.toMatchObject({ message: 'TRANSPORT_FAILED', committed: false });
     await expect(createRemoteSession({ request: () => ({ version: 1, ok: false, error: { code: 'PRIVATE', committed: false } }) }).read()).rejects.toMatchObject({ message: 'INVALID_RESPONSE' });
   });
+  it('keeps the whole response envelope within the shared depth budget', async () => {
+    const nested = levels => { let node = { leaf: true }; for (let i = 0; i < levels; i++) node = { nested: node }; return node; };
+    let deep = null;
+    const { handler, editor } = setup({ project: () => ({ title: 'doc', deep }) });
+    const remote = createRemoteSession({ request: async message => JSON.parse(JSON.stringify(await handler(JSON.parse(JSON.stringify(message))))) });
+    deep = nested(60);
+    expect(await remote.dispatch({ type: 'title', payload: 'committed', expectedRevision: 0 })).toMatchObject({ revision: 1 });
+    deep = nested(61);
+    await expect(remote.dispatch({ type: 'title', payload: 'second', expectedRevision: 1 })).rejects.toMatchObject({ code: 'INVALID_RESPONSE', committed: true, outcome: 'committed', revision: 2 });
+    expect(editor.getSnapshot().revision).toBe(2);
+  });
+  it('keeps the whole response envelope within equal byte limits at the exact boundary', async () => {
+    const projector = { text: '' };
+    const editor = createEditor({ document: { title: 'public', secret: 'PRIVATE' }, plugins: [{ id: 'test', version: '1', commands: [{ id: 'title', apply(d, p) { d.title = p; return d; } }] }] });
+    const session = createProtectedSession({ editor, identity: { id: 'trusted' }, authorize: () => true,
+      project: () => ({ text: projector.text }), maxResponseBytes: 1024,
+      context: ({ document }) => document, exportDocument: ({ document }) => ({ artifact: document.title }) });
+    const handler = createSessionRequestHandler(session);
+    const remote = createRemoteSession({ request: async message => JSON.parse(JSON.stringify(await handler(JSON.parse(JSON.stringify(message))))), maxResponseBytes: 1024 });
+    projector.text = 'x'.repeat(924);
+    expect(await remote.dispatch({ type: 'title', payload: 'committed', expectedRevision: 0 })).toMatchObject({ revision: 1, document: { text: projector.text } });
+    projector.text = 'x'.repeat(925);
+    await expect(remote.dispatch({ type: 'title', payload: 'second', expectedRevision: 1 })).rejects.toMatchObject({ code: 'RESPONSE_LIMIT', committed: true, outcome: 'committed', revision: 2 });
+    expect(editor.getSnapshot().revision).toBe(2);
+  });
   it('validates read and discovery success shapes against the protocol', async () => {
     await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: 17 }) }).read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
     await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: { document: {}, revision: -1 } }) }).read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });

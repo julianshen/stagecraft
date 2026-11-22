@@ -18,13 +18,13 @@ export class SessionError extends Error {
  * Output failures throw `code`; the input protocol path passes 'INVALID_REQUEST', protected outputs
  * pass 'INVALID_RESPONSE'. Byte overflow always stays RESPONSE_LIMIT.
  */
-function strictJson(value, maxBytes, code) {
+function strictJson(value, maxBytes, code, maxDepth = 64) {
   if (value === undefined) throw new SessionError('RESPONSE_LIMIT');
   const pending = [[value, 0]];
   let nodes = 0;
   while (pending.length) {
     const [item, depth] = pending.pop();
-    if (++nodes > 100000 || depth > 64) throw new SessionError(code);
+    if (++nodes > 100000 || depth > maxDepth) throw new SessionError(code);
     if (item && typeof item === 'object') {
       for (const key of Reflect.ownKeys(item)) {
         if (Array.isArray(item) && key === 'length') continue;
@@ -42,8 +42,15 @@ function strictJson(value, maxBytes, code) {
   return JSON.parse(text);
 }
 
+// The handler wraps every session result in the protocol envelope `{"version":1,"ok":true,
+// "result":…}` — one nesting level deeper and 32 bytes wider. Reserving that overhead inside
+// the session's output budget keeps equal session/remote limits interoperable, so a committed
+// result can never degrade into a client-side unknown receipt at the exact boundary.
+const RESULT_DEPTH_LIMIT = 63;
+const RESULT_ENVELOPE_BYTES = JSON.stringify({ version: 1, ok: true, result: 0 }).length - 1;
+
 function json(value, maxBytes) {
-  return strictJson(value, maxBytes, 'INVALID_RESPONSE');
+  return strictJson(value, maxBytes - RESULT_ENVELOPE_BYTES, 'INVALID_RESPONSE', RESULT_DEPTH_LIMIT);
 }
 
 const publicCodes = new Set(['STALE_REVISION', 'UNKNOWN_COMMAND', 'INVALID_PAYLOAD', 'CANCELLED', 'UNAUTHORIZED', 'DISPOSED',
@@ -119,6 +126,9 @@ export function createProtectedSession({ editor, identity, authorize, project, c
       // Capture the exact result before awaiting projection. Never reread a newer editor state.
       check();
       const document = await projection({ document: result.document, revision }, operation);
+      // Returning from projection crossed an await boundary: a close during post-commit
+      // projection must yield the committed SESSION_CLOSED receipt, never a success.
+      check();
       return json({ document, revision, changed: result.changed, dryRun: result.dryRun }, maxResponseBytes);
     } catch (error) {
       // A projection failure after commit is an explicit receipt, not a misleading rollback.
@@ -149,10 +159,12 @@ export function createProtectedSession({ editor, identity, authorize, project, c
         check();
         const commands = [];
         for (const command of editor.getCommands()) {
-          // Re-check after every policy await so a close cannot start the next callback, and a
-          // hanging later policy can never stall an already-closed session.
-          if (await authorize({ identity: json(actor, maxResponseBytes), operation: 'tool', snapshot, request: { type: command.id } }) !== true) continue;
+          // Re-check after every policy await regardless of the allow/deny outcome, so a close
+          // cannot start the next callback, and a hanging later policy can never stall an
+          // already-closed session.
+          const permitted = await authorize({ identity: json(actor, maxResponseBytes), operation: 'tool', snapshot, request: { type: command.id } });
           check();
+          if (permitted !== true) continue;
           // Explicit descriptors: undefined description/inputSchema keys would fail the strict
           // output validation (undefined values are never silently coerced or dropped).
           commands.push({ id: command.id, ...(command.description === undefined ? {} : { description: command.description }), ...(command.inputSchema === undefined ? {} : { inputSchema: command.inputSchema }) });
