@@ -1,2 +1,3 @@
 export { importPptx } from './lib/pptxImport.js';
-export { exportToPPTX } from './lib/pptxExport.js';
+export { writePptx, exportToPPTX, PPTX_MIME } from './lib/pptxExport.js';
+export { pptxAdapter } from './adapter.js';

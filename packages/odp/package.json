@@ -1,0 +1,21 @@
+{
+  "name": "@stagecraft/odp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "dependencies": {
+    "@stagecraft/io": "0.1.0",
+    "@stagecraft/core": "0.1.0",
+    "jszip": "^3.10.1"
+  }
+}

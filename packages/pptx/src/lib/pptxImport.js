@@ -15,7 +15,8 @@
 // What can't be represented (charts, SmartArt, EMF/WMF pictures, …) is reported
 // in `warnings` rather than silently dropped.
 
-import JSZip from 'jszip';
+import { inspectZip } from '@stagecraft/io/zip';
+import { throwIfAborted } from '@stagecraft/io';
 import { SLIDE_W, SLIDE_H, MIN_LINE_THICKNESS } from '@stagecraft/core/lib/elements.js';
 import { isValidElement } from '@stagecraft/core/lib/deckUtils.js';
 import { SHAPES, shapeDef, clipPoints } from '@stagecraft/core/lib/shapes.js';
@@ -48,11 +49,12 @@ function resolvePart(base, target) {
 const relsPathOf = (p) => `${dirOf(p)}_rels/${p.slice(p.lastIndexOf('/') + 1)}.rels`;
 
 class Pkg {
-  constructor(zip) { this.zip = zip; this.cache = new Map(); this.media = new Map(); this.xmlBytes = 0; this.mediaBytes = 0; this.outChars = 0; }
+  constructor(zip, xml, signal) { this.zip = zip; this.runtime = xml; this.signal = signal; this.cache = new Map(); this.media = new Map(); this.xmlBytes = 0; this.mediaBytes = 0; this.outChars = 0; }
   // Parse an XML part (cached). Each part's declared inflated size — and the
   // package's running total — is checked before inflating, so a zip bomb fails
   // fast instead of exhausting memory.
   async xml(p) {
+    throwIfAborted(this.signal);
     if (!this.cache.has(p)) {
       const f = this.zip.file(p);
       if (f) {
@@ -61,8 +63,9 @@ class Pkg {
           throw new Error('This presentation is too large to import (an XML part exceeds the size limit).');
         }
       }
-      this.cache.set(p, f ? parseXml(await f.async('string')).documentElement : null);
+      this.cache.set(p, f ? parseXml(await f.async('string'), this.runtime).documentElement : null);
     }
+    throwIfAborted(this.signal);
     return this.cache.get(p);
   }
   // { [rId]: { type, target(path) } } for a part.
@@ -954,10 +957,15 @@ function themeOf(themeRoot) {
  *   slide whose `elements` passed the element gate. `warnings` are de-duplicated,
  *   human-readable notes about content that couldn't be represented.
  */
-export async function importPptx(data, { fileName = '' } = {}) {
+export async function importPptx(data, { fileName = '', xml, signal, ...limits } = {}) {
   let zip;
-  try { zip = await JSZip.loadAsync(data); } catch { throw new Error('Not a valid .pptx file (could not unzip it).'); }
-  const pkg = new Pkg(zip);
+  try {
+    ({ zip } = await inspectZip(data, { maxBytes: 256 * 1024 * 1024, ...limits, signal }));
+  } catch (error) {
+    if (error.message === 'Not a supported ZIP package') throw new Error('Not a valid .pptx file (not a supported ZIP package).', { cause: error });
+    throw error;
+  }
+  const pkg = new Pkg(zip, xml, signal);
   const presPart = 'ppt/presentation.xml';
   const pres = await pkg.xml(presPart);
   if (!pres || pres.localName !== 'presentation') throw new Error('Not a PowerPoint presentation (ppt/presentation.xml is missing).');
@@ -1060,6 +1068,7 @@ export async function importPptx(data, { fileName = '' } = {}) {
   const rest = slides.map((s) => s.id).filter((x) => !placed.has(x));
   if (rest.length || !sections.length) sections.push({ id: `pptx-sec-${sections.length + 1}`, name: sections.length ? 'Other slides' : 'Slides', slides: rest });
 
+  throwIfAborted(signal);
   return { deck: { title, author, theme: 'slate', sections, slides }, warnings: [...warnings] };
 }
 

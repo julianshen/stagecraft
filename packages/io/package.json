@@ -1,0 +1,12 @@
+{
+  "name": "@stagecraft/io",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./src/index.d.ts", "default": "./src/index.js" },
+    "./zip": { "types": "./src/zip.d.ts", "default": "./src/zip.js" }
+  },
+  "files": ["src"],
+  "dependencies": { "jszip": "^3.10.2" }
+}

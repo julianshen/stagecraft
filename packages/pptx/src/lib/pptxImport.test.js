@@ -372,14 +372,14 @@ describe('importPptx — OOXML edge cases', () => {
   it('decodes master art once and shares it across slides', async () => {
     const master = DEFAULT_MASTER.replace('</p:spTree>', `<p:pic><p:nvPicPr><p:cNvPr id="9" name="Logo"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdL"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic></p:spTree>`);
     const bytes = await buildPptx({ slides: [{ xml: slideXml('') }, { xml: slideXml('') }], master, masterRels: [['rIdL', 'image', '../media/logo.png']], media: { 'logo.png': PNG } });
-    // Count reads of the logo entry through the zip-entry prototype.
+    // Count image embedding reads; package preflight separately validates inflated bytes.
     const entryProto = Object.getPrototypeOf(new JSZip().file('x', '').file('x'));
     const spy = vi.spyOn(entryProto, 'async');
     try {
       const { deck } = await importPptx(bytes);
       expect(deck.slides.map((s) => s.elements[0].type)).toEqual(['image', 'image']);
       expect(deck.slides[0].elements[0].src).toBe(deck.slides[1].elements[0].src);
-      expect(spy.mock.contexts.filter((f) => f.name === 'ppt/media/logo.png')).toHaveLength(1);
+      expect(spy.mock.contexts.filter((f, i) => f.name === 'ppt/media/logo.png' && spy.mock.calls[i][0] === 'base64')).toHaveLength(1);
     } finally { spy.mockRestore(); }
   });
 
@@ -629,7 +629,7 @@ describe('importPptx — Codex review fixes', () => {
     expect(slide.elements[0]).toMatchObject({ fontSize: 64, bold: true, color: '#00AA00', fontFamily: 'Verdana', align: 'center' });
   });
 
-  it('rejects an oversized picture from its declared size, before decoding it', async () => {
+  it('skips base64 embedding of an oversized picture after package preflight', async () => {
     const pic = `<p:pic><p:nvPicPr><p:cNvPr id="4" name="P"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId10"/></p:blipFill><p:spPr>${xfrm(0, 0, 10, 10)}</p:spPr></p:pic>`;
     const bytes = await buildPptx({ slides: [{ xml: slideXml(pic), extraRels: [['rId10', 'image', '../media/big.png']] }], media: { 'big.png': new Uint8Array(10 * 1024 * 1024 + 3) } });
     const entryProto = Object.getPrototypeOf(new JSZip().file('x', '').file('x'));
@@ -638,7 +638,7 @@ describe('importPptx — Codex review fixes', () => {
       const { deck, warnings } = await importPptx(bytes);
       expect(deck.slides[0].elements).toEqual([]);
       expect(warnings.join(' ')).toMatch(/larger than 10 MB/);
-      expect(spy.mock.contexts.filter((f) => f.name === 'ppt/media/big.png')).toHaveLength(0);
+      expect(spy.mock.contexts.filter((f, i) => f.name === 'ppt/media/big.png' && spy.mock.calls[i][0] === 'base64')).toHaveLength(0);
     } finally { spy.mockRestore(); }
   });
 

@@ -4,9 +4,20 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.js",
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./editor": {
+      "types": "./src/editor/index.d.ts",
+      "default": "./src/editor/index.js"
+    },
     "./lib/*": "./src/lib/*",
-    "./data/*": "./src/data/*"
+    "./data/*": "./src/data/*",
+    "./document": {
+      "types": "./src/document/index.d.ts",
+      "default": "./src/document/index.js"
+    }
   },
   "files": [
     "src"

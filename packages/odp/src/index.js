@@ -1,0 +1,240 @@
+import JSZip from 'jszip';
+import { cloneJson } from '@stagecraft/core';
+import { readBytes, throwIfAborted } from '@stagecraft/io';
+import { inspectZip } from '@stagecraft/io/zip';
+import { lengthEmu } from './vendor/officeview/units.js';
+
+export const ODP_MIME = 'application/vnd.oasis.opendocument.presentation';
+const NS = Object.freeze({
+  office: 'urn:oasis:names:tc:opendocument:xmlns:office:1.0',
+  draw: 'urn:oasis:names:tc:opendocument:xmlns:drawing:1.0',
+  text: 'urn:oasis:names:tc:opendocument:xmlns:text:1.0',
+  svg: 'urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0',
+  style: 'urn:oasis:names:tc:opendocument:xmlns:style:1.0',
+  fo: 'urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0',
+  presentation: 'urn:oasis:names:tc:opendocument:xmlns:presentation:1.0',
+  manifest: 'urn:oasis:names:tc:opendocument:xmlns:manifest:1.0',
+});
+const namespaces = Object.entries(NS).map(([key, uri]) => `xmlns:${key}="${uri}"`).join(' ');
+const is = (node, prefix, name) => node?.namespaceURI === NS[prefix] && node.localName === name;
+const children = node => Array.from(node?.childNodes ?? []).filter(n => n.nodeType === 1);
+const child = (node, prefix, name) => children(node).find(n => is(n, prefix, name));
+const all = (node, prefix, name) => Array.from(node.getElementsByTagNameNS(NS[prefix], name));
+const attr = (node, prefix, name) => node?.getAttributeNS(NS[prefix], name) || undefined;
+const warning = (code, message) => ({ code, severity: 'warning', message });
+const escape = value => {
+  const text = String(value);
+  for (const char of text) {
+    const code = char.codePointAt(0);
+    if (![9, 10, 13].includes(code) && !(code >= 32 && code <= 0xd7ff) && !(code >= 0xe000 && code <= 0xfffd) && code < 0x10000) throw new Error('Invalid XML character in ODP export');
+  }
+  return text.replace(/[&<>"'\r]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;', '\r': '&#13;' })[c]);
+};
+const hex = value => typeof value === 'string' && /^#[\da-f]{6}$/i.test(value);
+
+function parse(text, runtime) {
+  if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(text.replace(/\0/g, ''))) throw new Error('DTD and entity declarations are unsupported');
+  if (!runtime?.parse && typeof DOMParser === 'undefined') throw new Error('An XML runtime { parse } is required outside the browser');
+  const doc = runtime?.parse ? runtime.parse(text) : new DOMParser().parseFromString(text, 'application/xml');
+  if (!doc?.documentElement || doc.getElementsByTagName('parsererror').length) throw new Error('Invalid ODP XML');
+  return doc;
+}
+function plainText(node, budget) {
+  const consume = text => {
+    budget.remaining -= text.length;
+    if (budget.remaining < 0) throw new Error('ODP expanded text exceeds character limit');
+    return text;
+  };
+  return Array.from(node.childNodes).map(n => {
+    if (n.nodeType === 3 || n.nodeType === 4) return consume(n.nodeValue);
+    if (is(n, 'text', 's')) {
+      const count = Number(attr(n, 'text', 'c') ?? 1);
+      if (!Number.isSafeInteger(count) || count < 1 || count > 1000) throw new Error('ODP repeated spaces exceed supported limit');
+      return consume(' '.repeat(count));
+    }
+    if (is(n, 'text', 'line-break')) return consume('\n');
+    if (is(n, 'text', 'tab')) return consume('\t');
+    return n.nodeType === 1 ? plainText(n, budget) : '';
+  }).join('');
+}
+function paragraphs(node, budget) {
+  const nodes = all(node, 'text', 'p');
+  budget.remaining -= Math.max(0, nodes.length - 1);
+  if (budget.remaining < 0) throw new Error('ODP expanded text exceeds character limit');
+  return nodes.map(n => plainText(n, budget)).join('\n');
+}
+
+export async function importOdp(source, options = {}) {
+  const { zip } = await inspectZip(source, options);
+  const textBudget = { remaining: 1024 * 1024 };
+  const mimetype = zip.file('mimetype');
+  if (!mimetype || mimetype._data.uncompressedSize > 1024 || (await mimetype.async('string')) !== ODP_MIME) throw new Error('Invalid ODP MIME type');
+  const readXml = async (name, limit = Infinity) => {
+    const file = zip.file(name);
+    if (!file) return null;
+    if (file._data.uncompressedSize > limit) throw new Error(`${name} exceeds XML limit`);
+    throwIfAborted(options.signal);
+    return parse(await file.async('string'), options.xml);
+  };
+  const manifest = await readXml('META-INF/manifest.xml', 4 * 1024 * 1024);
+  if (!manifest || !is(manifest.documentElement, 'manifest', 'manifest')) throw new Error('Missing or invalid ODP manifest');
+  if (all(manifest, 'manifest', 'encryption-data').length) throw new Error('Encrypted ODP packages are unsupported');
+  const content = await readXml('content.xml');
+  if (!content || !is(content.documentElement, 'office', 'document-content')) throw new Error('Missing or invalid ODP content XML');
+  const presentation = child(child(content.documentElement, 'office', 'body'), 'office', 'presentation');
+  if (!presentation) throw new Error('ODP presentation body is missing');
+  const stylesDoc = await readXml('styles.xml');
+  const roots = [stylesDoc, content].filter(Boolean);
+  const styles = new Map(), layouts = new Map(), masters = new Map();
+  for (const root of roots) {
+    for (const style of all(root, 'style', 'style')) styles.set(`${attr(style, 'style', 'family')}:${attr(style, 'style', 'name')}`, style);
+    for (const layout of all(root, 'style', 'page-layout')) layouts.set(attr(layout, 'style', 'name'), child(layout, 'style', 'page-layout-properties'));
+    for (const master of all(root, 'style', 'master-page')) masters.set(attr(master, 'style', 'name'), attr(master, 'style', 'page-layout-name'));
+  }
+  const diagnostics = [warning('subset-import', 'ODP subset import: masters, backgrounds, rich text, animations, embedded objects and unsupported styles are not preserved. Original package bytes are not retained.')];
+  function properties(name, family, kind, seen = new Set()) {
+    if (!name) return [];
+    if (seen.has(name)) throw new Error('Cyclic ODP style inheritance');
+    seen.add(name);
+    const style = styles.get(`${family}:${name}`);
+    if (!style) return [];
+    return [...properties(attr(style, 'style', 'parent-style-name'), family, kind, seen), child(style, 'style', kind)].filter(Boolean);
+  }
+  const prop = (nodes, prefix, name) => nodes.reduce((value, n) => attr(n, prefix, name) ?? value, undefined);
+  const pages = children(presentation).filter(n => is(n, 'draw', 'page'));
+  let documentHeight;
+  const slides = pages.map((page, index) => {
+    const layout = layouts.get(masters.get(attr(page, 'draw', 'master-page-name')));
+    const widthValue = attr(layout, 'fo', 'page-width'), heightValue = attr(layout, 'fo', 'page-height');
+    const width = widthValue === undefined ? 18288000 : lengthEmu(widthValue);
+    const height = heightValue === undefined ? 10287000 : lengthEmu(heightValue);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) throw new Error('Invalid ODP page dimensions');
+    const scale = 1920 / width, normalizedHeight = height * scale;
+    if (!Number.isFinite(scale) || !Number.isFinite(normalizedHeight)) throw new Error('Invalid ODP page dimensions');
+    if (documentHeight !== undefined && Math.abs(normalizedHeight - documentHeight) > 0.01) throw new Error('Mixed ODP page sizes are unsupported');
+    documentHeight = normalizedHeight;
+    const elements = [];
+    for (const node of children(page)) {
+      if (is(node, 'presentation', 'notes')) continue;
+      const textBox = child(node, 'draw', 'text-box');
+      const type = is(node, 'draw', 'rect') ? 'rect' : is(node, 'draw', 'ellipse') ? 'ellipse' : is(node, 'draw', 'frame') && textBox ? 'text' : null;
+      if (!type || attr(node, 'draw', 'transform')) {
+        diagnostics.push(warning('unsupported-object', `Slide ${index + 1}: skipped ${node.localName}${attr(node, 'draw', 'transform') ? ' with transform' : ''}.`));
+        continue;
+      }
+      const geometry = ['x', 'y', 'width', 'height'].map(key => lengthEmu(attr(node, 'svg', key)));
+      if (geometry.some(v => !Number.isFinite(v)) || geometry[2] <= 0 || geometry[3] <= 0) {
+        diagnostics.push(warning('invalid-geometry', `Slide ${index + 1}: skipped object with missing or invalid geometry.`)); continue;
+      }
+      const [x, y, w, h] = geometry.map(v => v * scale);
+      if (![x, y, w, h].every(Number.isFinite)) throw new Error('Invalid ODP scaled geometry');
+      const el = { id: `odp-${index + 1}-${elements.length + 1}`, type, x, y, w, h };
+      const graphicName = attr(node, 'draw', 'style-name');
+      if (type === 'text') {
+        const p = all(textBox, 'text', 'p')[0];
+        const textProps = [...properties(graphicName, 'graphic', 'text-properties'), ...properties(attr(p, 'text', 'style-name'), 'paragraph', 'text-properties')];
+        const paragraphProps = properties(attr(p, 'text', 'style-name'), 'paragraph', 'paragraph-properties');
+        el.content = paragraphs(textBox, textBudget);
+        el.color = prop(textProps, 'fo', 'color') ?? '#15171c';
+        if (!hex(el.color)) el.color = '#15171c';
+        const fontSize = prop(textProps, 'fo', 'font-size');
+        el.fontSize = (fontSize === undefined ? 457200 : lengthEmu(fontSize)) * scale;
+        if (!Number.isFinite(el.fontSize) || el.fontSize <= 0) {
+          el.fontSize = 48;
+          diagnostics.push(warning('invalid-font-size', `Slide ${index + 1}: invalid font size replaced by 48px.`));
+        }
+        el.bold = prop(textProps, 'fo', 'font-weight') === 'bold';
+        el.italic = prop(textProps, 'fo', 'font-style') === 'italic';
+        el.align = ({ start: 'left', end: 'right', left: 'left', right: 'right', center: 'center' })[prop(paragraphProps, 'fo', 'text-align')] ?? 'left';
+        const font = prop(textProps, 'fo', 'font-family');
+        if (font) el.fontFamily = font;
+        if (all(textBox, 'text', 'span').length || all(textBox, 'text', 'p').length > 1) diagnostics.push(warning('flattened-text', `Slide ${index + 1}: paragraph and run styles use the first paragraph style.`));
+      } else {
+        const graphic = properties(graphicName, 'graphic', 'graphic-properties');
+        const fill = prop(graphic, 'draw', 'fill-color');
+        el.fill = hex(fill) ? fill : '#4f46e5';
+        if (prop(graphic, 'draw', 'fill') && prop(graphic, 'draw', 'fill') !== 'solid') diagnostics.push(warning('unsupported-fill', `Slide ${index + 1}: non-solid fill replaced by a solid fill.`));
+        if (all(node, 'text', 'p').length) diagnostics.push(warning('unsupported-shape-text', `Slide ${index + 1}: text inside a shape was omitted.`));
+      }
+      elements.push(el);
+    }
+    const notes = child(page, 'presentation', 'notes');
+    return { id: `slide-${index + 1}`, title: attr(page, 'draw', 'name') ?? `Slide ${index + 1}`, layout: 'blank', elements, notes: notes ? paragraphs(notes, textBudget) : '' };
+  });
+  throwIfAborted(options.signal);
+  return { document: { title: options.fileName?.replace(/\.odp$/i, '') || 'Imported presentation', theme: 'indigo', size: { w: 1920, h: documentHeight ?? 1080 }, sections: [{ id: 'odp-section', name: 'Slides', slides: slides.map(s => s.id) }], slides }, diagnostics };
+}
+
+function allowedKeys(value, keys, label) {
+  for (const key of Object.keys(value)) if (!keys.includes(key)) throw new Error(`Unsupported ODP export ${label}: ${key}`);
+}
+function finite(value, label, positive = false) {
+  if (!Number.isFinite(value) || (positive && value <= 0)) throw new Error(`Invalid ODP export ${label}`);
+  return value;
+}
+const px = n => `${Number((n / 96).toFixed(10))}in`;
+const textXml = text => escape(text).replace(/ {1,1000}/g, spaces => `<text:s text:c="${spaces.length}"/>`).replace(/\t/g, '<text:tab/>').replace(/\n/g, '<text:line-break/>');
+
+export async function writeOdp(input, options = {}) {
+  throwIfAborted(options.signal);
+  const document = cloneJson(input);
+  allowedKeys(document, ['id', 'title', 'theme', 'size', 'sections', 'slides'], 'document');
+  if (!Array.isArray(document.slides) || !Array.isArray(document.sections)) throw new Error('ODP export requires slides and sections');
+  const order = document.sections.flatMap(section => {
+    allowedKeys(section, ['id', 'name', 'slides'], 'section');
+    if (!Array.isArray(section.slides)) throw new Error('ODP export section slides must be an array');
+    return section.slides;
+  });
+  if (order.length !== document.slides.length || new Set(order).size !== order.length) throw new Error('ODP export requires each slide exactly once in section order');
+  const height = finite(document.size?.h ?? 1080, 'page height', true);
+  if (document.size) allowedKeys(document.size, ['w', 'h'], 'size');
+  if (document.size?.w !== undefined && document.size.w !== 1920) throw new Error('ODP export requires 1920 authoring width');
+  let styles = '', pages = '';
+  for (const [index, id] of order.entries()) {
+    const slide = document.slides.find(s => s.id === id);
+    if (!slide) throw new Error('ODP export section references missing slide');
+    allowedKeys(slide, ['id', 'title', 'layout', 'elements', 'notes'], 'slide');
+    if (slide.layout !== 'blank') throw new Error(`Unsupported ODP export layout: ${slide.layout}`);
+    if (typeof (slide.notes ?? '') !== 'string') throw new Error('ODP export notes must be plain text');
+    if (!Array.isArray(slide.elements)) throw new Error('ODP export requires elements');
+    let shapes = '';
+    for (const [ei, el] of slide.elements.entries()) {
+      if (!['rect', 'ellipse', 'text'].includes(el.type)) throw new Error(`Unsupported ODP export element: ${el.type}`);
+      const isText = el.type === 'text';
+      allowedKeys(el, ['id', 'type', 'x', 'y', 'w', 'h', ...(isText ? ['content', 'color', 'fontSize', 'fontFamily', 'bold', 'italic', 'align'] : ['fill'])], 'element');
+      for (const key of ['x', 'y', 'w', 'h']) finite(el[key], key, key === 'w' || key === 'h');
+      const name = `s${index}e${ei}`;
+      const geometry = `svg:x="${px(el.x)}" svg:y="${px(el.y)}" svg:width="${px(el.w)}" svg:height="${px(el.h)}"`;
+      if (isText) {
+        if (typeof el.content !== 'string' || (el.fontFamily !== undefined && typeof el.fontFamily !== 'string')) throw new Error('ODP export text must be a string');
+        if (!hex(el.color ?? '#15171c')) throw new Error('Invalid ODP text color');
+        if (el.align !== undefined && !['left', 'center', 'right'].includes(el.align)) throw new Error('Unsupported ODP text alignment');
+        for (const key of ['bold', 'italic']) if (el[key] !== undefined && typeof el[key] !== 'boolean') throw new Error(`Invalid ODP ${key}`);
+        const size = finite(el.fontSize ?? 48, 'font size', true);
+        styles += `<style:style style:name="${name}" style:family="paragraph"><style:paragraph-properties fo:text-align="${el.align ?? 'left'}"/><style:text-properties fo:font-size="${size * 0.75}pt" fo:color="${el.color ?? '#15171c'}" fo:font-weight="${el.bold ? 'bold' : 'normal'}" fo:font-style="${el.italic ? 'italic' : 'normal'}"${el.fontFamily ? ` fo:font-family="${escape(el.fontFamily)}"` : ''}/></style:style>`;
+        shapes += `<draw:frame ${geometry}><draw:text-box><text:p text:style-name="${name}">${textXml(el.content)}</text:p></draw:text-box></draw:frame>`;
+      } else {
+        if (!hex(el.fill ?? '#4f46e5')) throw new Error('Invalid ODP shape fill');
+        styles += `<style:style style:name="${name}" style:family="graphic"><style:graphic-properties draw:fill="solid" draw:fill-color="${el.fill ?? '#4f46e5'}" draw:stroke="none"/></style:style>`;
+        shapes += `<draw:${el.type} draw:style-name="${name}" ${geometry}/>`;
+      }
+    }
+    const notes = slide.notes ? `<presentation:notes><draw:frame presentation:class="notes" svg:x="0in" svg:y="0in" svg:width="20in" svg:height="1in"><draw:text-box><text:p>${textXml(slide.notes)}</text:p></draw:text-box></draw:frame></presentation:notes>` : '';
+    pages += `<draw:page draw:name="${escape(slide.title ?? `Slide ${index + 1}`)}" draw:master-page-name="Default">${shapes}${notes}</draw:page>`;
+  }
+  const zip = new JSZip();
+  zip.file('mimetype', ODP_MIME, { compression: 'STORE' });
+  zip.file('content.xml', `<?xml version="1.0" encoding="UTF-8"?><office:document-content ${namespaces} office:version="1.3"><office:automatic-styles>${styles}</office:automatic-styles><office:body><office:presentation>${pages}</office:presentation></office:body></office:document-content>`);
+  zip.file('styles.xml', `<?xml version="1.0" encoding="UTF-8"?><office:document-styles ${namespaces} office:version="1.3"><office:styles/><office:automatic-styles><style:page-layout style:name="Page"><style:page-layout-properties fo:page-width="20in" fo:page-height="${px(height)}" style:print-orientation="landscape"/></style:page-layout></office:automatic-styles><office:master-styles><style:master-page style:name="Default" style:page-layout-name="Page"/></office:master-styles></office:document-styles>`);
+  zip.file('META-INF/manifest.xml', `<?xml version="1.0" encoding="UTF-8"?><manifest:manifest xmlns:manifest="${NS.manifest}" manifest:version="1.3"><manifest:file-entry manifest:full-path="/" manifest:media-type="${ODP_MIME}"/><manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/><manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/></manifest:manifest>`);
+  const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+  return readBytes(bytes, options);
+}
+
+export const odpAdapter = Object.freeze({
+  id: 'odp', extensions: ['odp'], mimeType: ODP_MIME,
+  import: importOdp,
+  async export(document, options) {
+    return { bytes: await writeOdp(document, options), diagnostics: [warning('subset-export', 'Native ODP subset export; deck metadata and section names are not preserved. Desktop Office/LibreOffice fidelity is not certified.')] };
+  },
+});

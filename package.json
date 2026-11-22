@@ -14,7 +14,8 @@
     "test:canvas": "vitest run --project chromium",
     "sync:officeview": "node scripts/sync-officeview.mjs",
     "check:boundaries": "node scripts/check-boundaries.mjs",
-    "test:consumer": "node scripts/check-consumer.mjs"
+    "test:consumer": "node scripts/check-consumer.mjs",
+    "test:types": "tsc -p tests/types/tsconfig.json"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
@@ -30,7 +31,8 @@
     "react-dom": "^18.3.1",
     "react-konva": "^18.2.16",
     "vite": "^5.4.11",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "typescript": "^5.6.3"
   },
   "workspaces": [
     "packages/*",
