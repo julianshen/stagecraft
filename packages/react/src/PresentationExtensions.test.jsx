@@ -1938,9 +1938,10 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     fireEvent.change(screen.getByLabelText('Paragraph 1 alignment'), { target: { value: 'center' } });
     expect(editor.getSnapshot().document.slides[0].objects[1].text.paragraphs[0].style.alignment).toBe('center');
 
-    // 3. Non-pptx native paragraph (no source.format) is disabled in ParagraphFormatFields
+    // 3. Non-pptx native paragraph (no source.format) is disabled in ParagraphFormatFields with read-only notice
     fireEvent.click(screen.getAllByLabelText('Select object t-unknown-native')[0]);
     expect(screen.getByLabelText('Paragraph 1 alignment')).toBeDisabled();
+    expect(screen.getByText('Native paragraph formatting is read-only.')).toBeTruthy();
   });
 
   it('does not resurrect cleared range selection after readOnly on->off->revision and cancels in-flight range color draft on concurrent revision', () => {
@@ -2024,5 +2025,78 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     // readOnly disables Apply colour
     rerender(<EditorProvider editor={editor}><PresentationEditor source={source} readOnly /></EditorProvider>);
     expect(screen.getByRole('button', { name: 'Range apply colour' })).toBeDisabled();
+  });
+
+  it('clears active range selection when fullText changes and renders readable label for unknown number bullet format and read-only native notice', () => {
+    // 1. fullText change clears active selection explicitly (real core-backed)
+    const doc = createDocument({
+      id: 'fulltext-clear-deck',
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 't-ft',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              runs: [{ id: 'r1', text: 'Hello', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = { capabilities: { readOnly: false, edits: ['existing-run-text', 'run-range-format'] }, export: vi.fn() };
+    const { unmount } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    fireEvent.click(screen.getAllByLabelText('Select object t-ft')[0]);
+    const rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 1;
+    rangeArea.selectionEnd = 4;
+    fireEvent.select(rangeArea);
+    expect(screen.getByRole('button', { name: 'Range bold' })).not.toBeDisabled();
+
+    // Mutate run text -> fullText changes from 'Hello' to 'Hello world'
+    act(() => {
+      editor.dispatch('document.setRunText', { runId: 'r1', text: 'Hello world' });
+    });
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+    expect(rangeArea.selectionStart).toBe(0);
+    expect(rangeArea.selectionEnd).toBe(0);
+    unmount();
+
+    // 2. Unknown number: bullet format renders readable label ("Number (romanParenR)")
+    const customEngine = makeTextTrancheEngine([{
+      id: 's1',
+      objects: [{
+        id: 't-num',
+        type: 'text',
+        geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+        extensions: { stagecraftAuthored: true },
+        text: {
+          paragraphs: [{
+            id: 'p-num',
+            style: { bullet: { type: 'number', format: 'romanParenR' } },
+            runs: [{ id: 'r-num', text: 'Item', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+          }],
+        },
+      }],
+    }]);
+    const paraSource = { capabilities: { readOnly: false, edits: ['paragraph-format'] }, export: vi.fn() };
+    render(
+      <EditorProvider editor={customEngine}>
+        <PresentationEditor source={paraSource} />
+      </EditorProvider>
+    );
+    fireEvent.click(screen.getAllByLabelText('Select object t-num')[0]);
+    const bulletSelect = screen.getByLabelText('Paragraph 1 bullet');
+    expect(bulletSelect).toHaveValue('number:romanParenR');
+    expect(within(bulletSelect).getByRole('option', { name: 'Number (romanParenR)' })).toBeTruthy();
   });
 });
