@@ -29,13 +29,12 @@ const requireArray = value => {
     fail('INVALID_SCHEMA');
 };
 const collections = ['themes', 'masters', 'layouts', 'assets', 'relationships', 'slides'];
-// XML-valid text that a native package may legitimately carry: tab, LF and CR are allowed;
-// every other C0 control and DEL is not. Used by the *global* schema so imported names and
-// notes are never narrowed to authoring limits.
-const xmlValidText = s => typeof s === 'string' && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(s);
+// XML-valid metadata, retaining the existing additional DEL restriction. Tab, LF and CR
+// are allowed; imported names and notes are not narrowed to authoring length limits.
+const xmlValidText = s => typeof s === 'string' && xmlValidChars(s) && !s.includes('\u007f');
 /**
  * Global, preservation-safe slide properties. Deliberately permissive: native packages keep
- * whatever name/notes text they already carry (only XML-invalid characters are rejected), and an
+ * name/notes text without authoring length limits (XML-invalid characters and DEL are rejected), and an
  * unknown `background.type` from a future reader is preserved rather than failing the document.
  * Authoring limits live in `validateAuthoredSlideProperties` instead.
  */
