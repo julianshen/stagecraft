@@ -352,7 +352,11 @@ export async function readOdp(zip, xml, mapping) {    if (await zip.file('mimety
             }
             if (is(n, 'draw', 'frame') && child(n, 'draw', 'image') && o.type !== 'table') {
                 o.type = 'image';
-                if (media.length) o.image = { assetId: media[0] };
+                if (media.length) {
+                    o.image = { assetId: media[0] };
+                    const title = child(n, 'svg', 'title')?.textContent;
+                    if (title) o.image.alt = title;
+                }
             }
             if (group)
                 o.children = objects(n, part, true);

@@ -35,7 +35,7 @@ it.each([['pptx', 'addImage'], ['pptx', 'addObject'], ['odp', 'addImage'], ['odp
       try {
         const image = reopened.document.slides[0].objects.find(o => o.type === 'image');
         expect(image).toBeDefined();
-        if (format === 'pptx') expect(image.image.alt).toBe(alt);
+        expect(image.image.alt).toBe(alt);
         const zip = await JSZip.loadAsync(output.bytes);
         const xml = new DOMParser().parseFromString(await zip.file(format === 'pptx' ? 'ppt/slides/slide1.xml' : 'content.xml').async('string'), 'application/xml');
         expect(xml.getElementsByTagName('parsererror')).toHaveLength(0);
