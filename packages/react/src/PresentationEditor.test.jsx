@@ -473,6 +473,19 @@ describe('canvas gestures and focus', () => {
     expect(editor.getSnapshot().document.slides[0].objects[0].geometry.x).toBe(x);
     vi.unstubAllGlobals();
   });
+  it('omits pointer resize handles for rotated native objects while retaining inspector edits', () => {
+    const rotated = object();
+    rotated.extensions = { editableGeometry: true };
+    rotated.geometry.rotation = 90;
+    const { editor } = mount({}, [rotated]);
+    select();
+    expect(screen.queryAllByLabelText('Resize object').length).toBe(0);
+    expect(editor.getSnapshot().revision).toBe(0);
+    fireEvent.change(screen.getByLabelText('Width (pt)'), { target: { value: '300' } });
+    fireEvent.blur(screen.getByLabelText('Width (pt)'));
+    expect(editor.getSnapshot().document.slides[0].objects[0].geometry).toMatchObject({ width: 3810000, rotation: 90 });
+    expect(editor.getSnapshot().revision).toBe(1);
+  });
   it('rejects stale gestures and resizes in one transaction', () => {
     const {
       editor

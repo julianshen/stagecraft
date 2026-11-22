@@ -23,6 +23,8 @@ const Context = createContext(null);
 const PT = 12700;
 const authored = object => object?.extensions?.stagecraftAuthored === true;
 const geometryEligible = object => !!object && ['text', 'shape', 'table', 'image', 'chart'].includes(object.type) && !!object.geometry && (authored(object) || object.extensions?.editableGeometry === true);
+// Pointer resize uses screen axes; rotated objects retain explicit inspector sizing.
+const pointerResizeEligible = object => geometryEligible(object) && (object.geometry.rotation ?? 0) % 360 === 0;
 function uuid() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   const bytes = new Uint8Array(16);
@@ -824,7 +826,7 @@ function Artwork({
             />
           </foreignObject>
         )}
-        {selected && <><rect x={x} y={y} width={width} height={h} fill="none" stroke="#2563eb" strokeWidth="2" pointerEvents="none" />{onResize && geometryEligible(object) && <rect aria-label="Resize object" x={x + width - 5} y={y + h - 5} width="10" height="10" fill="#2563eb" onPointerDown={event => {
+        {selected && <><rect x={x} y={y} width={width} height={h} fill="none" stroke="#2563eb" strokeWidth="2" pointerEvents="none" />{onResize && pointerResizeEligible(object) && <rect aria-label="Resize object" x={x + width - 5} y={y + h - 5} width="10" height="10" fill="#2563eb" onPointerDown={event => {
             event.stopPropagation();
             onResize(event, object);
           }} />}</>}
@@ -959,7 +961,7 @@ export function PresentationCanvas({
     event.stopPropagation();
     event.currentTarget.closest('[aria-label="Slide canvas"]')?.focus();
     ui.selectObject(object.id);
-    if (event.button !== 0 || !ui.can('object-geometry') || !geometryEligible(object)) return;
+    if (event.button !== 0 || !ui.can('object-geometry') || !geometryEligible(object) || (resize && !pointerResizeEligible(object))) return;
     const svg = event.currentTarget.ownerSVGElement,
       width = svg.getBoundingClientRect().width;
     if (!(width > 0)) return;
