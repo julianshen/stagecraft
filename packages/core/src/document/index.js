@@ -1181,6 +1181,17 @@ const move = (items, id, index) => {
   items.splice(index, 0, items.splice(from, 1)[0]);
 };
 const targetProperties = { slideId: idSchema, objectId: idSchema };
+/** Match the existing ODP writer's authored subset before a command can commit. */
+const validateOdpAuthoredObject = (document, object) => {
+  if (object.source?.format !== 'odp' && document.extensions?.sourceFormat !== 'odp') return;
+  if (object.geometry.rotation !== undefined && object.geometry.rotation !== 0) fail('UNSUPPORTED_ROTATION');
+  if (object.bodyLayout && (Object.keys(object.bodyLayout).some(key => key !== 'autofit') || !['none', 'resize'].includes(object.bodyLayout.autofit))) fail('UNSUPPORTED_EDIT');
+  const texts = [object.text, ...(object.table?.rows ?? []).flatMap(row => row.cells.map(cell => cell.text))];
+  for (const text of texts) for (const paragraph of text?.paragraphs ?? []) {
+    const style = paragraph.style;
+    if (style?.level > 0 && (!style.bullet || style.bullet.type === 'none')) fail('UNSUPPORTED_EDIT');
+  }
+};
 export const presentationPlugin = Object.freeze({
   id: 'canonical-presentation', version: '1', commands: [
     presentationCommand('addSlide', { slideId: idSchema, index: indexSchema }, ['slideId'], (d, p) => {
@@ -1189,7 +1200,10 @@ export const presentationPlugin = Object.freeze({
     }),
     presentationCommand('removeSlide', { slideId: idSchema }, ['slideId'], (d, p) => { slideFor(d, p); d.slides.splice(d.slides.findIndex(s => s.id === p.slideId), 1); }),
     presentationCommand('moveSlide', { slideId: idSchema, index: indexSchema }, ['slideId', 'index'], (d, p) => move(d.slides, p.slideId, p.index)),
-    presentationCommand('addObject', { slideId: idSchema, object: authoredObjectSchema }, ['slideId', 'object'], (d, p) => { slideFor(d, p).objects.push(p.object); }),
+    presentationCommand('addObject', { slideId: idSchema, object: authoredObjectSchema }, ['slideId', 'object'], (d, p) => {
+      validateOdpAuthoredObject(d, p.object);
+      slideFor(d, p).objects.push(p.object);
+    }),
     presentationCommand('removeObject', targetProperties, ['slideId', 'objectId'], (d, p) => { objectFor(d, p); const objects = slideFor(d, p).objects; objects.splice(objects.findIndex(o => o.id === p.objectId), 1); }),
     presentationCommand('moveObject', { ...targetProperties, index: indexSchema }, ['slideId', 'objectId', 'index'], (d, p) => move(slideFor(d, p).objects, p.objectId, p.index)),
     presentationCommand('setGeometry', { ...targetProperties, geometry: geometrySchema }, ['slideId', 'objectId', 'geometry'], (d, p) => {
@@ -1218,6 +1232,7 @@ export const presentationPlugin = Object.freeze({
       if (object.type !== 'text' && object.type !== 'shape') fail('UNSUPPORTED_EDIT');
       object.text = p.text;
       validateAuthoredObject(object);
+      validateOdpAuthoredObject(d, object);
     }),
     presentationCommand('setTableCell', { ...targetProperties, cellId: idSchema, text: authoredTextSchema }, ['slideId', 'objectId', 'cellId', 'text'], (d, p) => {
       const object = objectFor(d, p);
@@ -1226,6 +1241,7 @@ export const presentationPlugin = Object.freeze({
       if (!cell) fail('UNKNOWN_CELL');
       cell.text = p.text;
       validateAuthoredObject(object);
+      validateOdpAuthoredObject(d, object);
     }),
     presentationCommand('setChart', { ...targetProperties, chart: chartSchema }, ['slideId', 'objectId', 'chart'], (d, p) => {
       const object = objectFor(d, p);
@@ -1252,6 +1268,7 @@ export const presentationPlugin = Object.freeze({
     }),
     presentationCommand('addImage', { slideId: idSchema, object: authoredObjectSchema, asset: assetDescriptorSchema }, ['slideId', 'object', 'asset'], (d, p) => {
       if (p.object.type !== 'image' || p.object.image.assetId !== p.asset.id) fail('INVALID_PAYLOAD');
+      validateOdpAuthoredObject(d, p.object);
       slideFor(d, p).objects.push(p.object);
       d.assets.push({ id: p.asset.id, extensions: { stagecraftAuthored: true, contentType: p.asset.contentType } });
     })
