@@ -603,6 +603,7 @@ function setTextBodyLayout(document, payload) {
 const collectIds = d => {
   const ids = new Set();
   const add = value => { if (typeof value === 'string') ids.add(value); };
+  add(d.id);
   // Schema-aware: paragraph/run ids live under object.text and table cells, not at a fixed key.
   const text = value => {
     for (const paragraph of value?.paragraphs ?? []) {
@@ -809,8 +810,8 @@ export const documentPlugin = Object.freeze({
       id: 'document.setTextBodyLayout',
       description: 'Set autofit, wrap, anchor and insets on one text body. Null resets.',
       inputSchema: { type: 'object', properties: { objectId: idSchema, layout: { type: 'object', additionalProperties: false, minProperties: 1, properties: {
-        autofit: { enum: ['none', 'shrink', 'resize', 'null'] }, wrap: { enum: ['square', 'none', 'null'] }, anchor: { enum: ['top', 'middle', 'bottom', 'null'] },
-        insets: { type: 'object', additionalProperties: false, properties: { left: { type: ['integer', 'null'] }, top: { type: ['integer', 'null'] }, right: { type: ['integer', 'null'] }, bottom: { type: ['integer', 'null'] } } }
+        autofit: { enum: ['none', 'shrink', 'resize', null] }, wrap: { enum: ['square', 'none', null] }, anchor: { enum: ['top', 'middle', 'bottom', null] },
+        insets: { type: ['object', 'null'], additionalProperties: false, properties: { left: { type: ['integer', 'null'] }, top: { type: ['integer', 'null'] }, right: { type: ['integer', 'null'] }, bottom: { type: ['integer', 'null'] } } }
       } } }, required: ['objectId', 'layout'], additionalProperties: false },
       validate: validBodyLayoutPayload,
       apply: setTextBodyLayout

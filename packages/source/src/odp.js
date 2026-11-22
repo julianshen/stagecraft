@@ -32,6 +32,12 @@ export function readOdpTable(node, part, findStyle = () => undefined) {
     const table = child(node, 'table', 'table');
     if (!table)
         return null;
+    // Repetition needs bounded expansion before this can be a faithful canonical preview.
+    // Until supported, retain the whole native table instead of silently dropping instances.
+    for (const [name, attribute] of [['table-row', 'number-rows-repeated'], ['table-column', 'number-columns-repeated'], ['table-cell', 'number-columns-repeated'], ['covered-table-cell', 'number-columns-repeated']]) {
+        if (all(table, 'table', name).some(n => n.hasAttributeNS(NS.table, attribute) && Number(attr(n, 'table', attribute)) !== 1))
+            return null;
+    }
     const columns = children(table).filter(n => is(n, 'table', 'table-column')).map(n => {
         let raw = attr(n, 'style', 'column-width');
         let style = findStyle(part, 'table-column', attr(n, 'table', 'style-name'));
