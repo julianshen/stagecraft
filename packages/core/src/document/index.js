@@ -952,7 +952,7 @@ const authoredImage = value => {
   exact(value, ['assetId'], ['alt']);
   if (!nonempty(value.assetId))
     fail('INVALID_AUTHORED_SCHEMA');
-  if (value.alt !== undefined && (typeof value.alt !== 'string' || value.alt.length > 512 || /[\u0000-\u001f\u007f]/.test(value.alt)))
+  if (value.alt !== undefined && (typeof value.alt !== 'string' || value.alt.length > 512 || !xmlValidChars(value.alt) || /[\u0000-\u001f\u007f]/.test(value.alt)))
     fail('INVALID_AUTHORED_SCHEMA');
 };
 const AUTHORED_KEYS = {
