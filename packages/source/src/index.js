@@ -6,7 +6,7 @@ import { inspectZip } from '@stagecraft/io/zip';
 import { runtime, xmlPart, locate, validText, all, child, children, NS } from './xml.js';
 import { readPptx } from './pptx.js';
 import { readOdp, patchOdp } from './odp.js';
-import { authoringDiff, prepareAuthoring, encodeCarriageReturns } from './authoring.js';
+import { authoringDiff, prepareAuthoring } from './authoring.js';
 import { odpFormattingWriter } from './odp-format.js';
 const clone = value => cloneJson(value);
 // CT_TextCharacterProperties is ordered. Insert edited children without rebuilding retained XML.
@@ -277,7 +277,7 @@ export async function openPresentation(source, options = {}) {
 
             }
             if (applyAuthoring) dirtyParts = [...new Set([...dirtyParts, ...await applyAuthoring()])].sort();
-            for (const part of dirtyParts) if (docs.has(part)) working.file(part, encodeCarriageReturns(xml.serialize(docs.get(part))));
+            for (const part of dirtyParts) if (docs.has(part)) working.file(part, xml.serialize(docs.get(part)));
             let output = working;
             if (format === 'odp') {
                 output = new JSZip();
