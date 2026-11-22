@@ -22,12 +22,22 @@ export function CanonicalKonvaStage(props) {
   const stage = useRef(null);
   const nodes = useRef(new Map());
   const [error, setError] = useState('');
+  const [contentEl, setContentEl] = useState(null);
+  const prevSelection = useRef(selection);
+  function setStageRef(node) {
+    stage.current = node;
+    const next = node?.getContent?.() ?? null;
+    setContentEl(prev => (prev === next ? prev : next));
+  }
   function report(cause) {
     setError(String(cause?.code ?? 'MOVE_FAILED'));
     try { latest.current.onError?.(cause); } catch { /* Host reporting must not prevent node restoration. */ }
   }
+  function staticEligible(p, object) {
+    return p.readOnly === false && !!p.view && typeof p.onMove === 'function' && movable(object, p.snapshot.document.extensions);
+  }
   function eligible(p, object) {
-    if (p.readOnly !== false || !p.view || typeof p.onMove !== 'function' || !movable(object, p.snapshot.document.extensions)) return false;
+    if (!staticEligible(p, object)) return false;
     try { return p.canMove?.(object) === true; } catch (cause) { report(cause); return false; }
   }
   function restore(id) {
@@ -42,9 +52,16 @@ export function CanonicalKonvaStage(props) {
     const g = gesture.current;
     gesture.current = null;
     if (g) {
+      if (g.rafId != null) cancelAnimationFrame(g.rafId);
       try { stage.current?.getContent()?.releasePointerCapture?.(g.pointerId); } catch {}
       restore(g.objectId);
     }
+  }
+  function checkRect() {
+    const g = gesture.current;
+    if (!g) return;
+    const rect = stage.current?.getContent()?.getBoundingClientRect();
+    if (!rect || rect.width !== g.rect.width || rect.height !== g.rect.height || rect.left !== g.rect.left || rect.top !== g.rect.top) cancel();
   }
   function gestureValid(g) {
     const p = latest.current;
@@ -54,7 +71,7 @@ export function CanonicalKonvaStage(props) {
       && p.selection?.slideId === g.slideId && p.selection?.objectId === g.objectId
       && p.view?.scale === g.view.scale && p.view?.x === g.view.x && p.view?.y === g.view.y
       && p.viewport?.width === g.viewport.width && p.viewport?.height === g.viewport.height
-      && p.readOnly === false && typeof p.onMove === 'function' && movable(object, p.snapshot.document.extensions);
+      && staticEligible(p, object);
   }
   function current(g) {
     if (!gestureValid(g)) return false;
@@ -86,9 +103,16 @@ export function CanonicalKonvaStage(props) {
     const rect = content?.getBoundingClientRect();
     if (!rect?.width || !rect?.height) return;
     try { content.setPointerCapture?.(event.evt.pointerId); } catch {}
-    gesture.current = { rect, cssX: rect.width / p.viewport.width, cssY: rect.height / p.viewport.height, object, objectId: object.id, slideId, ownerKey: p.ownerKey, policyKey: p.policyKey,
+    const g = { rect, cssX: rect.width / p.viewport.width, cssY: rect.height / p.viewport.height, object, objectId: object.id, slideId, ownerKey: p.ownerKey, policyKey: p.policyKey,
       revision: p.snapshot.revision, view: { ...p.view }, viewport: { ...p.viewport },
-      pointerId: event.evt.pointerId, x: event.evt.clientX, y: event.evt.clientY };
+      pointerId: event.evt.pointerId, capturedElement: content, x: event.evt.clientX, y: event.evt.clientY, rafId: null };
+    gesture.current = g;
+    function watchLayout() {
+      if (gesture.current !== g) return;
+      checkRect();
+      if (gesture.current === g) g.rafId = requestAnimationFrame(watchLayout);
+    }
+    g.rafId = requestAnimationFrame(watchLayout);
   }
   // Revalidate both on commit and on renders. Effects alone cannot guard a late pointerup.
   useLayoutEffect(() => { if (gesture.current && !current(gesture.current)) cancel(); });
@@ -110,16 +134,11 @@ export function CanonicalKonvaStage(props) {
       if (valid) commit(g.object, moveFromCss(g.object.geometry, { x: (event.clientX - g.x) / g.cssX, y: (event.clientY - g.y) / g.cssY }, g.view), g.revision);
     }
     function cancelPointer(event) { if (gesture.current?.pointerId === event.pointerId) cancel(); }
-    function key(event) { if (event.key === 'Escape') cancel(); }
-    function checkRect() {
+    function cancelLostCapture(event) {
       const g = gesture.current;
-      if (!g) return;
-      const rect = stage.current?.getContent()?.getBoundingClientRect();
-      if (!rect || rect.width !== g.rect.width || rect.height !== g.rect.height || rect.left !== g.rect.left || rect.top !== g.rect.top) cancel();
+      if (g && event.pointerId === g.pointerId && event.target === g.capturedElement) cancel();
     }
-    const content = stage.current?.getContent();
-    const ro = typeof ResizeObserver === 'function' && content ? new ResizeObserver(checkRect) : null;
-    ro?.observe(content);
+    function key(event) { if (event.key === 'Escape') cancel(); }
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', end);
     window.addEventListener('pointercancel', cancelPointer);
@@ -127,26 +146,39 @@ export function CanonicalKonvaStage(props) {
     window.addEventListener('keydown', key);
     window.addEventListener('scroll', checkRect, { capture: true, passive: true });
     const element = region.current;
-    element?.addEventListener('lostpointercapture', cancelPointer);
+    element?.addEventListener('lostpointercapture', cancelLostCapture);
     return () => {
       cancel();
-      ro?.disconnect();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', cancelPointer);
       window.removeEventListener('blur', cancel);
       window.removeEventListener('keydown', key);
       window.removeEventListener('scroll', checkRect, { capture: true });
-      element?.removeEventListener('lostpointercapture', cancelPointer);
+      element?.removeEventListener('lostpointercapture', cancelLostCapture);
     };
   }, []);
   useLayoutEffect(() => {
-    if (selection?.objectId && selection.slideId === slideId && (!slide || !slide.objects.some(o => o.id === selection.objectId))) {
-      onSelectionChange?.({ slideId: slide?.id ?? null, objectId: null });
+    if (!contentEl || typeof ResizeObserver !== 'function') return;
+    const ro = new ResizeObserver(checkRect);
+    ro.observe(contentEl);
+    return () => ro.disconnect();
+  }, [contentEl]);
+  useLayoutEffect(() => {
+    if (prevSelection.current?.slideId !== selection?.slideId || prevSelection.current?.objectId !== selection?.objectId) {
+      prevSelection.current = selection;
+      setError('');
     }
-  }, [slide, slideId, selection?.slideId, selection?.objectId, onSelectionChange]);
+  }, [selection?.slideId, selection?.objectId]);
+  useLayoutEffect(() => {
+    if (!selection?.objectId) return;
+    const selectedSlide = snapshot.document.slides.find(s => s.id === selection.slideId);
+    if (!selectedSlide || !selectedSlide.objects.some(o => o.id === selection.objectId)) {
+      onSelectionChange?.({ slideId: selectedSlide?.id ?? slide?.id ?? null, objectId: null });
+    }
+  }, [snapshot.document.slides, slide, selection?.slideId, selection?.objectId, onSelectionChange]);
   function keyboard(event) {
-    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return;
     const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
     const p = latest.current;
@@ -155,10 +187,10 @@ export function CanonicalKonvaStage(props) {
     event.preventDefault(); cancel(); setError('');
     commit(object, { x: object.geometry.x + delta[0] * EMU_PER_POINT, y: object.geometry.y + delta[1] * EMU_PER_POINT }, p.snapshot.revision);
   }
-  return <section ref={region} role="region" aria-label="Canonical slide canvas" tabIndex={0} onKeyDown={keyboard} style={{ position: 'relative' }}>
+  return <section ref={region} role="region" aria-label="Canonical slide canvas" tabIndex={0} onKeyDown={keyboard}>
     <p role="status">Primitive scene only. Unsupported objects are placeholders.</p>
-    {error && <p role="alert" style={{ position: 'absolute', top: 8, right: 8, margin: 0, pointerEvents: 'none' }}>{error}</p>}
-    {!view || !slide ? <p>Canvas unavailable</p> : <Stage ref={stage} width={viewport.width} height={viewport.height}
+    <div style={{ minHeight: '1.5em' }}>{error && <p role="alert" style={{ margin: 0 }}>{error}</p>}</div>
+    {!view || !slide ? <p>Canvas unavailable</p> : <Stage ref={setStageRef} width={viewport.width} height={viewport.height}
       onPointerDown={event => { if (event.target === event.target.getStage() && event.evt.button === 0 && event.evt.isPrimary !== false) { cancel(); setError(''); onSelectionChange?.({ slideId, objectId: null }); } }}>
       <Layer><Group x={view.x} y={view.y} scaleX={view.scale} scaleY={view.scale}>
         {slide.objects.filter(o => validGeometry(o.geometry)).map(object => {

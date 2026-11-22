@@ -1,6 +1,7 @@
 import React, { useState, useSyncExternalStore } from 'react';
 import { render, fireEvent, cleanup, act } from '@testing-library/react';
 import { afterEach, it, expect, vi } from 'vitest';
+import { cdp } from '@vitest/browser/context';
 import { createEditor } from '../../packages/core/src/editor/index.js';
 import { createDocument, documentPlugin, presentationPlugin } from '../../packages/core/src/document/index.js';
 import { CanonicalKonvaStage } from './CanonicalKonvaStage.jsx';
@@ -72,7 +73,7 @@ it.each(['Escape', 'blur', 'pointercancel', 'lostpointercapture'])('cancels %s w
   const editor = fixture(); const moves = vi.fn(); const ui = render(<Host editor={editor} readOnly={false} onMove={moves} />);
   pointer(ui, 'pointerdown', 60, 60); pointer(ui, 'pointermove', 100, 80);
   if (cancelEvent === 'Escape') fireEvent.keyDown(window, { key: 'Escape' });
-  else fireEvent(cancelEvent === 'lostpointercapture' ? ui.getByRole('region') : window, new PointerEvent(cancelEvent, { pointerId: 1 }));
+  else fireEvent(cancelEvent === 'lostpointercapture' ? ui.container.querySelector('.konvajs-content') : window, new PointerEvent(cancelEvent, { bubbles: true, pointerId: 1 }));
   pointer(ui, 'pointerup', 100, 80);
   expect(moves).not.toHaveBeenCalled(); expect(editor.getSnapshot().revision).toBe(0);
 });
@@ -242,35 +243,117 @@ it('cancels cleanly without throwing when viewport becomes null mid-drag', () =>
   expect(moves).not.toHaveBeenCalled();
   expect(editor.getSnapshot().revision).toBe(0);
 });
-it('ignores non-primary blank-stage pointerdown and modified arrow keys', () => {
+it('ignores non-primary blank-stage pointerdown and modified arrow keys, but allows Shift+Arrow', () => {
   const editor = fixture(); const ui = render(<Host editor={editor} readOnly={false} />);
   fireEvent.click(ui.getByRole('button', { name: 'Select r' }));
-  for (const mod of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey']) {
+  for (const mod of ['altKey', 'ctrlKey', 'metaKey']) {
     fireEvent.keyDown(ui.getByRole('region'), { key: 'ArrowRight', [mod]: true });
   }
   expect(editor.getSnapshot().revision).toBe(0);
+  fireEvent.keyDown(ui.getByRole('region'), { key: 'ArrowRight', shiftKey: true });
+  expect(editor.getSnapshot().revision).toBe(1);
   pointer(ui, 'pointerdown', 80, 60);
   pointer(ui, 'pointermove', 120, 80);
   pointer(ui, 'pointerdown', 10, 10, undefined, { button: 2, isPrimary: false });
   pointer(ui, 'pointerup', 120, 80);
-  expect(editor.getSnapshot().revision).toBe(1);
+  expect(editor.getSnapshot().revision).toBe(2);
 });
-it('clears error alert on new selection without shifting canvas and preserves selection on another slide', () => {
+it('clears error alert on host selection change, keeps alert outside canvas, and validates cross-slide selection', () => {
   const editor = fixture(() => false);
-  const ui = render(<Host editor={editor} readOnly={false} />);
-  const canvasBefore = ui.container.querySelector('.konvajs-content').getBoundingClientRect().top;
-  fireEvent.click(ui.getByRole('button', { name: 'Select r' }));
+  const HostControlled = ({ selection }) => {
+    const snapshot = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
+    return <CanonicalKonvaStage snapshot={snapshot} slideId="s" selection={selection} onSelectionChange={() => {}}
+      ownerKey={ownerKey} policyKey={policyKey} viewport={{ width: 400, height: 200 }} readOnly={false}
+      canMove={() => true} onMove={req => editor.dispatch('presentation.setGeometry', { ...req, geometry: { x: req.geometry.x, y: req.geometry.y, width: 254000, height: 127000 } })} />;
+  };
+  const ui = render(<HostControlled selection={{ slideId: 's', objectId: 'r' }} />);
+  const canvasRect = ui.container.querySelector('.konvajs-content').getBoundingClientRect();
   fireEvent.keyDown(ui.getByRole('region'), { key: 'ArrowRight' });
-  expect(ui.getByRole('alert')).toBeTruthy();
-  expect(ui.container.querySelector('.konvajs-content').getBoundingClientRect().top).toBe(canvasBefore);
-  fireEvent.click(ui.getByRole('button', { name: 'Select opaque' }));
+  const alert = ui.getByRole('alert');
+  expect(alert).toBeTruthy();
+  const alertRect = alert.getBoundingClientRect();
+  expect(ui.container.querySelector('.konvajs-content').getBoundingClientRect().top).toBe(canvasRect.top);
+  expect(alertRect.bottom <= canvasRect.top || alertRect.top >= canvasRect.bottom).toBe(true);
+  ui.rerender(<HostControlled selection={{ slideId: 's', objectId: 'opaque' }} />);
   expect(ui.queryByRole('alert')).toBeNull();
 
   const onSelectionChange = vi.fn();
-  const editor2 = fixture();
-  render(<CanonicalKonvaStage snapshot={editor2.getSnapshot()} slideId="s" selection={{ slideId: 'other', objectId: 'x' }}
+  const doc2 = createDocument({ size: { width: 1270000, height: 635000 }, slides: [
+    { id: 's', objects: [{ id: 'r', type: 'shape', shape: 'rect', fill: '#123456', geometry: { x: 127000, y: 127000, width: 254000, height: 127000 } }] },
+    { id: 'other', objects: [{ id: 'x', type: 'shape', shape: 'rect', fill: '#123456', geometry: { x: 127000, y: 127000, width: 254000, height: 127000 } }] },
+  ] });
+  const editor2 = createEditor({ document: doc2, plugins: [documentPlugin, presentationPlugin] });
+  const ui2 = render(<CanonicalKonvaStage snapshot={editor2.getSnapshot()} slideId="s" selection={{ slideId: 'other', objectId: 'x' }}
     ownerKey={ownerKey} policyKey={policyKey} viewport={{ width: 400, height: 200 }} onSelectionChange={onSelectionChange} />);
   expect(onSelectionChange).not.toHaveBeenCalled();
+  ui2.rerender(<CanonicalKonvaStage snapshot={editor2.getSnapshot()} slideId="s" selection={{ slideId: 'other', objectId: 'missing' }}
+    ownerKey={ownerKey} policyKey={policyKey} viewport={{ width: 400, height: 200 }} onSelectionChange={onSelectionChange} />);
+  expect(onSelectionChange).toHaveBeenCalledWith({ slideId: 'other', objectId: null });
+  onSelectionChange.mockClear();
+  ui2.rerender(<CanonicalKonvaStage snapshot={editor2.getSnapshot()} slideId="s" selection={{ slideId: 'gone', objectId: 'x' }}
+    ownerKey={ownerKey} policyKey={policyKey} viewport={{ width: 400, height: 200 }} onSelectionChange={onSelectionChange} />);
+  expect(onSelectionChange).toHaveBeenCalledWith({ slideId: 's', objectId: null });
+});
+it('ignores bubbling lostpointercapture from child canvas during drag', () => {
+  const editor = fixture(); const moves = vi.fn(); const ui = render(<Host editor={editor} readOnly={false} onMove={moves} />);
+  pointer(ui, 'pointerdown', 80, 60); pointer(ui, 'pointermove', 120, 80);
+  fireEvent(ui.container.querySelector('canvas'), new PointerEvent('lostpointercapture', { bubbles: true, pointerId: 1 }));
+  pointer(ui, 'pointerup', 120, 80);
+  expect(moves).toHaveBeenCalledTimes(1); expect(editor.getSnapshot().revision).toBe(1);
+});
+it('observes content resize even when Stage mounts after initial null viewport', async () => {
+  const editor = fixture(); const moves = vi.fn();
+  const ui = render(<Host editor={editor} readOnly={false} onMove={moves} viewport={null} />);
+  ui.rerender(<Host editor={editor} readOnly={false} onMove={moves} viewport={{ width: 400, height: 200 }} />);
+  await frame();
+  const content = ui.container.querySelector('.konvajs-content');
+  pointer(ui, 'pointerdown', 80, 60); pointer(ui, 'pointermove', 120, 80); await frame();
+  expect(pixel(ui, 130, 80)).toEqual([18, 52, 86, 255]);
+  content.style.width = '300px';
+  await frame(); await frame();
+  expect(pixel(ui, 80, 60)).toEqual([18, 52, 86, 255]);
+  expect(pixel(ui, 130, 80)[3]).toBe(0);
+  pointer(ui, 'pointerup', 120, 80);
+  expect(moves).not.toHaveBeenCalled(); expect(editor.getSnapshot().revision).toBe(0);
+});
+it('cancels and restores pixels on non-scroll/non-resize layout shift mid-drag', async () => {
+  const editor = fixture(); const moves = vi.fn();
+  const ui = render(<Host editor={editor} readOnly={false} onMove={moves} />); await frame();
+  pointer(ui, 'pointerdown', 80, 60); pointer(ui, 'pointermove', 120, 80); await frame();
+  expect(pixel(ui, 130, 80)).toEqual([18, 52, 86, 255]);
+  const banner = document.createElement('div'); banner.style.height = '40px'; ui.container.prepend(banner);
+  await frame(); await frame();
+  expect(pixel(ui, 80, 60)).toEqual([18, 52, 86, 255]);
+  expect(pixel(ui, 130, 80)[3]).toBe(0);
+  pointer(ui, 'pointerup', 120, 80);
+  expect(moves).not.toHaveBeenCalled(); expect(editor.getSnapshot().revision).toBe(0);
+});
+it('captures pointer via real CDP mouse and touch input and releases after drag', async () => {
+  const editor = fixture(); const ui = render(<Host editor={editor} readOnly={false} />);
+  const content = ui.container.querySelector('.konvajs-content');
+  const rect = content.getBoundingClientRect();
+  let capturedDuringMouse = false, capturedDuringTouch = false;
+  let capturedIdMouse = null, capturedIdTouch = null;
+  const onGot = e => {
+    if (e.pointerType === 'mouse') { capturedIdMouse = e.pointerId; capturedDuringMouse = content.hasPointerCapture(e.pointerId); }
+    if (e.pointerType === 'touch') { capturedIdTouch = e.pointerId; capturedDuringTouch = content.hasPointerCapture(e.pointerId); }
+  };
+  content.addEventListener('gotpointercapture', onGot);
+  const session = cdp();
+  // Real mouse drag
+  await session.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: rect.left + 80, y: rect.top + 60, button: 'left', buttons: 1, clickCount: 1 });
+  await session.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: rect.left + 120, y: rect.top + 80, button: 'left', buttons: 1 });
+  await session.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: rect.left + 120, y: rect.top + 80, button: 'left', buttons: 0 });
+  expect(capturedDuringMouse).toBe(true);
+  expect(content.hasPointerCapture(capturedIdMouse)).toBe(false);
+  expect(editor.getSnapshot().revision).toBe(1);
+  // Real touch drag (shape is now at +40, +20 -> 120, 80)
+  await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: rect.left + 120, y: rect.top + 80, id: 0 }] });
+  await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: rect.left + 140, y: rect.top + 90, id: 0 }] });
+  await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  expect(capturedDuringTouch).toBe(true);
+  expect(content.hasPointerCapture(capturedIdTouch)).toBe(false);
+  expect(editor.getSnapshot().revision).toBe(2);
 });
 it('does not re-evaluate canMove on every pointermove', () => {
   const editor = fixture();
