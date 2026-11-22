@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createEditor } from '../../core/src/index.js';
-import { createProtectedSession, SessionError } from './index.js';
+import { createProtectedSession, createSessionRequestHandler, SessionError } from './index.js';
 
 const plugin = { id: 'test', version: '1', commands: [{ id: 'title', apply(draft, payload) { draft.title = payload; return draft; } }] };
 function fixture(options = {}) {
@@ -81,6 +81,21 @@ describe('protected sessions', () => {
     await expect(fixture().session.export()).rejects.toMatchObject({ code: 'UNSUPPORTED' });
     await expect(fixture({ authorize: ({ operation }) => operation !== 'context' }).session.context()).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
   });
+  it('validates protected outputs strictly: no accessors, no NaN coercion, bounded depth', async () => {
+    let invoked = 0;
+    await expect(fixture({ project: () => ({ get value() { invoked++; return NaN; } }) }).session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    expect(invoked).toBe(0);
+    await expect(fixture({ project: () => NaN }).session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    let deep = {}; for (let n = 0; n < 70; n++) deep = { nested: deep };
+    const { editor, session } = fixture({ project: ({ snapshot }) => snapshot.document });
+    await session.dispatch({ type: 'title', payload: 'committed', expectedRevision: 0 });
+    await expect(fixture({ project: () => deep }).session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(fixture({ project: () => deep }).session.dispatch({ type: 'title', payload: 'deep', expectedRevision: 0 })).rejects.toMatchObject({ code: 'INVALID_RESPONSE', committed: true, revision: 1 });
+    expect(editor.getSnapshot().revision).toBe(1);
+    const handler = createSessionRequestHandler(fixture({ project: () => deep }).session);
+    expect(await handler({ version: 1, operation: 'read', input: {} })).toMatchObject({ ok: false, error: { code: 'INVALID_RESPONSE', committed: false, outcome: 'not-committed' } });
+    expect(await handler({ version: 1, operation: 'dispatch', input: { type: 'title', expectedRevision: 0 } })).toMatchObject({ ok: false, error: { code: 'INVALID_RESPONSE', committed: true, outcome: 'committed', revision: 1 } });
+  });
   it('caps projections, rejects non-JSON providers and redacts leaked errors', async () => {
     await expect(fixture({ project: () => { throw new SessionError('RESTRICTED'); } }).session.read()).rejects.toMatchObject({ code: 'OPERATION_FAILED', message: 'OPERATION_FAILED' });
     await expect(fixture({ project: () => { throw { get code() { throw Error('RESTRICTED'); } }; } }).session.read()).rejects.toMatchObject({ code: 'OPERATION_FAILED', message: 'OPERATION_FAILED' });
@@ -105,6 +120,39 @@ describe('protected sessions', () => {
     await expect(session.read()).rejects.toMatchObject({ code: 'SESSION_CLOSED' });
     await expect(session.listCommands()).rejects.toMatchObject({ code: 'SESSION_CLOSED' });
     expect(editor.getSnapshot().revision).toBe(1);
+  });
+  it('refuses to reach the kernel when close lands in the authorization microtask', async () => {
+    const { editor, session } = fixture();
+    const pending = session.dispatch({ type: 'title', payload: 'closed', expectedRevision: 0 });
+    queueMicrotask(() => session.close());
+    await expect(pending).rejects.toMatchObject({ code: 'SESSION_CLOSED', committed: false });
+    expect(editor.getSnapshot().revision).toBe(0);
+    expect(editor.getSnapshot().document.title).toBe('public');
+  });
+  it('retains an authoritative committed receipt when close lands during post-commit projection', async () => {
+    const gate = deferred(); const entered = deferred();
+    const { editor, session } = fixture({ project: async ({ snapshot }) => { entered.resolve(); await gate.promise; return { title: snapshot.document.title }; } });
+    const pending = session.dispatch({ type: 'title', payload: 'committed', expectedRevision: 0 });
+    await entered.promise;
+    session.close(); gate.resolve();
+    await expect(pending).rejects.toMatchObject({ code: 'SESSION_CLOSED', committed: true, revision: 1 });
+    expect(editor.getSnapshot().revision).toBe(1);
+  });
+  it('stops discovery policy callbacks once the session closes', async () => {
+    const gate = deferred(); const calls = [];
+    const editor = createEditor({ document: { title: 'x' }, plugins: [{ id: 'multi', version: '1', commands: [
+      { id: 'a', apply: draft => draft }, { id: 'b', apply: draft => draft },
+    ] }] });
+    const session = createProtectedSession({ editor, identity: { id: 'trusted' }, authorize: ({ operation, request }) => {
+      calls.push(`${operation}:${request?.type ?? ''}`);
+      if (operation === 'tool' && request.type === 'a') return gate.promise;
+      return true;
+    }, project: ({ snapshot }) => snapshot.document });
+    const pending = session.listCommands();
+    while (!calls.includes('tool:a')) await Promise.resolve();
+    session.close(); gate.resolve(true);
+    await expect(pending).rejects.toMatchObject({ code: 'SESSION_CLOSED' });
+    expect(calls).toEqual(['tools:', 'tool:a']);
   });
   it('rejects an in-flight operation after close', async () => {
     const gate = deferred();

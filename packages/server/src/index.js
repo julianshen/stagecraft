@@ -11,14 +11,43 @@ export class SessionError extends Error {
   }
 }
 
-function json(value, maxBytes) {
-  const text = JSON.stringify(value);
+/**
+ * One strict, descriptor-based validator/clone for every protected byte crossing the boundary:
+ * accessors and toJSON are never invoked, non-finite numbers, functions, bigints and symbols are
+ * rejected instead of silently coerced, depth and node counts are bounded, then a byte cap applies.
+ * Output failures throw `code`; the input protocol path passes 'INVALID_REQUEST', protected outputs
+ * pass 'INVALID_RESPONSE'. Byte overflow always stays RESPONSE_LIMIT.
+ */
+function strictJson(value, maxBytes, code) {
+  if (value === undefined) throw new SessionError('RESPONSE_LIMIT');
+  const pending = [[value, 0]];
+  let nodes = 0;
+  while (pending.length) {
+    const [item, depth] = pending.pop();
+    if (++nodes > 100000 || depth > 64) throw new SessionError(code);
+    if (item && typeof item === 'object') {
+      for (const key of Reflect.ownKeys(item)) {
+        if (Array.isArray(item) && key === 'length') continue;
+        if (typeof key !== 'string') throw new SessionError(code);
+        const descriptor = Object.getOwnPropertyDescriptor(item, key);
+        if (!descriptor || !('value' in descriptor)) throw new SessionError(code);
+        pending.push([descriptor.value, depth + 1]);
+      }
+    } else if (typeof item === 'function' || typeof item === 'bigint' || typeof item === 'symbol') throw new SessionError(code);
+    else if (typeof item === 'number' && !Number.isFinite(item)) throw new SessionError(code);
+  }
+  // cloneJson rejects cycles, prototype pollution and async thenables before serialization.
+  const text = JSON.stringify(cloneJson(value));
   if (typeof text !== 'string' || new TextEncoder().encode(text).length > maxBytes) throw new SessionError('RESPONSE_LIMIT');
   return JSON.parse(text);
 }
 
+function json(value, maxBytes) {
+  return strictJson(value, maxBytes, 'INVALID_RESPONSE');
+}
+
 const publicCodes = new Set(['STALE_REVISION', 'UNKNOWN_COMMAND', 'INVALID_PAYLOAD', 'CANCELLED', 'UNAUTHORIZED', 'DISPOSED',
-  'RESPONSE_LIMIT', 'SESSION_CLOSED', 'UNSUPPORTED', 'REVISION_REQUIRED', 'INVALID_REQUEST']);
+  'RESPONSE_LIMIT', 'SESSION_CLOSED', 'UNSUPPORTED', 'REVISION_REQUIRED', 'INVALID_REQUEST', 'INVALID_RESPONSE']);
 
 export function createProtectedSession({ editor, identity, authorize, project, context, exportDocument, maxResponseBytes = 1048576 }) {
   if (!editor || typeof authorize !== 'function' || typeof project !== 'function' || !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1) {
@@ -49,13 +78,17 @@ export function createProtectedSession({ editor, identity, authorize, project, c
       const snapshot = editor.getSnapshot();
       const input = json(cloneJson(request), maxResponseBytes);
       await permit(operation, snapshot, input);
+      // Returning from permit crossed an await boundary; re-check before any callback runs.
+      check();
       const document = await projection(snapshot, operation);
       let result;
       if (operation === 'context') {
         // A provider sees ONLY the projected document, never the canonical snapshot.
+        check();
         result = context ? await context({ document, revision: snapshot.revision, request: input }) : { revision: snapshot.revision };
       } else if (operation === 'export') {
         if (!exportDocument) throw new SessionError('UNSUPPORTED');
+        check();
         result = await exportDocument({ document, revision: snapshot.revision, request: input });
       } else result = { document, revision: snapshot.revision };
       check();
@@ -74,6 +107,9 @@ export function createProtectedSession({ editor, identity, authorize, project, c
       if (snapshot.revision !== input.expectedRevision) throw new SessionError('STALE_REVISION');
       if (input.dryRun !== undefined && typeof input.dryRun !== 'boolean') throw new SessionError('INVALID_REQUEST');
       await permit(operation, snapshot, input);
+      // Returning from permit crossed an await boundary; re-check closure before the kernel can
+      // commit, so a close landing in that window never reaches the editor.
+      check();
       // The kernel checks this revision synchronously; authorization cannot race a second writer.
       const meta = { expectedRevision: snapshot.revision, dryRun: input.dryRun === true, origin: 'remote' };
       const result = operation === 'transact' ? editor.transact(input.commands, meta)
@@ -81,6 +117,7 @@ export function createProtectedSession({ editor, identity, authorize, project, c
       revision = result.revision;
       committed = result.changed && !result.dryRun;
       // Capture the exact result before awaiting projection. Never reread a newer editor state.
+      check();
       const document = await projection({ document: result.document, revision }, operation);
       return json({ document, revision, changed: result.changed, dryRun: result.dryRun }, maxResponseBytes);
     } catch (error) {
@@ -109,9 +146,16 @@ export function createProtectedSession({ editor, identity, authorize, project, c
         check();
         const snapshot = editor.getSnapshot();
         await permit('tools', snapshot, {});
+        check();
         const commands = [];
         for (const command of editor.getCommands()) {
-          if (await authorize({ identity: json(actor, maxResponseBytes), operation: 'tool', snapshot, request: { type: command.id } }) === true) commands.push(command);
+          // Re-check after every policy await so a close cannot start the next callback, and a
+          // hanging later policy can never stall an already-closed session.
+          if (await authorize({ identity: json(actor, maxResponseBytes), operation: 'tool', snapshot, request: { type: command.id } }) !== true) continue;
+          check();
+          // Explicit descriptors: undefined description/inputSchema keys would fail the strict
+          // output validation (undefined values are never silently coerced or dropped).
+          commands.push({ id: command.id, ...(command.description === undefined ? {} : { description: command.description }), ...(command.inputSchema === undefined ? {} : { inputSchema: command.inputSchema }) });
         }
         check();
         return json(commands, maxResponseBytes);
@@ -130,22 +174,9 @@ function keys(value, allowed) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !allowed.includes(key))) invalid();
 }
 function boundedJson(value, limit) {
-  // Bound traversal before copying or serializing. Descriptors avoid invoking accessors.
-  const pending = [[value, 0]];
-  let nodes = 0;
-  while (pending.length) {
-    const [item, depth] = pending.pop();
-    if (++nodes > 100000 || depth > 64) invalid();
-    if (item && typeof item === 'object') {
-      for (const key of Reflect.ownKeys(item)) {
-        if (Array.isArray(item) && key === 'length') continue;
-        const descriptor = Object.getOwnPropertyDescriptor(item, key);
-        if (!('value' in descriptor)) invalid();
-        pending.push([descriptor.value, depth + 1]);
-      }
-    }
-  }
-  try { return json(cloneJson(value), limit); } catch { invalid(); }
+  // Input protocol data crosses the same strict traversal; every failure maps to the request code.
+  try { return strictJson(value, limit, 'INVALID_REQUEST'); }
+  catch { invalid(); }
 }
 function validateRequest(value, limit) {
   const message = boundedJson(value, limit);
@@ -231,7 +262,17 @@ export function createRemoteSession({ request, maxRequestBytes = 1048576, maxRes
           if (response.version !== 1) invalid();
           if (response.ok) {
             if (!Object.hasOwn(response, 'result')) invalid();
-            if (mutationOperations.has(operation)) {
+            if (operation === 'read') {
+              keys(response.result, ['document', 'revision']);
+              if (!Object.hasOwn(response.result, 'document') || !Number.isSafeInteger(response.result.revision) || response.result.revision < 0) invalid();
+            } else if (operation === 'listCommands') {
+              if (!Array.isArray(response.result)) invalid();
+              for (const command of response.result) {
+                keys(command, ['id', 'description', 'inputSchema']);
+                if (typeof command.id !== 'string' || !command.id) invalid();
+                if (command.description !== undefined && typeof command.description !== 'string') invalid();
+              }
+            } else if (mutationOperations.has(operation)) {
               keys(response.result, ['document', 'revision', 'changed', 'dryRun']);
               if (!Object.hasOwn(response.result, 'document') || !Number.isSafeInteger(response.result.revision) ||
                   response.result.revision < 0 || typeof response.result.changed !== 'boolean' || typeof response.result.dryRun !== 'boolean') invalid();

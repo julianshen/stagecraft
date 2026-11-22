@@ -65,6 +65,18 @@ describe('remote session protocol', () => {
     await expect(createRemoteSession({ request() { throw Error('PRIVATE'); } }).read()).rejects.toMatchObject({ message: 'TRANSPORT_FAILED', committed: false });
     await expect(createRemoteSession({ request: () => ({ version: 1, ok: false, error: { code: 'PRIVATE', committed: false } }) }).read()).rejects.toMatchObject({ message: 'INVALID_RESPONSE' });
   });
+  it('validates read and discovery success shapes against the protocol', async () => {
+    await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: 17 }) }).read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: { document: {}, revision: -1 } }) }).read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: { document: {}, revision: Number.MAX_SAFE_INTEGER + 1 } }) }).read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: { document: {} } }) }).read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: null }) }).listCommands()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: [{ id: 7 }] }) }).listCommands()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: [{ id: 'a', unknown: true }] }) }).listCommands()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    // Context/export stay arbitrary bounded JSON by contract.
+    expect(await createRemoteSession({ request: () => ({ version: 1, ok: true, result: 17 }) }).context()).toBe(17);
+    expect(await createRemoteSession({ request: () => ({ version: 1, ok: true, result: null }) }).export()).toBeNull();
+  });
   it('enforces permissions and filters command discovery', async () => {
     const { remote } = setup({ authorize: ({ identity, operation }) => identity.id === 'trusted' && !['tool', 'export'].includes(operation) });
     expect(await remote.listCommands()).toEqual([]);
