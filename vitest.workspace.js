@@ -8,7 +8,7 @@ import base from './vitest.config.js';
 //              *.paint.test.js painter pixel probes and *.browser.test.jsx Konva
 //              stage behaviour — jsdom has no canvas, and Konva recommends a
 //              real browser for Stages.
-const CHROMIUM_TESTS = ['src/**/*.paint.test.{js,jsx}', 'src/**/*.browser.test.{js,jsx}'];
+const CHROMIUM_TESTS = ['packages/**/*.paint.test.{js,jsx}', 'packages/**/*.browser.test.{js,jsx}', 'tests/**/*.browser.test.{js,jsx}'];
 
 export default defineWorkspace([
   // `extends` concatenates arrays: this exclude adds to the base one.

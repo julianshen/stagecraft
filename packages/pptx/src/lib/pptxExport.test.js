@@ -1,0 +1,1155 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Record everything the export draws onto a mocked pptxgenjs, so we can assert
+// the roadmap builder emits a real timeline instead of a placeholder.
+const rec = vi.hoisted(() => ({ slides: [], sections: [], raw: new ArrayBuffer(8), writeOpts: null }));
+// The post-processor (F-EXP-1) is unit-tested on its own; here it records the
+// per-slide patch plans the export hands it and returns a marker package.
+const post = vi.hoisted(() => ({ plans: null, out: new ArrayBuffer(16) }));
+vi.mock('./pptxPost.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  postProcess: async (data, plans) => { post.plans = plans; return data === rec.raw ? post.out : null; },
+}));
+vi.mock('pptxgenjs', () => {
+  class FakePptx {
+    constructor() {
+      // Mirror the pptxgenjs ShapeType keys the exporter uses.
+      this.ShapeType = {
+        rect: 'rect', roundRect: 'roundRect', line: 'line', ellipse: 'ellipse',
+        triangle: 'triangle', diamond: 'diamond', pentagon: 'pentagon',
+        hexagon: 'hexagon', star5: 'star5', rightArrow: 'rightArrow',
+        custGeom: 'custGeom', // freeform geometry — real pptxgen 3.12 enum value (pptxgen.cjs.js:242)
+      };
+    }
+    addSection(o) { rec.sections.push(o); }
+    addSlide(opts) {
+      const s = {
+        opts,
+        texts: [], shapes: [], charts: [], images: [], tables: [], background: null, notes: null,
+        addText(t, o) { this.texts.push({ t, o }); },
+        addShape(type, o) { this.shapes.push({ type, o }); },
+        addChart(type, data, o) { this.charts.push({ type, data, o }); },
+        addImage(o) { this.images.push({ o }); },
+        addTable(rows, o) { this.tables.push({ rows, o }); },
+        addNotes(t) { this.notes = t; },
+      };
+      rec.slides.push(s);
+      return s;
+    }
+    write(opts) { rec.writeOpts = opts; return Promise.resolve(rec.raw); }
+  }
+  return { default: FakePptx };
+});
+
+import { exportToPPTX } from './pptxExport.js';
+import { planFor } from './pptxPost.js';
+import { CANVAS_BASELINE_PX } from '@stagecraft/core/lib/fontBaselines.js';
+import { CHART_SERIES_HEX } from '@stagecraft/core/lib/chartSpec.js';
+import { SEVERITY_HEX } from '@stagecraft/core/lib/riskSpec.js';
+import { SPEAKER_NOTES } from '@stagecraft/core/data/deck.js';
+
+const deckOf = (roadmap) => ({
+  title: 'D', theme: 'indigo',
+  sections: [{ id: 's1', name: 'X', slides: ['r'] }],
+  slides: [{ id: 'r', layout: 'roadmap', ...roadmap }],
+});
+const last = () => rec.slides[rec.slides.length - 1];
+const textsOf = (s) => s.texts.map((x) => String(x.t));
+const optsOf = (s, text) => s.texts.find((x) => String(x.t) === text)?.o;
+// The options of a table cell (in the slide's single addTable call) whose text
+// matches — the table analogue of optsOf, searching every header/body cell.
+const cellOptsOf = (s, text) => (s.tables[0]?.rows || []).flat().find((c) => String(c.text) === text)?.options;
+// A deck wrapping a single slide (section id/name are arbitrary — tests assert
+// on the slide's export, not the section).
+const deckWith = (slide) => ({
+  title: 'D', theme: 'indigo',
+  sections: [{ id: 's1', name: 'X', slides: [slide.id] }],
+  slides: [slide],
+});
+
+// The download: an object URL for the post-processed package, clicked on a
+// temporary <a download>. jsdom has no object URLs, so they're stubbed here.
+const dl = { blobs: [], clicks: [] };
+beforeEach(() => {
+  rec.slides.length = 0; rec.sections.length = 0; post.plans = null;
+  dl.blobs.length = 0; dl.clicks.length = 0;
+  URL.createObjectURL = (blob) => { dl.blobs.push(blob); return `blob:${dl.blobs.length}`; };
+  URL.revokeObjectURL = () => {};
+  HTMLAnchorElement.prototype.click = function click() { dl.clicks.push({ href: this.getAttribute('href'), download: this.download }); };
+});
+
+describe('exportToPPTX — font-size parity (text layout)', () => {
+  // Canvas defaults (SlideRenderer text layout): title 84px, body 32px.
+  // Export pt baselines (addTextSlide): title 26pt, body 15pt.
+  const textDeck = (fmt) => ({
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's', name: 'S', slides: ['t'] }],
+    slides: [{ id: 't', layout: 'text', title: 'Heading', body: 'Body copy', ...(fmt ? { fmt } : {}) }],
+  });
+
+  it('exports the title/body at their pt baselines when unformatted', async () => {
+    await exportToPPTX(textDeck());
+    expect(optsOf(last(), 'Heading').fontSize).toBe(26);
+    expect(optsOf(last(), 'Body copy').fontSize).toBe(15);
+  });
+
+  it('scales the exported title pt by the canvas font-size ratio (fmt.fontSize ÷ baseline px)', async () => {
+    await exportToPPTX(textDeck({ title: { fontSize: CANVAS_BASELINE_PX.text.title * 2 } })); // 2× the canvas baseline
+    expect(optsOf(last(), 'Heading').fontSize).toBe(52);        // export baseline 26pt × 2
+  });
+
+  it('scales the exported body pt by its own canvas ratio', async () => {
+    await exportToPPTX(textDeck({ body: { fontSize: CANVAS_BASELINE_PX.text.body / 2 } })); // 0.5× the canvas baseline
+    expect(optsOf(last(), 'Body copy').fontSize).toBe(7.5);     // export baseline 15pt × 0.5
+  });
+
+  it('floors a malformed (gate-bypassing) fmt.fontSize back to the pt baseline', async () => {
+    // ≤0 / non-finite is now gate-rejected (isFmtRecord), but a server/MCP write can
+    // bypass the deck gate — the export defends by keeping the baseline rather than
+    // emitting a 0 / NaN / Infinity pt size.
+    await exportToPPTX(textDeck({ title: { fontSize: 0 } }));
+    expect(optsOf(last(), 'Heading').fontSize).toBe(26);
+    await exportToPPTX(textDeck({ title: { fontSize: Infinity } }));
+    expect(optsOf(last(), 'Heading').fontSize).toBe(26);
+  });
+});
+
+describe('exportToPPTX — font-size parity (cover + divider headings)', () => {
+  // Canvas title baselines: cover 140px, divider 140px. Export pt: cover 44, divider 36.
+  const coverDeck = (fmt) => ({
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's', name: 'S', slides: ['c'] }],
+    slides: [{ id: 'c', layout: 'cover', title: 'Hero', subtitle: 'Sub', ...(fmt ? { fmt } : {}) }],
+  });
+  const dividerDeck = (fmt) => ({
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's', name: 'S', slides: ['d'] }],
+    slides: [{ id: 'd', layout: 'divider', title: 'Part One', chapter: '1', ...(fmt ? { fmt } : {}) }],
+  });
+
+  it('exports the cover title at its pt baseline, scaling it by the canvas ratio', async () => {
+    await exportToPPTX(coverDeck());
+    expect(optsOf(last(), 'Hero').fontSize).toBe(44);
+    await exportToPPTX(coverDeck({ title: { fontSize: CANVAS_BASELINE_PX.cover.title * 2 } }));
+    expect(optsOf(last(), 'Hero').fontSize).toBe(88); // 44 × 2
+  });
+
+  it('exports the cover subtitle at its pt baseline, scaling it by the canvas ratio', async () => {
+    // The subtitle inherits 18px on the canvas (cover.subtitle baseline); export pt is 16.
+    await exportToPPTX(coverDeck());
+    expect(optsOf(last(), 'Sub').fontSize).toBe(16);   // cover subtitle pt baseline
+    await exportToPPTX(coverDeck({ subtitle: { fontSize: CANVAS_BASELINE_PX.cover.subtitle * 2 } }));
+    expect(optsOf(last(), 'Sub').fontSize).toBe(32);   // 16 × 2
+  });
+
+  it('exports the divider title at its pt baseline, scaling it by the canvas ratio', async () => {
+    await exportToPPTX(dividerDeck());
+    expect(optsOf(last(), 'Part One').fontSize).toBe(36);
+    await exportToPPTX(dividerDeck({ title: { fontSize: CANVAS_BASELINE_PX.divider.title / 2 } }));
+    expect(optsOf(last(), 'Part One').fontSize).toBe(18); // 36 × 0.5
+  });
+});
+
+describe('exportToPPTX — font-size parity (agenda / list items, index-keyed)', () => {
+  // Canvas px: agenda items.n 36 / items.t 38 / items.d 22; list items 38.
+  // Export pt: agenda items.n 12 / items.t 15 / items.d 11; list items 14.
+  const agendaItem = (fmt) => deckWith({ id: 'a', layout: 'agenda', title: 'Plan', items: [{ n: '01', t: 'First', d: 'Details' }], ...(fmt ? { fmt } : {}) });
+  const listDeck = (fmt) => deckWith({ id: 'l', layout: 'list', title: 'Items', items: ['Alpha', 'Beta'], ...(fmt ? { fmt } : {}) });
+
+  it('exports the agenda item fields at their pt baselines when unformatted', async () => {
+    await exportToPPTX(agendaItem());
+    expect(optsOf(last(), 'First').fontSize).toBe(15);   // items.t
+    expect(optsOf(last(), '01').fontSize).toBe(12);      // items.n
+    expect(optsOf(last(), 'Details').fontSize).toBe(11); // items.d
+  });
+
+  it('scales each agenda item field by its own per-field-type canvas ratio (per-index fmt key)', async () => {
+    await exportToPPTX(agendaItem({ 'items.0.t': { fontSize: CANVAS_BASELINE_PX.agenda['items.t'] * 2 } }));
+    expect(optsOf(last(), 'First').fontSize).toBe(30);   // 15 × 2
+    await exportToPPTX(agendaItem({ 'items.0.n': { fontSize: CANVAS_BASELINE_PX.agenda['items.n'] / 2 } }));
+    expect(optsOf(last(), '01').fontSize).toBe(6);       // 12 × 0.5
+    await exportToPPTX(agendaItem({ 'items.0.d': { fontSize: CANVAS_BASELINE_PX.agenda['items.d'] * 2 } }));
+    expect(optsOf(last(), 'Details').fontSize).toBe(22); // 11 × 2
+  });
+
+  it('scales a non-first item independently via its own per-index fmt key', async () => {
+    await exportToPPTX(deckWith({
+      id: 'a', layout: 'agenda', title: 'Plan',
+      items: [{ n: '01', t: 'First', d: 'd1' }, { n: '02', t: 'Second', d: 'd2' }],
+      fmt: { 'items.1.t': { fontSize: CANVAS_BASELINE_PX.agenda['items.t'] * 2 } }, // resize ONLY the 2nd row's title
+    }));
+    expect(optsOf(last(), 'Second').fontSize).toBe(30); // items.1.t → 15 × 2
+    expect(optsOf(last(), 'First').fontSize).toBe(15);  // items.0.t untouched (baseline)
+  });
+
+  it('exports list items at the pt baseline, scaling by the canvas ratio', async () => {
+    await exportToPPTX(listDeck());
+    expect(optsOf(last(), '• Alpha').fontSize).toBe(14);
+    await exportToPPTX(listDeck({ 'items.0': { fontSize: CANVAS_BASELINE_PX.list.items * 2 } }));
+    expect(optsOf(last(), '• Alpha').fontSize).toBe(28); // 14 × 2
+  });
+
+  it('scales the agenda + list titles by their canvas ratios (closing the items-only gap)', async () => {
+    await exportToPPTX(agendaItem());
+    expect(optsOf(last(), 'Plan').fontSize).toBe(22);  // agenda title baseline
+    await exportToPPTX(agendaItem({ title: { fontSize: CANVAS_BASELINE_PX.agenda.title * 2 } }));
+    expect(optsOf(last(), 'Plan').fontSize).toBe(44);  // 22 × 2
+    await exportToPPTX(listDeck());
+    expect(optsOf(last(), 'Items').fontSize).toBe(24); // list title baseline
+    await exportToPPTX(listDeck({ title: { fontSize: CANVAS_BASELINE_PX.list.title / 2 } }));
+    expect(optsOf(last(), 'Items').fontSize).toBe(12); // 24 × 0.5
+  });
+});
+
+describe('exportToPPTX — font-size parity (remaining layout titles)', () => {
+  // The final tranche of title parity: every remaining layout's title scales by
+  // its own canvas↔export ratio (basePx 72 for the body layouts, 220 for thanks).
+  // The title is emitted before any data loop, so a title-only slide suffices.
+  const CASES = [
+    { layout: 'kpi', basePt: 20 },
+    { layout: 'chart', basePt: 20 },
+    { layout: 'split', basePt: 26 },
+    { layout: 'table', basePt: 20 },
+    { layout: 'risks', basePt: 22 },
+    { layout: 'roadmap', basePt: 22 },
+    { layout: 'thanks', basePt: 52 },
+  ];
+  CASES.forEach(({ layout, basePt }) => {
+    it(`scales the ${layout} title by its canvas ratio`, async () => {
+      const base = { id: 'x', layout, title: 'TT' };
+      await exportToPPTX(deckWith(base));
+      expect(optsOf(last(), 'TT').fontSize).toBe(basePt);            // unformatted → pt baseline
+      const px = CANVAS_BASELINE_PX[layout].title;
+      await exportToPPTX(deckWith({ ...base, fmt: { title: { fontSize: px * 2 } } }));
+      expect(optsOf(last(), 'TT').fontSize).toBe(basePt * 2);        // canvas 2× → export 2×
+    });
+  });
+});
+
+describe('exportToPPTX — font-size parity (per-item data fields, index-keyed)', () => {
+  // The per-item card/row data fields (mirrors the agenda/list item parity): basePx
+  // is keyed by field-type, and the export reads each row's per-index fmt against it.
+  it('scales the kpi val/label/delta fields by their canvas ratios', async () => {
+    const kpi = { id: 'k', layout: 'kpi', title: 'T', kpis: [{ val: '42', label: 'Users', delta: '+5' }] };
+    await exportToPPTX(deckWith(kpi));
+    expect(optsOf(last(), '42').fontSize).toBe(28);     // kpis.val baseline
+    expect(optsOf(last(), 'Users').fontSize).toBe(11);  // kpis.label
+    expect(optsOf(last(), '+5').fontSize).toBe(10);     // kpis.delta
+    await exportToPPTX(deckWith({ ...kpi, fmt: {
+      'kpis.0.val': { fontSize: CANVAS_BASELINE_PX.kpi['kpis.val'] * 2 },
+      'kpis.0.label': { fontSize: CANVAS_BASELINE_PX.kpi['kpis.label'] * 2 },
+      'kpis.0.delta': { fontSize: CANVAS_BASELINE_PX.kpi['kpis.delta'] * 2 },
+    } }));
+    expect(optsOf(last(), '42').fontSize).toBe(56);     // 28 × 2
+    expect(optsOf(last(), 'Users').fontSize).toBe(22);  // 11 × 2
+    expect(optsOf(last(), '+5').fontSize).toBe(20);     // 10 × 2
+  });
+
+  it('scales the split stat val/lbl fields by their canvas ratios', async () => {
+    const split = { id: 's', layout: 'split', title: 'T', stats: [{ val: '99', lbl: 'Score' }] };
+    await exportToPPTX(deckWith(split));
+    expect(optsOf(last(), '99').fontSize).toBe(32);     // stats.val baseline
+    expect(optsOf(last(), 'Score').fontSize).toBe(12);  // stats.lbl
+    await exportToPPTX(deckWith({ ...split, fmt: {
+      'stats.0.val': { fontSize: CANVAS_BASELINE_PX.split['stats.val'] * 2 },
+      'stats.0.lbl': { fontSize: CANVAS_BASELINE_PX.split['stats.lbl'] * 2 },
+    } }));
+    expect(optsOf(last(), '99').fontSize).toBe(64);     // 32 × 2
+    expect(optsOf(last(), 'Score').fontSize).toBe(24);  // 12 × 2
+  });
+
+  it('scales the risks item title/desc fields by their canvas ratios', async () => {
+    const risks = { id: 'r', layout: 'risks', title: 'T', items: [{ sev: 'high', t: 'RiskTitle', d: 'RiskDesc' }] };
+    await exportToPPTX(deckWith(risks));
+    expect(optsOf(last(), 'RiskTitle').fontSize).toBe(15);  // items.t baseline
+    expect(optsOf(last(), 'RiskDesc').fontSize).toBe(12);   // items.d
+    await exportToPPTX(deckWith({ ...risks, fmt: {
+      'items.0.t': { fontSize: CANVAS_BASELINE_PX.risks['items.t'] * 2 },
+      'items.0.d': { fontSize: CANVAS_BASELINE_PX.risks['items.d'] * 2 },
+    } }));
+    expect(optsOf(last(), 'RiskTitle').fontSize).toBe(30);  // 15 × 2
+    expect(optsOf(last(), 'RiskDesc').fontSize).toBe(24);   // 12 × 2
+  });
+
+  it('exports missing kpi/split data fields as empty text, not "undefined" (canvas parity)', async () => {
+    // The canvas renders nothing for a missing value; the export must too — not the
+    // literal "undefined" (matching the sibling delta / risk-item `|| ''` guards).
+    await exportToPPTX(deckWith({ id: 'k', layout: 'kpi', title: 'T', kpis: [{ delta: '+1' }] })); // no val/label
+    expect(textsOf(last())).not.toContain('undefined');
+    await exportToPPTX(deckWith({ id: 's', layout: 'split', title: 'T', stats: [{}] })); // no val/lbl
+    expect(textsOf(last())).not.toContain('undefined');
+  });
+});
+
+describe('exportToPPTX — font-size parity (table cells)', () => {
+  // Canvas px (SlideRenderer table): header cells 18, body cells 26.
+  // Export pt baseline (addTableSlide): 11pt for both header + body cells.
+  const tableDeck = (fmt) => deckWith({
+    id: 't', layout: 'table', title: 'T',
+    columns: ['Name', 'Q1'], rows: [['Alpha', '10']],
+    ...(fmt ? { fmt } : {}),
+  });
+
+  it('exports header + body cells at their pt baseline when unformatted', async () => {
+    await exportToPPTX(tableDeck());
+    expect(cellOptsOf(last(), 'Name').fontSize).toBe(11);   // header (columns)
+    expect(cellOptsOf(last(), 'Alpha').fontSize).toBe(11);  // body (rows)
+  });
+
+  it('scales a header cell pt by its canvas ratio (columns.C fmt ÷ header baseline px)', async () => {
+    await exportToPPTX(tableDeck({ 'columns.1': { fontSize: CANVAS_BASELINE_PX.table.columns * 2 } }));
+    expect(cellOptsOf(last(), 'Q1').fontSize).toBe(22);     // 11 × 2
+    expect(cellOptsOf(last(), 'Name').fontSize).toBe(11);   // sibling header untouched
+  });
+
+  it('scales a body cell pt by its canvas ratio (rows.R.C fmt ÷ body baseline px)', async () => {
+    await exportToPPTX(tableDeck({ 'rows.0.0': { fontSize: CANVAS_BASELINE_PX.table.rows / 2 } }));
+    expect(cellOptsOf(last(), 'Alpha').fontSize).toBe(5.5); // 11 × 0.5
+    expect(cellOptsOf(last(), '10').fontSize).toBe(11);     // sibling body cell untouched
+  });
+
+  it('floors a malformed (gate-bypassing) cell fmt.fontSize back to the pt baseline', async () => {
+    await exportToPPTX(tableDeck({ 'rows.0.0': { fontSize: 0 } }));
+    expect(cellOptsOf(last(), 'Alpha').fontSize).toBe(11);
+    await exportToPPTX(tableDeck({ 'columns.0': { fontSize: Infinity } }));
+    expect(cellOptsOf(last(), 'Name').fontSize).toBe(11);
+  });
+
+  it('still applies a cell fmt bold/colour alongside the scaled size', async () => {
+    await exportToPPTX(tableDeck({ 'rows.0.0': { fontSize: CANVAS_BASELINE_PX.table.rows * 2, bold: true, color: '#FF0000' } }));
+    const o = cellOptsOf(last(), 'Alpha');
+    expect(o.fontSize).toBe(22);     // 11 × 2
+    expect(o.bold).toBe(true);
+    expect(o.color).toBe('FF0000');
+  });
+});
+
+describe('exportToPPTX — font-size parity (top-level secondary text)', () => {
+  // The remaining top-level fields (like text body): split body + thanks subtitle.
+  it('scales the split body + thanks subtitle by their canvas ratios', async () => {
+    const split = { id: 'sp', layout: 'split', title: 'T', body: 'SplitBody' };
+    await exportToPPTX(deckWith(split));
+    expect(optsOf(last(), 'SplitBody').fontSize).toBe(14);  // split body baseline
+    await exportToPPTX(deckWith({ ...split, fmt: { body: { fontSize: CANVAS_BASELINE_PX.split.body * 2 } } }));
+    expect(optsOf(last(), 'SplitBody').fontSize).toBe(28);  // 14 × 2
+    const thanks = { id: 'th', layout: 'thanks', title: 'T', subtitle: 'ThxSub' };
+    await exportToPPTX(deckWith(thanks));
+    expect(optsOf(last(), 'ThxSub').fontSize).toBe(15);     // thanks subtitle baseline
+    await exportToPPTX(deckWith({ ...thanks, fmt: { subtitle: { fontSize: CANVAS_BASELINE_PX.thanks.subtitle * 2 } } }));
+    expect(optsOf(last(), 'ThxSub').fontSize).toBe(30);     // 15 × 2
+  });
+});
+
+describe('exportToPPTX — thanks / generic / split / cover-subtitle builders', () => {
+  it('exports a thanks slide (title + subtitle), and its default title when none is given', async () => {
+    await exportToPPTX(deckWith({ id: 't', layout: 'thanks', title: 'Thanks!', subtitle: 'Questions?' }));
+    expect(textsOf(last())).toEqual(expect.arrayContaining(['Thanks!', 'Questions?']));
+    await exportToPPTX(deckWith({ id: 't2', layout: 'thanks' }));
+    expect(textsOf(last())).toContain('Thank you'); // `slide.title || 'Thank you'`
+  });
+
+  it('exports an unknown layout via the generic builder (title + body, and the subtitle fallback)', async () => {
+    await exportToPPTX(deckWith({ id: 'g', layout: 'mystery', title: 'Custom', body: 'Freeform body' }));
+    expect(textsOf(last())).toEqual(expect.arrayContaining(['Custom', 'Freeform body']));
+    await exportToPPTX(deckWith({ id: 'g2', layout: 'mystery', subtitle: 'Sub only' })); // no body → subtitle path; no title → layout name
+    expect(textsOf(last())).toEqual(expect.arrayContaining(['mystery', 'Sub only']));
+  });
+
+  it('exports the cover subtitle when present', async () => {
+    await exportToPPTX(deckWith({ id: 'c', layout: 'cover', title: 'Hero', subtitle: 'A subtitle' }));
+    expect(textsOf(last())).toContain('A subtitle');
+  });
+
+  it('exports the split body when present', async () => {
+    await exportToPPTX(deckWith({ id: 'sp', layout: 'split', title: 'Split', body: 'Left body' }));
+    expect(textsOf(last())).toContain('Left body');
+  });
+});
+
+describe('exportToPPTX — slide range', () => {
+  const deck3 = {
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's', name: 'S', slides: ['a', 'b', 'c'] }],
+    slides: [
+      { id: 'a', layout: 'text', title: 'A' },
+      { id: 'b', layout: 'text', title: 'B' },
+      { id: 'c', layout: 'text', title: 'C' },
+    ],
+  };
+  it('exports every flattened slide when no range is given', async () => {
+    await exportToPPTX(deck3);
+    expect(rec.slides).toHaveLength(3);
+  });
+  it('exports only the slides within an inclusive 1-indexed range', async () => {
+    await exportToPPTX(deck3, { range: { from: 2, to: 3 } });
+    expect(rec.slides).toHaveLength(2); // b, c
+  });
+  it('clamps a range whose end overruns the deck', async () => {
+    await exportToPPTX(deck3, { range: { from: 2, to: 99 } });
+    expect(rec.slides).toHaveLength(2); // b, c — end clamped
+  });
+  it('normalises an inverted range (from > to) by swapping the bounds', async () => {
+    await exportToPPTX(deck3, { range: { from: 3, to: 1 } });
+    expect(rec.slides).toHaveLength(3); // 1..3 after the swap — not an empty export
+  });
+  it('clamps an out-of-range start into the deck instead of emitting nothing', async () => {
+    await exportToPPTX(deck3, { range: { from: 5, to: 5 } });
+    expect(rec.slides).toHaveLength(1); // clamped to the last slide
+  });
+  it('floors a start below 1 up to the first slide', async () => {
+    await exportToPPTX(deck3, { range: { from: 0, to: 2 } });
+    expect(rec.slides).toHaveLength(2); // 1..2
+  });
+});
+
+describe('addRoadmapSlide (PPTX timeline)', () => {
+  it('renders the demo roadmap: month axis, lanes, bars, TODAY marker, and legend', async () => {
+    await exportToPPTX(deckOf({ title: 'Roadmap' }));
+    const s = last();
+    const texts = textsOf(s);
+
+    // month axis (default Jul..Jun)
+    expect(texts).toContain('Jul');
+    expect(texts).toContain('Jun');
+    // lane names
+    ['Platform', 'Growth', 'AI', 'Enterprise'].forEach((n) => expect(texts).toContain(n));
+    // bars — one rounded rect per default item (3+3+2+3 = 11)
+    expect(s.shapes.filter((sh) => sh.type === 'roundRect')).toHaveLength(11);
+    // TODAY marker: a dashed line + its label
+    expect(texts).toContain('TODAY');
+    expect(s.shapes.some((sh) => sh.type === 'line' && sh.o.line?.dashType === 'dash')).toBe(true);
+    // legend: one label per status
+    ['Shipped', 'In-flight', 'At risk', 'Planned'].forEach((l) => expect(texts).toContain(l));
+  });
+
+  it('is data-driven: renders slide-supplied months/lanes and omits TODAY when unspecified', async () => {
+    await exportToPPTX(deckOf({
+      title: 'R',
+      months: ['W1', 'W2'],
+      lanes: [{ name: 'OnlyLane', items: [{ t: 0, d: 1, lbl: 'Task', state: 'inflight' }] }],
+    }));
+    const s = last();
+    const texts = textsOf(s);
+    expect(texts).toContain('OnlyLane');
+    expect(texts).toContain('W1');
+    expect(texts).toContain('Task');
+    expect(texts).not.toContain('Platform'); // demo data not used
+    expect(texts).not.toContain('TODAY');     // custom roadmap, no todayIndex
+    expect(s.shapes.filter((sh) => sh.type === 'roundRect')).toHaveLength(1);
+  });
+
+  it('still emits the slide title', async () => {
+    await exportToPPTX(deckOf({ title: 'My Plan' }));
+    expect(textsOf(last())).toContain('My Plan');
+  });
+
+  it('keeps a bar label box within its bar even when the bar hits its minimum width', async () => {
+    // 100 months drives the 1-month bar to its 0.12" floor — the case where a
+    // 0.3" label-width floor would overflow the bar.
+    await exportToPPTX(deckOf({
+      months: Array.from({ length: 100 }, (_, i) => `M${i + 1}`),
+      lanes: [{ name: 'L', items: [{ t: 0, d: 1, lbl: 'LongLabel', state: 'planned' }] }],
+    }));
+    const s = last();
+    const bar = s.shapes.find((sh) => sh.type === 'roundRect');
+    const label = s.texts.find((x) => x.t === 'LongLabel');
+    expect(label.o.w).toBeLessThanOrEqual(bar.o.w); // label stays inside the bar at minimum width
+  });
+});
+
+describe('addChartSlide (PPTX chart)', () => {
+  const chartDeck = () => ({
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's1', name: 'X', slides: ['c'] }],
+    slides: [{ id: 'c', layout: 'chart', chartType: 'bar', chart: { categories: ['A', 'B'], series: [{ name: 'S1', values: [1, 2] }, { name: 'S2', values: [3, 4] }] } }],
+  });
+
+  it('colours series from the shared palette (matching the canvas), not a theme-tinted one', async () => {
+    await exportToPPTX(chartDeck());
+    const chart = last().charts[0];
+    expect(chart.o.chartColors).toEqual(CHART_SERIES_HEX);
+    expect(chart.o.chartColors).not.toBe(CHART_SERIES_HEX); // a copy, so pptxgenjs can't mutate the frozen source
+    expect(chart.data).toHaveLength(2);      // both series exported
+    expect(chart.o.showLegend).toBe(true);   // multi-series legend
+  });
+});
+
+describe('addRisksSlide (PPTX risks)', () => {
+  it('labels each risk with its severity WORD and colour from the shared palette (a text channel, not colour alone)', async () => {
+    await exportToPPTX({
+      title: 'D', theme: 'indigo',
+      sections: [{ id: 's1', name: 'X', slides: ['r'] }],
+      slides: [{ id: 'r', layout: 'risks', title: 'Risks', items: [
+        { sev: 'high', t: 'H', d: 'hd' },
+        null,                            // malformed item → dropped, no crash (like the canvas)
+        { sev: 'low', t: 'L', d: 'ld' },
+        { t: 'no sev' },                 // missing severity → fallback grey, bare bullet
+        { sev: 5, t: 'N', d: 'nd' },     // non-string severity → coerced, doesn't crash the export
+      ] }],
+    });
+    const labels = last().texts.filter((x) => typeof x.t === 'string' && x.t.startsWith('●'));
+    // colour matches the canvas palette (incl. fallback for unknown/missing) …
+    expect(labels.map((x) => x.o.color)).toEqual([SEVERITY_HEX.high, SEVERITY_HEX.low, SEVERITY_HEX.fallback, SEVERITY_HEX.fallback]);
+    // … and the severity is spelled out so the export reads without colour
+    // (no trailing space when there's no word).
+    expect(labels.map((x) => x.t)).toEqual(['● HIGH', '● LOW', '●', '● 5']);
+    // The narrow gutter box must not wrap the label onto a second line.
+    labels.forEach((x) => expect(x.o.wrap).toBe(false));
+  });
+});
+
+describe('exportToPPTX speaker notes', () => {
+  const notesDeck = {
+    title: 'D', theme: 'indigo',
+    sections: [{ id: 's1', name: 'X', slides: ['cover', 'b', 'c'] }],
+    slides: [
+      { id: 'cover', layout: 'cover', title: 'C' },          // no .notes → SPEAKER_NOTES['cover'] fallback
+      { id: 'b', layout: 'text', title: 'B', notes: 'authored B' }, // authored wins
+      { id: 'c', layout: 'text', title: 'C2', notes: '' },   // explicit empty → no notes attached
+    ],
+  };
+
+  it('attaches speaker notes by default — authored slide.notes, else the bundled SPEAKER_NOTES', async () => {
+    await exportToPPTX(notesDeck);
+    expect(rec.slides[0].notes).toBe(SPEAKER_NOTES.cover); // fallback to bundled
+    expect(rec.slides[1].notes).toBe('authored B');         // authored preferred
+    expect(rec.slides[2].notes).toBeNull();                 // empty string → nothing attached
+  });
+
+  it('omits all notes when includeNotes is false', async () => {
+    await exportToPPTX(notesDeck, { includeNotes: false });
+    expect(rec.slides.map((s) => s.notes)).toEqual([null, null, null]);
+  });
+});
+
+describe('exportToPPTX — post-processing and download (F-EXP-1)', () => {
+  const blank = (id, elements) => ({ id, layout: 'blank', elements });
+  const deck2 = (...slides) => ({ title: 'My Deck', theme: 'indigo', sections: [{ id: 's', name: 'S', slides: slides.map((x) => x.id) }], slides });
+
+  it('exports flips natively on shapes, paths, pictures and text', async () => {
+    await exportToPPTX(deck2(blank('b', [
+      { id: 'r', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', flipH: true },
+      { id: 'p', type: 'path', x: 0, y: 0, w: 10, h: 10, points: [[0, 0], [1, 1]], stroke: '#000000', flipV: true },
+      { id: 'i', type: 'image', x: 0, y: 0, w: 10, h: 10, src: 'data:image/png;base64,AAA', flipH: true, flipV: true },
+      { id: 't', type: 'text', x: 0, y: 0, w: 10, h: 10, content: 'T', color: '#000000', flipV: true },
+      { id: 'n', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000' },
+    ])));
+    const s = last();
+    const flips = (o) => [o.flipH, o.flipV];
+    expect(s.shapes.map((x) => flips(x.o))).toEqual([[true, undefined], [undefined, true], [undefined, undefined]]);
+    expect(flips(s.images[0].o)).toEqual([true, true]);
+    expect(flips(s.texts.find((x) => x.t === 'T').o)).toEqual([undefined, true]); // PowerPoint turns flipped text itself
+  });
+
+  it('exports a flipped element\'s shadow on the side the canvas draws it', async () => {
+    await exportToPPTX(deck2(blank('b', [
+      { id: 'r', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', flipH: true, shadow: { color: '#000000', blur: 4, x: 10, y: 0 } },
+    ])));
+    expect(last().shapes[0].o.shadow.angle).toBe(180); // offset +x, mirrored → points left
+  });
+
+  it('names every exported element by its id, so the patches can find it', async () => {
+    await exportToPPTX(deck2(blank('b', [
+      { id: 't1', type: 'text', x: 0, y: 0, w: 100, h: 50, content: 'Hi', color: '#000000' },
+      { id: 'r1', type: 'rect', x: 0, y: 0, w: 100, h: 50, fill: '#FF0000' },
+      { id: 'p1', type: 'path', x: 0, y: 0, w: 100, h: 50, points: [[0, 0], [1, 1]], stroke: '#000000' },
+      { id: 'i1', type: 'image', x: 0, y: 0, w: 100, h: 50, src: 'data:image/png;base64,AAA' },
+      { id: '', type: 'ellipse', x: 0, y: 0, w: 100, h: 50, fill: '#00FF00' }, // an empty id is still a valid id
+    ])));
+    const s = last();
+    expect(s.texts.find((x) => x.t === 'Hi').o.objectName).toBe('t1'); // objectNameOf: plain ids pass through
+    expect(s.shapes.map((x) => x.o.objectName)).toEqual(['r1', 'p1', '%']);
+    expect(s.images[0].o.objectName).toBe('i1');
+  });
+
+  it('hands the post-processor each slide\'s plan (planFor), in slide order', async () => {
+    const two = blank('two', [
+      { id: 'g', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', gradient: { from: '#112233', to: '#aabbcc', angle: 45 } },
+      { id: 'a', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000', groupId: 'G' },
+      { id: 'b', type: 'ellipse', x: 0, y: 0, w: 10, h: 10, fill: '#000000', groupId: 'G' },
+    ]);
+    await exportToPPTX(deck2(blank('one', [{ id: 'solo', type: 'rect', x: 0, y: 0, w: 10, h: 10, fill: '#000000' }]), two));
+    expect(post.plans).toEqual([{ gradients: {}, groups: [] }, planFor(two)]);
+    expect(post.plans[1].groups).toEqual([['a', 'b']]);
+  });
+
+  it('writes the package in memory, post-processes it and downloads the result', async () => {
+    const name = await exportToPPTX(deck2(blank('b', [])));
+    expect(name).toBe('My_Deck.pptx');
+    expect(rec.writeOpts).toEqual({ outputType: 'arraybuffer' });
+    expect(dl.blobs).toHaveLength(1);
+    expect(dl.blobs[0].type).toBe('application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    expect(dl.blobs[0].size).toBe(post.out.byteLength); // the post-processed package, not the raw one (8 bytes)
+    expect(dl.clicks).toEqual([{ href: 'blob:1', download: 'My_Deck.pptx' }]);
+    expect(document.querySelector('a[download]')).toBeNull(); // the temporary link is removed
+  });
+});
+
+describe('exportToPPTX — free-form elements overlay', () => {
+  const elemDeck = (elements) => ({
+    title: 'E', theme: 'indigo',
+    sections: [{ id: 's', name: 'X', slides: ['e'] }],
+    slides: [{ id: 'e', layout: 'text', title: 'T', elements }],
+  });
+
+  it('exports a text element as addText with px→pt size, style, and px→inch geometry', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 't', type: 'text', x: 192, y: 96, w: 384, h: 192, content: 'Hi', fontSize: 48, bold: true, italic: true, underline: true, align: 'center', color: '#112233' },
+    ]));
+    const t = last().texts.find((x) => x.t === 'Hi');
+    expect(t).toBeTruthy();
+    expect(t.o).toMatchObject({ x: 1, y: 0.5, w: 2, h: 1, fontSize: 18, bold: true, italic: true, underline: true, align: 'center', color: '112233' });
+  });
+
+  it('exports a text element line spacing as a pptxgen lineSpacingMultiple (default 1.2, matching the canvas)', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Spaced', color: '#111', lineSpacing: 1.8 },
+      { id: 'd', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'Default', color: '#111' },
+    ]));
+    expect(last().texts.find((t) => t.t === 'Spaced').o.lineSpacingMultiple).toBe(1.8);
+    expect(last().texts.find((t) => t.t === 'Default').o.lineSpacingMultiple).toBe(1.2); // absent → 1.2, matching the canvas line-height
+  });
+
+  it('defaults a fill-less text element to the canvas ink colour, not the theme white', async () => {
+    await exportToPPTX(elemDeck([{ id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'X' }]));
+    const t = last().texts.find((x) => x.t === 'X');
+    expect(t.o.color).toBe('15171C'); // matches ElementView's var(--ink, #15171C) default, not FFFFFF
+  });
+
+  // A 640×480 PNG header — enough for dataImageSize to read its natural size.
+  const be32 = (n) => [(n >>> 24) & 255, (n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const PNG_640x480 = `data:image/png;base64,${btoa(String.fromCharCode(137, 80, 78, 71, 13, 10, 26, 10, ...be32(13), 73, 72, 68, 82, ...be32(640), ...be32(480), 8, 6, 0, 0, 0))}`;
+  const box = { x: 0, y: 0, w: 384, h: 384 }; // 2in × 2in square
+
+  it('exports a cover / contain image with pptx sizing against its natural aspect, as the canvas object-fit', async () => {
+    for (const fit of ['cover', 'contain']) {
+      await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: PNG_640x480, fit }]));
+      const o = last().images[0].o;
+      expect(o.sizing).toEqual({ type: fit, w: 2, h: 2 });
+      expect(o.h / o.w).toBeCloseTo(480 / 640); // the image's own aspect; sizing fits it to the box
+    }
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: PNG_640x480 }])); // absent fit = cover
+    expect(last().images[0].o.sizing.type).toBe('cover');
+  });
+
+  it('keeps a very tall picture\'s aspect below pptxgen\'s 100 "is EMU, not inches" cutoff', async () => {
+    const tall = `data:image/png;base64,${btoa(String.fromCharCode(137, 80, 78, 71, 13, 10, 26, 10, ...be32(13), 73, 72, 68, 82, ...be32(1080), ...be32(12000), 8, 6, 0, 0, 0))}`;
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', x: 0, y: 0, w: 1920, h: 1080, src: tall, fit: 'cover' }]));
+    const o = last().images[0].o;
+    expect(Math.max(o.w, o.h)).toBeLessThan(100);
+    expect(o.h / o.w).toBeCloseTo(12000 / 1080);
+    expect(o.sizing).toEqual({ type: 'cover', w: 10, h: 5.625 });
+  });
+
+  it('stretches a "stretch" image, and an image whose size can\'t be read, to its box', async () => {
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: PNG_640x480, fit: 'stretch' }]));
+    expect(last().images[0].o).toMatchObject({ w: 2, h: 2 });
+    expect(last().images[0].o).not.toHaveProperty('sizing');
+    await exportToPPTX(elemDeck([{ id: 'i', type: 'image', ...box, src: 'data:image/tiff;base64,SUkqAA==', fit: 'contain' }]));
+    expect(last().images[0].o).not.toHaveProperty('sizing');
+  });
+
+  it('exports an image element as addImage with its data URL, skipping an empty image', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'i', type: 'image', x: 0, y: 0, w: 480, h: 360, src: 'data:image/png;base64,AAA' },
+      { id: 'i2', type: 'image', x: 0, y: 0, w: 100, h: 100, src: '' },
+    ]));
+    expect(last().images).toHaveLength(1);
+    expect(last().images[0].o).toMatchObject({ data: 'data:image/png;base64,AAA', x: 0, y: 0, w: 2.5, h: 1.875 });
+  });
+
+  it('exports a rotated (EXIF) JPEG upright, leaving the stored deck alone', async () => {
+    // FF D8, then APP1 'Exif\0\0' + little-endian TIFF with IFD0 { Orientation (0x0112) = 6 }.
+    const tiff = [0x49, 0x49, 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0];
+    const app1 = [0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff];
+    const rotated = `data:image/jpeg;base64,${btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe1, 0, app1.length + 2, ...app1, 0xff, 0xd9))}`;
+    // A browser that honours imageOrientation: the 2×1 orientation-probe (321 bytes) comes back 1×2.
+    vi.stubGlobal('createImageBitmap', vi.fn(async (blob) => (blob.size === 321 ? { width: 1, height: 2, close() { this.width = this.height = 0; } } : { width: 30, height: 40, close() { this.width = this.height = 0; } })));
+    // The upright re-encode: a JPEG whose frame (SOF0) is 30×40 — portrait, as displayed.
+    const upright = new Uint8Array([0xff, 0xd8, 0xff, 0xc0, 0, 11, 8, 0, 40, 0, 30, 1, 1, 0x11, 0, 0xff, 0xd9]);
+    const canvas = { getContext: () => ({ drawImage() {} }), toBlob: (cb, type) => cb(new Blob([upright], { type })) };
+    const realCreate = document.createElement.bind(document);
+    const spy = vi.spyOn(document, 'createElement').mockImplementation((tag) => (tag === 'canvas' ? canvas : realCreate(tag)));
+    try {
+      const deck = elemDeck([{ id: 'i', type: 'image', x: 0, y: 0, w: 480, h: 360, src: rotated }]);
+      await exportToPPTX(deck);
+      const { o } = last().images[0];
+      expect(o.data).toBe(`data:image/jpeg;base64,${btoa(String.fromCharCode(...upright))}`);
+      // Fill (cover) sizing reads the upright picture: portrait 3:4, not the stored 4:3.
+      expect([o.w, o.h]).toEqual([0.75, 1]);
+      expect(deck.slides[0].elements[0].src).toBe(rotated);
+    } finally {
+      spy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('exports a path element as a custGeom shape: points scaled to box inches + a line, no fill', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'p', type: 'path', x: 192, y: 96, w: 384, h: 192, points: [[0, 0], [0.5, 1], [1, 0.5]], stroke: '#112233', strokeWidth: 4 },
+    ]));
+    const shape = last().shapes.find((s) => s.type === 'custGeom');
+    expect(shape).toBeTruthy();
+    expect(shape.o).toMatchObject({ x: 1, y: 0.5, w: 2, h: 1 }); // px→inch (192px = 1in)
+    // points: normalized × box-inches; first is moveTo, the rest lnTo (the serializer keys on this).
+    expect(shape.o.points).toEqual([
+      { x: 0, y: 0, moveTo: true }, // 0×2, 0×1
+      { x: 1, y: 1 },               // 0.5×2, 1×1
+      { x: 2, y: 0.5 },             // 1×2, 0.5×1
+    ]);
+    expect(shape.o.line).toMatchObject({ color: '112233', width: 1.5 }); // 4px → 1.5pt
+    // No `fill` key → pptxgen emits <a:noFill/> (an open stroke). Passing
+    // {type:'none'} instead emits an empty fill and the shape inherits a theme fill.
+    expect(shape.o.fill).toBeUndefined();
+  });
+
+  it('drops malformed points in a path export (no NaN coords, no crash)', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'p', type: 'path', x: 0, y: 0, w: 192, h: 192, points: [[0, 0], null, [1, 1]], stroke: '#111', strokeWidth: 2 },
+    ]));
+    const shape = last().shapes.find((s) => s.type === 'custGeom');
+    expect(shape.o.points).toEqual([{ x: 0, y: 0, moveTo: true }, { x: 1, y: 1 }]); // null dropped, no NaN
+  });
+
+  it('exports a dashed box-shape stroke with a pptxgen line dashType', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'r', type: 'rect', x: 0, y: 0, w: 100, h: 100, fill: '#aabbcc', stroke: '#112233', strokeWidth: 4, strokeDash: 'dashed' },
+    ]));
+    expect(last().shapes.find((s) => s.type === 'rect').o.line.dashType).toBe('dash');
+  });
+
+  it('exports a dotted pen path with a line dashType, and omits it when solid', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#111', strokeWidth: 2, strokeDash: 'dotted' },
+    ]));
+    expect(last().shapes.find((s) => s.type === 'custGeom').o.line.dashType).toBe('sysDot');
+    await exportToPPTX(elemDeck([
+      { id: 'p2', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#111', strokeWidth: 2 },
+    ]));
+    expect(last().shapes.find((s) => s.type === 'custGeom').o.line).not.toHaveProperty('dashType'); // solid → no dashType
+  });
+
+  it('omits the line on a zero-width path so the export matches the invisible canvas stroke', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], [1, 1]], stroke: '#111', strokeWidth: 0 },
+    ]));
+    const shape = last().shapes.find((s) => s.type === 'custGeom');
+    // width 0 → no line (pptxgen would otherwise emit <a:ln> + colour = a default ~0.75pt line, which the canvas does not draw)
+    expect(shape.o.line).toBeUndefined();
+  });
+
+  it('skips exporting a path with fewer than 2 valid points (matches the blank canvas)', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'p', type: 'path', x: 0, y: 0, w: 100, h: 100, points: [[0, 0], null], stroke: '#111', strokeWidth: 2 },
+    ]));
+    // only 1 valid point after filtering → a degenerate custGeom; skip it (the canvas draws nothing either)
+    expect(last().shapes.find((s) => s.type === 'custGeom')).toBeUndefined();
+  });
+
+  it('maps shape types to pptx ShapeType and emits the fill colour', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'r', type: 'shape', x: 0, y: 0, w: 192, h: 192, fill: '#ff0000' }, // 'shape' = the menu's Rectangle
+      { id: 'c', type: 'circle', x: 0, y: 0, w: 192, h: 192, fill: '#00ff00' },
+      { id: 'g', type: 'triangle', x: 0, y: 0, w: 192, h: 192, fill: '#0000ff' },
+      { id: 's', type: 'star', x: 0, y: 0, w: 192, h: 192, fill: '#abcdef' },
+    ]));
+    const byType = Object.fromEntries(last().shapes.map((s) => [s.type, s.o]));
+    expect(byType.rect.fill).toEqual({ color: 'FF0000' }); // 'shape' → rect
+    expect(byType.ellipse).toBeTruthy();      // circle → ellipse
+    expect(byType.triangle).toBeTruthy();
+    expect(byType.star5).toBeTruthy();        // star → star5
+  });
+
+  it('applies rotation and opacity (→ transparency) to a shape', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#123456', rot: 30, opacity: 40 },
+    ]));
+    const r = last().shapes.find((s) => s.type === 'rect');
+    expect(r.o.rotate).toBe(30);
+    expect(r.o.fill).toEqual({ color: '123456', transparency: 60 }); // 100 - 40
+  });
+
+  it('exports a line as a rect at its real thickness (no 8px cap)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'l', type: 'line', x: 0, y: 0, w: 384, h: 24, fill: '#15171c' }]));
+    const l = last().shapes.find((s) => s.type === 'rect');
+    expect(l.o.w).toBe(2);
+    expect(l.o.h).toBeCloseTo(24 / 192, 4); // its real thickness, not clamped to 8/192
+  });
+
+  it('exports a shape stroke as a pptx line (hex colour + pt width) — box and clip polygon alike', async () => {
+    await exportToPPTX(elemDeck([
+      { id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#ffffff', stroke: '#123456', strokeWidth: 4 },
+      { id: 'g', type: 'triangle', x: 0, y: 0, w: 192, h: 192, fill: '#ffffff', stroke: '#123456', strokeWidth: 4 },
+    ]));
+    const byType = Object.fromEntries(last().shapes.map((s) => [s.type, s.o]));
+    expect(byType.rect.line).toEqual({ color: '123456', width: 1.5 });     // PT(4) = 4*72/192; canvas border == export line
+    expect(byType.triangle.line).toEqual({ color: '123456', width: 1.5 }); // clip polygon now strokes too (SVG overlay on canvas)
+  });
+
+  it('omits the line when a box shape has no stroke (or a zero width)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', stroke: '#123456', strokeWidth: 0 }]));
+    expect(last().shapes.find((s) => s.type === 'rect').o.line).toBeUndefined();
+  });
+
+  it('applies the element opacity to the exported stroke line too (the canvas border is translucent)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', stroke: '#123456', strokeWidth: 4, opacity: 40 }]));
+    const r = last().shapes.find((s) => s.type === 'rect');
+    expect(r.o.line).toEqual({ color: '123456', width: 1.5, transparency: 60 }); // matches the fill's transparency
+  });
+
+  it('exports a gradient fill as the midpoint-blend solid (pptxgen has no shape gradient)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', gradient: { from: '#000000', to: '#ffffff', angle: 90 } }]));
+    expect(last().shapes.find((s) => s.type === 'rect').o.fill.color).toBe('808080'); // mixHex(#000,#fff)=#808080
+  });
+
+  it('exports the solid fill for a malformed gradient (parity with the canvas fallback)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#abcdef', gradient: { from: 'red', to: '#fff', angle: 90 } }]));
+    expect(last().shapes.find((s) => s.type === 'rect').o.fill.color).toBe('ABCDEF'); // non-hex stop → solid fill, not a blend
+  });
+
+  it('exports an element shadow as a pptx outer shadow (colour, blur/offset in pt, angle from x/y)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', shadow: { color: '#112233', blur: 16, x: 0, y: 8 } }]));
+    const r = last().shapes.find((s) => s.type === 'rect');
+    // PT(16)=6, PT(hypot(0,8))=PT(8)=3, atan2(8,0)=90° (+ el.rot 0); opacity =
+    // SHADOW_OPACITY (0.35) × 1. See the el.rot-baking test below for rotation.
+    expect(r.o.shadow).toEqual({ type: 'outer', color: '112233', opacity: 0.35, blur: 6, offset: 3, angle: 90 });
+  });
+
+  it('bakes el.rot into the shadow angle (pptxgen 3.12 emits rotWithShape=0, ignoring the option)', async () => {
+    // On the canvas the drop-shadow is painted in the element's local space then
+    // rotated by the same transform, so the offset turns with the shape. pptxgen
+    // 3.12 hardcodes rotWithShape="0" on the shape shadow (an ABSOLUTE angle, the
+    // option is ignored), so the local angle must carry el.rot itself. A local
+    // down shadow (90°) on a +45° element casts down-left → 135° absolute.
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', rot: 45, shadow: { color: '#000000', blur: 8, x: 0, y: 8 } }]));
+    const r = last().shapes.find((s) => s.type === 'rect');
+    expect(r.o.rotate).toBe(45);
+    expect(r.o.shadow.angle).toBe(135); // local atan2(8,0)=90 + el.rot 45
+    expect(r.o.shadow.rotateWithShape).toBeUndefined(); // not a real 3.12 option
+  });
+
+  // pptxgen 3.12 coalesces a falsy shadow field to its OWN default (blur||8,
+  // offset||4, angle||270, opacity||0.75), so a genuine 0 must reach it as a
+  // sub-unit epsilon (truthy, but rounds back to 0 in the serialised units) or
+  // the canvas shadow exports as pptx's upward 4pt default instead.
+  const shadowFor = (shadow, extra = {}) => exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', ...extra, shadow }]))
+    .then(() => last().shapes.find((s) => s.type === 'rect').o.shadow);
+  const nearZero = (v) => { expect(v).toBeGreaterThan(0); expect(v).toBeLessThan(0.001); };
+
+  it('preserves a centred glow (x=0,y=0) — zero offset/angle survive pptxgen falsy-coalescing', async () => {
+    const sh = await shadowFor({ color: '#000000', blur: 16, x: 0, y: 0 });
+    nearZero(sh.offset); // else pptxgen `offset || 4` → a 4pt directional shadow
+    nearZero(sh.angle);  // else pptxgen `angle || 270` → cast upward
+  });
+  it('preserves a rightward shadow (x>0,y=0) — zero angle survives, real offset kept', async () => {
+    const sh = await shadowFor({ color: '#000000', blur: 8, x: 10, y: 0 });
+    nearZero(sh.angle);          // atan2(0,10)=0; must not default to 270 (upward)
+    expect(sh.offset).toBeCloseTo(3.75, 2); // PT(10) — a real offset, unchanged
+  });
+  it('preserves a sharp shadow (blur=0) — does not default to pptxgen blur 8', async () => {
+    nearZero((await shadowFor({ color: '#000000', blur: 0, x: 0, y: 8 })).blur);
+  });
+  it('preserves a near-zero shadow opacity (a faint element) — not pptxgen opacity 0.75', async () => {
+    // op rounds to 0 for a fully-transparent element; without the guard pptxgen
+    // would paint a 0.75 shadow on an element the canvas renders invisible.
+    nearZero((await shadowFor({ color: '#000000', blur: 8, x: 0, y: 8 }, { opacity: 0 })).opacity);
+  });
+
+  it('dims the exported shadow by the element opacity (the canvas opacity dims the whole element)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', opacity: 50, shadow: { color: '#000000', blur: 8, x: 0, y: 8 } }]));
+    expect(last().shapes.find((s) => s.type === 'rect').o.shadow.opacity).toBe(0.18); // 0.35 × 0.5 = 0.175 → 0.18 (round half-up)
+  });
+
+  it('clamps an out-of-range element opacity before dimming the shadow (parity with the canvas + fill)', async () => {
+    await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', opacity: 200, shadow: { color: '#000000', blur: 8, x: 0, y: 8 } }]));
+    expect(last().shapes.find((s) => s.type === 'rect').o.shadow.opacity).toBe(0.35); // opacity 200 → clamped 100 → op 1 → SHADOW_OPACITY
+  });
+
+  it('skips a malformed shadow rather than exporting NaN (gate-bypassing writes can persist one)', async () => {
+    // The server write paths don't run sanitizeSlidePatch, so a persisted `{}` or
+    // `{ x: 'bad' }` shadow would convert to NaN blur/offset/angle → a corrupt pptx.
+    // The canvas drops the invalid CSS filter; the export must skip it for parity.
+    for (const bad of [{}, { color: '#000000', blur: 16, x: 'bad', y: 8 }, { color: 'nope', blur: 8, x: 0, y: 8 }]) {
+      await exportToPPTX(elemDeck([{ id: 'r', type: 'rect', x: 0, y: 0, w: 192, h: 192, fill: '#fff', shadow: bad }]));
+      expect(last().shapes.find((s) => s.type === 'rect').o.shadow).toBeUndefined();
+    }
+  });
+
+  it('draws nothing extra for a slide with no elements', async () => {
+    await exportToPPTX(elemDeck(undefined));
+    expect(last().images).toHaveLength(0);
+  });
+
+  it('forwards opacity to a text element (canvas applies it to every element)', async () => {
+    await exportToPPTX(elemDeck([{ id: 't', type: 'text', x: 0, y: 0, w: 200, h: 80, content: 'X', opacity: 40 }]));
+    expect(last().texts.find((x) => x.t === 'X').o.transparency).toBe(60);
+  });
+
+  it('hardens against malformed elements (null entries, non-finite fields)', async () => {
+    // A null entry must not crash the export; non-finite coords coerce, not NaN.
+    await exportToPPTX(elemDeck([
+      null,
+      { id: 'r', type: 'shape', x: NaN, y: undefined, w: '100', h: 50, fill: '#fff' },
+    ]));
+    const r = last().shapes.find((s) => s.type === 'rect');
+    expect(r.o.x).toBe(0);                       // NaN x → 0, not NaN
+    expect(r.o.y).toBe(0);                       // undefined y → 0
+    expect(Number.isFinite(r.o.w)).toBe(true);   // '100' (typed) → finite
+  });
+
+  it('treats a non-array slide.elements as empty (no garbage shapes from iterating a string)', async () => {
+    await exportToPPTX(elemDeck('oops'));
+    expect(last().shapes).toHaveLength(0); // not 4 rects from 'o','o','p','s'
+  });
+});
+
+describe('per-field / per-item formatting (slide.fmt)', () => {
+
+  it('maps bold + colour onto a field that has neither by default (text body)', async () => {
+    await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Body', fmt: { body: { bold: true, color: '#ff0000' } } }));
+    const o = optsOf(last(), 'Body');
+    expect(o.bold).toBe(true);
+    expect(o.color).toBe('FF0000'); // CSS hex → bare RRGGBB
+  });
+
+  it('maps italic + underline, and is relative: a template-bold title stays bold', async () => {
+    await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'Keep', fmt: { title: { italic: true, underline: true } } }));
+    const o = optsOf(last(), 'Keep');
+    expect(o.italic).toBe(true);
+    expect(o.underline).toEqual({ style: 'sng' }); // object form underlines on both addText + addTable paths
+    expect(o.bold).toBe(true); // base bold preserved — fmt set no bold, so no override
+  });
+
+  it('formats a per-item agenda field (items.0.t)', async () => {
+    await exportToPPTX(deckWith({ id: 'a', layout: 'agenda', title: 'T', items: [{ n: '01', t: 'First', d: 'd' }], fmt: { 'items.0.t': { color: '#0088ff' } } }));
+    expect(optsOf(last(), 'First').color).toBe('0088FF');
+  });
+
+  it('formats a per-item list bullet (items.1)', async () => {
+    await exportToPPTX(deckWith({ id: 'l', layout: 'list', title: 'T', items: ['A', 'B'], fmt: { 'items.1': { bold: true } } }));
+    expect(optsOf(last(), '• B').bold).toBe(true);
+  });
+
+  it('formats kpi and stat item fields', async () => {
+    await exportToPPTX(deckWith({ id: 'k', layout: 'kpi', title: 'T', kpis: [{ val: '42', label: 'Users', delta: '+5' }], fmt: { 'kpis.0.val': { color: '#00ff00' } } }));
+    expect(optsOf(last(), '42').color).toBe('00FF00');
+    await exportToPPTX(deckWith({ id: 'sp', layout: 'split', title: 'T', stats: [{ val: '9', lbl: 'L' }], fmt: { 'stats.0.lbl': { bold: true } } }));
+    expect(optsOf(last(), 'L').bold).toBe(true);
+  });
+
+  it('formats a table header cell and a body cell', async () => {
+    await exportToPPTX(deckWith({ id: 'tb', layout: 'table', title: 'T', columns: ['H1', 'H2'], rows: [['a', 'b']], fmt: { 'columns.1': { italic: true }, 'rows.0.0': { underline: true } } }));
+    const table = last().tables[0];
+    expect(table.rows[0][1].options.italic).toBe(true);     // header columns.1
+    // object form, so it underlines in the real exported table (a boolean would be dropped on the addTable path)
+    expect(table.rows[1][0].options.underline).toEqual({ style: 'sng' }); // body cell rows.0.0
+  });
+
+  it('tolerates null per-item entries — no crash, gap-free layout, true-index fmt key', async () => {
+    // The renderer guards null items (it && …) keeping the true index for the
+    // fmt key; the export must match — drop nulls, lay survivors out gap-free,
+    // and key fmt by the original index.
+    await exportToPPTX(deckWith({ id: 'a', layout: 'agenda', title: 'T', items: [null, { n: '02', t: 'Second', d: 'd' }], fmt: { 'items.1.t': { bold: true } } }));
+    const ag = optsOf(last(), 'Second');
+    expect(ag.bold).toBe(true); // survivor keeps its TRUE-index fmt (items.1.t)
+    expect(ag.y).toBe(1.3);     // laid out at the first row (gap-free), not row 1
+    // kpi + split (object items) must not crash on a null entry either
+    await exportToPPTX(deckWith({ id: 'k', layout: 'kpi', title: 'T', kpis: [null, { val: '42', label: 'L' }] }));
+    expect(optsOf(last(), '42')).toBeTruthy();
+    await exportToPPTX(deckWith({ id: 'sp', layout: 'split', title: 'T', stats: [null, { val: '9', lbl: 'L' }] }));
+    expect(optsOf(last(), '9')).toBeTruthy();
+    // list (primitive items) drops a nullish entry rather than emitting "• null"
+    await exportToPPTX(deckWith({ id: 'l', layout: 'list', title: 'T', items: [null, 'B'] }));
+    expect(optsOf(last(), '• null')).toBeUndefined();
+    expect(optsOf(last(), '• B')).toBeTruthy();
+  });
+
+  it('keeps the field’s own colour when fmt.color is not a #hex (avoids exporting a wrong indigo)', async () => {
+    // The toolbar always emits #rrggbb, but an AI patch may set a named/oklch
+    // colour the export can't convert; rather than toHex's indigo fallback,
+    // leave the field's template colour.
+    await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Body', fmt: { body: { color: 'red' } } }));
+    expect(optsOf(last(), 'Body').color).toBe('333333'); // base body colour — NOT indigo
+  });
+
+  it('ignores a malformed fmt entry (non-object) without crashing or formatting', async () => {
+    // The export is a serialization boundary (disk-persisted / agent-authored
+    // decks can bypass the patch gate), so a non-object fmt entry must be a no-op.
+    await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Body', fmt: { body: 'bold' } }));
+    const o = optsOf(last(), 'Body');
+    expect(o.bold).toBeUndefined();   // string entry → no override
+    expect(o.fontSize).toBe(15);      // base unchanged, no crash
+  });
+
+  it('scales fmt.fontSize into the export for an opted-in field (text body), other axes still applying', async () => {
+    await exportToPPTX(deckWith({ id: 't', layout: 'text', title: 'T', body: 'Big', fmt: { body: { fontSize: CANVAS_BASELINE_PX.text.body * 2, bold: true } } }));
+    const o = optsOf(last(), 'Big');
+    expect(o.fontSize).toBe(30); // 15pt baseline × 2 (canvas 2× → export 2×)
+    expect(o.bold).toBe(true);   // other fmt axes still apply
+  });
+
+  it('does NOT scale fmt.fontSize for a field that has not opted in (generic-layout body), other axes still applying', async () => {
+    // Every named-layout field is now wired; the generic builder (unknown layout) has
+    // no canvas baseline to scale against, so it passes no basePx — a stable witness
+    // that a no-basePx field keeps its pt baseline while other fmt axes still apply.
+    await exportToPPTX(deckWith({ id: 'g', layout: 'mystery', title: 'C', body: 'Body', fmt: { body: { fontSize: 300, italic: true } } }));
+    const o = optsOf(last(), 'Body');
+    expect(o.fontSize).toBe(14);   // generic body baseline unchanged (no basePx)
+    expect(o.italic).toBe(true);   // other fmt axes still apply
+  });
+});
+
+describe('exportToPPTX — deck heading scale (titles)', () => {
+  // deck.headingScale multiplies every layout title; cover title pt baseline is 44,
+  // canvas baseline px 140. Non-title fields (the subtitle) are unaffected.
+  const coverSlide = (fmt) => ({ id: 'c', layout: 'cover', title: 'Hero', subtitle: 'Sub', ...(fmt ? { fmt } : {}) });
+  const scaledDeck = (slide, headingScale) => ({ ...deckWith(slide), ...(headingScale != null ? { headingScale } : {}) });
+
+  it('scales the title pt by the deck heading scale, leaving other fields unscaled', async () => {
+    await exportToPPTX(scaledDeck(coverSlide(), 1.5));
+    expect(optsOf(last(), 'Hero').fontSize).toBe(66); // cover title 44pt × 1.5
+    expect(optsOf(last(), 'Sub').fontSize).toBe(16);  // subtitle baseline, unscaled
+  });
+
+  it('leaves the title at its baseline when no heading scale is set', async () => {
+    await exportToPPTX(scaledDeck(coverSlide()));
+    expect(optsOf(last(), 'Hero').fontSize).toBe(44);
+  });
+
+  it('keeps an absolute per-title fmt.fontSize in canvas↔export parity regardless of the heading scale', async () => {
+    // A per-title override is absolute px on the canvas (ignores the deck scale); the
+    // export must match, so the heading scale cancels out of the fmt ratio.
+    await exportToPPTX(scaledDeck(coverSlide({ title: { fontSize: CANVAS_BASELINE_PX.cover.title * 2 } }), 1.5));
+    expect(optsOf(last(), 'Hero').fontSize).toBe(88); // 44 × 2 — same as with no heading scale
+  });
+
+  it('also scales a non-cover layout title (agenda) by the deck heading scale', async () => {
+    await exportToPPTX(scaledDeck({ id: 'a', layout: 'agenda', title: 'Plan' }, 1.5));
+    expect(optsOf(last(), 'Plan').fontSize).toBe(33); // agenda title 22pt × 1.5
+  });
+
+  it('clamps a malformed (gate-bypassing) heading scale before applying it', async () => {
+    await exportToPPTX(scaledDeck(coverSlide(), 99));   // out of range → clamps to max 1.6
+    expect(optsOf(last(), 'Hero').fontSize).toBe(70.4); // 44 × 1.6
+    await exportToPPTX(scaledDeck(coverSlide(), NaN));  // non-finite → default 1
+    expect(optsOf(last(), 'Hero').fontSize).toBe(44);
+  });
+});
+
+describe('exportToPPTX — blank layout', () => {
+  it('exports only the background colour + elements — no template text', async () => {
+    await exportToPPTX(deckWith({
+      id: 'b', layout: 'blank', title: 'Outline only', bgColor: '#112233',
+      elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 192, h: 96, content: 'Hello', color: '#FFFFFF', fontSize: 48 }],
+    }));
+    expect(last().background).toEqual({ color: '112233' });
+    expect(textsOf(last())).toEqual(['Hello']);
+  });
+
+  it('falls back to white for a missing / non-hex bgColor', async () => {
+    await exportToPPTX(deckWith({ id: 'b', layout: 'blank', bgColor: 'nope' }));
+    expect(last().background).toEqual({ color: 'FFFFFF' });
+    expect(last().texts).toEqual([]);
+  });
+});
+
+describe('exportToPPTX — text element valign', () => {
+  const deck = (valign) => deckWith({ id: 'b', layout: 'blank', elements: [{ id: 'e', type: 'text', x: 0, y: 0, w: 100, h: 100, content: 'V', color: '#000000', ...(valign ? { valign } : {}) }] });
+  it('maps top/bottom to pptx valign', async () => {
+    await exportToPPTX(deck('top'));
+    expect(optsOf(last(), 'V').valign).toBe('top');
+    await exportToPPTX(deck('bottom'));
+    expect(optsOf(last(), 'V').valign).toBe('bottom');
+  });
+  it('defaults to middle', async () => {
+    await exportToPPTX(deck());
+    expect(optsOf(last(), 'V').valign).toBe('middle');
+  });
+});
+
+describe('exportToPPTX — PowerPoint sections', () => {
+  const deck = {
+    title: 'D', theme: 'indigo',
+    sections: [
+      { id: 'a', name: 'Intro', slides: ['1', '2'] },
+      { id: 'b', name: '', slides: ['3'] },
+      { id: 'c', name: 'Intro', slides: ['4'] }, // duplicate name
+      { id: 'd', name: 'Empty', slides: [] },
+    ],
+    slides: ['1', '2', '3', '4'].map((id) => ({ id, layout: id === '2' ? 'blank' : 'text', title: `T${id}` })),
+  };
+
+  it('emits one PowerPoint section per deck section that has slides, uniquely titled', async () => {
+    await exportToPPTX(deck);
+    expect(rec.sections.map((x) => x.title)).toEqual(['Intro', 'Section 2', 'Intro (2)']);
+  });
+
+  it('files every slide (every builder) under its section', async () => {
+    await exportToPPTX(deck);
+    expect(rec.slides.map((x) => x.opts?.sectionTitle)).toEqual(['Intro', 'Intro', 'Section 2', 'Intro (2)']);
+  });
+
+  it('never reuses a title, even against a section literally named like a suffix', async () => {
+    await exportToPPTX({ ...deck, sections: [
+      { id: 'x', name: 'A', slides: ['1'] }, { id: 'y', name: 'A (2)', slides: ['2'] }, { id: 'z', name: 'A', slides: ['3'] },
+    ] });
+    expect(rec.sections.map((x) => x.title)).toEqual(['A', 'A (2)', 'A (3)']);
+  });
+
+  it('only emits the sections a range keeps', async () => {
+    await exportToPPTX(deck, { range: { from: 3, to: 3 } });
+    expect(rec.sections.map((x) => x.title)).toEqual(['Section 2']);
+    expect(rec.slides[0].opts.sectionTitle).toBe('Section 2');
+  });
+});
+
+describe('exportToPPTX — canvas colour-scheme parity', () => {
+  // The canvas draws content layouts on white with near-black ink, and only the
+  // cover (ink/accent bg), divider and thanks slides dark — the export matches.
+  const exp = async (slide) => { await exportToPPTX(deckWith({ id: 's', ...slide })); return last(); };
+
+  it.each(['agenda', 'kpi', 'chart', 'split', 'table', 'text', 'list', 'roadmap', 'risks'])(
+    'exports a %s slide light: white background, near-black title',
+    async (layout) => {
+      const s = await exp({ layout, title: 'Heading', body: 'b', columns: ['c'], rows: [['r']] });
+      expect(s.background).toEqual({ color: 'FFFFFF' });
+      expect(optsOf(s, 'Heading').color).toBe('0A0A0B');
+    },
+  );
+
+  it('exports body copy in the canvas grey, not the dark-scheme light grey', async () => {
+    const s = await exp({ layout: 'text', title: 'T', body: 'Body copy' });
+    expect(optsOf(s, 'Body copy').color).toBe('333333');
+  });
+
+  it('exports the cover light by default, ink / accent when the cover asks for them', async () => {
+    expect((await exp({ layout: 'cover', title: 'C' })).background).toEqual({ color: 'FFFFFF' });
+    const ink = await exp({ layout: 'cover', title: 'C', bg: 'ink' });
+    expect(ink.background).toEqual({ color: '15171C' });
+    expect(optsOf(ink, 'C').color).toBe('F8F8F6');
+    expect((await exp({ layout: 'cover', title: 'C', bg: 'accent' })).background).toEqual({ color: '7C5FDC' });
+  });
+
+  it('maps the cover\'s other canvas classes (dark / cream) and falls back to light for an unknown one', async () => {
+    expect((await exp({ layout: 'cover', title: 'C', bg: 'dark' })).background).toEqual({ color: '0C0E12' });
+    expect((await exp({ layout: 'cover', title: 'C', bg: 'cream' })).background).toEqual({ color: 'F5F1EA' });
+    expect((await exp({ layout: 'cover', title: 'C', bg: 'constructor' })).background).toEqual({ color: 'FFFFFF' });
+  });
+
+  it('exports divider and thanks slides dark, like the canvas', async () => {
+    expect((await exp({ layout: 'divider', chapter: '01', title: 'D' })).background).toEqual({ color: '15171C' });
+    expect((await exp({ layout: 'thanks', title: 'Bye' })).background).toEqual({ color: '15171C' });
+  });
+
+  it('draws table/KPI panels in light tones on a light slide', async () => {
+    const t = await exp({ layout: 'table', title: 'T', columns: ['Col'], rows: [['Cell']] });
+    expect(t.tables[0].rows[0][0].options.fill.color).not.toBe('1A1A2E');
+    expect(t.tables[0].rows[1][0].options.color).toBe('333333');
+  });
+});
+
+describe('exportToPPTX — malformed decks', () => {
+  it('exports a deck without a sections array (nothing to place) instead of throwing', async () => {
+    await expect(exportToPPTX({ title: 'x', slides: [] })).resolves.toBe('x.pptx');
+  });
+});

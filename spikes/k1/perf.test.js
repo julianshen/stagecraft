@@ -2,9 +2,9 @@
 // 40-slide deck of Stagecraft elements, against ADR 0001's budget.
 //   CHROMIUM_PATH=… K0_DPR=2 npx vitest run --config spikes/k1/vitest.config.js
 import { it } from 'vitest';
-import { buildScene } from '../../src/canvas/scene.js';
-import { paintSlide, createPaintEnv } from '../../src/canvas/paint.js';
-import { ensureAssets } from '../../src/canvas/assets.js';
+import { buildScene } from '@stagecraft/renderer/canvas/scene.js';
+import { paintSlide, createPaintEnv } from '@stagecraft/renderer/canvas/paint.js';
+import { ensureAssets } from '@stagecraft/renderer/canvas/assets.js';
 import { ms } from '../k0/paint.js';
 
 const SHAPES = ['rect', 'rounded', 'circle', 'star', 'arrow', 'hexagon'];

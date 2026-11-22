@@ -7,10 +7,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const PAINTERS = [
-  "export { resolvePreset } from '/src/vendor/officeview/drawing/geometry';",
-  "export { paintGeometry } from '/src/vendor/officeview/drawing/paint';",
-  "export { layoutTextBody } from '/src/vendor/officeview/drawing/text-layout';",
-  "export { paintTextBody, createTextBodyMeasurer } from '/src/vendor/officeview/drawing/text-paint';",
+  "export { resolvePreset } from '/packages/renderer/src/vendor/officeview/drawing/geometry';",
+  "export { paintGeometry } from '/packages/renderer/src/vendor/officeview/drawing/paint';",
+  "export { layoutTextBody } from '/packages/renderer/src/vendor/officeview/drawing/text-layout';",
+  "export { paintTextBody, createTextBodyMeasurer } from '/packages/renderer/src/vendor/officeview/drawing/text-paint';",
 ].join('\n');
 
 // [label, entry source, packages also kept out of the bundle]

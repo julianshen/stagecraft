@@ -1,0 +1,17 @@
+{
+  "name": "@stagecraft/renderer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./canvas/*": "./src/canvas/*"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@stagecraft/core": "0.1.0",
+    "fast-xml-parser": "^5.11.2"
+  }
+}

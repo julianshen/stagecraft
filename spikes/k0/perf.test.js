@@ -4,8 +4,8 @@ import { it } from 'vitest';
 import Konva from 'konva';
 import { deck, SLIDE_W, SLIDE_H } from './deck.js';
 import { paintNode, paintSlide, resolveFont, ms } from './paint.js';
-import { layoutTextBody } from '../../src/vendor/officeview/drawing/text-layout';
-import { createTextBodyMeasurer } from '../../src/vendor/officeview/drawing/text-paint';
+import { layoutTextBody } from '../../packages/renderer/src/vendor/officeview/drawing/text-layout.ts';
+import { createTextBodyMeasurer } from '../../packages/renderer/src/vendor/officeview/drawing/text-paint.ts';
 
 const r2 = (v) => Math.round(v * 100) / 100;
 const mb = (bytes) => Math.round(bytes / 1e5) / 10;

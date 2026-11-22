@@ -1,0 +1,347 @@
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { render, fireEvent, screen } from '@testing-library/react';
+import ThumbsPane from './ThumbsPane.jsx';
+import { flattenDeck } from '@stagecraft/core/lib/deckOrder.js';
+
+const origRO = globalThis.ResizeObserver;
+beforeAll(() => { globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }; });
+afterAll(() => { globalThis.ResizeObserver = origRO; });
+
+const deck = {
+  sections: [
+    { id: 's1', name: 'Intro', slides: ['a', 'b'] },
+    { id: 's2', name: 'End', slides: ['c'] },
+  ],
+  slides: [{ id: 'a', layout: 'cover' }, { id: 'b', layout: 'text' }, { id: 'c', layout: 'thanks' }],
+};
+const renderSlide = () => <div data-testid="slide" />;
+
+function renderPane(onReorder) {
+  return render(
+    <ThumbsPane
+      flat={flattenDeck(deck)}
+      sections={deck.sections}
+      curId="a"
+      onPick={() => {}}
+      renderSlide={renderSlide}
+      deckCtx={{ deck }}
+      onReorder={onReorder}
+    />,
+  );
+}
+const thumb = (c, sid) => c.querySelector(`[data-sid="${sid}"]`);
+
+describe('ThumbsPane drag-to-reorder', () => {
+  it('drops a slide before the one it lands on (across sections)', () => {
+    const onReorder = vi.fn();
+    const { container } = renderPane(onReorder);
+    fireEvent.dragStart(thumb(container, 'c'));
+    fireEvent.dragOver(thumb(container, 'a'));
+    fireEvent.drop(thumb(container, 'a'));
+    expect(onReorder).toHaveBeenCalledWith('c', 's1', 0); // c → before a in Intro
+  });
+
+  it('reorders within a section', () => {
+    const onReorder = vi.fn();
+    const { container } = renderPane(onReorder);
+    fireEvent.dragStart(thumb(container, 'b'));
+    fireEvent.drop(thumb(container, 'a')); // b before a
+    expect(onReorder).toHaveBeenCalledWith('b', 's1', 0);
+  });
+
+  it('ignores a drop onto the dragged slide itself', () => {
+    const onReorder = vi.fn();
+    const { container } = renderPane(onReorder);
+    fireEvent.dragStart(thumb(container, 'a'));
+    fireEvent.drop(thumb(container, 'a'));
+    expect(onReorder).not.toHaveBeenCalled();
+  });
+
+  it('clears the dragged slide on drag end, so a later stray drop does nothing', () => {
+    const onReorder = vi.fn();
+    const { container } = renderPane(onReorder);
+    fireEvent.dragStart(thumb(container, 'c'));
+    fireEvent.dragEnd(thumb(container, 'c')); // drag abandoned (dropped outside a thumb)
+    fireEvent.drop(thumb(container, 'a'));     // an unrelated/stray drop
+    expect(onReorder).not.toHaveBeenCalled();
+  });
+});
+
+describe('ThumbsPane memoization', () => {
+  // flattenDeck produces FRESH wrapper objects on every call (so the memo
+  // can't rely on wrapper identity), while untouched slides keep field-value
+  // identity (applySlidePatch's contract) — exactly what the comparator needs.
+  const baseSlides = [
+    { id: 'a', layout: 'cover', title: 'A' },
+    { id: 'b', layout: 'text', title: 'B' },
+    { id: 'c', layout: 'text', title: 'C' },
+  ];
+  const oneSection = [{ id: 's1', name: 'Main', slides: ['a', 'b', 'c'] }];
+  const memoDeck = { title: 'D', author: 'Me', theme: 'indigo', slides: baseSlides, sections: oneSection };
+
+  function renderMemoPane(overrides = {}) {
+    const renderSlide = vi.fn(() => <div data-testid="mini" />);
+    const props = {
+      flat: flattenDeck(memoDeck),
+      sections: oneSection,
+      curId: 'a',
+      onPick: vi.fn(),
+      renderSlide,
+      deckCtx: { deck: memoDeck },
+      onNewSlide: vi.fn(),
+      onReorder: vi.fn(),
+      ...overrides,
+    };
+    const utils = render(<ThumbsPane {...props} />);
+    return { ...utils, renderSlide, props };
+  }
+
+  it('re-renders only the edited slide thumbnail on a content edit', () => {
+    const { rerender, renderSlide, props } = renderMemoPane();
+    renderSlide.mockClear();
+    const editedSlides = baseSlides.map((s) => (s.id === 'b' ? { ...s, title: 'B2' } : s));
+    const editedDeck = { ...memoDeck, slides: editedSlides };
+    rerender(<ThumbsPane {...props} flat={flattenDeck(editedDeck)} deckCtx={{ deck: editedDeck }} />);
+    expect(renderSlide).toHaveBeenCalledTimes(1);
+    expect(renderSlide.mock.calls[0][0].title).toBe('B2');
+  });
+
+  it('re-renders at most the two affected thumbs when the selection moves', () => {
+    const { rerender, renderSlide, props, container } = renderMemoPane();
+    renderSlide.mockClear();
+    rerender(<ThumbsPane {...props} curId="b" />);
+    expect(renderSlide.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(container.querySelector('[data-sid="b"]').className).toContain('active');
+  });
+
+  it('re-renders every thumb when deck chrome (title) changes', () => {
+    const { rerender, renderSlide, props } = renderMemoPane();
+    renderSlide.mockClear();
+    rerender(<ThumbsPane {...props} deckCtx={{ deck: { ...memoDeck, title: 'Renamed' } }} />);
+    expect(renderSlide).toHaveBeenCalledTimes(3);
+  });
+
+  it('re-renders every thumb on a heading-scale change — the renderer reads deck.headingScale for title size', () => {
+    const { rerender, renderSlide, props } = renderMemoPane();
+    renderSlide.mockClear();
+    rerender(<ThumbsPane {...props} deckCtx={{ deck: { ...memoDeck, headingScale: 1.3 } }} />);
+    expect(renderSlide).toHaveBeenCalledTimes(3); // every title resizes, so no thumb stays stale
+  });
+
+  it('does NOT re-render thumbs on a theme change — the renderer reads no deck.theme', () => {
+    const { rerender, renderSlide, props } = renderMemoPane();
+    renderSlide.mockClear();
+    rerender(<ThumbsPane {...props} deckCtx={{ deck: { ...memoDeck, theme: 'coral' } }} />);
+    expect(renderSlide).not.toHaveBeenCalled();
+  });
+
+  it('counts comments per slide and drops section ids with no pool slide', () => {
+    // 'ghost' is referenced by the section but absent from the slide pool —
+    // the hoisted idxById lookup must skip it rather than render a blank card.
+    const ghostSections = [{ id: 's1', name: 'Main', slides: ['a', 'b', 'c', 'ghost'] }];
+    const { container } = renderMemoPane({
+      sections: ghostSections,
+      flat: flattenDeck({ ...memoDeck, sections: ghostSections }),
+      comments: [{ slide: 'a' }, { slide: 'a' }, { slide: 'b' }],
+    });
+    expect(container.querySelectorAll('.thumb')).toHaveLength(3); // ghost dropped
+    expect(container.querySelector('[data-sid="a"] .thumb-comments').textContent).toBe('2');
+    expect(container.querySelector('[data-sid="c"] .thumb-comments')).toBeNull();
+  });
+
+  it('re-renders every thumb on a section-order change (drop handlers must refresh)', () => {
+    const { rerender, renderSlide, props } = renderMemoPane();
+    renderSlide.mockClear();
+    const reordered = [{ id: 's1', name: 'Main', slides: ['a', 'c', 'b'] }];
+    rerender(<ThumbsPane {...props} sections={reordered} flat={flattenDeck({ ...memoDeck, sections: reordered })} />);
+    // b/c swapped positions; a's number is unchanged but its section's order
+    // changed, so its (closure-captured) drop handler must be rebuilt too.
+    expect(renderSlide).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('section collapse', () => {
+  it('clicking a section header collapses its thumbnails', () => {
+    const { container } = renderPane(vi.fn());
+    expect(thumb(container, 'a')).toBeTruthy();
+    expect(thumb(container, 'b')).toBeTruthy();
+    fireEvent.click(container.querySelector('[data-section-id="s1"]'));
+    expect(thumb(container, 'a')).toBeNull();
+    expect(thumb(container, 'b')).toBeNull();
+    expect(thumb(container, 'c')).toBeTruthy();
+  });
+
+  it('clicking the header again re-expands the section', () => {
+    const { container } = renderPane(vi.fn());
+    const hd = container.querySelector('[data-section-id="s1"]');
+    fireEvent.click(hd);
+    expect(thumb(container, 'a')).toBeNull();
+    fireEvent.click(hd);
+    expect(thumb(container, 'a')).toBeTruthy();
+  });
+
+  it('sections collapse independently', () => {
+    const { container } = renderPane(vi.fn());
+    fireEvent.click(container.querySelector('[data-section-id="s2"]'));
+    expect(thumb(container, 'c')).toBeNull();
+    expect(thumb(container, 'a')).toBeTruthy();
+    expect(thumb(container, 'b')).toBeTruthy();
+  });
+});
+
+describe('section rename and delete', () => {
+  function renderRenamePane(overrides = {}) {
+    return render(
+      <ThumbsPane
+        flat={flattenDeck(deck)}
+        sections={deck.sections}
+        curId="a"
+        onPick={() => {}}
+        renderSlide={renderSlide}
+        deckCtx={{ deck }}
+        onReorder={() => {}}
+        onRenameSection={vi.fn()}
+        onDeleteSection={vi.fn()}
+        {...overrides}
+      />,
+    );
+  }
+
+  it('clicking the rename button shows an input pre-filled with the section name', () => {
+    renderRenamePane();
+    fireEvent.click(screen.getByTitle('Rename: Intro'));
+    expect(screen.getByDisplayValue('Intro')).toBeInTheDocument();
+  });
+
+  it('Enter commits the rename and calls onRenameSection', () => {
+    const onRenameSection = vi.fn();
+    renderRenamePane({ onRenameSection });
+    fireEvent.click(screen.getByTitle('Rename: Intro'));
+    const input = screen.getByDisplayValue('Intro');
+    fireEvent.change(input, { target: { value: 'Overview' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.blur(input); // exercises renameSettled guard — must not double-fire
+    expect(onRenameSection).toHaveBeenCalledWith('s1', 'Overview');
+    expect(onRenameSection).toHaveBeenCalledTimes(1);
+  });
+
+  it('Escape cancels without calling onRenameSection', () => {
+    const onRenameSection = vi.fn();
+    renderRenamePane({ onRenameSection });
+    fireEvent.click(screen.getByTitle('Rename: Intro'));
+    const input = screen.getByDisplayValue('Intro');
+    fireEvent.change(input, { target: { value: 'Discarded' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    fireEvent.blur(input); // renameSettled guard must suppress the follow-on blur
+    expect(onRenameSection).not.toHaveBeenCalled();
+  });
+
+  it('blur commits the rename', () => {
+    const onRenameSection = vi.fn();
+    renderRenamePane({ onRenameSection });
+    fireEvent.click(screen.getByTitle('Rename: Intro'));
+    const input = screen.getByDisplayValue('Intro');
+    fireEvent.change(input, { target: { value: 'New Name' } });
+    fireEvent.blur(input);
+    expect(onRenameSection).toHaveBeenCalledWith('s1', 'New Name');
+  });
+
+  it('hides pen and trash buttons while rename input is open', () => {
+    renderRenamePane({});
+    fireEvent.click(screen.getByTitle('Rename: Intro'));
+    expect(screen.queryByTitle('Rename: Intro')).toBeNull();
+    expect(screen.queryByTitle('Delete: Intro')).toBeNull();
+  });
+
+  it('calls onDeleteSection when the delete button is clicked', () => {
+    const onDeleteSection = vi.fn();
+    renderRenamePane({ onDeleteSection });
+    fireEvent.click(screen.getByTitle('Delete: End'));
+    expect(onDeleteSection).toHaveBeenCalledWith('s2');
+  });
+
+  it('delete button is disabled when only one section exists', () => {
+    const oneSectionDeck = {
+      sections: [{ id: 's1', name: 'Only', slides: ['a'] }],
+      slides: [{ id: 'a', layout: 'cover' }],
+    };
+    render(
+      <ThumbsPane
+        flat={flattenDeck(oneSectionDeck)}
+        sections={oneSectionDeck.sections}
+        curId="a"
+        onPick={() => {}}
+        renderSlide={renderSlide}
+        deckCtx={{ deck: oneSectionDeck }}
+        onReorder={() => {}}
+        onRenameSection={vi.fn()}
+        onDeleteSection={vi.fn()}
+      />,
+    );
+    expect(screen.getByTitle('Delete: Only')).toBeDisabled();
+  });
+
+  it('does not crash when onRenameSection and onDeleteSection are omitted', () => {
+    render(
+      <ThumbsPane
+        flat={flattenDeck(deck)}
+        sections={deck.sections}
+        curId="a"
+        onPick={() => {}}
+        renderSlide={renderSlide}
+        deckCtx={{ deck }}
+        onReorder={() => {}}
+      />,
+    );
+    expect(() => fireEvent.click(screen.getByTitle('Rename: Intro'))).not.toThrow();
+    expect(() => fireEvent.click(screen.getByTitle('Delete: End'))).not.toThrow();
+  });
+});
+
+describe('new section', () => {
+  it('calls onAddSection when the "New section" button is clicked', () => {
+    const onAddSection = vi.fn();
+    render(
+      <ThumbsPane
+        flat={flattenDeck(deck)}
+        sections={deck.sections}
+        curId="a"
+        onPick={() => {}}
+        renderSlide={renderSlide}
+        deckCtx={{ deck }}
+        onReorder={() => {}}
+        onAddSection={onAddSection}
+      />,
+    );
+    fireEvent.click(screen.getByText('New section'));
+    expect(onAddSection).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not crash when onAddSection is omitted', () => {
+    render(
+      <ThumbsPane
+        flat={flattenDeck(deck)}
+        sections={deck.sections}
+        curId="a"
+        onPick={() => {}}
+        renderSlide={renderSlide}
+        deckCtx={{ deck }}
+        onReorder={() => {}}
+      />,
+    );
+    expect(() => fireEvent.click(screen.getByText('New section'))).not.toThrow();
+  });
+});
+
+describe('ThumbsPane header honesty (A2)', () => {
+  it('marks the unbuilt Outline and More buttons as coming soon and disabled', () => {
+    renderPane(() => {});
+    for (const name of ['Outline view', 'More']) {
+      const btn = screen.getByRole('button', { name: `${name} — coming soon` });
+      // aria-disabled (not disabled) keeps it keyboard-focusable, so the status is discoverable
+      expect(btn).toHaveAttribute('aria-disabled', 'true');
+      expect(btn).not.toBeDisabled();
+      expect(btn.className).toContain('is-soon');
+    }
+  });
+});

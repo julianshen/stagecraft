@@ -15,3 +15,6 @@ coverage/
 # tGD scan symlinks (artifacts live in ../stagecraft-tGD)
 .codegraph
 .understand-anything
+
+# Local review worktrees
+.worktrees/

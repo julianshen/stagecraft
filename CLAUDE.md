@@ -32,13 +32,13 @@ npm run sync:officeview  # re-vendor officeview's drawing engine at the pinned c
 
 Run a single test file or case:
 ```bash
-npx vitest run src/lib/pptxExport.test.js          # one file
+npx vitest run packages/pptx/src/lib/pptxExport.test.js          # one file
 npx vitest run -t "adds a slide to the last section" # by test name (substring)
 ```
 
 `npm run build` (tsc-free Vite build) is a secondary structural check — if it transforms all modules cleanly the change is sound — but **tests are the primary gate** (see Testing & TDD policy).
 
-> Test harness: **Vitest + `@vitest/coverage-v8`**, with `jsdom` + `@testing-library/react` (config in `vitest.config.js`, globals + jest-dom matchers in `src/test/setup.js`). `vitest.workspace.js` splits the suite into two projects: `unit` (jsdom — everything else) and `chromium` (`*.paint.test.js` canvas pixel probes and `*.browser.test.jsx` Konva stages, run in headless Chromium via Vitest browser mode + Playwright; config in `vitest.browser.js`). The `chromium` project needs Playwright's Chromium once per machine: `npx playwright install chromium` (CI caches its own). If the machine's preinstalled Chromium isn't the build the lockfile's `playwright` expects (Claude Code cloud sessions ship one at `/opt/pw-browsers`), point the tests at it: `CHROMIUM_PATH=/opt/pw-browsers/chromium npm test`. The 90% coverage gate is enforced against `coverage.include` — currently the unit-tested core (`src/server/api.js`, `src/lib/deckOrder.js`, `src/lib/llmClient.js`, `src/data/deck.js`). **When you add tests for more of the app, widen that `include` list** so the new code comes under the gate.
+> Test harness: **Vitest + `@vitest/coverage-v8`**, with `jsdom` + `@testing-library/react` (config in `vitest.config.js`, globals + jest-dom matchers in `tests/helpers/setup.js`). `vitest.workspace.js` splits the suite into two projects: `unit` (jsdom — everything else) and `chromium` (`*.paint.test.js` canvas pixel probes and `*.browser.test.jsx` Konva stages, run in headless Chromium via Vitest browser mode + Playwright; config in `vitest.browser.js`). The `chromium` project needs Playwright's Chromium once per machine: `npx playwright install chromium` (CI caches its own). If the machine's preinstalled Chromium isn't the build the lockfile's `playwright` expects (Claude Code cloud sessions ship one at `/opt/pw-browsers`), point the tests at it: `CHROMIUM_PATH=/opt/pw-browsers/chromium npm test`. The 90% coverage gate is enforced against `coverage.include` — currently the unit-tested core (`apps/playground/src/server/api.js`, `packages/core/src/lib/deckOrder.js`, `apps/playground/src/lib/llmClient.js`, `packages/core/src/data/deck.js`). **When you add tests for more of the app, widen that `include` list** so the new code comes under the gate.
 
 ## Testing & TDD policy (required)
 
@@ -59,17 +59,17 @@ The Playwright tour script `node shots/shoot.mjs` captures screenshots of every 
 
 ## Big-picture architecture
 
-This is a Vite + React 18 SPA **with no separate backend** — read these together to understand the system.
+The reusable packages are hosted by a Vite + React 18 playground. The playground has no separate backend process. See README.md for package ownership.
 
 ### The "server" is a Vite plugin
-`vite.config.js` contains `mcpMiddlewarePlugin`, a `configureServer` middleware that handles all `/api/*` routes and holds the deck in a single in-memory `deckState` object. There is no Express/Node server. This middleware provides:
+`apps/playground/vite.config.js` contains `mcpMiddlewarePlugin` (the root config re-exports it), a `configureServer` middleware that handles all `/api/*` routes and holds the deck library in a store backed by the repository-root `.stagecraft-decks.json` snapshot. There is no Express/Node server. This middleware provides:
 - REST: `GET/PUT /api/deck`, `GET/POST /api/slides`, `PUT/DELETE /api/slides/:id`
 - MCP: `GET /api/mcp` (manifest), `POST /api/mcp/tools/call` (tools: `get_deck`, `add_slide`, `update_slide`, `delete_slide`, `reorder_slides`, `set_theme`)
 - LLM proxy: `POST /api/llm` forwards to Anthropic (`/v1/messages`) or an OpenAI-compatible (`/chat/completions`) endpoint so API keys stay out of page JS.
 
 Because this lives in the dev middleware, the API **only exists under `npm run dev`** (not in a static `build`/`preview`).
 
-### Deck data model (`src/data/deck.js`)
+### Deck data model (`packages/core/src/data/deck.js`)
 A deck is a **flat `slides` pool plus `sections[].slides` arrays that define order**. `flattenDeck()` (in `SlideEditor.jsx`) resolves the render order; a slide not referenced by a section is never shown. Slides are a **discriminated union keyed by `layout`** (13 layouts: cover, agenda, divider, kpi, chart, split, table, text, list, roadmap, risks, thanks, plus `blank` — PowerPoint's Blank, where the `elements` overlay is the whole slide). The schema for each layout is implicit in two places that must stay in sync — see "Adding a slide layout".
 
 ### Slide rendering is resolution-fixed and scaled
@@ -77,11 +77,11 @@ Every slide is authored in a **1920×1080 coordinate space** (absolute px, no vi
 
 ### State ownership
 - **`App.jsx`** owns view routing (`home`/`editor`/`sorter`/`settings` + presenter overlay) and the four theming axes (`tw`), persisted to `localStorage['stagecraft.tw']` and `['stagecraft.view']`.
-- **`Editor.jsx`** owns the working deck (a deep clone of `SAMPLE_DECK`) and **all mutations** (`addComponent`, `addText`, `addTable`, `addChart`, `changeLayout`, `changeTheme`, `deleteSlide`). It passes these to `SlideEditor.jsx` as `callbacks`.
+- **`StagecraftEditor.jsx`** supplies controlled or internal undoable state. **`Editor.jsx`** implements **all mutations** (`addComponent`, `addText`, `addTable`, `addChart`, `changeLayout`, `changeTheme`, `deleteSlide`). It passes these to `SlideEditor.jsx` as `callbacks`.
 - **`SlideEditor.jsx`** is the large, mostly-presentational editor (toolbar, thumbs, canvas, inspector, popover menus, Co-pilot drawer). It receives a `renderSlide` function and `callbacks`; it does not own deck data.
 
 ### Theming: two independent accent systems
-- **App theme** (editor UI) — `tw` axes applied in `App.jsx` via `data-theme`/`data-density` attributes on `<html>` plus `--accent*` custom properties. `styles/main.css` (~2k lines) is the entire design system; tokens are documented in `design.md`.
+- **App theme** (editor UI) — scoped `.stagecraft-editor` roots carry `data-theme`/`data-density` and `--accent*` tokens. The playground also retains its legacy `<html>` attributes; the reusable wrapper does not modify them. `packages/react/src/styles/main.css` supplies editor styles; `apps/playground/src/host.css` owns the page reset and shell sizing. Tokens are documented in `design.md`.
 - **Deck theme** (`deck.theme`) — tints slide *content* and PPTX output; changed via the toolbar Theme menu, unrelated to the app accent.
 
 ### AI Co-pilot
@@ -90,12 +90,12 @@ Every slide is authored in a **1920×1080 coordinate space** (absolute px, no vi
 ### PPTX export / import
 `lib/pptxExport.js` builds a `pptxgenjs` deck entirely client-side, with one builder per layout. Each slide exports in the colour scheme the canvas renders it in (`SCHEMES`/`schemeFor`; the deck theme only supplies the accent), filed under a PowerPoint section per deck section. The export loop creates each slide (section + background) and passes it to a per-layout builder that only draws; the background class is single-sourced with the canvas via `lib/slideScheme.js` (`slideBgClass`) — a new dark layout goes there. Charts export as native, editable charts.
 
-`lib/pptxImport.js` is the inbound half: it parses a `.pptx` (JSZip + DOMParser) into a deck whose slides are all `blank` + `elements`, and returns `warnings` for anything it can't represent. Tests build packages with `src/test/pptxFixture.js`. PowerPoint parity status and roadmap: `docs/POWERPOINT-PARITY.md`.
+`lib/pptxImport.js` is the inbound half: it parses a `.pptx` (JSZip + DOMParser) into a deck whose slides are all `blank` + `elements`, and returns `warnings` for anything it can't represent. Tests build packages with `tests/helpers/pptxFixture.js`. PowerPoint parity status and roadmap: `docs/POWERPOINT-PARITY.md`.
 
 ## Conventions & gotchas
 
 - **ES modules with named exports only.** (The original prototype in `../repo/project` used `window.*` globals and `/* global */` comments — this project deliberately does not. Don't reintroduce that pattern.)
-- **The editor↔server sync is a two-way round-trip** via `src/hooks/useDeckSync.js` (used in `App.jsx`). The store carries a monotonic `rev`; the hook pushes local edits (`PUT /api/deck`, debounced ~300 ms so per-keystroke editing coalesces; the initial seed is immediate) and polls `GET /api/deck/state` (~1.5 s), adopting the server deck whenever `rev` advances past the one it last wrote. So MCP/agent edits **do** render live now. Caveat: `deckState` is still **in-memory**, so a browser reload reseeds from `SAMPLE_DECK` (durable persistence is the next roadmap item). Conflict policy is last-write-wins (no CRDT/OT merge).
+- **The editor↔server sync is a two-way round-trip** via `apps/playground/src/hooks/useDeckSync.js` (used in `App.jsx`). The store carries a monotonic `rev`; the hook pushes local edits (`PUT /api/deck`, debounced ~300 ms so per-keystroke editing coalesces; the initial seed is immediate) and polls `GET /api/deck/state` (~1.5 s), adopting the server deck whenever `rev` advances past the one it last wrote. So MCP/agent edits **do** render live now. The playground middleware persists the deck library to `.stagecraft-decks.json`; the library component itself does not provide persistence. Conflict policy is last-write-wins (no CRDT/OT merge).
 - **The canvas is a real editing surface now** — inline text editing + a floating format toolbar, direct element manipulation (select / move / resize / rotate / marquee / copy-paste / align / distribute / z-order), shape drawing, and a wired right-click menu all work. The surfaces still mocked/planned are narrower: the **Design** token rows (the layout grid is wired now), the **Animate** panel, the **Timeline** drawer, the **Pen** tool, and a few **Misc** toolbar buttons (version history). Before assuming something is broken, check `SPEC.md`, which tags every feature 🟢 wired / 🟡 partial / 🔴 mocked / ⚪ planned.
 
 ## Adding a slide layout
@@ -108,11 +108,11 @@ A new `layout` must be wired in up to four places:
 
 ## Canvas renderer (Phase K, in progress)
 
-`src/canvas/` is the canvas drawing core that will replace the DOM slide renderer (`docs/CANVAS-EDITOR.md`). `scene.js` turns a slide into plain draw nodes, using the same defaults and fallbacks as `SlideRenderer` and the export. `paint.js` paints them through the vendored officeview engine. `assets.js` decodes images and loads fonts (`ensureAssets`), and `ui/SlideCanvas.jsx` is the DPR-aware read-only surface. Size slides with `slideDims(deck)` (`lib/slideDims.js`), never a hard-coded 1080. No UI uses the canvas yet; K4 switches the read-only surfaces behind a setting.
+`packages/renderer/src/canvas/` is the canvas drawing core that will replace the DOM slide renderer (`docs/CANVAS-EDITOR.md`). `scene.js` turns a slide into plain draw nodes, using the same defaults and fallbacks as `SlideRenderer` and the export. `paint.js` paints them through the vendored officeview engine. `assets.js` decodes images and loads fonts (`ensureAssets`), and `ui/SlideCanvas.jsx` is the DPR-aware read-only surface. Size slides with `slideDims(deck)` (`lib/slideDims.js`), never a hard-coded 1080. No UI uses the canvas yet; K4 switches the read-only surfaces behind a setting.
 
 ## Vendored code
 
-`src/vendor/officeview/` is a pinned, unmodified copy of officeview's Canvas2D drawing engine (preset geometry, Office fills/lines, rich-text layout/paint) for the Phase K canvas renderer. It is TypeScript stripped by Vite's esbuild (Stagecraft has no `tsc`). **Don't edit it by hand**: fix upstream, then `npm run sync:officeview` (the manifest `officeview.json` holds the pin and entry modules). It is outside the coverage gate. Decision record: `docs/adr/0001-canvas-engine.md`.
+`packages/renderer/src/vendor/officeview/` is a pinned, unmodified copy of officeview's Canvas2D drawing engine (preset geometry, Office fills/lines, rich-text layout/paint) for the Phase K canvas renderer. It is TypeScript stripped by Vite's esbuild (Stagecraft has no `tsc`). **Don't edit it by hand**: fix upstream, then `npm run sync:officeview` (the manifest `officeview.json` holds the pin and entry modules). It is outside the coverage gate. Decision record: `docs/adr/0001-canvas-engine.md`.
 
 ## Reference docs
 
@@ -122,3 +122,7 @@ A new `layout` must be wired in up to four places:
 - `docs/POWERPOINT-PARITY.md` — PowerPoint parity review + feature matrix/scorecard; `docs/POWERPOINT-SPEC.md` — UI review, per-feature PowerPoint-compatibility spec and phased delivery plan.
 - `docs/CANVAS-EDITOR.md` — design for moving slide rendering and the editor onto `<canvas>` (Konva stage + officeview drawing engine) — Phase K of the delivery plan.
 - `docs/adr/` — architecture decision records (0001: the canvas engine, with its perf budget).
+
+## Workspace boundaries
+
+See README.md for package ownership. Packages must not import playground code. Inject application services and AI UI. Run `npm run check:boundaries` and `npm run test:consumer` with the existing coverage/build gates. Packages remain private source exports.

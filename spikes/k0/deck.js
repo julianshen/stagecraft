@@ -1,4 +1,4 @@
-import { SLIDE_W, SLIDE_H } from '../../src/lib/elements.js';
+import { SLIDE_W, SLIDE_H } from '@stagecraft/core/lib/elements.js';
 
 export { SLIDE_W, SLIDE_H };
 
