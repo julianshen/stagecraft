@@ -122,7 +122,9 @@ describe('AI settings — Test connection', () => {
     callLLM.mockReturnValue(new Promise((r) => { resolve = r; }));
     renderSettings();
     fireEvent.click(screen.getByText('Test connection'));
-    fireEvent.click(screen.getByText('Testing…'));
+    const testingButton = screen.getByText('Testing…');
+    expect(testingButton.querySelector('svg').style.animation).toBe('stagecraft-spin .65s linear infinite');
+    fireEvent.click(testingButton);
     expect(callLLM).toHaveBeenCalledTimes(1);
     resolve('pong');
     expect(await screen.findByText('Connected')).toBeInTheDocument();

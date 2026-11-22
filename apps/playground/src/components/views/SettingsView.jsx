@@ -171,7 +171,7 @@ function AISettings() {
 
   const testButton = (
     <button className="btn outline" onClick={testConn} disabled={test.phase === 'testing'} style={{ height: 30 }}>
-      {test.phase === 'testing' ? <><Icon name="refresh" size={12} style={{ animation: 'spin .65s linear infinite' }}/> Testing…</>
+      {test.phase === 'testing' ? <><Icon name="refresh" size={12} style={{ animation: 'stagecraft-spin .65s linear infinite' }}/> Testing…</>
        : test.phase === 'ok'    ? <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={12}/> Connected</span>
        : test.phase === 'error' ? <span style={{ color: 'var(--warn)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="x" size={12}/> Failed</span>
        : 'Test connection'}

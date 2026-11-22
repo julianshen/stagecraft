@@ -1,5 +1,7 @@
 import { it, expect } from 'vitest';
 import { render } from '@testing-library/react';
+import { TRANSITION_TYPES } from '@stagecraft/core/lib/deckUtils.js';
+import { transitionAnim } from '../../apps/playground/src/lib/transitions.js';
 import '@stagecraft/react/styles.css';
 import '../../apps/playground/src/host.css';
 
@@ -21,3 +23,17 @@ it('fills the playground viewport without browser margins or document overflow',
     unmount();
   } finally { root.remove(); }
 });
+
+for (const type of TRANSITION_TYPES) {
+  if (type === 'none') continue;
+  it(`plays the presenter's ${type} transition`, () => {
+    const slide = document.createElement('div');
+    slide.style.animation = transitionAnim({ type, duration: 500 });
+    document.body.append(slide);
+    try {
+      const animations = slide.getAnimations();
+      expect(animations).toHaveLength(1);
+      expect(animations[0].animationName).toBe(`present-${type}`);
+    } finally { slide.remove(); }
+  });
+}
