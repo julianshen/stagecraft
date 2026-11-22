@@ -82,6 +82,13 @@ describe('protected sessions', () => {
     await expect(fixture({ authorize: ({ operation }) => operation !== 'context' }).session.context()).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
   });
   it('validates protected outputs strictly: no accessors, no NaN coercion, bounded depth', async () => {
+    class Secret {}
+    const hidden = Object.defineProperty({}, 'hidden', { value: 1 });
+    await expect(fixture({ project: () => new Date(0) }).session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(fixture({ project: () => new Secret() }).session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(fixture({ project: () => hidden }).session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(fixture({ project: () => ({ nested: undefined }) }).session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    await expect(fixture({ project: () => undefined }).session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
     let invoked = 0;
     await expect(fixture({ project: () => ({ get value() { invoked++; return NaN; } }) }).session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
     expect(invoked).toBe(0);
@@ -99,14 +106,50 @@ describe('protected sessions', () => {
   it('caps projections, rejects non-JSON providers and redacts leaked errors', async () => {
     await expect(fixture({ project: () => { throw new SessionError('RESTRICTED'); } }).session.read()).rejects.toMatchObject({ code: 'OPERATION_FAILED', message: 'OPERATION_FAILED' });
     await expect(fixture({ project: () => { throw { get code() { throw Error('RESTRICTED'); } }; } }).session.read()).rejects.toMatchObject({ code: 'OPERATION_FAILED', message: 'OPERATION_FAILED' });
-    await expect(fixture({ maxResponseBytes: 100, project: () => 'x'.repeat(101) }).session.read()).rejects.toMatchObject({ code: 'RESPONSE_LIMIT' });
-    await expect(fixture({ context: () => undefined }).session.context()).rejects.toMatchObject({ code: 'RESPONSE_LIMIT' });
+    await expect(fixture({ maxResponseBytes: 192, project: () => 'x'.repeat(200) }).session.read()).rejects.toMatchObject({ code: 'RESPONSE_LIMIT' });
+    await expect(fixture({ context: () => undefined }).session.context()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
     await expect(fixture({ context: () => { throw Error('RESTRICTED'); } }).session.context()).rejects.toMatchObject({ message: 'OPERATION_FAILED' });
+  });
+  it('authorizes undo against the candidate it would restore', async () => {
+    const editor = createEditor({ document: { title: 'restricted' }, plugins: [{ id: 'test', version: '1', commands: [{ id: 'title', apply(d, p) { d.title = p; return d; } }] }] });
+    const session = createProtectedSession({ editor, identity: { id: 'limited' }, authorize: ({ operation, request }) =>
+      operation !== 'undo' || request?.candidate?.document?.title !== 'restricted', project: ({ snapshot }) => ({ title: snapshot.document.title }) });
+    await session.dispatch({ type: 'title', payload: 'public', expectedRevision: 0 });
+    await expect(session.undo({ expectedRevision: 1 })).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    expect(editor.getSnapshot().document.title).toBe('public');
+    await session.dispatch({ type: 'title', payload: 'public again', expectedRevision: 1 });
+    expect(await session.undo({ expectedRevision: 2 })).toMatchObject({ revision: 3, document: { title: 'public' } });
+  });
+  it('denies revision probing through unauthorized stale mutations', async () => {
+    const { editor, session } = fixture({ authorize: () => false });
+    await expect(session.dispatch({ type: 'title', payload: 'probe', expectedRevision: 5 })).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    await expect(session.undo({ expectedRevision: 5 })).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    expect(editor.getSnapshot().revision).toBe(0);
+  });
+  it('supports session node budgets paired with the protocol envelope', async () => {
+    const { editor, session } = fixture({ maxResponseNodes: 50, project: ({ snapshot }) => ({ title: snapshot.document.title, list: Array(41).fill(0) }) });
+    // A wrapped {title, Array(N)} result costs N+7 nodes: 41+7 exceeds the 50−3 budget.
+    await expect(session.dispatch({ type: 'title', payload: 'big', expectedRevision: 0 })).rejects.toMatchObject({ code: 'INVALID_RESPONSE', committed: true, revision: 1 });
+    expect(editor.getSnapshot().revision).toBe(1);
+    const small = fixture({ maxResponseNodes: 50, project: ({ snapshot }) => ({ title: snapshot.document.title, list: Array(40).fill(0) }) });
+    await expect(small.session.dispatch({ type: 'title', payload: 'fits', expectedRevision: 0 })).resolves.toMatchObject({ revision: 1 });
+  });
+  it('bounds request inputs with a request budget and request code', async () => {
+    const { session } = fixture({ maxRequestBytes: 64 });
+    await expect(session.dispatch({ type: 'title', payload: 'x'.repeat(200), expectedRevision: 0 })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    await expect(session.dispatch({ type: 'title', payload: 'ok', expectedRevision: 0, get extra() { return 1; } })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    const { editor, session: open } = fixture();
+    await expect(open.dispatch({ type: 'title', payload: NaN, expectedRevision: 0 })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    expect(editor.getSnapshot().document.title).toBe('public');
   });
   it('rejects non-JSON payloads before serialization can coerce them', async () => {
     const { session, editor } = fixture();
-    await expect(session.dispatch({ type: 'title', payload: NaN, expectedRevision: 0 })).rejects.toMatchObject({ code: 'OPERATION_FAILED' });
+    await expect(session.dispatch({ type: 'title', payload: NaN, expectedRevision: 0 })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
     expect(editor.getSnapshot().document.title).toBe('public');
+  });
+  it('rejects non-function context and export callbacks at construction', () => {
+    expect(() => fixture({ context: 'nope' })).toThrow(TypeError);
+    expect(() => fixture({ exportDocument: 7 })).toThrow(TypeError);
   });
   it('uses trusted identity, filters commands, and closes without disposing editor', async () => {
     const identity = { id: 'original' };

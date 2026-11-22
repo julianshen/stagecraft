@@ -90,6 +90,27 @@ describe('remote session protocol', () => {
     await expect(remote.dispatch({ type: 'title', payload: 'second', expectedRevision: 1 })).rejects.toMatchObject({ code: 'RESPONSE_LIMIT', committed: true, outcome: 'committed', revision: 2 });
     expect(editor.getSnapshot().revision).toBe(2);
   });
+  it('reserves the envelope nodes so the committed receipt survives the exact node boundary', async () => {
+    // Default limits: the shared node cap is 100000 and the success envelope counts three extra
+    // nodes ({version, ok, result}); an Array(N) mutation result costs N+5 nodes.
+    const editor = createEditor({ document: { n: 0 }, plugins: [{ id: 'inc', version: '1', commands: [{ id: 'inc', apply(d) { d.n += 1; return d; } }] }] });
+    const pair = list => {
+      // The review's exact repro shape: the projector returns the bare array.
+      const session = createProtectedSession({ editor, identity: {}, authorize: () => true, project: () => list });
+      const handler = createSessionRequestHandler(session);
+      return createRemoteSession({ request: async message => JSON.parse(JSON.stringify(await handler(JSON.parse(JSON.stringify(message))))) });
+    };
+    expect(await pair(Array(99992).fill(0)).dispatch({ type: 'inc', expectedRevision: 0 })).toMatchObject({ revision: 1 });
+    await expect(pair(Array(99993).fill(0)).dispatch({ type: 'inc', expectedRevision: 1 })).rejects.toMatchObject({ code: 'INVALID_RESPONSE', committed: true, outcome: 'committed', revision: 2 });
+    expect(editor.getSnapshot().revision).toBe(2);
+  });
+  it('rejects response limits too small to carry an error receipt on both ends', async () => {
+    const editor = createEditor({ document: { title: 'x' }, plugins: [{ id: 't', version: '1', commands: [{ id: 'title', apply: (d, v) => ({ ...d, title: v }) }] }] });
+    expect(() => createProtectedSession({ editor, identity: {}, authorize: () => true, project: ({ snapshot }) => snapshot.document, maxResponseBytes: 100 })).toThrow(/response limit/);
+    expect(() => createRemoteSession({ request: () => ({}), maxResponseBytes: 100 })).toThrow(/response limit/);
+    // The supported minimum itself constructs fine.
+    expect(() => createProtectedSession({ editor, identity: {}, authorize: () => true, project: ({ snapshot }) => snapshot.document, maxResponseBytes: 192 })).not.toThrow();
+  });
   it('validates read and discovery success shapes against the protocol', async () => {
     await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: 17 }) }).read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
     await expect(createRemoteSession({ request: () => ({ version: 1, ok: true, result: { document: {}, revision: -1 } }) }).read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
@@ -130,7 +151,7 @@ describe('remote mutation outcome receipts', () => {
   it('marks oversized and lost post-commit responses unknown instead of reporting rollback', async () => {
     for (const mode of ['oversized', 'lost', 'malformed']) {
       const { handler, editor } = setup();
-      const remote = createRemoteSession({ maxResponseBytes: mode === 'oversized' ? 100 : 1048576,
+      const remote = createRemoteSession({ maxResponseBytes: mode === 'oversized' ? 192 : 1048576,
         request: async message => {
           const response = await handler(message);
           if (mode === 'lost') throw Error('private network diagnostic');
