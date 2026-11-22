@@ -332,9 +332,9 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                 const matching=d=>all(d,'style','style').filter(n=>attr(n,'style','name')===styleName&&attr(n,'style','family')==='graphic');
                 const local=matching(docNode), common=matching(stylesDoc);
                 const candidates=local.length?local:common;
-                if(candidates.length!==1) throw new Error('Unsupported ODP text layout');
+                if(styleName && candidates.length!==1) throw new Error('Unsupported ODP text layout');
                 // Copy rather than mutate a shared style; preserve every unrelated graphic property.
-                const style=docNode.importNode(candidates[0],true);
+                const style=styleName ? docNode.importNode(candidates[0],true) : element(docNode,'style','style',{'style:family':'graphic'});
                 const reserved=new Set(reservedOdpStyleNames(docNode,stylesDoc));
                 let index=1,name;do{name=`StagecraftBody${index++}`;}while(reserved.has(name));
                 style.setAttributeNS(NS.style,'style:name',name);
