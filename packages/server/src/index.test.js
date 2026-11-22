@@ -265,6 +265,17 @@ describe('protected sessions', () => {
     await expect(pending).rejects.toMatchObject({ code: 'SESSION_CLOSED', committed: true, revision: 1 });
     expect(editor.getSnapshot().revision).toBe(1);
   });
+  it('rejects symbol-keyed arrays with the path code on input and output', async () => {
+    const symbolArray = () => { const value = [1]; value[Symbol('s')] = 2; return value; };
+    let projected = { ok: 1 };
+    const editor = createEditor({ document: { title: 'x' }, plugins: [] });
+    const session = createProtectedSession({ editor, identity: { id: 'a' }, authorize: () => true, project: () => projected });
+    for (const operation of ['transact', 'undo', 'redo']) {
+      await expect(session[operation]({ expectedRevision: 0, x: symbolArray() })).rejects.toMatchObject({ code: 'INVALID_REQUEST', committed: false });
+    }
+    projected = { a: symbolArray() };
+    await expect(session.read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
   it('rejects an in-flight operation after close', async () => {
     const gate = deferred();
     const { session, editor } = fixture({ authorize: () => gate.promise });

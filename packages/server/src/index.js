@@ -12,45 +12,33 @@ export class SessionError extends Error {
 }
 
 /**
- * One strict, descriptor-based validator/clone for every protected byte crossing the boundary:
- * accessors and toJSON are never invoked, non-finite numbers, functions, bigints, symbols,
- * undefined values, non-enumerable keys and non-plain objects are rejected instead of silently
- * coerced or dropped, and depth, node count and encoded bytes are bounded. Output failures throw
- * `code`; the input protocol path passes 'INVALID_REQUEST', protected outputs pass
- * 'INVALID_RESPONSE'. Byte overflow always stays RESPONSE_LIMIT.
+ * One strict validator/clone for every protected byte crossing the boundary. The JSON rules —
+ * accessors and toJSON are never invoked; non-finite numbers, functions, bigints, symbols,
+ * undefined values, non-enumerable keys, reserved keys, sparse arrays and non-plain objects are
+ * rejected — are the kernel's own `cloneJson`, single-sourced. This function adds only what the
+ * kernel lacks: an iterative depth/node budget (checked first, so a deep or cyclic input can never
+ * overflow the recursive clone) and an encoded-byte cap. Rule failures throw `code`; byte overflow
+ * throws `limitCode` (RESPONSE_LIMIT for protected outputs, `code` for requests).
  */
-function strictJson(value, maxBytes, code, maxDepth = 64, maxNodes = 100000) {
-  if (value === undefined) throw new SessionError(code);
+const encoder = new TextEncoder();
+function strictJson(value, maxBytes, code, { maxDepth = 64, maxNodes = 100000, limitCode = code } = {}) {
   const pending = [[value, 0]];
   let nodes = 0;
   while (pending.length) {
     const [item, depth] = pending.pop();
     if (++nodes > maxNodes || depth > maxDepth) throw new SessionError(code);
-    if (item && typeof item === 'object') {
-      let indices = 0;
-      if (!Array.isArray(item)) {
-        const prototype = Object.getPrototypeOf(item);
-        if (prototype !== Object.prototype && prototype !== null) throw new SessionError(code);
-      }
-      for (const key of Reflect.ownKeys(item)) {
-        // Mirror the kernel's array rules exactly: dense arrays carry index keys only.
-        if (Array.isArray(item)) {
-          if (key === 'length') continue;
-          if (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= item.length) throw new SessionError(code);
-          indices++;
-        } else if (typeof key !== 'string' || key === '__proto__' || key === 'prototype' || key === 'constructor') throw new SessionError(code);
-        const descriptor = Object.getOwnPropertyDescriptor(item, key);
-        if (!descriptor || !('value' in descriptor)) throw new SessionError(code);
-        if (!descriptor.enumerable) throw new SessionError(code);
-        pending.push([descriptor.value, depth + 1]);
-      }
-      if (Array.isArray(item) && indices !== item.length) throw new SessionError(code);
-    } else if (item === undefined || typeof item === 'function' || typeof item === 'bigint' || typeof item === 'symbol') throw new SessionError(code);
-    else if (typeof item === 'number' && !Number.isFinite(item)) throw new SessionError(code);
+    if (!item || typeof item !== 'object') continue;
+    const array = Array.isArray(item);
+    for (const key of Reflect.ownKeys(item)) {
+      if (array && key === 'length') continue;
+      const descriptor = Object.getOwnPropertyDescriptor(item, key);
+      // Accessors are never read; cloneJson rejects them below.
+      if (descriptor && 'value' in descriptor) pending.push([descriptor.value, depth + 1]);
+    }
   }
-  // cloneJson rejects cycles, prototype pollution and async thenables before serialization.
-  const text = JSON.stringify(cloneJson(value));
-  if (typeof text !== 'string' || new TextEncoder().encode(text).length > maxBytes) throw new SessionError('RESPONSE_LIMIT');
+  let text;
+  try { text = JSON.stringify(cloneJson(value)); } catch { throw new SessionError(code); }
+  if (encoder.encode(text).length > maxBytes) throw new SessionError(limitCode);
   return JSON.parse(text);
 }
 
@@ -71,55 +59,38 @@ const RESULT_ENVELOPE_BYTES = JSON.stringify({ version: 1, ok: true, result: 0 }
 const MINIMUM_RESPONSE_BYTES = 192;
 const MINIMUM_RESPONSE_NODES = 16;
 
-function limitOption(limit) {
-  if (!Number.isSafeInteger(limit) || limit < 1) throw new TypeError('A positive JSON byte limit is required');
-  return limit;
+/** Positive safe-integer option at or above `minimum`; the error-receipt minima are explained above
+ * (the committed error envelope alone counts eight nodes and ~127 bytes). */
+function minimumOption(value, minimum, message) {
+  if (!Number.isSafeInteger(value) || value < minimum) throw new TypeError(message);
+  return value;
 }
-function responseLimitOption(limit) {
-  if (!Number.isSafeInteger(limit) || limit < MINIMUM_RESPONSE_BYTES) {
-    throw new TypeError(`A response limit of at least ${MINIMUM_RESPONSE_BYTES} bytes is required to carry error receipts`);
-  }
-  return limit;
-}
-function nodeOption(nodes) {
-  // The error envelope alone counts eight nodes (root/version/ok/error + code/committed/
-  // outcome/revision); smaller budgets could not deliver their own post-commit receipt.
-  if (!Number.isSafeInteger(nodes) || nodes < MINIMUM_RESPONSE_NODES) {
-    throw new TypeError(`A response node limit of at least ${MINIMUM_RESPONSE_NODES} is required to carry error receipts`);
-  }
-  return nodes;
-}
+const limitOption = limit => minimumOption(limit, 1, 'A positive JSON byte limit is required');
+const responseLimitOption = limit => minimumOption(limit, MINIMUM_RESPONSE_BYTES,
+  `A response limit of at least ${MINIMUM_RESPONSE_BYTES} bytes is required to carry error receipts`);
+const nodeOption = nodes => minimumOption(nodes, MINIMUM_RESPONSE_NODES,
+  `A response node limit of at least ${MINIMUM_RESPONSE_NODES} is required to carry error receipts`);
 
 export function createProtectedSession({ editor, identity, authorize, project, context, exportDocument, maxResponseBytes = 1048576, maxRequestBytes = 1048576, maxResponseNodes = 100000 }) {
-  if (!editor || typeof authorize !== 'function' || typeof project !== 'function' || !Number.isSafeInteger(maxResponseBytes) || !Number.isSafeInteger(maxRequestBytes) || !Number.isSafeInteger(maxResponseNodes)) {
-    throw new TypeError('editor, authorize, project and positive request/response/node limits are required');
+  if (!editor || typeof authorize !== 'function' || typeof project !== 'function') {
+    throw new TypeError('editor, authorize and project are required');
   }
   limitOption(maxRequestBytes);
   responseLimitOption(maxResponseBytes);
   nodeOption(maxResponseNodes);
   if (context !== undefined && typeof context !== 'function') throw new TypeError('context must be a function when provided');
   if (exportDocument !== undefined && typeof exportDocument !== 'function') throw new TypeError('exportDocument must be a function when provided');
-  // Identity is supplied by the authenticated host, copied once, never by request metadata.
-  const actor = strictJson(identity, maxResponseBytes - RESULT_ENVELOPE_BYTES, 'INVALID_RESPONSE', RESULT_DEPTH_LIMIT, maxResponseNodes - RESULT_NODE_OVERHEAD);
   let closed = false;
   const check = () => { if (closed) throw new SessionError('SESSION_CLOSED'); };
-  // Protected outputs cross the same strict validator with the envelope dimensions reserved.
-  const json = value => strictJson(value, maxResponseBytes - RESULT_ENVELOPE_BYTES, 'INVALID_RESPONSE', RESULT_DEPTH_LIMIT, maxResponseNodes - RESULT_NODE_OVERHEAD);
-  // Session inputs (requests) are bounded separately: a request budget with request-code
-  // semantics, validated BEFORE any rewrap so a valid big request never surfaces as a
-  // response-budget error.
-  const validateInput = request => {
-    try { return strictJson(request, maxRequestBytes, 'INVALID_REQUEST'); }
-    catch (error) {
-      // Request byte overflow carries the request code, not the response-budget one.
-      if (error instanceof SessionError && error.code === 'RESPONSE_LIMIT') throw new SessionError('INVALID_REQUEST');
-      throw error;
-    }
-  };
-  // No non-Session error can ever surface from session entry points: every input validation
-  // passes through the sanitizer belt as well as the traversal's own codes.
+  // Protected outputs cross the strict validator with the envelope dimensions reserved.
+  const json = value => strictJson(value, maxResponseBytes - RESULT_ENVELOPE_BYTES, 'INVALID_RESPONSE',
+    { maxDepth: RESULT_DEPTH_LIMIT, maxNodes: maxResponseNodes - RESULT_NODE_OVERHEAD, limitCode: 'RESPONSE_LIMIT' });
+  // Identity is supplied by the authenticated host, copied once, never by request metadata.
+  const actor = json(identity);
+  // Session inputs are bounded by a separate request budget with request-code semantics, validated
+  // BEFORE any rewrap, and every failure is sanitized: no non-Session error leaves an entry point.
   const sanitizedInput = request => {
-    try { return validateInput(request); }
+    try { return strictJson(request, maxRequestBytes, 'INVALID_REQUEST'); }
     catch (error) { throw sanitize(error); }
   };
   async function permit(operation, snapshot, request) {
@@ -141,7 +112,7 @@ export function createProtectedSession({ editor, identity, authorize, project, c
     try {
       check();
       const snapshot = editor.getSnapshot();
-      const input = validateInput(request);
+      const input = sanitizedInput(request);
       await permit(operation, snapshot, input);
       // Returning from permit crossed an await boundary; re-check before any callback runs.
       check();
@@ -205,8 +176,7 @@ export function createProtectedSession({ editor, identity, authorize, project, c
     context: request => readOperation('context', request),
     export: request => readOperation('export', request),
     async dispatch(request) {
-      let input;
-      try { input = validateInput(request); } catch (error) { throw sanitize(error); }
+      const input = sanitizedInput(request);
       if (!input || typeof input !== 'object' || Array.isArray(input) || typeof input.type !== 'string') throw new SessionError('INVALID_REQUEST');
       // The rewrapped transact input is built from validated pieces; it is not re-validated
       // against the request budget (that would double-count the two added levels).
@@ -253,11 +223,11 @@ function keys(value, allowed) {
 }
 function boundedJson(value, limit, maxNodes = 100000) {
   // Input protocol data crosses the same strict traversal; every failure maps to the request code.
-  try { return strictJson(value, limit, 'INVALID_REQUEST', 64, maxNodes); }
+  try { return strictJson(value, limit, 'INVALID_REQUEST', { maxNodes }); }
   catch { invalid(); }
 }
-function validateRequest(value, limit, maxNodes) {
-  const message = boundedJson(value, limit, maxNodes);
+function validateRequest(value, limit) {
+  const message = boundedJson(value, limit);
   keys(message, ['version', 'operation', 'input']);
   if (message.version !== 1 || !operations.has(message.operation) || !Object.hasOwn(message, 'input')) invalid();
   const { operation, input } = message;
