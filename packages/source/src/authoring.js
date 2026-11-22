@@ -5,6 +5,13 @@ import { patchOdp } from './odp.js';
 import { odpFormattingWriter, reservedOdpStyleNames } from './odp-format.js';
 import { createPptxChartParts, createOdpChartParts } from './chart-authoring.js';
 const REL = NS.r + '/';
+// XML parsers normalize CR (and CRLF) to LF on read, so a CR serialized as a literal character is
+// read back as a second LF: a CRLF split across adjacent runs then renders two breaks instead of
+// one (an extra blank line). Encoding CR as a character reference preserves it through any
+// parser, letting the paired LF in the next run form a single native break. Applying the encode
+// to whole serialized documents is safe: import normalizes every CR first, so a serialized CR can
+// only originate from canonical text these writers put into text nodes.
+export const encodeCarriageReturns = serialized => serialized.replace(/\r/g, '&#13;');
 
 const plain = value => !!value && typeof value === 'object' && !Array.isArray(value);
 const paragraphAliases = { algn: 'alignment', lvl: 'level', marL: 'indentStart', marR: 'indentEnd', indent: 'firstLineIndent' };
@@ -436,9 +443,9 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                 relations.documentElement.appendChild(element(relations,'rel','Relationship',{Id:'rId1',Type:REL+'slideLayout',Target:relative(part,baseline.layouts[0]?.source.part)}));
                 const slideCtx={imageRel:imageRel(part,relations),chart:chartFor(part,relations,slideRels)};
                 for(const [index,object] of slide.objects.entries()) tree.appendChild(await pptxObject(doc,object,index+2,slideCtx));
-                zip.file(part,xml.serialize(doc));mark(part);
+                zip.file(part,encodeCarriageReturns(xml.serialize(doc)));mark(part);
                 const layout=baseline.layouts[0]?.source.part;if(!layout)throw new Error('New slides require an existing native layout');
-                zip.file(slideRels,xml.serialize(relations));mark(slideRels);
+                zip.file(slideRels,encodeCarriageReturns(xml.serialize(relations)));mark(slideRels);
                 append(rels.documentElement,'rel','Relationship',{Id:rid,Type:REL+'slide',Target:relative(main,part)});
                 append(types.documentElement,'ct','Override',{PartName:'/'+part,ContentType:'application/vnd.openxmlformats-officedocument.presentationml.slide+xml'});
                 return element(presentation,'p','sldId',{id:++nextSlide,'r:id':rid});
@@ -531,7 +538,13 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                 const styleName=paragraphStyleFor(paragraph.style);
                 if(styleName) p.setAttributeNS(NS.text,'text:style-name',styleName);
                 if(paragraph.style?.level&&!inList) throw new Error('Non-list ODP paragraph levels are unsupported');
-                for(const run of paragraph.runs){const placeholder=doc.createTextNode('');p.appendChild(placeholder);const overrides={...(run.style.b!==undefined?{bold:run.style.b==='1'}:{}),...(run.style.i!==undefined?{italic:run.style.i==='1'}:{}),...(run.style.sz!==undefined?{fontSize:Number(run.style.sz)/100}:{}),...(run.style.typeface?{fontFamily:run.style.typeface}:{}),...(run.style.color?{color:run.style.color}:{})};patchOdp(placeholder,run.text,textStyle(overrides));}
+                for(let index=0;index<paragraph.runs.length;index++){const run=paragraph.runs[index];const placeholder=doc.createTextNode('');p.appendChild(placeholder);const overrides={...(run.style.b!==undefined?{bold:run.style.b==='1'}:{}),...(run.style.i!==undefined?{italic:run.style.i==='1'}:{}),...(run.style.sz!==undefined?{fontSize:Number(run.style.sz)/100}:{}),...(run.style.typeface?{fontFamily:run.style.typeface}:{}),...(run.style.color?{color:run.style.color}:{})};
+                // A CRLF split across adjacent runs must be ONE line break: drop this run's trailing
+                // CR when the next run starts with LF — that LF tokenizes to the single
+                // text:line-break, so the split never renders as two breaks (an extra blank line).
+                let text=run.text;
+                if(text.endsWith('\r')&&paragraph.runs[index+1]?.text.startsWith('\n')) text=text.slice(0,-1);
+                patchOdp(placeholder,text,textStyle(overrides));}
                 return p;
             };
             const fillText=(box,text)=>{
@@ -872,7 +885,7 @@ function patchNotesBody(doc, text) {
         append(textBody, 'a', 'lstStyle');
     }
     for (const paragraph of children(textBody).filter(n => is(n, 'a', 'p'))) textBody.removeChild(paragraph);
-    for (const line of String(text).split('\n')) {
+    for (const line of String(text).split(/\r\n|\r|\n/)) {
         const paragraph = element(doc, 'a', 'p');
         const run = append(paragraph, 'a', 'r');
         append(run, 'a', 'rPr');
@@ -936,7 +949,7 @@ async function applyPptxSlideProperties({xml,getDoc,zip,baseline,slideProperties
         do { notesPart = `ppt/notesSlides/notesSlide${counter++}.xml`; } while (zip.file(notesPart));
         const notesDoc = xml.parse(`<p:notes xmlns:p="${NS.p}" xmlns:a="${NS.a}" xmlns:r="${NS.r}"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/><p:sp><p:nvSpPr><p:cNvPr id="2" name="Notes Placeholder"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/></p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>`);
         patchNotesBody(notesDoc, properties.notes);
-        zip.file(notesPart, xml.serialize(notesDoc));
+        zip.file(notesPart, encodeCarriageReturns(xml.serialize(notesDoc)));
         mark(notesPart);
         append(types.documentElement, 'ct', 'Override', { PartName: '/' + notesPart, ContentType: NOTES_CONTENT_TYPE });
         mark('[Content_Types].xml');
@@ -948,7 +961,7 @@ async function applyPptxSlideProperties({xml,getDoc,zip,baseline,slideProperties
         while (children(slideRels.documentElement).some(n => n.getAttribute('Id') === `rId${slideRid}`)) slideRid++;
         append(slideRels.documentElement, 'rel', 'Relationship', { Id: `rId${slideRid}`, Type: REL_NOTES, Target: relative(part, notesPart) });
         // New relationship documents are not in getDoc's serialization cache.
-        if (!hasSlideRels) zip.file(slideRelsPath, xml.serialize(slideRels));
+        if (!hasSlideRels) zip.file(slideRelsPath, encodeCarriageReturns(xml.serialize(slideRels)));
         mark(slideRelsPath);
         // Notes master: reuse the presentation's, else create one alongside the existing theme.
         let masterRel = children(rels.documentElement).find(n => n.getAttribute('Type') === REL_NOTES_MASTER);
@@ -957,13 +970,13 @@ async function applyPptxSlideProperties({xml,getDoc,zip,baseline,slideProperties
             let masterCounter = 1, masterPath;
             do { masterPath = `ppt/notesMasters/notesMaster${masterCounter++}.xml`; } while (zip.file(masterPath));
             const masterDoc = xml.parse(`<p:notesMaster xmlns:p="${NS.p}" xmlns:a="${NS.a}" xmlns:r="${NS.r}"><p:cSld><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/><p:notesStyle><a:lvl1pPr><a:defRPr sz="1200"/></a:lvl1pPr></p:notesStyle></p:notesMaster>`);
-            zip.file(masterPath, xml.serialize(masterDoc));
+            zip.file(masterPath, encodeCarriageReturns(xml.serialize(masterDoc)));
             mark(masterPath);
             append(types.documentElement, 'ct', 'Override', { PartName: '/' + masterPath, ContentType: NOTES_MASTER_CONTENT_TYPE });
             const masterRelsPath = masterPath.replace(/(^|\/)([^/]+)$/, '$1_rels/$2.rels');
             const masterRels = xml.parse(`<Relationships xmlns="${NS.rel}"/>`);
             if (themeRel) append(masterRels.documentElement, 'rel', 'Relationship', { Id: 'rId1', Type: REL + 'theme', Target: relative(masterPath, resolvePptxTarget(main, themeRel.getAttribute('Target'))) });
-            zip.file(masterRelsPath, xml.serialize(masterRels));
+            zip.file(masterRelsPath, encodeCarriageReturns(xml.serialize(masterRels)));
             mark(masterRelsPath);
             let masterRelId = 1;
             while (children(rels.documentElement).some(n => n.getAttribute('Id') === `rIdNotesMaster${masterRelId}`)) masterRelId++;
@@ -984,7 +997,7 @@ async function applyPptxSlideProperties({xml,getDoc,zip,baseline,slideProperties
         const notesRels = xml.parse(`<Relationships xmlns="${NS.rel}"/>`);
         append(notesRels.documentElement, 'rel', 'Relationship', { Id: 'rId1', Type: REL + 'slide', Target: relative(notesPart, part) });
         append(notesRels.documentElement, 'rel', 'Relationship', { Id: 'rId2', Type: REL_NOTES_MASTER, Target: relative(notesPart, masterPath) });
-        zip.file(notesRelsPath, xml.serialize(notesRels));
+        zip.file(notesRelsPath, encodeCarriageReturns(xml.serialize(notesRels)));
         mark(notesRelsPath);
     }
 }
@@ -1060,7 +1073,7 @@ function applyOdpSlideProperties({doc,styles,nodes,slide,properties,automaticSty
             let textBox = child(body, 'draw', 'text-box');
             if (!textBox) textBox = append(body, 'draw', 'text-box');
             for (const paragraph of children(textBox).filter(n => is(n, 'text', 'p'))) textBox.removeChild(paragraph);
-            for (const line of String(properties.notes).split('\n')) {
+            for (const line of String(properties.notes).split(/\r\n|\r|\n/)) {
                 const paragraph = append(textBox, 'text', 'p');
                 // Tokenised write (patchOdp) so repeated spaces, tabs and line breaks survive ODF's
                 // whitespace collapsing rules; a bare text node would be normalised by any reader.
