@@ -652,16 +652,11 @@ function utf16ToCodePointOffset(str, utf16Index) {
 
 function mapDisplaySelectionToCanonicalRange(paragraphs, startUtf16, endUtf16) {
   if (!Array.isArray(paragraphs) || !paragraphs.length || startUtf16 >= endUtf16) return null;
-  let displayCursor = 0;
-  let startPos = null;
-  let endPos = null;
-  let lastNonEmptyEnd = null;
 
+  const items = [];
   for (let pIdx = 0; pIdx < paragraphs.length; pIdx += 1) {
     const p = paragraphs[pIdx];
     const runs = p.runs ?? [];
-    // Flatten code points within this paragraph while keeping each run's id & code-point offset
-    const units = [];
     for (let rIdx = 0; rIdx < runs.length; rIdx += 1) {
       const r = runs[rIdx];
       const text = r.text ?? '';
@@ -669,41 +664,78 @@ function mapDisplaySelectionToCanonicalRange(paragraphs, startUtf16, endUtf16) {
       for (let i = 0; i < text.length; ) {
         const code = text.codePointAt(i);
         const utf16Len = code > 0xffff ? 2 : 1;
-        units.push({ paragraphId: p.id, runId: r.id, cpOffset, cp: code });
+        items.push({
+          kind: 'cp',
+          cp: code,
+          pIdx,
+          rIdx,
+          offset: cpOffset,
+          nextOffset: cpOffset + 1,
+          pos: { paragraphId: p.id, runId: r.id, offset: cpOffset },
+          nextPos: { paragraphId: p.id, runId: r.id, offset: cpOffset + 1 },
+        });
         i += utf16Len;
         cpOffset += 1;
       }
     }
-
-    for (let u = 0; u < units.length; u += 1) {
-      const cur = units[u];
-      const next = units[u + 1];
-      const isCrlf = cur.cp === 0x0d && next?.cp === 0x0a;
-      const dStart = displayCursor;
-      const dLen = isCrlf ? 1 : (cur.cp > 0xffff ? 2 : 1);
-      const dEnd = dStart + dLen;
-
-      const stepStart = { paragraphId: cur.paragraphId, runId: cur.runId, offset: cur.cpOffset };
-      const endUnit = isCrlf ? next : cur;
-      const stepEnd = { paragraphId: endUnit.paragraphId, runId: endUnit.runId, offset: endUnit.cpOffset + 1 };
-
-      if (!startPos && dStart === startUtf16) startPos = stepStart;
-      if (!endPos && dEnd === endUtf16) endPos = stepEnd;
-      if (!endPos && dStart === endUtf16 && u === 0 && pIdx > 0) endPos = stepStart;
-
-      lastNonEmptyEnd = stepEnd;
-      displayCursor = dEnd;
-      if (isCrlf) u += 1;
-    }
-
     if (pIdx < paragraphs.length - 1) {
-      if (!startPos && displayCursor === startUtf16 && lastNonEmptyEnd) startPos = lastNonEmptyEnd;
-      displayCursor += 1; // '\n' paragraph separator
+      items.push({ kind: 'sep', cp: 0x0a, pIdx });
     }
   }
 
-  if (!startPos || !endPos) return null;
-  return { start: startPos, end: endPos };
+  let displayCursor = 0;
+  const validBoundary = { 0: true };
+  const directStart = {};
+  const directEnd = {};
+
+  for (let idx = 0; idx < items.length; idx += 1) {
+    const cur = items[idx];
+    const next = items[idx + 1];
+    const isCrlf = cur.kind === 'cp' && cur.cp === 0x0d && next?.cp === 0x0a;
+    const dStart = displayCursor;
+    const dLen = isCrlf ? 1 : (cur.cp > 0xffff ? 2 : 1);
+    const dEnd = dStart + dLen;
+
+    validBoundary[dStart] = true;
+    validBoundary[dEnd] = true;
+
+    if (cur.kind === 'cp') {
+      directStart[dStart] = { pIdx: cur.pIdx, rIdx: cur.rIdx, offset: cur.offset, pos: cur.pos };
+      if (isCrlf && next.kind === 'cp') {
+        directEnd[dEnd] = { pIdx: next.pIdx, rIdx: next.rIdx, offset: next.nextOffset, pos: next.nextPos };
+      } else {
+        directEnd[dEnd] = { pIdx: cur.pIdx, rIdx: cur.rIdx, offset: cur.nextOffset, pos: cur.nextPos };
+      }
+    }
+
+    displayCursor = dEnd;
+    if (isCrlf) idx += 1;
+  }
+
+  if (!validBoundary[startUtf16] || !validBoundary[endUtf16]) return null;
+
+  let start = directStart[startUtf16];
+  if (!start) {
+    for (let d = startUtf16 + 1; d <= displayCursor; d += 1) {
+      if (directStart[d]) { start = directStart[d]; break; }
+    }
+  }
+
+  let end = directEnd[endUtf16];
+  if (!end) {
+    for (let d = endUtf16 - 1; d >= 0; d -= 1) {
+      if (directEnd[d]) { end = directEnd[d]; break; }
+    }
+  }
+
+  if (!start || !end) return null;
+  const order = start.pIdx !== end.pIdx
+    ? start.pIdx - end.pIdx
+    : start.rIdx !== end.rIdx
+      ? start.rIdx - end.rIdx
+      : start.offset - end.offset;
+  if (order >= 0) return null;
+  return { start: start.pos, end: end.pos };
 }
 
 function formatNumberBullet(index, format) {

@@ -1657,6 +1657,80 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     expect(crossParas[1].runs.map(r => [r.text, r.style.b])).toEqual([['B', '1'], ['😀C', undefined]]);
   });
 
+  it('maps CR before paragraph separator, lone CR, and leading/trailing/consecutive empty paragraphs on select-all', () => {
+    const makeObj = (id, paraTexts) => ({
+      id,
+      type: 'text',
+      geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+      extensions: { stagecraftAuthored: true },
+      text: {
+        paragraphs: paraTexts.map((txt, idx) => ({
+          id: `${id}-p${idx}`,
+          runs: [{ id: `${id}-r${idx}`, text: txt, editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+        })),
+      },
+    });
+    const doc = createDocument({
+      id: 'edge-range-deck',
+      slides: [{
+        id: 's1',
+        objects: [
+          makeObj('t-cr-sep', ['A\r', 'B']),
+          makeObj('t-lone-cr', ['CD\rE']),
+          makeObj('t-trail-empty', ['E1', '']),
+          makeObj('t-lead-empty', ['', 'F']),
+          makeObj('t-consec-empty', ['', '', 'G', '', '']),
+        ],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = { capabilities: { readOnly: false, edits: ['run-range-format'] }, export: vi.fn() };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    const selectAndBold = (objId, start, end) => {
+      fireEvent.click(screen.getAllByLabelText(`Select object ${objId}`)[0]);
+      const rangeArea = screen.getByLabelText('Select text range');
+      rangeArea.selectionStart = start;
+      rangeArea.selectionEnd = end;
+      fireEvent.select(rangeArea);
+      const btn = screen.getByRole('button', { name: 'Range bold' });
+      expect(btn).not.toBeDisabled();
+      fireEvent.click(btn);
+      expect(screen.queryByRole('alert')).toBeNull();
+    };
+
+    // 1. CR at paragraph end before synthetic separator: ['A\r', 'B'] -> displays 'A\nB', [2, 3) selects 'B'
+    selectAndBold('t-cr-sep', 2, 3);
+    const crSepParas = editor.getSnapshot().document.slides[0].objects[0].text.paragraphs;
+    expect(crSepParas[0].runs.map(r => [r.text, r.style.b])).toEqual([['A\r', undefined]]);
+    expect(crSepParas[1].runs.map(r => [r.text, r.style.b])).toEqual([['B', '1']]);
+
+    // 2. Lone CR: 'CD\rE' -> displays 'CD\nE', [3, 4) selects 'E'
+    selectAndBold('t-lone-cr', 3, 4);
+    const loneCrRuns = editor.getSnapshot().document.slides[0].objects[1].text.paragraphs[0].runs;
+    expect(loneCrRuns.map(r => [r.text, r.style.b])).toEqual([['CD\r', undefined], ['E', '1']]);
+
+    // 3. Trailing empty paragraph: ['E1', ''] -> displays 'E1\n', select-all [0, 3)
+    selectAndBold('t-trail-empty', 0, 3);
+    const trailParas = editor.getSnapshot().document.slides[0].objects[2].text.paragraphs;
+    expect(trailParas[0].runs.map(r => [r.text, r.style.b])).toEqual([['E1', '1']]);
+
+    // 4. Leading empty paragraph: ['', 'F'] -> displays '\nF', select-all [0, 2)
+    selectAndBold('t-lead-empty', 0, 2);
+    const leadParas = editor.getSnapshot().document.slides[0].objects[3].text.paragraphs;
+    expect(leadParas[1].runs.map(r => [r.text, r.style.b])).toEqual([['F', '1']]);
+
+    // 5. Consecutive leading & trailing empty paragraphs: ['', '', 'G', '', ''] -> displays '\n\nG\n\n', select-all [0, 5)
+    selectAndBold('t-consec-empty', 0, 5);
+    const consecParas = editor.getSnapshot().document.slides[0].objects[4].text.paragraphs;
+    expect(consecParas[2].runs.map(r => [r.text, r.style.b])).toEqual([['G', '1']]);
+  });
+
   it('hides body-layout controls on textless inserted shapes while keeping them on shapes with text', () => {
     const doc = createDocument({
       id: 'shape-layout-deck',
