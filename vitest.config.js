@@ -29,6 +29,7 @@ export default defineConfig({
         'packages/react/src/EditorProvider.jsx',
         'packages/react/src/CanonicalEditorSurface.jsx',
         'packages/react/src/PresentationEditor.jsx',
+        'packages/react/src/textSelection.js',
         'packages/react/src/PresentationChart.jsx',
         'packages/react/src/presentationPlugins.jsx',
         'apps/playground/src/components/views/SourceWorkspace.jsx',

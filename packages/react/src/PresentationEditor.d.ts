@@ -3,10 +3,14 @@ import type { Editor, EditorSnapshot } from '@stagecraft/core/editor';
 import type {
   AuthoredGeometry,
   AuthoredParagraph,
+  BulletFormat,
   CanonicalDocument,
   DocumentObject,
   DocumentSlide,
+  ParagraphFormatPatch,
   RunFormat,
+  RunRange,
+  RunRangePoint,
   SlideProperties,
   TextBodyLayoutPatch,
 } from '@stagecraft/core/document';
@@ -115,38 +119,15 @@ export type PresentationCapability =
 
 export type RunFormatInput = RunFormat;
 
-export type ParagraphBullet =
-  | { type: 'none' }
-  | { type: 'char'; char: string }
-  | {
-      type: 'number';
-      format: 'arabicPeriod' | 'arabicParenR' | 'lowerAlphaPeriod' | 'upperAlphaPeriod' | 'lowerRomanPeriod' | 'upperRomanPeriod';
-    };
+export type ParagraphBullet = BulletFormat;
 
-export interface ParagraphFormatInput {
-  alignment?: 'left' | 'center' | 'right' | 'justify' | null;
-  spaceBefore?: number | null;
-  spaceAfter?: number | null;
-  lineSpacing?: number | null;
-  level?: number | null;
-  indentStart?: number | null;
-  indentEnd?: number | null;
-  firstLineIndent?: number | null;
-  bullet?: ParagraphBullet | null;
-}
+export type ParagraphFormatInput = ParagraphFormatPatch;
 
 export type TextBodyLayoutInput = TextBodyLayoutPatch;
 
-export interface RunRangeEndpoint {
-  paragraphId: string;
-  runId: string;
-  offset: number;
-}
+export type RunRangeEndpoint = RunRangePoint;
 
-export interface RunRangeInput {
-  start: RunRangeEndpoint;
-  end: RunRangeEndpoint;
-}
+export type RunRangeInput = RunRange;
 
 export interface ChartSeriesData {
   name: string;

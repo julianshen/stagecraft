@@ -18,9 +18,13 @@ export {
   usePresentationPlugins,
   createPresentationPluginRegistry,
 } from './presentationPlugins.jsx';
+import { isParagraphFormatValue } from '@stagecraft/core/document';
+import { mapDisplaySelectionToCanonicalRange, utf16ToCodePointOffset } from './textSelection.js';
 import './PresentationEditor.css';
 const Context = createContext(null);
 const PT = 12700;
+/** EMU → points as an input string (two decimals); undefined → ''. */
+const emuToPt = emu => (emu === undefined ? '' : String(Math.round((emu / PT) * 100) / 100));
 const authored = object => object?.extensions?.stagecraftAuthored === true;
 const geometryEligible = object => !!object && ['text', 'shape', 'table', 'image', 'chart'].includes(object.type) && !!object.geometry && (authored(object) || object.extensions?.editableGeometry === true);
 // Pointer resize uses screen axes; rotated objects retain explicit inspector sizing.
@@ -636,106 +640,6 @@ function ImagePreview({ assetId, alt, source }) {
     return <span className="stagecraft-presentation-placeholder">Image: {alt || assetId}</span>;
   }
   return <img className="stagecraft-presentation-image" src={url} alt={alt || ''} />;
-}
-
-function utf16ToCodePointOffset(str, utf16Index) {
-  let cp = 0;
-  let i = 0;
-  const limit = Math.min(utf16Index, str.length);
-  while (i < limit) {
-    const code = str.codePointAt(i);
-    i += code > 0xffff ? 2 : 1;
-    cp += 1;
-  }
-  return cp;
-}
-
-function mapDisplaySelectionToCanonicalRange(paragraphs, startUtf16, endUtf16) {
-  if (!Array.isArray(paragraphs) || !paragraphs.length || startUtf16 >= endUtf16) return null;
-
-  const items = [];
-  for (let pIdx = 0; pIdx < paragraphs.length; pIdx += 1) {
-    const p = paragraphs[pIdx];
-    const runs = p.runs ?? [];
-    for (let rIdx = 0; rIdx < runs.length; rIdx += 1) {
-      const r = runs[rIdx];
-      const text = r.text ?? '';
-      let cpOffset = 0;
-      for (let i = 0; i < text.length; ) {
-        const code = text.codePointAt(i);
-        const utf16Len = code > 0xffff ? 2 : 1;
-        items.push({
-          kind: 'cp',
-          cp: code,
-          pIdx,
-          rIdx,
-          offset: cpOffset,
-          nextOffset: cpOffset + 1,
-          pos: { paragraphId: p.id, runId: r.id, offset: cpOffset },
-          nextPos: { paragraphId: p.id, runId: r.id, offset: cpOffset + 1 },
-        });
-        i += utf16Len;
-        cpOffset += 1;
-      }
-    }
-    if (pIdx < paragraphs.length - 1) {
-      items.push({ kind: 'sep', cp: 0x0a, pIdx });
-    }
-  }
-
-  let displayCursor = 0;
-  const validBoundary = { 0: true };
-  const directStart = {};
-  const directEnd = {};
-
-  for (let idx = 0; idx < items.length; idx += 1) {
-    const cur = items[idx];
-    const next = items[idx + 1];
-    const isCrlf = cur.kind === 'cp' && cur.cp === 0x0d && next?.cp === 0x0a;
-    const dStart = displayCursor;
-    const dLen = isCrlf ? 1 : (cur.cp > 0xffff ? 2 : 1);
-    const dEnd = dStart + dLen;
-
-    validBoundary[dStart] = true;
-    validBoundary[dEnd] = true;
-
-    if (cur.kind === 'cp') {
-      directStart[dStart] = { pIdx: cur.pIdx, rIdx: cur.rIdx, offset: cur.offset, pos: cur.pos };
-      if (isCrlf && next.kind === 'cp') {
-        directEnd[dEnd] = { pIdx: next.pIdx, rIdx: next.rIdx, offset: next.nextOffset, pos: next.nextPos };
-      } else {
-        directEnd[dEnd] = { pIdx: cur.pIdx, rIdx: cur.rIdx, offset: cur.nextOffset, pos: cur.nextPos };
-      }
-    }
-
-    displayCursor = dEnd;
-    if (isCrlf) idx += 1;
-  }
-
-  if (!validBoundary[startUtf16] || !validBoundary[endUtf16]) return null;
-
-  let start = directStart[startUtf16];
-  if (!start) {
-    for (let d = startUtf16 + 1; d <= displayCursor; d += 1) {
-      if (directStart[d]) { start = directStart[d]; break; }
-    }
-  }
-
-  let end = directEnd[endUtf16];
-  if (!end) {
-    for (let d = endUtf16 - 1; d >= 0; d -= 1) {
-      if (directEnd[d]) { end = directEnd[d]; break; }
-    }
-  }
-
-  if (!start || !end) return null;
-  const order = start.pIdx !== end.pIdx
-    ? start.pIdx - end.pIdx
-    : start.rIdx !== end.rIdx
-      ? start.rIdx - end.rIdx
-      : start.offset - end.offset;
-  if (order >= 0) return null;
-  return { start: start.pos, end: end.pos };
 }
 
 function formatNumberBullet(index, format) {
@@ -1568,59 +1472,62 @@ function applyAuthoredRunFormat(run, format) {
   return { ...run, style: nextStyle };
 }
 
-const BULLET_VALUE = bullet => {
+function bulletValue(bullet) {
   if (!bullet) return '';
   if (bullet.type === 'none') return 'none';
   if (bullet.type === 'char') return `char:${bullet.char}`;
   if (bullet.type === 'number') return `number:${bullet.format}`;
   return '';
-};
+}
 
-const PARSE_BULLET_VALUE = value => {
+function parseBulletValue(value) {
   if (!value) return null;
   if (value === 'none') return { type: 'none' };
   if (value.startsWith('char:')) return { type: 'char', char: value.slice(5) };
   if (value.startsWith('number:')) return { type: 'number', format: value.slice(7) };
   return null;
-};
+}
 
-function ParagraphFormatFields({ paragraph, index, editor, source, revision, disabled, isOdpNative, isOdpDoc, onCommit, onError }) {
+// Numeric paragraph fields. `emu` fields are edited in points and stored as EMU; limits come
+// from core's isParagraphFormatValue so the UI and the command gate cannot drift.
+const PARAGRAPH_NUMBER_FIELDS = [
+  { key: 'spaceBefore', label: 'Space before (pt)', aria: 'space before', min: '0', max: '1000', step: '0.01', error: 'Space before must be 0..1000 pt.' },
+  { key: 'spaceAfter', label: 'Space after (pt)', aria: 'space after', min: '0', max: '1000', step: '0.01', error: 'Space after must be 0..1000 pt.' },
+  { key: 'lineSpacing', label: 'Line spacing (%)', aria: 'line spacing', min: '50', max: '500', step: '1', error: 'Line spacing must be an integer 50..500%.' },
+  { key: 'level', label: 'Level', aria: 'level', min: '0', max: '8', step: '1', error: 'Level must be an integer 0..8.' },
+  { key: 'indentStart', label: 'Indent start (pt)', aria: 'indentStart', step: '0.1', emu: true, error: 'indentStart must be within -10000000..10000000 EMU.' },
+  { key: 'indentEnd', label: 'Indent end (pt)', aria: 'indentEnd', step: '0.1', emu: true, error: 'indentEnd must be within -10000000..10000000 EMU.' },
+  { key: 'firstLineIndent', label: 'First line indent (pt)', aria: 'firstLineIndent', step: '0.1', emu: true, error: 'firstLineIndent must be within -10000000..10000000 EMU.' },
+];
+const paragraphDraft = (field, style) => (field.emu ? emuToPt(style[field.key]) : style[field.key] === undefined ? '' : String(style[field.key]));
+const paragraphDrafts = style => Object.fromEntries(PARAGRAPH_NUMBER_FIELDS.map(field => [field.key, paragraphDraft(field, style)]));
+
+function ParagraphFormatFields({ paragraph, index, editor, source, revision, disabled, isOdpNative = false, isOdpDoc, onCommit, onError }) {
   const s = paragraph.style ?? {};
-  const toPt = emu => (emu === undefined ? '' : String(Math.round((emu / PT) * 100) / 100));
-  const [spaceBefore, setSpaceBefore] = useState(s.spaceBefore === undefined ? '' : String(s.spaceBefore));
-  const [spaceAfter, setSpaceAfter] = useState(s.spaceAfter === undefined ? '' : String(s.spaceAfter));
-  const [lineSpacing, setLineSpacing] = useState(s.lineSpacing === undefined ? '' : String(s.lineSpacing));
-  const [level, setLevel] = useState(s.level === undefined ? '' : String(s.level));
-  const [indentStart, setIndentStart] = useState(toPt(s.indentStart));
-  const [indentEnd, setIndentEnd] = useState(toPt(s.indentEnd));
-  const [firstLineIndent, setFirstLineIndent] = useState(toPt(s.firstLineIndent));
+  const [drafts, setDrafts] = useState(() => paragraphDrafts(s));
   const startRevRef = useRef(revision);
 
   useEffect(() => {
     startRevRef.current = revision;
-    setSpaceBefore(s.spaceBefore === undefined ? '' : String(s.spaceBefore));
-    setSpaceAfter(s.spaceAfter === undefined ? '' : String(s.spaceAfter));
-    setLineSpacing(s.lineSpacing === undefined ? '' : String(s.lineSpacing));
-    setLevel(s.level === undefined ? '' : String(s.level));
-    setIndentStart(toPt(s.indentStart));
-    setIndentEnd(toPt(s.indentEnd));
-    setFirstLineIndent(toPt(s.firstLineIndent));
+    setDrafts(paragraphDrafts(s));
   }, [editor, source, paragraph.id, revision, s.spaceBefore, s.spaceAfter, s.lineSpacing, s.level, s.indentStart, s.indentEnd, s.firstLineIndent, disabled]);
 
   const effectiveDisabled = disabled || isOdpNative;
   const captureRev = () => { startRevRef.current = revision; };
   const commit = format => onCommit(format, startRevRef.current);
 
-  function commitEmu(key, draftVal, origStr, setter) {
-    if (draftVal === origStr) return;
-    if (draftVal.trim() === '') { commit({ [key]: null }); return; }
-    const emu = Math.round(Number(draftVal) * PT);
-    if (!Number.isSafeInteger(emu) || emu < -10000000 || emu > 10000000) {
-      onError(new Error(`${key} must be within -10000000..10000000 EMU.`));
-      setter(origStr);
+  function commitField(field) {
+    const draft = drafts[field.key];
+    const orig = paragraphDraft(field, s);
+    if (draft === orig) return;
+    if (draft.trim() === '') { commit({ [field.key]: null }); return; }
+    const value = field.emu ? Math.round(Number(draft) * PT) : Number(draft);
+    if (!isParagraphFormatValue(field.key, value)) {
+      onError(new Error(field.error));
+      setDrafts(current => ({ ...current, [field.key]: orig }));
       return;
     }
-    commit({ [key]: emu });
+    commit({ [field.key]: value });
   }
 
   return (
@@ -1645,9 +1552,9 @@ function ParagraphFormatFields({ paragraph, index, editor, source, revision, dis
         Bullet
         <select
           aria-label={`Paragraph ${index + 1} bullet`}
-          value={BULLET_VALUE(s.bullet)}
+          value={bulletValue(s.bullet)}
           onChange={e => {
-            const nextBullet = PARSE_BULLET_VALUE(e.target.value);
+            const nextBullet = parseBulletValue(e.target.value);
             const clearsOdpLevel = isOdpDoc && (s.level ?? 0) > 0 && (nextBullet === null || nextBullet.type === 'none');
             commit(clearsOdpLevel ? { bullet: nextBullet, level: null } : { bullet: nextBullet });
           }}
@@ -1663,105 +1570,19 @@ function ParagraphFormatFields({ paragraph, index, editor, source, revision, dis
           <option value="number:upperRomanPeriod">I. II. III.</option>
         </select>
       </label>
-      <label>
-        Space before (pt)
-        <input
-          aria-label={`Paragraph ${index + 1} space before`}
-          type="number"
-          min="0"
-          max="1000"
-          step="0.01"
-          value={spaceBefore}
-          onFocus={captureRev}
-          onChange={e => setSpaceBefore(e.target.value)}
-          onBlur={() => {
-            const orig = s.spaceBefore === undefined ? '' : String(s.spaceBefore);
-            if (spaceBefore === orig) return;
-            if (spaceBefore.trim() === '') { commit({ spaceBefore: null }); return; }
-            const n = Number(spaceBefore);
-            if (!Number.isFinite(n) || n < 0 || n > 1000) { onError(new Error('Space before must be 0..1000 pt.')); setSpaceBefore(orig); return; }
-            commit({ spaceBefore: n });
-          }}
-          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-        />
-      </label>
-      <label>
-        Space after (pt)
-        <input
-          aria-label={`Paragraph ${index + 1} space after`}
-          type="number"
-          min="0"
-          max="1000"
-          step="0.01"
-          value={spaceAfter}
-          onFocus={captureRev}
-          onChange={e => setSpaceAfter(e.target.value)}
-          onBlur={() => {
-            const orig = s.spaceAfter === undefined ? '' : String(s.spaceAfter);
-            if (spaceAfter === orig) return;
-            if (spaceAfter.trim() === '') { commit({ spaceAfter: null }); return; }
-            const n = Number(spaceAfter);
-            if (!Number.isFinite(n) || n < 0 || n > 1000) { onError(new Error('Space after must be 0..1000 pt.')); setSpaceAfter(orig); return; }
-            commit({ spaceAfter: n });
-          }}
-          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-        />
-      </label>
-      <label>
-        Line spacing (%)
-        <input
-          aria-label={`Paragraph ${index + 1} line spacing`}
-          type="number"
-          min="50"
-          max="500"
-          step="1"
-          value={lineSpacing}
-          onFocus={captureRev}
-          onChange={e => setLineSpacing(e.target.value)}
-          onBlur={() => {
-            const orig = s.lineSpacing === undefined ? '' : String(s.lineSpacing);
-            if (lineSpacing === orig) return;
-            if (lineSpacing.trim() === '') { commit({ lineSpacing: null }); return; }
-            const n = Number(lineSpacing);
-            if (!Number.isInteger(n) || n < 50 || n > 500) { onError(new Error('Line spacing must be an integer 50..500%.')); setLineSpacing(orig); return; }
-            commit({ lineSpacing: n });
-          }}
-          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-        />
-      </label>
-      <label>
-        Level
-        <input
-          aria-label={`Paragraph ${index + 1} level`}
-          type="number"
-          min="0"
-          max="8"
-          step="1"
-          value={level}
-          onFocus={captureRev}
-          onChange={e => setLevel(e.target.value)}
-          onBlur={() => {
-            const orig = s.level === undefined ? '' : String(s.level);
-            if (level === orig) return;
-            if (level.trim() === '') { commit({ level: null }); return; }
-            const n = Number(level);
-            if (!Number.isInteger(n) || n < 0 || n > 8) { onError(new Error('Level must be an integer 0..8.')); setLevel(orig); return; }
-            commit({ level: n });
-          }}
-          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-        />
-      </label>
-      {[['indentStart', 'Indent start (pt)', indentStart, setIndentStart], ['indentEnd', 'Indent end (pt)', indentEnd, setIndentEnd], ['firstLineIndent', 'First line indent (pt)', firstLineIndent, setFirstLineIndent]].map(([key, labelText, val, setter]) => (
-        <label key={key}>
-          {labelText}
+      {PARAGRAPH_NUMBER_FIELDS.map(field => (
+        <label key={field.key}>
+          {field.label}
           <input
-            aria-label={`Paragraph ${index + 1} ${key}`}
+            aria-label={`Paragraph ${index + 1} ${field.aria}`}
             type="number"
-            step="0.1"
-            value={val}
+            min={field.min}
+            max={field.max}
+            step={field.step}
+            value={drafts[field.key]}
             onFocus={captureRev}
-            onChange={e => setter(e.target.value)}
-            onBlur={() => commitEmu(key, val, toPt(s[key]), setter)}
+            onChange={e => { const value = e.target.value; setDrafts(current => ({ ...current, [field.key]: value })); }}
+            onBlur={() => commitField(field)}
             onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
           />
         </label>
@@ -1774,23 +1595,22 @@ function TextBodyLayoutFields({ object, editor, source, revision, isOdpDoc, disa
   const layout = object.bodyLayout ?? {};
   const autofitVal = layout.autofit ?? '';
   const safeOdpAutofit = isOdpDoc && autofitVal === 'shrink' ? '' : autofitVal;
-  const toPt = emu => (emu === undefined ? '' : String(Math.round((emu / PT) * 100) / 100));
   const ins = layout.insets ?? {};
   const [insets, setInsets] = useState({
-    left: toPt(ins.left),
-    top: toPt(ins.top),
-    right: toPt(ins.right),
-    bottom: toPt(ins.bottom),
+    left: emuToPt(ins.left),
+    top: emuToPt(ins.top),
+    right: emuToPt(ins.right),
+    bottom: emuToPt(ins.bottom),
   });
   const startRevRef = useRef(revision);
 
   useEffect(() => {
     startRevRef.current = revision;
     setInsets({
-      left: toPt(ins.left),
-      top: toPt(ins.top),
-      right: toPt(ins.right),
-      bottom: toPt(ins.bottom),
+      left: emuToPt(ins.left),
+      top: emuToPt(ins.top),
+      right: emuToPt(ins.right),
+      bottom: emuToPt(ins.bottom),
     });
   }, [editor, source, object.id, revision, ins.left, ins.top, ins.right, ins.bottom, disabled]);
 
@@ -1851,7 +1671,7 @@ function TextBodyLayoutFields({ object, editor, source, revision, isOdpDoc, disa
                 onFocus={() => { startRevRef.current = revision; }}
                 onChange={e => setInsets(prev => ({ ...prev, [side]: e.target.value }))}
                 onBlur={() => {
-                  const orig = toPt(ins[side]);
+                  const orig = emuToPt(ins[side]);
                   if (insets[side] === orig) return;
                   if (insets[side].trim() === '') { onCommit({ insets: { [side]: null } }, startRevRef.current); return; }
                   const emu = Math.round(Number(insets[side]) * PT);
@@ -1892,13 +1712,13 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
     const selStart = el.selectionStart ?? 0;
     const selEnd = el.selectionEnd ?? 0;
     const mapped = mapDisplaySelectionToCanonicalRange(paragraphs, selStart, selEnd);
-    const displayValue = el.value ?? fullText;
-    const startCp = utf16ToCodePointOffset(displayValue, selStart);
-    const endCp = utf16ToCodePointOffset(displayValue, selEnd);
+    const startCp = utf16ToCodePointOffset(fullText, selStart);
+    const endCp = utf16ToCodePointOffset(fullText, selEnd);
     setRangeState(mapped ? { range: mapped, startCp, endCp, startRevision: revision } : null);
   }
 
   const hasRange = Boolean(rangeState?.range) && !disabled;
+  const applyRange = format => onApply(rangeState.range, format, rangeState.startRevision);
 
   return (
     <fieldset className="stagecraft-presentation-range-format" disabled={disabled}>
@@ -1918,8 +1738,8 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
           : 'Select a range above to format across runs.'}
       </small>
       <div className="stagecraft-presentation-range-actions">
-        <button type="button" aria-label="Range bold" disabled={!hasRange} onClick={() => onApply(rangeState.range, { bold: true }, rangeState.startRevision)}>Bold</button>
-        <button type="button" aria-label="Range italic" disabled={!hasRange} onClick={() => onApply(rangeState.range, { italic: true }, rangeState.startRevision)}>Italic</button>
+        <button type="button" aria-label="Range bold" disabled={!hasRange} onClick={() => applyRange({ bold: true })}>Bold</button>
+        <button type="button" aria-label="Range italic" disabled={!hasRange} onClick={() => applyRange({ italic: true })}>Italic</button>
         <label>
           Range size (pt)
           <input
@@ -1933,7 +1753,7 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
             onChange={e => setRangeSize(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter' && hasRange && rangeSize.trim() !== '') {
-                onApply(rangeState.range, { fontSize: Number(rangeSize) }, rangeState.startRevision);
+                applyRange({ fontSize: Number(rangeSize) });
               }
             }}
           />
@@ -1950,7 +1770,7 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
             onKeyDown={e => {
               if (e.key === 'Enter' && hasRange) {
                 const t = rangeFont.trim();
-                onApply(rangeState.range, { fontFamily: t === '' ? null : t }, rangeState.startRevision);
+                applyRange({ fontFamily: t === '' ? null : t });
               }
             }}
           />
@@ -1963,7 +1783,7 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
             disabled={!hasRange}
             defaultValue="#000000"
             onChange={e => {
-              if (hasRange) onApply(rangeState.range, { color: e.target.value.toLowerCase() }, rangeState.startRevision);
+              if (hasRange) applyRange({ color: e.target.value.toLowerCase() });
             }}
           />
         </label>
@@ -2190,7 +2010,6 @@ export function AttributePanel({
                   source={ui.source}
                   revision={ui.snapshot.revision}
                   disabled={!canParaFormat}
-                  isOdpNative={false}
                   isOdpDoc={isOdpDoc}
                   onCommit={(format, rev) => ui.setParagraphFormat(paragraph.id, format, rev)}
                   onError={ui.reportError}
