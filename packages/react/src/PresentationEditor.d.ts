@@ -3,11 +3,16 @@ import type { Editor, EditorSnapshot } from '@stagecraft/core/editor';
 import type {
   AuthoredGeometry,
   AuthoredParagraph,
+  BulletFormat,
   CanonicalDocument,
   DocumentObject,
   DocumentSlide,
+  ParagraphFormatPatch,
   RunFormat,
+  RunRange,
+  RunRangePoint,
   SlideProperties,
+  TextBodyLayoutPatch,
 } from '@stagecraft/core/document';
 import type { SourceExport, SourceSession } from '@stagecraft/source';
 
@@ -99,6 +104,9 @@ export interface DeckListProps extends RegionProps {
 export type PresentationCapability =
   | 'existing-run-text'
   | 'existing-run-format'
+  | 'paragraph-format'
+  | 'text-body-layout'
+  | 'run-range-format'
   | 'slide-structure'
   | 'slide-properties'
   | 'object-structure'
@@ -110,6 +118,16 @@ export type PresentationCapability =
   | 'object-style';
 
 export type RunFormatInput = RunFormat;
+
+export type ParagraphBullet = BulletFormat;
+
+export type ParagraphFormatInput = ParagraphFormatPatch;
+
+export type TextBodyLayoutInput = TextBodyLayoutPatch;
+
+export type RunRangeEndpoint = RunRangePoint;
+
+export type RunRangeInput = RunRange;
 
 export interface ChartSeriesData {
   name: string;
@@ -162,6 +180,9 @@ export interface PresentationEditorContext {
   setChart(chart: ChartData, objectId?: string, slideId?: string): boolean;
   setRunText(runId: string, text: string, revision?: number): boolean;
   setRunFormat(runId: string, format: RunFormatInput, revision?: number): void;
+  setParagraphFormat(paragraphId: string, format: ParagraphFormatInput, revision?: number): boolean;
+  setTextBodyLayout(objectId: string, layout: TextBodyLayoutInput, revision?: number): boolean;
+  setRunRangeFormat(objectId: string, range: RunRangeInput, format: RunFormatInput, revision?: number): boolean;
   setSlideProperties(properties: SlidePropertiesPatch, slideId?: string): boolean;
   setText(paragraphs: readonly AuthoredParagraph[], objectId?: string, slideId?: string): boolean;
   setTableCell(cellId: string, paragraphs: readonly AuthoredParagraph[], objectId?: string, slideId?: string, revision?: number): boolean;

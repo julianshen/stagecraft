@@ -948,7 +948,7 @@ describe('Chart integration (toolbar, PresentationChart canvas, inspector, read-
   });
 });
 
-describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)', () => {
+describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragraph format, autofit)', () => {
   function makeTextTrancheEngine(initialSlides, docExtensions, dispatchSpy) {
     const doc = {
       schemaVersion: 1,
@@ -969,12 +969,50 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
           },
         },
         {
-          id: 'document.bumpRevision',
-          apply(d) {
+          id: 'document.setParagraphFormat',
+          apply(d, p) {
+            dispatchSpy?.('document.setParagraphFormat', p);
             return {
               ...d,
-              slides: d.slides.map((s, i) => (i === 0 ? { ...s, name: 'Bumped' } : s)),
+              slides: d.slides.map(s => ({
+                ...s,
+                objects: s.objects.map(o => (
+                  o.text?.paragraphs
+                    ? {
+                        ...o,
+                        text: {
+                          ...o.text,
+                          paragraphs: o.text.paragraphs.map(para => (
+                            para.id === p.paragraphId ? { ...para, style: { ...para.style, ...p.format } } : para
+                          )),
+                        },
+                      }
+                    : o
+                )),
+              })),
             };
+          },
+        },
+        {
+          id: 'document.setTextBodyLayout',
+          apply(d, p) {
+            dispatchSpy?.('document.setTextBodyLayout', p);
+            return {
+              ...d,
+              slides: d.slides.map(s => ({
+                ...s,
+                objects: s.objects.map(o => (
+                  o.id === p.objectId ? { ...o, bodyLayout: { ...o.bodyLayout, ...p.layout } } : o
+                )),
+              })),
+            };
+          },
+        },
+        {
+          id: 'document.setRunRangeFormat',
+          apply(d, p) {
+            dispatchSpy?.('document.setRunRangeFormat', p);
+            return d;
           },
         },
       ],
@@ -982,7 +1020,7 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
     return createEditor({ document: doc, plugins: [textPlugin] });
   }
 
-  it('edits run fontFamily/color and disables controls on readOnly', () => {
+  it('edits run fontFamily/color, maps partial cross-run UTF-16 selection to Unicode codepoints, and invalidates on readOnly', () => {
     const spy = vi.fn();
     const editor = makeTextTrancheEngine([{
       id: 's1',
@@ -1005,7 +1043,7 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
     const source = {
       capabilities: {
         readOnly: false,
-        edits: ['existing-run-format'],
+        edits: ['existing-run-format', 'paragraph-format', 'text-body-layout', 'run-range-format'],
       },
       export: vi.fn(),
     };
@@ -1032,16 +1070,174 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
     fireEvent.click(screen.getByLabelText('Reset color run 1'));
     expect(spy).toHaveBeenCalledWith('document.setRunFormat', { runId: 'r1', format: { color: null } });
 
-    // Transition to readOnly disables run format controls
+    // Partial cross-run selection: '😀Hi World' -> UTF-16 [2..7] = code points [1..6] ('Hi ' + 'Wo')
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+    const rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 2;
+    rangeArea.selectionEnd = 7;
+    fireEvent.select(rangeArea);
+
+    const rangeBold = screen.getByRole('button', { name: 'Range bold' });
+    expect(rangeBold).not.toBeDisabled();
+    fireEvent.click(rangeBold);
+    expect(spy).toHaveBeenLastCalledWith('document.setRunRangeFormat', {
+      objectId: 't-cross',
+      range: {
+        start: { paragraphId: 'p1', runId: 'r1', offset: 1 },
+        end: { paragraphId: 'p1', runId: 'r2', offset: 2 },
+      },
+      format: { bold: true },
+    });
+
+    // Transition to readOnly clears range selection & disables controls
     rerender(
       <EditorProvider editor={editor}>
         <PresentationEditor source={source} readOnly />
       </EditorProvider>
     );
-    expect(screen.getByLabelText('Font family run 1')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
   });
 
-  it('prefers live run.style typeface/color over imported pptxAppearance', () => {
+  it('edits paragraph format & text body layout with Artwork preview and keeps ODP native paragraphs read-only', () => {
+    const spy = vi.fn();
+    const editor = makeTextTrancheEngine([{
+      id: 's1',
+      objects: [
+        {
+          id: 't-auth',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              runs: [{ id: 'r1', text: 'Item', editable: true, style: { sz: '2400' }, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        },
+        {
+          id: 't-odp-native',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 220 * PT, width: 300 * PT, height: 100 * PT },
+          source: { format: 'odp', part: 'content.xml', path: '0' },
+          text: {
+            paragraphs: [{
+              id: 'p-odp',
+              source: { format: 'odp', part: 'content.xml', path: '0/0' },
+              runs: [{ id: 'r-odp', text: 'ODP Native', editable: true, source: { format: 'odp' }, style: {} }],
+            }],
+          },
+        },
+      ],
+    }], { sourceFormat: 'odp' }, spy);
+    const source = {
+      capabilities: {
+        readOnly: false,
+        edits: ['existing-run-format', 'paragraph-format', 'text-body-layout'],
+      },
+      export: vi.fn(),
+    };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    // Authored object on ODP doc: paragraph format works; autofit restricts to none/resize (no shrink)
+    fireEvent.click(screen.getAllByLabelText('Select object t-auth')[0]);
+    const autofit = screen.getByLabelText('Text autofit');
+    expect(within(autofit).queryByText('Shrink text')).toBeNull();
+    fireEvent.change(autofit, { target: { value: 'resize' } });
+    expect(spy).toHaveBeenLastCalledWith('document.setTextBodyLayout', {
+      objectId: 't-auth',
+      layout: { autofit: 'resize' },
+    });
+
+    fireEvent.change(screen.getByLabelText('Paragraph 1 alignment'), { target: { value: 'center' } });
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'char:•' } });
+    expect(spy).toHaveBeenLastCalledWith('document.setParagraphFormat', {
+      paragraphId: 'p1',
+      format: { bullet: { type: 'char', char: '•' } },
+    });
+
+    const canvas = screen.getByLabelText('Slide canvas');
+    expect(within(canvas).getByText('•')).toBeTruthy();
+
+    // Native ODP paragraph stays strictly read-only
+    fireEvent.click(screen.getAllByLabelText('Select object t-odp-native')[0]);
+    expect(screen.getByText('Native ODP paragraph formatting is read-only.')).toBeTruthy();
+    expect(screen.getByLabelText('Paragraph 1 alignment')).toBeDisabled();
+  });
+
+  it('aligns Artwork/TextBodyLayoutFields with object.bodyLayout, supports indents/insets, and resets drafts on revision change', () => {
+    const spy = vi.fn();
+    const editor = makeTextTrancheEngine([{
+      id: 's1',
+      objects: [{
+        id: 't-pptx',
+        type: 'text',
+        geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+        extensions: { stagecraftAuthored: true },
+        text: {
+          paragraphs: [{
+            id: 'p1',
+            runs: [{ id: 'r1', text: 'Body', editable: true, style: { sz: '2400' }, extensions: { stagecraftAuthored: true } }],
+          }],
+        },
+      }],
+    }], undefined, spy);
+    const source = {
+      capabilities: {
+        readOnly: false,
+        edits: ['paragraph-format', 'text-body-layout'],
+      },
+      export: vi.fn(),
+    };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    fireEvent.click(screen.getAllByLabelText('Select object t-pptx')[0]);
+    fireEvent.change(screen.getByLabelText('Text vertical anchor'), { target: { value: 'middle' } });
+    expect(editor.getSnapshot().document.slides[0].objects[0].bodyLayout).toEqual({ anchor: 'middle' });
+    const canvasObj = screen.getByLabelText('Slide canvas').querySelector('[data-object-id="t-pptx"] .stagecraft-presentation-object');
+    expect(canvasObj.style.justifyContent).toBe('center');
+
+    // Insets & indents
+    const insetLeft = screen.getByLabelText('Text inset left');
+    fireEvent.focus(insetLeft);
+    fireEvent.change(insetLeft, { target: { value: '10' } });
+    fireEvent.blur(insetLeft);
+    expect(spy).toHaveBeenLastCalledWith('document.setTextBodyLayout', {
+      objectId: 't-pptx',
+      layout: { insets: { left: 10 * PT } },
+    });
+
+    const indentStart = screen.getByLabelText('Paragraph 1 indentStart');
+    fireEvent.focus(indentStart);
+    fireEvent.change(indentStart, { target: { value: '12' } });
+    fireEvent.blur(indentStart);
+    expect(spy).toHaveBeenLastCalledWith('document.setParagraphFormat', {
+      paragraphId: 'p1',
+      format: { indentStart: 12 * PT },
+    });
+
+    // Unrelated revision bump resets uncommitted paragraph numeric draft
+    const sb = screen.getByLabelText('Paragraph 1 space before');
+    fireEvent.focus(sb);
+    fireEvent.change(sb, { target: { value: '24' } });
+    expect(sb).toHaveValue(24);
+    act(() => {
+      editor.dispatch('document.setTextBodyLayout', { objectId: 't-pptx', layout: { wrap: 'none' } });
+    });
+    expect(screen.getByLabelText('Paragraph 1 space before')).toHaveValue(null);
+  });
+
+  it('prefers live run.style typeface/color over imported pptxAppearance and invalidates range selection on unrelated revision', () => {
     const editor = makeTextTrancheEngine([{
       id: 's1',
       objects: [{
@@ -1067,7 +1263,7 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
       }],
     }]);
     const source = {
-      capabilities: { readOnly: false, edits: ['existing-run-format'] },
+      capabilities: { readOnly: false, edits: ['run-range-format', 'text-body-layout'] },
       export: vi.fn(),
     };
 
@@ -1082,7 +1278,62 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
     expect(r1Span.style.fontFamily).toContain('Mono');
 
     fireEvent.click(screen.getAllByLabelText('Select object t-live')[0]);
-    expect(screen.getByLabelText('Font family run 1')).toHaveValue('Mono');
+    const rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 0;
+    rangeArea.selectionEnd = 4;
+    fireEvent.select(rangeArea);
+    expect(screen.getByRole('button', { name: 'Range bold' })).not.toBeDisabled();
+
+    // Unrelated revision bump re-maps range selection with fresh startRevision instead of disabling
+    act(() => {
+      editor.dispatch('document.setTextBodyLayout', { objectId: 't-live', layout: { autofit: 'none' } });
+    });
+    expect(screen.getByRole('button', { name: 'Range bold' })).not.toBeDisabled();
+  });
+
+  it('numbers contiguous matching list items starting at 1 by level, supports bullet {type:none}, and discloses autofit preview', () => {
+    const spy = vi.fn();
+    const editor = makeTextTrancheEngine([{
+      id: 's1',
+      objects: [{
+        id: 't-list',
+        type: 'text',
+        geometry: { x: 72 * PT, y: 72 * PT, width: 320 * PT, height: 180 * PT },
+        extensions: { stagecraftAuthored: true },
+        text: {
+          paragraphs: [
+            { id: 'p0', runs: [{ id: 'r0', text: 'Title', editable: true, style: { sz: '2400' }, extensions: { stagecraftAuthored: true } }] },
+            { id: 'p1', style: { bullet: { type: 'char', char: '•' } }, runs: [{ id: 'r1', text: 'Bullet', editable: true, style: { sz: '2000' }, extensions: { stagecraftAuthored: true } }] },
+            { id: 'p2', style: { bullet: { type: 'number', format: 'arabicPeriod' }, level: 0 }, runs: [{ id: 'r2', text: 'First', editable: true, style: { sz: '2000' }, extensions: { stagecraftAuthored: true } }] },
+            { id: 'p3', style: { bullet: { type: 'number', format: 'lowerAlphaPeriod' }, level: 1 }, runs: [{ id: 'r3', text: 'SubFirst', editable: true, style: { sz: '2000' }, extensions: { stagecraftAuthored: true } }] },
+            { id: 'p4', style: { bullet: { type: 'number', format: 'arabicPeriod' }, level: 0 }, runs: [{ id: 'r4', text: 'Second', editable: true, style: { sz: '2000' }, extensions: { stagecraftAuthored: true } }] },
+          ],
+        },
+      }],
+    }], undefined, spy);
+    const source = {
+      capabilities: { readOnly: false, edits: ['paragraph-format', 'text-body-layout'] },
+      export: vi.fn(),
+    };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    const canvas = screen.getByLabelText('Slide canvas');
+    const markers = [...canvas.querySelectorAll('.stagecraft-presentation-bullet')].map(el => el.textContent.trim());
+    expect(markers).toEqual(['•', '1.', 'a.', '2.']);
+
+    fireEvent.click(screen.getAllByLabelText('Select object t-list')[0]);
+    expect(screen.getByText(/Autofit settings are saved for export/i)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'none' } });
+    expect(spy).toHaveBeenLastCalledWith('document.setParagraphFormat', {
+      paragraphId: 'p0',
+      format: { bullet: { type: 'none' } },
+    });
   });
 
   it('shows Reset color button for run.style.color:null sentinel and dispatches { color: null }', () => {
@@ -1151,8 +1402,8 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
       delete doc1.objects[0].text.paragraphs[0].runs[0].extensions.stagecraftAuthored;
     }
     const editor = makeTextTrancheEngine([doc1], undefined, spy);
-    const source1 = { capabilities: { readOnly: false, edits: ['existing-run-format'] }, export: vi.fn() };
-    const source2 = { capabilities: { readOnly: false, edits: ['existing-run-format'] }, export: vi.fn() };
+    const source1 = { capabilities: { readOnly: false, edits: ['existing-run-format', 'text-body-layout'] }, export: vi.fn() };
+    const source2 = { capabilities: { readOnly: false, edits: ['existing-run-format', 'text-body-layout'] }, export: vi.fn() };
 
     const { rerender } = render(
       <EditorProvider editor={editor}>
@@ -1171,7 +1422,7 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
     fireEvent.change(sizeInput, { target: { value: '77' } });
     const revBefore = editor.getSnapshot().revision;
     act(() => {
-      editor.dispatch('document.bumpRevision', {});
+      editor.dispatch('document.setTextBodyLayout', { objectId: 't1', layout: { autofit: 'none' } });
     });
     expect(editor.getSnapshot().revision).toBe(revBefore + 1);
     expect(screen.getByLabelText('Font family run 1')).toHaveValue('Inter');
@@ -1204,5 +1455,574 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
     fireEvent.click(screen.getAllByLabelText('Select object t1')[0]);
     expect(screen.getByLabelText('Font family run 1')).toHaveValue('Inter');
     expect(screen.getByLabelText('Font size run 1')).toHaveValue(24);
+  });
+
+  it('clears level atomically in the same setParagraphFormat command when removing bullet at level > 0 in ODP', () => {
+    const doc = createDocument({
+      id: 'odp-list-deck',
+      extensions: { sourceFormat: 'odp' },
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 't-odp-auth',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              style: { level: 2, bullet: { type: 'char', char: '•' } },
+              runs: [{ id: 'r1', text: 'Nested item', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = {
+      capabilities: { readOnly: false, edits: ['paragraph-format'] },
+      export: vi.fn(),
+    };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    fireEvent.click(screen.getAllByLabelText('Select object t-odp-auth')[0]);
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'none' } });
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    const style = editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style;
+    expect(style.bullet).toEqual({ type: 'none' });
+    expect(style.level).toBeUndefined();
+  });
+
+  it('preserves level when selecting a real bullet in ODP, removing bullet in PPTX, or removing bullet at level 0 in ODP', () => {
+    const makeDoc = (sourceFormat, level) => createDocument({
+      id: `list-${sourceFormat}-${level}`,
+      extensions: { sourceFormat },
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 't-list',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              style: { level, bullet: { type: 'char', char: '•' } },
+              runs: [{ id: 'r1', text: 'Item', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        }],
+      }],
+    });
+
+    // 1. ODP real bullet at level 2 keeps level 2
+    const odpReal = createEditor({ document: makeDoc('odp', 2), plugins: [documentPlugin, presentationPlugin] });
+    const odpSource = { capabilities: { readOnly: false, edits: ['paragraph-format'] }, export: vi.fn() };
+    const { unmount: u1 } = render(<EditorProvider editor={odpReal}><PresentationEditor source={odpSource} /></EditorProvider>);
+    fireEvent.click(screen.getAllByLabelText('Select object t-list')[0]);
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'number:arabicPeriod' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(odpReal.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style).toEqual({
+      level: 2,
+      bullet: { type: 'number', format: 'arabicPeriod' },
+    });
+    u1();
+
+    // 2. PPTX bullet removal at level 2 keeps level 2
+    const pptxNone = createEditor({ document: makeDoc('pptx', 2), plugins: [documentPlugin, presentationPlugin] });
+    const pptxSource = { capabilities: { readOnly: false, edits: ['paragraph-format'] }, export: vi.fn() };
+    const { unmount: u2 } = render(<EditorProvider editor={pptxNone}><PresentationEditor source={pptxSource} /></EditorProvider>);
+    fireEvent.click(screen.getAllByLabelText('Select object t-list')[0]);
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'none' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(pptxNone.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style).toEqual({
+      level: 2,
+      bullet: { type: 'none' },
+    });
+    u2();
+
+    // 3. ODP bullet removal at level 0 succeeds
+    const odpLevel0 = createEditor({ document: makeDoc('odp', 0), plugins: [documentPlugin, presentationPlugin] });
+    render(<EditorProvider editor={odpLevel0}><PresentationEditor source={odpSource} /></EditorProvider>);
+    fireEvent.click(screen.getAllByLabelText('Select object t-list')[0]);
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'none' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(odpLevel0.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style).toEqual({
+      level: 0,
+      bullet: { type: 'none' },
+    });
+  });
+
+  it('maps normalized textarea CRLF selection boundaries back to canonical run code-point offsets for CRLF, surrogate pairs, and cross-paragraph ranges', () => {
+    const doc = createDocument({
+      id: 'crlf-range-deck',
+      slides: [{
+        id: 's1',
+        objects: [
+          {
+            id: 't-crlf-in-run',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+            extensions: { stagecraftAuthored: true },
+            text: {
+              paragraphs: [{
+                id: 'p1',
+                runs: [{ id: 'r1', text: 'A\r\nB', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+              }],
+            },
+          },
+          {
+            id: 't-crlf-boundary',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 200 * PT, width: 300 * PT, height: 120 * PT },
+            extensions: { stagecraftAuthored: true },
+            text: {
+              paragraphs: [{
+                id: 'p2',
+                runs: [
+                  { id: 'rb1', text: 'X\r', editable: true, style: {}, extensions: { stagecraftAuthored: true } },
+                  { id: 'rb2', text: '\nYZ', editable: true, style: {}, extensions: { stagecraftAuthored: true } },
+                ],
+              }],
+            },
+          },
+          {
+            id: 't-surrogate-cross',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 340 * PT, width: 300 * PT, height: 120 * PT },
+            extensions: { stagecraftAuthored: true },
+            text: {
+              paragraphs: [
+                {
+                  id: 'ps1',
+                  runs: [{ id: 'rs1', text: '😀A', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+                },
+                {
+                  id: 'ps2',
+                  runs: [{ id: 'rs2', text: 'B😀C', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+                },
+              ],
+            },
+          },
+        ],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = { capabilities: { readOnly: false, edits: ['run-range-format'] }, export: vi.fn() };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    // 1. CRLF inside a run: 'A\r\nB' -> textarea displays 'A\nB', selecting [2, 3) selects 'B'
+    fireEvent.click(screen.getAllByLabelText('Select object t-crlf-in-run')[0]);
+    let rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 2;
+    rangeArea.selectionEnd = 3;
+    fireEvent.select(rangeArea);
+    fireEvent.click(screen.getByRole('button', { name: 'Range bold' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    const runsInRun = editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs;
+    expect(runsInRun.map(r => [r.text, r.style.b])).toEqual([['A\r\n', undefined], ['B', '1']]);
+
+    // 2. CRLF across a run boundary: 'X\r' + '\nYZ' -> textarea displays 'X\nYZ', selecting [2, 4) selects 'YZ'
+    fireEvent.click(screen.getAllByLabelText('Select object t-crlf-boundary')[0]);
+    rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 2;
+    rangeArea.selectionEnd = 4;
+    fireEvent.select(rangeArea);
+    fireEvent.click(screen.getByRole('button', { name: 'Range bold' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    const runsBoundary = editor.getSnapshot().document.slides[0].objects[1].text.paragraphs[0].runs;
+    expect(runsBoundary.map(r => [r.text, r.style.b])).toEqual([['X\r', undefined], ['\n', undefined], ['YZ', '1']]);
+
+    // 3. Surrogate pairs + cross-paragraph: '😀A\nB😀C' -> UTF-16 [2, 5) selects 'A\nB'
+    fireEvent.click(screen.getAllByLabelText('Select object t-surrogate-cross')[0]);
+    rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 2;
+    rangeArea.selectionEnd = 5;
+    fireEvent.select(rangeArea);
+    fireEvent.click(screen.getByRole('button', { name: 'Range bold' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    const crossParas = editor.getSnapshot().document.slides[0].objects[2].text.paragraphs;
+    expect(crossParas[0].runs.map(r => [r.text, r.style.b])).toEqual([['😀', undefined], ['A', '1']]);
+    expect(crossParas[1].runs.map(r => [r.text, r.style.b])).toEqual([['B', '1'], ['😀C', undefined]]);
+  });
+
+  it('maps CR before paragraph separator, lone CR, and leading/trailing/consecutive empty paragraphs on select-all', () => {
+    const makeObj = (id, paraTexts) => ({
+      id,
+      type: 'text',
+      geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+      extensions: { stagecraftAuthored: true },
+      text: {
+        paragraphs: paraTexts.map((txt, idx) => ({
+          id: `${id}-p${idx}`,
+          runs: [{ id: `${id}-r${idx}`, text: txt, editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+        })),
+      },
+    });
+    const doc = createDocument({
+      id: 'edge-range-deck',
+      slides: [{
+        id: 's1',
+        objects: [
+          makeObj('t-cr-sep', ['A\r', 'B']),
+          makeObj('t-lone-cr', ['CD\rE']),
+          makeObj('t-trail-empty', ['E1', '']),
+          makeObj('t-lead-empty', ['', 'F']),
+          makeObj('t-consec-empty', ['', '', 'G', '', '']),
+        ],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = { capabilities: { readOnly: false, edits: ['run-range-format'] }, export: vi.fn() };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    const selectAndBold = (objId, start, end) => {
+      fireEvent.click(screen.getAllByLabelText(`Select object ${objId}`)[0]);
+      const rangeArea = screen.getByLabelText('Select text range');
+      rangeArea.selectionStart = start;
+      rangeArea.selectionEnd = end;
+      fireEvent.select(rangeArea);
+      const btn = screen.getByRole('button', { name: 'Range bold' });
+      expect(btn).not.toBeDisabled();
+      fireEvent.click(btn);
+      expect(screen.queryByRole('alert')).toBeNull();
+    };
+
+    // 1. CR at paragraph end before synthetic separator: ['A\r', 'B'] -> displays 'A\nB', [2, 3) selects 'B'
+    selectAndBold('t-cr-sep', 2, 3);
+    const crSepParas = editor.getSnapshot().document.slides[0].objects[0].text.paragraphs;
+    expect(crSepParas[0].runs.map(r => [r.text, r.style.b])).toEqual([['A\r', undefined]]);
+    expect(crSepParas[1].runs.map(r => [r.text, r.style.b])).toEqual([['B', '1']]);
+
+    // 2. Lone CR: 'CD\rE' -> displays 'CD\nE', [3, 4) selects 'E'
+    selectAndBold('t-lone-cr', 3, 4);
+    const loneCrRuns = editor.getSnapshot().document.slides[0].objects[1].text.paragraphs[0].runs;
+    expect(loneCrRuns.map(r => [r.text, r.style.b])).toEqual([['CD\r', undefined], ['E', '1']]);
+
+    // 3. Trailing empty paragraph: ['E1', ''] -> displays 'E1\n', select-all [0, 3)
+    selectAndBold('t-trail-empty', 0, 3);
+    const trailParas = editor.getSnapshot().document.slides[0].objects[2].text.paragraphs;
+    expect(trailParas[0].runs.map(r => [r.text, r.style.b])).toEqual([['E1', '1']]);
+
+    // 4. Leading empty paragraph: ['', 'F'] -> displays '\nF', select-all [0, 2)
+    selectAndBold('t-lead-empty', 0, 2);
+    const leadParas = editor.getSnapshot().document.slides[0].objects[3].text.paragraphs;
+    expect(leadParas[1].runs.map(r => [r.text, r.style.b])).toEqual([['F', '1']]);
+
+    // 5. Consecutive leading & trailing empty paragraphs: ['', '', 'G', '', ''] -> displays '\n\nG\n\n', select-all [0, 5)
+    selectAndBold('t-consec-empty', 0, 5);
+    const consecParas = editor.getSnapshot().document.slides[0].objects[4].text.paragraphs;
+    expect(consecParas[2].runs.map(r => [r.text, r.style.b])).toEqual([['G', '1']]);
+  });
+
+  it('hides body-layout controls on textless inserted shapes while keeping them on shapes with text', () => {
+    const doc = createDocument({
+      id: 'shape-layout-deck',
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 'shape-with-text',
+          type: 'shape',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 200 * PT, height: 100 * PT },
+          shape: 'rect',
+          fill: '#4472c4',
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              runs: [{ id: 'r1', text: 'Label', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = {
+      capabilities: { readOnly: false, edits: ['object-structure', 'text-body-layout'] },
+      export: vi.fn(),
+    };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    // Shape with text exposes Text autofit and commits via real document.setTextBodyLayout
+    fireEvent.click(screen.getAllByLabelText('Select object shape-with-text')[0]);
+    expect(screen.getByLabelText('Text autofit')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Text autofit'), { target: { value: 'resize' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(editor.getSnapshot().document.slides[0].objects[0].bodyLayout).toEqual({ autofit: 'resize' });
+
+    // Inserting a textless Rectangle does NOT expose Text body layout controls
+    fireEvent.click(screen.getByRole('tab', { name: 'Insert' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rectangle' }));
+    const insertedRect = editor.getSnapshot().document.slides[0].objects.find(o => o.id !== 'shape-with-text');
+    expect(insertedRect.text).toBeUndefined();
+    expect(screen.queryByLabelText('Text autofit')).toBeNull();
+  });
+
+  it('commits range color on change (including #000000), preserves selection across Bold->Italic->Unbold->Reset, and shows canonical code-point label after CR', () => {
+    const doc = createDocument({
+      id: 'range-ux-deck',
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 't-ux',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              runs: [{ id: 'r1', text: 'A\r\nB', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = { capabilities: { readOnly: false, edits: ['run-range-format'] }, export: vi.fn() };
+
+    const { rerender } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    fireEvent.click(screen.getAllByLabelText('Select object t-ux')[0]);
+    const rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 2;
+    rangeArea.selectionEnd = 3;
+    fireEvent.select(rangeArea);
+
+    // Canonical code-point label: 'A'(0), '\r'(1), '\n'(2), 'B'(3..4)
+    expect(screen.getByText('Selected code points 3–4')).toBeTruthy();
+
+    // Sequential actions work without reselecting
+    fireEvent.click(screen.getByRole('button', { name: 'Range bold' }));
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.b).toBe('1');
+    fireEvent.click(screen.getByRole('button', { name: 'Range italic' }));
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.i).toBe('1');
+    fireEvent.click(screen.getByRole('button', { name: 'Range unitalic' }));
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.i).toBe('0');
+    fireEvent.click(screen.getByRole('button', { name: 'Range reset italic' }));
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.i).toBeUndefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Range unbold' }));
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.b).toBe('0');
+    fireEvent.click(screen.getByRole('button', { name: 'Range reset bold' }));
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.b).toBeUndefined();
+
+    // Color picker is a pure local draft; Apply colour button commits (including #000000)
+    const revBeforeColor = editor.getSnapshot().revision;
+    const colorInput = screen.getByLabelText('Range color');
+    fireEvent.input(colorInput, { target: { value: '#112233' } });
+    fireEvent.change(colorInput, { target: { value: '#000000' } });
+    expect(editor.getSnapshot().revision).toBe(revBeforeColor);
+    fireEvent.click(screen.getByRole('button', { name: 'Range apply colour' }));
+    expect(editor.getSnapshot().revision).toBe(revBeforeColor + 1);
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.color).toBe('#000000');
+
+    // Stale-draft safety: readOnly clears range selection
+    rerender(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} readOnly />
+      </EditorProvider>
+    );
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+  });
+
+  it('renders dynamic bullet option, ODP shrink (unsupported) option, isOdpDoc precedence, and non-pptx native read-only paragraphs', () => {
+    const doc = createDocument({
+      id: 'review-meta-deck',
+      extensions: { sourceFormat: 'odp' },
+      slides: [{
+        id: 's1',
+        objects: [
+          {
+            id: 't-odp-shrink',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+            extensions: { stagecraftAuthored: true },
+            bodyLayout: { autofit: 'shrink' },
+            text: {
+              paragraphs: [{
+                id: 'p-dash',
+                style: { bullet: { type: 'char', char: '–' } },
+                runs: [{ id: 'r-dash', text: 'Dash', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+              }],
+            },
+          },
+          {
+            id: 't-pptx-in-odp',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 200 * PT, width: 300 * PT, height: 120 * PT },
+            source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [0] },
+            text: {
+              paragraphs: [{
+                id: 'p-pptx',
+                source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [0, 0] },
+                style: { level: 2, bullet: { type: 'char', char: '•' } },
+                runs: [{ id: 'r-pptx', text: 'PPTX', editable: true, source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [0, 0, 0] }, style: {} }],
+              }],
+            },
+          },
+          {
+            id: 't-unknown-native',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 340 * PT, width: 300 * PT, height: 120 * PT },
+            source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [1] },
+            text: {
+              paragraphs: [{
+                id: 'p-unk',
+                runs: [{ id: 'r-unk', text: 'Unknown', editable: false, style: {} }],
+              }],
+            },
+          },
+        ],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = {
+      capabilities: { readOnly: false, edits: ['paragraph-format', 'text-body-layout'] },
+      export: vi.fn(),
+    };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    // 1. Dynamic bullet option + ODP autofit 'shrink' shown as disabled "Shrink (unsupported)" + real core commits
+    fireEvent.click(screen.getAllByLabelText('Select object t-odp-shrink')[0]);
+    const bulletSelect = screen.getByLabelText('Paragraph 1 bullet');
+    expect(bulletSelect).toHaveValue('char:–');
+    expect(within(bulletSelect).getByRole('option', { name: 'Bullet (–)' })).toBeTruthy();
+    fireEvent.change(bulletSelect, { target: { value: 'none' } });
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style.bullet).toEqual({ type: 'none' });
+
+    const autofitSelect = screen.getByLabelText('Text autofit');
+    expect(autofitSelect).toHaveValue('shrink');
+    const shrinkOpt = within(autofitSelect).getByRole('option', { name: 'Shrink (unsupported)' });
+    expect(shrinkOpt).toBeDisabled();
+    fireEvent.change(autofitSelect, { target: { value: '' } });
+    expect(editor.getSnapshot().document.slides[0].objects[0].bodyLayout).toBeUndefined();
+
+    // 2. isOdpDoc precedence: object.source.format === 'pptx' overrides doc.extensions.sourceFormat === 'odp'
+    fireEvent.click(screen.getAllByLabelText('Select object t-pptx-in-odp')[0]);
+    expect(screen.getByLabelText('Text wrap')).toBeTruthy();
+    expect(screen.getByLabelText('Paragraph 1 alignment')).not.toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'none' } });
+    expect(editor.getSnapshot().document.slides[0].objects[1].text.paragraphs[0].style).toEqual({
+      level: 2,
+      bullet: { type: 'none' },
+    });
+    fireEvent.change(screen.getByLabelText('Paragraph 1 alignment'), { target: { value: 'center' } });
+    expect(editor.getSnapshot().document.slides[0].objects[1].text.paragraphs[0].style.alignment).toBe('center');
+
+    // 3. Non-pptx native paragraph (no source.format) is disabled in ParagraphFormatFields
+    fireEvent.click(screen.getAllByLabelText('Select object t-unknown-native')[0]);
+    expect(screen.getByLabelText('Paragraph 1 alignment')).toBeDisabled();
+  });
+
+  it('does not resurrect cleared range selection after readOnly on->off->revision and cancels in-flight range color draft on concurrent revision', () => {
+    const doc = createDocument({
+      id: 'stale-range-race-deck',
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 't-race',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              runs: [{ id: 'r1', text: 'Hello', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = { capabilities: { readOnly: false, edits: ['run-range-format', 'text-body-layout'] }, export: vi.fn() };
+
+    const { rerender } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    // 1. readOnly on -> off -> unrelated revision must NOT resurrect cleared range selection
+    fireEvent.click(screen.getAllByLabelText('Select object t-race')[0]);
+    const rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 1;
+    rangeArea.selectionEnd = 4;
+    fireEvent.select(rangeArea);
+    expect(screen.getByRole('button', { name: 'Range bold' })).not.toBeDisabled();
+
+    rerender(<EditorProvider editor={editor}><PresentationEditor source={source} readOnly /></EditorProvider>);
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+
+    rerender(<EditorProvider editor={editor}><PresentationEditor source={source} readOnly={false} /></EditorProvider>);
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+
+    act(() => {
+      editor.dispatch('document.setTextBodyLayout', { objectId: 't-race', layout: { autofit: 'none' } });
+    });
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+
+    // 2. Re-arm selection; picker events (focus, pointerdown, input, change) never dispatch without Apply colour
+    rangeArea.selectionStart = 0;
+    rangeArea.selectionEnd = 4;
+    fireEvent.select(rangeArea);
+    expect(screen.getByRole('button', { name: 'Range bold' })).not.toBeDisabled();
+
+    const colorInput = screen.getByLabelText('Range color');
+    fireEvent.focus(colorInput);
+    fireEvent.pointerDown(colorInput);
+    fireEvent.input(colorInput, { target: { value: '#112233' } });
+    fireEvent.change(colorInput, { target: { value: '#112233' } });
+    expect(editor.getSnapshot().revision).toBe(1);
+
+    act(() => {
+      editor.dispatch('document.setTextBodyLayout', { objectId: 't-race', layout: { autofit: 'resize' } });
+    });
+    expect(editor.getSnapshot().revision).toBe(2);
+
+    fireEvent.pointerDown(colorInput);
+    fireEvent.focus(colorInput);
+    fireEvent.input(colorInput, { target: { value: '#445566' } });
+    fireEvent.change(colorInput, { target: { value: '#445566' } });
+    expect(editor.getSnapshot().revision).toBe(2);
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs).toHaveLength(1);
+
+    // Explicit Apply colour commits the current draft once at the current revision
+    fireEvent.change(colorInput, { target: { value: '#224488' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Range apply colour' }));
+    expect(editor.getSnapshot().revision).toBe(3);
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[0].style.color).toBe('#224488');
+
+    // readOnly disables Apply colour
+    rerender(<EditorProvider editor={editor}><PresentationEditor source={source} readOnly /></EditorProvider>);
+    expect(screen.getByRole('button', { name: 'Range apply colour' })).toBeDisabled();
   });
 });
