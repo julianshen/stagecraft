@@ -16,6 +16,7 @@
   },
   "include": [
     "foundation.ts",
-    "react-workspace.tsx"
+    "react-workspace.tsx",
+    "server.ts"
   ]
 }

@@ -24,6 +24,7 @@ export default defineConfig({
         'packages/odp/src/index.js',
         'packages/odp/src/vendor/officeview/units.js',
         'packages/pptx/src/adapter.js',
+        'packages/server/src/index.js',
 
         'packages/react/src/StagecraftEditor.jsx',
         'packages/react/src/EditorProvider.jsx',
