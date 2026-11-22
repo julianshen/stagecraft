@@ -1821,6 +1821,10 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.b).toBe('1');
     fireEvent.click(screen.getByRole('button', { name: 'Range italic' }));
     expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.i).toBe('1');
+    fireEvent.click(screen.getByRole('button', { name: 'Range unitalic' }));
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.i).toBe('0');
+    fireEvent.click(screen.getByRole('button', { name: 'Range reset italic' }));
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.i).toBeUndefined();
     fireEvent.click(screen.getByRole('button', { name: 'Range unbold' }));
     expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[1].style.b).toBe('0');
     fireEvent.click(screen.getByRole('button', { name: 'Range reset bold' }));
@@ -1875,6 +1879,7 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
               paragraphs: [{
                 id: 'p-pptx',
                 source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [0, 0] },
+                style: { level: 2, bullet: { type: 'char', char: '•' } },
                 runs: [{ id: 'r-pptx', text: 'PPTX', editable: true, source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [0, 0, 0] }, style: {} }],
               }],
             },
@@ -1906,24 +1911,103 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
       </EditorProvider>
     );
 
-    // 1. Dynamic bullet option + ODP autofit 'shrink' shown as disabled "Shrink (unsupported)"
+    // 1. Dynamic bullet option + ODP autofit 'shrink' shown as disabled "Shrink (unsupported)" + real core commits
     fireEvent.click(screen.getAllByLabelText('Select object t-odp-shrink')[0]);
     const bulletSelect = screen.getByLabelText('Paragraph 1 bullet');
     expect(bulletSelect).toHaveValue('char:–');
     expect(within(bulletSelect).getByRole('option', { name: 'Bullet (–)' })).toBeTruthy();
+    fireEvent.change(bulletSelect, { target: { value: 'none' } });
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style.bullet).toEqual({ type: 'none' });
 
     const autofitSelect = screen.getByLabelText('Text autofit');
     expect(autofitSelect).toHaveValue('shrink');
     const shrinkOpt = within(autofitSelect).getByRole('option', { name: 'Shrink (unsupported)' });
     expect(shrinkOpt).toBeDisabled();
+    fireEvent.change(autofitSelect, { target: { value: '' } });
+    expect(editor.getSnapshot().document.slides[0].objects[0].bodyLayout).toBeUndefined();
 
     // 2. isOdpDoc precedence: object.source.format === 'pptx' overrides doc.extensions.sourceFormat === 'odp'
     fireEvent.click(screen.getAllByLabelText('Select object t-pptx-in-odp')[0]);
     expect(screen.getByLabelText('Text wrap')).toBeTruthy();
     expect(screen.getByLabelText('Paragraph 1 alignment')).not.toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'none' } });
+    expect(editor.getSnapshot().document.slides[0].objects[1].text.paragraphs[0].style).toEqual({
+      level: 2,
+      bullet: { type: 'none' },
+    });
+    fireEvent.change(screen.getByLabelText('Paragraph 1 alignment'), { target: { value: 'center' } });
+    expect(editor.getSnapshot().document.slides[0].objects[1].text.paragraphs[0].style.alignment).toBe('center');
 
     // 3. Non-pptx native paragraph (no source.format) is disabled in ParagraphFormatFields
     fireEvent.click(screen.getAllByLabelText('Select object t-unknown-native')[0]);
     expect(screen.getByLabelText('Paragraph 1 alignment')).toBeDisabled();
+  });
+
+  it('does not resurrect cleared range selection after readOnly on->off->revision and cancels in-flight range color draft on concurrent revision', () => {
+    const doc = createDocument({
+      id: 'stale-range-race-deck',
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 't-race',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              runs: [{ id: 'r1', text: 'Hello', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = { capabilities: { readOnly: false, edits: ['run-range-format', 'text-body-layout'] }, export: vi.fn() };
+
+    const { rerender } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    // 1. readOnly on -> off -> unrelated revision must NOT resurrect cleared range selection
+    fireEvent.click(screen.getAllByLabelText('Select object t-race')[0]);
+    const rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 1;
+    rangeArea.selectionEnd = 4;
+    fireEvent.select(rangeArea);
+    expect(screen.getByRole('button', { name: 'Range bold' })).not.toBeDisabled();
+
+    rerender(<EditorProvider editor={editor}><PresentationEditor source={source} readOnly /></EditorProvider>);
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+
+    rerender(<EditorProvider editor={editor}><PresentationEditor source={source} readOnly={false} /></EditorProvider>);
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+
+    act(() => {
+      editor.dispatch('document.setTextBodyLayout', { objectId: 't-race', layout: { autofit: 'none' } });
+    });
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+
+    // 2. Re-arm selection, start color input at rev 1, concurrent revision lands (rev 2), then change event must NOT apply stale color
+    rangeArea.selectionStart = 0;
+    rangeArea.selectionEnd = 4;
+    fireEvent.select(rangeArea);
+    expect(screen.getByRole('button', { name: 'Range bold' })).not.toBeDisabled();
+
+    const colorInput = screen.getByLabelText('Range color');
+    colorInput.value = '#112233';
+    fireEvent.input(colorInput, { target: { value: '#112233' } });
+    expect(editor.getSnapshot().revision).toBe(1);
+
+    act(() => {
+      editor.dispatch('document.setTextBodyLayout', { objectId: 't-race', layout: { autofit: 'resize' } });
+    });
+    expect(editor.getSnapshot().revision).toBe(2);
+
+    fireEvent.change(colorInput, { target: { value: '#112233' } });
+    expect(editor.getSnapshot().revision).toBe(2);
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs).toHaveLength(1);
   });
 });

@@ -1713,6 +1713,8 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
   const textareaRef = useRef(null);
   const colorRef = useRef(null);
   const ownerRef = useRef({ editor, source, slideId, objectId: object.id, disabled });
+  const activeSelectionRef = useRef(false);
+  const colorDraftRef = useRef(null);
 
   function mapSelection(selStart, selEnd, rev) {
     const mapped = mapDisplaySelectionToCanonicalRange(paragraphs, selStart, selEnd);
@@ -1731,38 +1733,82 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
     ownerRef.current = { editor, source, slideId, objectId: object.id, disabled };
     setRangeSize('');
     setRangeFont('');
+    if (colorDraftRef.current?.status === 'active') {
+      colorDraftRef.current = { status: 'cancelled' };
+      setRangeColor('#000000');
+    }
     if (ownerChanged) {
+      activeSelectionRef.current = false;
+      colorDraftRef.current = null;
+      if (textareaRef.current) {
+        textareaRef.current.selectionStart = 0;
+        textareaRef.current.selectionEnd = 0;
+      }
       setRangeState(null);
       setRangeColor('#000000');
       return;
     }
+    if (!activeSelectionRef.current) {
+      setRangeState(null);
+      return;
+    }
     const el = textareaRef.current;
-    setRangeState(el ? mapSelection(el.selectionStart ?? 0, el.selectionEnd ?? 0, revision) : null);
+    const remapped = el ? mapSelection(el.selectionStart ?? 0, el.selectionEnd ?? 0, revision) : null;
+    activeSelectionRef.current = Boolean(remapped);
+    setRangeState(remapped);
   }, [editor, source, slideId, object.id, object.text, revision, disabled]);
 
   function handleSelect(event) {
     if (disabled) return;
     const el = event.currentTarget;
-    setRangeState(mapSelection(el.selectionStart ?? 0, el.selectionEnd ?? 0, revision));
+    const next = mapSelection(el.selectionStart ?? 0, el.selectionEnd ?? 0, revision);
+    activeSelectionRef.current = Boolean(next);
+    if (colorDraftRef.current?.status === 'cancelled') colorDraftRef.current = null;
+    setRangeState(next);
   }
 
   const hasRange = Boolean(rangeState?.range) && !disabled;
   const applyRange = format => onApply(rangeState.range, format, rangeState.startRevision);
+  const captureColorDraft = () => {
+    if (!hasRange) return;
+    if (!colorDraftRef.current || colorDraftRef.current.status === 'cancelled') {
+      colorDraftRef.current = { status: 'active', range: rangeState.range, revision: rangeState.startRevision };
+    }
+  };
+  const captureColorDraftRef = useRef(null);
+  captureColorDraftRef.current = captureColorDraft;
   const colorCommitRef = useRef(null);
   colorCommitRef.current = value => {
+    const draft = colorDraftRef.current;
+    if (draft?.status === 'cancelled') {
+      colorDraftRef.current = null;
+      return;
+    }
+    if (draft?.status === 'active') {
+      colorDraftRef.current = null;
+      onApply(draft.range, { color: value }, draft.revision);
+      return;
+    }
     if (hasRange) applyRange({ color: value });
   };
 
   useEffect(() => {
     const el = colorRef.current;
     if (!el) return undefined;
+    const onNativeInput = () => {
+      captureColorDraftRef.current?.();
+    };
     const onNativeChange = event => {
       const next = event.currentTarget.value.toLowerCase();
       setRangeColor(next);
       colorCommitRef.current?.(next);
     };
+    el.addEventListener('input', onNativeInput);
     el.addEventListener('change', onNativeChange);
-    return () => el.removeEventListener('change', onNativeChange);
+    return () => {
+      el.removeEventListener('input', onNativeInput);
+      el.removeEventListener('change', onNativeChange);
+    };
   }, []);
 
   return (
@@ -1833,7 +1879,12 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
             type="color"
             disabled={!hasRange}
             value={rangeColor}
-            onChange={e => setRangeColor(e.target.value.toLowerCase())}
+            onFocus={captureColorDraft}
+            onBlur={() => { colorDraftRef.current = null; }}
+            onChange={e => {
+              captureColorDraft();
+              setRangeColor(e.target.value.toLowerCase());
+            }}
           />
         </label>
       </div>
