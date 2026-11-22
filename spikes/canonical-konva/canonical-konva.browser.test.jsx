@@ -46,12 +46,12 @@ it('reports real authorization denial and leaves document/history untouched', ()
   expect(editor.getSnapshot().revision).toBe(0); expect(editor.getSnapshot().canUndo).toBe(false);
   expect(onError).toHaveBeenCalledTimes(1); expect(ui.getByRole('alert').textContent).toContain('UNAUTHORIZED');
 });
-function pointer(ui, type, x, y, target) {
+function pointer(ui, type, x, y, target, extra = {}) {
   const canvas = ui.container.querySelector('canvas');
   const rect = canvas.getBoundingClientRect();
   fireEvent(target ?? (type === 'pointerdown' ? canvas : window), new PointerEvent(type, {
     bubbles: true, pointerId: 1, isPrimary: true, pointerType: 'mouse', button: 0, buttons: type === 'pointerup' ? 0 : 1,
-    clientX: rect.left + x, clientY: rect.top + y,
+    clientX: rect.left + x, clientY: rect.top + y, ...extra,
   }));
 }
 it('previews pointer movement, commits once and preserves all non-position geometry', () => {
@@ -215,4 +215,73 @@ it.each(['command', 'source'])('host eligibility cancels %s capability loss', ki
   if (kind === 'command') editor.unregisterPlugin('canonical-presentation'); else sourceCapabilities.geometry = false;
   pointer(ui, 'pointerup', 120, 80);
   expect(moves).not.toHaveBeenCalled(); expect(editor.getSnapshot().revision).toBe(0);
+});
+it('cancels and restores when pointermove reports buttons=0 (lost pointerup)', async () => {
+  const editor = fixture(); const moves = vi.fn();
+  const ui = render(<Host editor={editor} readOnly={false} onMove={moves} />);
+  pointer(ui, 'pointerdown', 80, 60);
+  pointer(ui, 'pointermove', 120, 80);
+  await frame();
+  expect(pixel(ui, 130, 80)).toEqual([18, 52, 86, 255]);
+  pointer(ui, 'pointermove', 120, 80, window, { buttons: 0 });
+  pointer(ui, 'pointerup', 120, 80);
+  await frame();
+  expect(moves).not.toHaveBeenCalled();
+  expect(editor.getSnapshot().revision).toBe(0);
+  expect(pixel(ui, 80, 60)).toEqual([18, 52, 86, 255]);
+  expect(pixel(ui, 130, 80)[3]).toBe(0);
+});
+it('cancels cleanly without throwing when viewport becomes null mid-drag', () => {
+  const editor = fixture(); const moves = vi.fn();
+  const ui = render(<Host editor={editor} readOnly={false} onMove={moves} />);
+  pointer(ui, 'pointerdown', 80, 60);
+  pointer(ui, 'pointermove', 120, 80);
+  ui.rerender(<Host editor={editor} readOnly={false} onMove={moves} viewport={null} />);
+  expect(ui.getByText('Canvas unavailable')).toBeTruthy();
+  window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, button: 0, isPrimary: true }));
+  expect(moves).not.toHaveBeenCalled();
+  expect(editor.getSnapshot().revision).toBe(0);
+});
+it('ignores non-primary blank-stage pointerdown and modified arrow keys', () => {
+  const editor = fixture(); const ui = render(<Host editor={editor} readOnly={false} />);
+  fireEvent.click(ui.getByRole('button', { name: 'Select r' }));
+  for (const mod of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey']) {
+    fireEvent.keyDown(ui.getByRole('region'), { key: 'ArrowRight', [mod]: true });
+  }
+  expect(editor.getSnapshot().revision).toBe(0);
+  pointer(ui, 'pointerdown', 80, 60);
+  pointer(ui, 'pointermove', 120, 80);
+  pointer(ui, 'pointerdown', 10, 10, undefined, { button: 2, isPrimary: false });
+  pointer(ui, 'pointerup', 120, 80);
+  expect(editor.getSnapshot().revision).toBe(1);
+});
+it('clears error alert on new selection without shifting canvas and preserves selection on another slide', () => {
+  const editor = fixture(() => false);
+  const ui = render(<Host editor={editor} readOnly={false} />);
+  const canvasBefore = ui.container.querySelector('.konvajs-content').getBoundingClientRect().top;
+  fireEvent.click(ui.getByRole('button', { name: 'Select r' }));
+  fireEvent.keyDown(ui.getByRole('region'), { key: 'ArrowRight' });
+  expect(ui.getByRole('alert')).toBeTruthy();
+  expect(ui.container.querySelector('.konvajs-content').getBoundingClientRect().top).toBe(canvasBefore);
+  fireEvent.click(ui.getByRole('button', { name: 'Select opaque' }));
+  expect(ui.queryByRole('alert')).toBeNull();
+
+  const onSelectionChange = vi.fn();
+  const editor2 = fixture();
+  render(<CanonicalKonvaStage snapshot={editor2.getSnapshot()} slideId="s" selection={{ slideId: 'other', objectId: 'x' }}
+    ownerKey={ownerKey} policyKey={policyKey} viewport={{ width: 400, height: 200 }} onSelectionChange={onSelectionChange} />);
+  expect(onSelectionChange).not.toHaveBeenCalled();
+});
+it('does not re-evaluate canMove on every pointermove', () => {
+  const editor = fixture();
+  const canMove = vi.fn(() => true);
+  const ui = render(<Host editor={editor} readOnly={false} canMove={canMove} />);
+  pointer(ui, 'pointerdown', 80, 60);
+  const callsAfterStart = canMove.mock.calls.length;
+  pointer(ui, 'pointermove', 90, 65);
+  pointer(ui, 'pointermove', 100, 70);
+  pointer(ui, 'pointermove', 110, 75);
+  expect(canMove.mock.calls.length).toBe(callsAfterStart);
+  pointer(ui, 'pointerup', 110, 75);
+  expect(editor.getSnapshot().revision).toBe(1);
 });

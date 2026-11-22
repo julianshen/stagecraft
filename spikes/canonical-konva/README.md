@@ -45,24 +45,24 @@ No SourceSession/raw retained package enters the adapter. No host resource is di
 
 ## Evidence (2026-11-22)
 
-46 standalone Chromium tests at DPR1 and DPR2 (6 geometry, 38 interaction, 2 benchmark). Real core assertions cover one-commit/undo, authorization, stale revision, rotation preservation, capabilities and cancellation. Pixel probes verify actual rect/ellipse rollback. Pointer events are dispatched through real Chromium canvas hit testing; these are not OS-input or native Office tests.
+51 standalone Chromium tests at DPR1 and DPR2 (6 geometry, 43 interaction, 2 benchmark). Real core assertions cover one-commit/undo, authorization, stale revision, rotation preservation, capabilities and cancellation (including lost `pointerup` / `buttons === 0`, null `viewport` mid-drag, modified arrow keys, non-primary blank-stage clicks, non-shifting error alert, cross-slide selection preservation, and no per-move `canMove`). Pixel probes verify actual rect/ellipse rollback. Pointer events are dispatched through real Chromium canvas hit testing; these are not OS-input or native Office tests.
 
-Three read-only simplify/review passes covered reuse, quality/errors/tests and efficiency. Fixes include primary-pointer gating, pointer-ID cancellation, policy-throw rollback, editable-target guards, shared render/restore shape attributes and movement assertions in benchmarks. Boundaries, types, consumer and production build pass. Full root coverage was not rerun: no production code/config changed, and it would not measure this spike. Production promotion must add permanent browser/type/consumer/coverage gates.
+Three read-only simplify/review passes covered reuse, quality/errors/tests and efficiency. Fixes include primary-pointer gating, pointer capture + `buttons & 1` checks, pointer-ID cancellation, policy-throw rollback, editable-target and modifier guards, shared render/restore shape attributes and movement assertions in benchmarks. Boundaries, types, consumer and production build pass. Full root coverage was not rerun: no production code/config changed, and it would not measure this spike. Production promotion must add permanent browser/type/consumer/coverage gates.
 
-Measurements: macOS 27.2.1 arm64, HeadlessChrome 141.0.7390.37, viewport1600x900. CPU model lookup was unavailable. Twenty mount/draw samples; ten warmups, eighty warm redraws and eighty frame-spaced pointer previews. Values below are median / p95 milliseconds, rounded to 0.1ms (zero means below timer resolution).
+Measurements: macOS 27.2.1 arm64, HeadlessChrome 141.0.7390.37, viewport1600x900. CPU model lookup was unavailable. Twenty mount/draw samples; ten warmups, eighty warm redraws and eighty frame-spaced pointer previews. Values below are median / p95 (nearest-rank `Math.ceil(0.95 * n) - 1`) / max milliseconds, rounded to 0.1ms (zero means below timer resolution).
 
 | DPR / objects | Cold mount + draw | Warm scene + hit draw | Pointer handler + forced draw | Hit lookup |
 | --- | --- | --- | --- | --- |
-| 1 / 16 | 1.6 / 11.2 | 0.0 / 0.1 | 0.2 / 0.4 | 0.3 / 1.0 |
-| 1 / 256 | 5.3 / 7.7 | 0.5 / 0.8 | 0.6 / 1.7 | 0.8 / 2.1 |
-| 2 / 16 | 2.9 / 12.7 | 0.0 / 0.1 | 0.2 / 0.4 | 0.4 / 0.8 |
-| 2 / 256 | 6.8 / 10.0 | 0.5 / 0.7 | 0.6 / 0.7 | 0.8 / 0.9 |
+| 1 / 16 | 1.6 / 2.6 / 18.9 | 0.0 / 0.1 / 0.2 | 0.1 / 0.2 / 0.3 | 0.2 / 0.2 / 0.3 |
+| 1 / 256 | 5.5 / 5.9 / 7.3 | 0.5 / 0.7 / 7.7 | 0.5 / 0.6 / 2.0 | 0.7 / 0.8 / 0.9 |
+| 2 / 16 | 3.1 / 4.1 / 12.6 | 0.0 / 0.1 / 0.4 | 0.1 / 0.2 / 0.4 | 0.2 / 0.3 / 0.3 |
+| 2 / 256 | 6.8 / 8.1 / 8.8 | 0.6 / 0.7 / 1.4 | 0.6 / 0.7 / 0.8 | 0.8 / 0.8 / 0.9 |
 
-These are synchronous CPU submission timings, **not full frame/GPU presentation latency**. Pointer preview also queues a batch draw; the benchmark's forced draw and later scheduled draw are not a single total-frame measurement. Hit readback is separate. One earlier 16-object DPR1 cold p95 was **19.4ms**, exceeding the16ms target; later passing samples do not erase that miss. A production claim needs repeated isolated production-build profiling, actual scheduled-draw/presentation instrumentation, representative Office scenes and thumbnails.
+These are synchronous CPU submission timings, **not full frame/GPU presentation latency**. Pointer preview also queues a batch draw; the benchmark's forced draw and later scheduled draw are not a single total-frame measurement. Hit readback is separate. Note the 16-object DPR1 cold **max** of **18.9ms** (and one earlier 16-object DPR1 sample of **19.4ms**) exceeds the 16ms target; later passing medians/p95s do not erase those cold-start outlier misses. A production claim needs repeated isolated production-build profiling, actual scheduled-draw/presentation instrumentation, representative Office scenes and thumbnails.
 
 One layer uses 11,520,000 scene+hit backing bytes at DPR1 and 28,800,000 at DPR2; the lazily allocated stage hit buffer remained0 in this fixture. These estimates exclude DOM/JS/GPU overhead and future buffers, and are not process-memory measurements. No thumbnails were measured.
 
-Adapter bundle: 374,526 minified bytes; **95,489 bytes gzip**, under100KiB. React and React DOM are external; entry imports `react-konva/lib/ReactKonvaCore` and registers only `konva/lib/shapes/Rect` and `konva/lib/shapes/Ellipse`. This includes adapter code and React-Konva dependencies, not application/core/source bundles. Run the script for current results.
+Adapter bundle: 376,278 minified bytes; **95,927 bytes gzip**, under 100KiB. Externals (`["react"]`) and Konva/React-Konva module imports (`react-konva/lib/ReactKonvaCore`, `konva/lib/shapes/Rect`, `konva/lib/shapes/Ellipse`, and Konva core internals) are derived dynamically from Vite's build output chunks in `bundle.mjs`. This includes adapter code and React-Konva dependencies, not application/core/source bundles. Run the script for current results.
 
 Existing K1 on-demand baseline at DPR2: cold17.2/22.5ms, warm0.3/0.4ms, scene construction0.0/0.1ms. K1 paints a richer legacy OfficeView scene; these workloads are not fidelity/performance equivalents. No direct claim of speedup is justified.
 

@@ -5,7 +5,14 @@ import Konva from 'konva/lib/Core';
 import { it, expect } from 'vitest';
 import { CanonicalKonvaStage } from './CanonicalKonvaStage.jsx';
 import { createDocument } from '../../packages/core/src/document/index.js';
-const stats = values => { const s = [...values].sort((a,b) => a-b); return { median: s[Math.floor(s.length / 2)], p95: s[Math.floor(s.length * .95)] }; };
+const stats = values => {
+  const s = [...values].sort((a, b) => a - b);
+  return {
+    median: s[Math.floor(s.length / 2)],
+    p95: s[Math.min(s.length - 1, Math.ceil(0.95 * s.length) - 1)],
+    max: s[s.length - 1],
+  };
+};
 const timed = fn => { const start = performance.now(); fn(); return performance.now() - start; };
 const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
 it.each([16, 256])('measures %s primitive objects, not Office fidelity', async count => {

@@ -41,19 +41,28 @@ export function CanonicalKonvaStage(props) {
   function cancel() {
     const g = gesture.current;
     gesture.current = null;
-    if (g) restore(g.objectId);
+    if (g) {
+      try { stage.current?.getContent()?.releasePointerCapture?.(g.pointerId); } catch {}
+      restore(g.objectId);
+    }
   }
-  function current(g) {
+  function gestureValid(g) {
     const p = latest.current;
     const object = p.slide?.objects.find(o => o.id === g.objectId);
-    const rect = stage.current?.getContent().getBoundingClientRect();
     return p.ownerKey === g.ownerKey && p.policyKey === g.policyKey && p.slideId === g.slideId
       && p.snapshot.revision === g.revision && object === g.object
       && p.selection?.slideId === g.slideId && p.selection?.objectId === g.objectId
       && p.view?.scale === g.view.scale && p.view?.x === g.view.x && p.view?.y === g.view.y
-      && p.viewport.width === g.viewport.width && p.viewport.height === g.viewport.height
-      && rect?.width === g.rect.width && rect?.height === g.rect.height && rect?.left === g.rect.left && rect?.top === g.rect.top
-      && object && eligible(p, object);
+      && p.viewport?.width === g.viewport.width && p.viewport?.height === g.viewport.height
+      && p.readOnly === false && typeof p.onMove === 'function' && movable(object, p.snapshot.document.extensions);
+  }
+  function current(g) {
+    if (!gestureValid(g)) return false;
+    const p = latest.current;
+    const object = p.slide?.objects.find(o => o.id === g.objectId);
+    const rect = stage.current?.getContent()?.getBoundingClientRect();
+    return !!rect && rect.width === g.rect.width && rect.height === g.rect.height
+      && rect.left === g.rect.left && rect.top === g.rect.top && !!object && eligible(p, object);
   }
   function commit(object, geometry, revision) {
     if (geometry.x === object.geometry.x && geometry.y === object.geometry.y) return;
@@ -68,14 +77,17 @@ export function CanonicalKonvaStage(props) {
     event.cancelBubble = true;
     if (event.evt.button !== 0 || event.evt.isPrimary === false) return;
     cancel();
+    setError('');
     onSelectionChange?.({ slideId, objectId: object.id });
-    region.current?.focus();
+    region.current?.focus({ preventScroll: true });
     const p = latest.current;
-    if (!eligible(p, object)) return;
-    const rect = stage.current.getContent().getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    gesture.current = { rect, cssX: rect.width / viewport.width, cssY: rect.height / viewport.height, object, objectId: object.id, slideId, ownerKey: p.ownerKey, policyKey: p.policyKey,
-      revision: snapshot.revision, view: { ...view }, viewport: { ...viewport },
+    if (!p.viewport || !eligible(p, object)) return;
+    const content = stage.current?.getContent();
+    const rect = content?.getBoundingClientRect();
+    if (!rect?.width || !rect?.height) return;
+    try { content.setPointerCapture?.(event.evt.pointerId); } catch {}
+    gesture.current = { rect, cssX: rect.width / p.viewport.width, cssY: rect.height / p.viewport.height, object, objectId: object.id, slideId, ownerKey: p.ownerKey, policyKey: p.policyKey,
+      revision: p.snapshot.revision, view: { ...p.view }, viewport: { ...p.viewport },
       pointerId: event.evt.pointerId, x: event.evt.clientX, y: event.evt.clientY };
   }
   // Revalidate both on commit and on renders. Effects alone cannot guard a late pointerup.
@@ -84,7 +96,7 @@ export function CanonicalKonvaStage(props) {
     function move(event) {
       const g = gesture.current;
       if (!g || event.pointerId !== g.pointerId) return;
-      if (!current(g)) { cancel(); return; }
+      if ((event.buttons & 1) === 0 || !gestureValid(g)) { cancel(); return; }
       const node = nodes.current.get(g.objectId);
       const base = nodeGeometry(g.object.geometry);
       node?.position({ x: base.x + (event.clientX - g.x) / g.cssX / g.view.scale, y: base.y + (event.clientY - g.y) / g.cssY / g.view.scale });
@@ -99,42 +111,55 @@ export function CanonicalKonvaStage(props) {
     }
     function cancelPointer(event) { if (gesture.current?.pointerId === event.pointerId) cancel(); }
     function key(event) { if (event.key === 'Escape') cancel(); }
+    function checkRect() {
+      const g = gesture.current;
+      if (!g) return;
+      const rect = stage.current?.getContent()?.getBoundingClientRect();
+      if (!rect || rect.width !== g.rect.width || rect.height !== g.rect.height || rect.left !== g.rect.left || rect.top !== g.rect.top) cancel();
+    }
+    const content = stage.current?.getContent();
+    const ro = typeof ResizeObserver === 'function' && content ? new ResizeObserver(checkRect) : null;
+    ro?.observe(content);
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', end);
     window.addEventListener('pointercancel', cancelPointer);
     window.addEventListener('blur', cancel);
     window.addEventListener('keydown', key);
+    window.addEventListener('scroll', checkRect, { capture: true, passive: true });
     const element = region.current;
     element?.addEventListener('lostpointercapture', cancelPointer);
     return () => {
       cancel();
+      ro?.disconnect();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', cancelPointer);
       window.removeEventListener('blur', cancel);
       window.removeEventListener('keydown', key);
+      window.removeEventListener('scroll', checkRect, { capture: true });
       element?.removeEventListener('lostpointercapture', cancelPointer);
     };
   }, []);
   useLayoutEffect(() => {
-    if (selection?.objectId && (!slide || selection.slideId !== slideId || !slide.objects.some(o => o.id === selection.objectId))) {
+    if (selection?.objectId && selection.slideId === slideId && (!slide || !slide.objects.some(o => o.id === selection.objectId))) {
       onSelectionChange?.({ slideId: slide?.id ?? null, objectId: null });
     }
   }, [slide, slideId, selection?.slideId, selection?.objectId, onSelectionChange]);
   function keyboard(event) {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     if (event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return;
     const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
     const p = latest.current;
     const object = p.slide?.objects.find(o => o.id === p.selection?.objectId);
     if (!delta || p.selection?.slideId !== p.slideId || !object || !eligible(p, object)) return;
-    event.preventDefault(); cancel();
+    event.preventDefault(); cancel(); setError('');
     commit(object, { x: object.geometry.x + delta[0] * EMU_PER_POINT, y: object.geometry.y + delta[1] * EMU_PER_POINT }, p.snapshot.revision);
   }
-  return <section ref={region} role="region" aria-label="Canonical slide canvas" tabIndex={0} onKeyDown={keyboard}>
+  return <section ref={region} role="region" aria-label="Canonical slide canvas" tabIndex={0} onKeyDown={keyboard} style={{ position: 'relative' }}>
     <p role="status">Primitive scene only. Unsupported objects are placeholders.</p>
-    {error && <p role="alert">{error}</p>}
+    {error && <p role="alert" style={{ position: 'absolute', top: 8, right: 8, margin: 0, pointerEvents: 'none' }}>{error}</p>}
     {!view || !slide ? <p>Canvas unavailable</p> : <Stage ref={stage} width={viewport.width} height={viewport.height}
-      onPointerDown={event => { if (event.target === event.target.getStage()) { cancel(); onSelectionChange?.({ slideId, objectId: null }); } }}>
+      onPointerDown={event => { if (event.target === event.target.getStage() && event.evt.button === 0 && event.evt.isPrimary !== false) { cancel(); setError(''); onSelectionChange?.({ slideId, objectId: null }); } }}>
       <Layer><Group x={view.x} y={view.y} scaleX={view.scale} scaleY={view.scale}>
         {slide.objects.filter(o => validGeometry(o.geometry)).map(object => {
           const supported = primitive(object);
@@ -148,7 +173,7 @@ export function CanonicalKonvaStage(props) {
     </Stage>}
     <ul aria-label="Slide objects">{slide?.objects.map(object => <li key={object.id}>
       <button type="button" aria-label={`Select ${object.id}`} aria-pressed={selection?.slideId === slideId && selection?.objectId === object.id}
-        onClick={() => { cancel(); onSelectionChange?.({ slideId, objectId: object.id }); }}>{object.id}{primitive(object) ? '' : ' (placeholder)'}</button>
+        onClick={() => { cancel(); setError(''); onSelectionChange?.({ slideId, objectId: object.id }); }}>{object.id}{primitive(object) ? '' : ' (placeholder)'}</button>
     </li>)}</ul>
   </section>;
 }
