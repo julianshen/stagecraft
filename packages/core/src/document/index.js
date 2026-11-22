@@ -9,6 +9,8 @@ export class DocumentError extends Error {
 const fail = (code, message) => { throw new DocumentError(code, message); };
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const nonempty = value => typeof value === 'string' && value.trim().length > 0;
+const MAX_AUTHORED_RUNS = 200;
+const MAX_AUTHORED_RUN_LENGTH = 4000;
 const copy = value => {
   try {
     return cloneJson(value);
@@ -455,7 +457,10 @@ const validRunFormatPayload = payload => record(payload) && nonempty(payload.run
   && Object.entries(payload.format).every(([key, value]) => value === null ? RUN_FORMAT_KEYS.includes(key) : isRunFormatValue(key, value));
 function setRunText(document, payload) {
   if (!validRunTextPayload(payload)) fail('INVALID_PAYLOAD');
-  return updateRun(document, payload, run => { run.text = payload.text; });
+  return updateRun(document, payload, run => {
+    if (run.extensions?.stagecraftAuthored === true && payload.text.length > MAX_AUTHORED_RUN_LENGTH) fail('INVALID_AUTHORED_SCHEMA');
+    run.text = payload.text;
+  });
 }
 const PARAGRAPH_FORMAT_KEYS = ['alignment', 'spaceBefore', 'spaceAfter', 'lineSpacing', 'level', 'indentStart', 'indentEnd', 'firstLineIndent', 'bullet'];
 const BULLET_FORMATS = ['arabicPeriod', 'arabicParenR', 'lowerAlphaPeriod', 'upperAlphaPeriod', 'lowerRomanPeriod', 'upperRomanPeriod'];
@@ -739,6 +744,7 @@ function setRunRangeFormat(document, payload) {
     const endOffset = index === end.paragraphIndex ? end.offset : total;
     splitParagraphAt(paragraph, endOffset, ids);
     splitParagraphAt(paragraph, startOffset, ids);
+    if (paragraph.runs.length > MAX_AUTHORED_RUNS) fail('INVALID_AUTHORED_SCHEMA');
     let position = 0;
     for (const run of paragraph.runs) {
       const from = position, to = from + codePoints(run.text).length;
@@ -785,6 +791,12 @@ const paragraphStyleSchema = {
     ] }
   }
 };
+const paragraphFormatSchema = {
+  ...paragraphStyleSchema,
+  minProperties: 1,
+  properties: Object.fromEntries(Object.entries(paragraphStyleSchema.properties)
+    .map(([key, schema]) => [key, { anyOf: [schema, { type: 'null' }] }]))
+};
 export const documentPlugin = Object.freeze({
   id: 'canonical-document',
   version: '1',
@@ -810,7 +822,7 @@ export const documentPlugin = Object.freeze({
     {
       id: 'document.setParagraphFormat',
       description: 'Set alignment, spacing, indents, level and bullets on one paragraph. Null resets.',
-      inputSchema: { type: 'object', properties: { paragraphId: idSchema, format: paragraphStyleSchema }, required: ['paragraphId', 'format'], additionalProperties: false },
+      inputSchema: { type: 'object', properties: { paragraphId: idSchema, format: paragraphFormatSchema }, required: ['paragraphId', 'format'], additionalProperties: false },
       validate: validParagraphFormatPayload,
       apply: setParagraphFormat
     },
@@ -892,13 +904,13 @@ const authoredText = (value, ids) => {
         if (!isParagraphFormatValue(key, value)) fail('INVALID_AUTHORED_SCHEMA');
     }
     requireArray(paragraph.runs);
-    if (!paragraph.runs.length || paragraph.runs.length > 200)
+    if (!paragraph.runs.length || paragraph.runs.length > MAX_AUTHORED_RUNS)
       fail('INVALID_AUTHORED_SCHEMA');
     for (const run of paragraph.runs) {
       exact(run, ['id', 'text', 'editable', 'style', 'extensions']);
       authoredIdentity(run, ids);
       authoredExtensions(run.extensions);
-      if (typeof run.text !== 'string' || run.editable !== true || run.text.length > 4000)
+      if (typeof run.text !== 'string' || run.editable !== true || run.text.length > MAX_AUTHORED_RUN_LENGTH)
         fail('INVALID_AUTHORED_SCHEMA');
       exact(run.style, [], ['b', 'i', 'sz', 'typeface', 'color']);
       for (const [key, v] of Object.entries(run.style)) {
@@ -1019,7 +1031,7 @@ const geometrySchema = { type: 'object', additionalProperties: false, required: 
 const authoredExtensionsSchema = { type: 'object', required: ['stagecraftAuthored'], additionalProperties: false, properties: { stagecraftAuthored: { const: true } } };
 const authoredRunSchema = {
   type: 'object', additionalProperties: false, required: ['id', 'text', 'editable', 'style', 'extensions'], properties: {
-    id: idSchema, text: { type: 'string', maxLength: 4000 }, editable: { const: true }, extensions: authoredExtensionsSchema,
+    id: idSchema, text: { type: 'string', maxLength: MAX_AUTHORED_RUN_LENGTH }, editable: { const: true }, extensions: authoredExtensionsSchema,
     style: { type: 'object', additionalProperties: false, properties: {
       b: { enum: ['0', '1'] }, i: { enum: ['0', '1'] }, sz: { type: 'string', pattern: '^[1-9][0-9]*$' },
       typeface: { type: 'string', minLength: 1, maxLength: 64 },
@@ -1030,7 +1042,7 @@ const authoredRunSchema = {
 const authoredParagraphSchema = {
   type: 'object', additionalProperties: false, required: ['id', 'runs'], properties: {
     id: idSchema, style: paragraphStyleSchema,
-    runs: { type: 'array', minItems: 1, maxItems: 200, items: authoredRunSchema }
+    runs: { type: 'array', minItems: 1, maxItems: MAX_AUTHORED_RUNS, items: authoredRunSchema }
   }
 };
 const authoredTextSchema = { type: 'object', additionalProperties: false, required: ['paragraphs'], properties: {

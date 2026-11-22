@@ -53,6 +53,8 @@ ODP existing-run formatting uses run-local overrides and newly named automatic t
 
 For authored ODP paragraphs, removing a bullet at a nonzero list level requires resetting `level` to `null` or `0` in the same `document.setParagraphFormat` command. Retaining a nonzero level without a bullet is unsupported and rejects the transaction without changing the document.
 
+Authored paragraphs support at most 200 runs, with at most 4,000 UTF-16 code units per run. Range-formatting splits and run-text edits that would exceed these export limits reject atomically. Imported native runs do not inherit the authored text-length limit.
+
 `source.registerImage({ bytes, contentType })` accepts validated PNG/JPEG bytes and returns an asset ID for `presentation.addImage`. Limits are 5 MiB per image, 32 MiB and 64 registered images per session. Bytes stay outside canonical JSON. `getImage(assetId)` returns copied preview bytes or `null`; `images` lists available previews. Some retained images cannot be previewed within these bounds.
 
 ## Retained source sessions
