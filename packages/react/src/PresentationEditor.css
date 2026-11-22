@@ -35,6 +35,8 @@
 .stagecraft-presentation-chart-row { display:flex; gap:6px; align-items:center; margin:4px 0; }
 .stagecraft-presentation-chart-group { margin-top:8px; }
 .stagecraft-presentation-chart-series { border-top:1px solid var(--stagecraft-presentation-border,#d6dce7); padding-top:6px; margin-top:6px; }
+.stagecraft-presentation-range-actions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:6px; }
+.stagecraft-presentation-para-format,.stagecraft-presentation-body-layout,.stagecraft-presentation-range-format { margin-top:8px; }
 .stagecraft-presentation-bullet { margin-right:4px; }
 .stagecraft-presentation-paragraph { border-top:1px solid var(--stagecraft-presentation-border,#d6dce7); padding-top:6px; margin-top:6px; }
 .stagecraft-presentation-paragraph-head { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:4px; font-size:12px; }

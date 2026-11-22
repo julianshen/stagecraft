@@ -1,0 +1,56 @@
+# Text editing contract
+
+This document describes the bounded text-editing API. Source capability checks and export validation remain authoritative; a command being registered does not imply every imported object supports it. See [component specification](COMPONENT-SPEC.md) for component composition and host security responsibilities.
+
+## Commands
+
+All commands participate in the editor's revision checks, transactions, history, and events. Hosts should pass `{ expectedRevision }` when committing a draft or a selection captured earlier. A failed command must leave the document unchanged.
+
+| Command | Payload | Meaning |
+|---|---|---|
+| `document.setRunFormat` | `{runId, format}` | Change a whole editable run |
+| `document.setRunRangeFormat` | `{objectId, range, format}` | Format a range in authored object text |
+| `document.setParagraphFormat` | `{paragraphId, format}` | Change an eligible paragraph |
+| `document.setTextBodyLayout` | `{objectId, layout}` | Change eligible text-box layout |
+
+Run formatting accepts `bold`, `italic`, `fontSize`, `fontFamily`, and `color`. Font size is in points, from 1 to 4000, in hundredths of a point. Font family is a trimmed, XML-valid name of 1–64 characters; PPTX edits target the Latin face and preserve separate East Asian and complex-script faces. Color is a six-digit `#RRGGBB` value. An omitted property is unchanged; `null` resets that property. For native ODP run overrides, reset restores the imported property rather than deleting its shared source style.
+
+Paragraph formatting accepts `alignment` (`left`, `center`, `right`, `justify`), `spaceBefore` and `spaceAfter` (0–1000pt), `lineSpacing` (integer percentage, 50–500), `level` (0–8), and `indentStart`, `indentEnd`, `firstLineIndent` (integer EMU, −10000000 through 10000000). Bullet values use `type: 'char'` with `char`, or `type: 'number'` with `format`. Numbering formats are `arabicPeriod`, `arabicParenR`, `lowerAlphaPeriod`, `upperAlphaPeriod`, `lowerRomanPeriod`, and `upperRomanPeriod`. Resetting a property must preserve unrelated native paragraph properties.
+
+Layout accepts `autofit` (`none`, `shrink`, `resize`), `wrap` (`square`, `none`), `anchor` (`top`, `middle`, `bottom`), and `insets` with independently optional `left`, `top`, `right`, and `bottom` values. In PPTX, `autofit: 'none'` writes `<a:noAutofit/>`. Insets are integer EMU from 0 to 10000000. Individual properties and individual inset sides accept `null` for reset. Geometry uses 12700 EMU per point.
+
+`bullet: { type: 'none' }` explicitly disables a bullet, while `bullet: null` resets direct formatting. Authored ODP numbered paragraphs use nested lists for levels 0–8 and continue numbering when returning to a parent level. A nonzero level without a bullet/list is unsupported for ODP export; removing or disabling a bullet at `level > 0` in ODP must clear `level` in the same `document.setParagraphFormat` command (the React paragraph controls do this atomically). Imported ODP paragraph/list structure remains read-only; eligible run text and typography can still be edited inside those lists.
+
+The canvas previews alignment, spacing, indentation, list markers, wrapping, vertical anchor, and insets. Autofit is saved for native applications; the canvas does not measure and simulate native shrink-to-fit or resize the shape automatically. The autofit controls disclose this limitation.
+
+## Range identity and offsets
+
+```js
+editor.dispatch('document.setRunRangeFormat', {
+  objectId: 'title',
+  range: {
+    start: { paragraphId: 'p1', runId: 'r1', offset: 3 },
+    end: { paragraphId: 'p2', runId: 'r4', offset: 2 },
+  },
+  format: { bold: true, color: '#224488' },
+}, { expectedRevision: selectionRevision });
+```
+
+Offsets count Unicode code points within the named run, not UTF-16 code units or positions within the whole paragraph. The range is start-inclusive and end-exclusive, must be ordered, and must remain in one object. Browser selection adapters must convert UTF-16 offsets before dispatch. Empty ranges do not create history entries. Unsupported native ranges are rejected rather than flattening imported runs.
+
+Boundary splits retain the original run ID on the head and allocate deterministic unused IDs for subsequent segments. Untouched styles and text are retained. One range command is one history entry; undo restores the original runs and their identities. Hosts must refresh a captured range after a successful edit because runs may have split.
+
+## Format boundaries
+
+| Operation | PPTX | ODP |
+|---|---|---|
+| Whole-run fonts/colors | Eligible native and authored runs | Eligible native overrides and authored runs |
+| Partial cross-run formatting | Authored object text | Authored object text |
+| Paragraph formatting | Authored and eligible native paragraphs | Authored paragraphs; imported paragraph styles are read-only |
+| Body layout | Eligible native text shapes and authored text | Bounded resize/none autofit; other layout choices rejected |
+
+The reusable canvas is a preview, not a certification of desktop typography. Native font availability, theme inheritance, script-specific fonts, advanced bullets, fields, complex layout, and text effects require separate compatibility work. Imported XML and unedited ZIP parts must remain preserved. Reopening a generated file produces native source objects; authored-only operations do not become universally available merely because Stagecraft originally created the file.
+
+## Acceptance fixtures
+
+`node scripts/text-authoring-fixtures.mjs /tmp/stagecraft-text-authoring` generates PPTX and ODP through the public commands. Fixtures include mixed fonts and colors, a partial range spanning two runs, paragraph alignment, bullets, numbering, whitespace, and text-box autofit. Automated native encoding checks live in `tests/text-authoring.test.js`; native application observations must be recorded separately and must not be inferred from parser round trips.

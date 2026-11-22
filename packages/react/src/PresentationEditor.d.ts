@@ -99,6 +99,9 @@ export interface DeckListProps extends RegionProps {
 export type PresentationCapability =
   | 'existing-run-text'
   | 'existing-run-format'
+  | 'paragraph-format'
+  | 'text-body-layout'
+  | 'run-range-format'
   | 'slide-structure'
   | 'slide-properties'
   | 'object-structure'
@@ -110,6 +113,49 @@ export type PresentationCapability =
   | 'object-style';
 
 export type RunFormatInput = RunFormat;
+
+export type ParagraphBullet =
+  | { type: 'none' }
+  | { type: 'char'; char: string }
+  | {
+      type: 'number';
+      format: 'arabicPeriod' | 'arabicParenR' | 'lowerAlphaPeriod' | 'upperAlphaPeriod' | 'lowerRomanPeriod' | 'upperRomanPeriod';
+    };
+
+export interface ParagraphFormatInput {
+  alignment?: 'left' | 'center' | 'right' | 'justify' | null;
+  spaceBefore?: number | null;
+  spaceAfter?: number | null;
+  lineSpacing?: number | null;
+  level?: number | null;
+  indentStart?: number | null;
+  indentEnd?: number | null;
+  firstLineIndent?: number | null;
+  bullet?: ParagraphBullet | null;
+}
+
+export interface TextBodyLayoutInput {
+  autofit?: 'none' | 'shrink' | 'resize' | null;
+  wrap?: 'square' | 'none' | null;
+  anchor?: 'top' | 'middle' | 'bottom' | null;
+  insets?: {
+    left?: number | null;
+    top?: number | null;
+    right?: number | null;
+    bottom?: number | null;
+  };
+}
+
+export interface RunRangeEndpoint {
+  paragraphId: string;
+  runId: string;
+  offset: number;
+}
+
+export interface RunRangeInput {
+  start: RunRangeEndpoint;
+  end: RunRangeEndpoint;
+}
 
 export interface ChartSeriesData {
   name: string;
@@ -162,6 +208,9 @@ export interface PresentationEditorContext {
   setChart(chart: ChartData, objectId?: string, slideId?: string): boolean;
   setRunText(runId: string, text: string, revision?: number): boolean;
   setRunFormat(runId: string, format: RunFormatInput, revision?: number): void;
+  setParagraphFormat(paragraphId: string, format: ParagraphFormatInput, revision?: number): boolean;
+  setTextBodyLayout(objectId: string, layout: TextBodyLayoutInput, revision?: number): boolean;
+  setRunRangeFormat(objectId: string, range: RunRangeInput, format: RunFormatInput, revision?: number): boolean;
   setSlideProperties(properties: SlidePropertiesPatch, slideId?: string): boolean;
   setText(paragraphs: readonly AuthoredParagraph[], objectId?: string, slideId?: string): boolean;
   setTableCell(cellId: string, paragraphs: readonly AuthoredParagraph[], objectId?: string, slideId?: string, revision?: number): boolean;

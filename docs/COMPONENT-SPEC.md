@@ -1,6 +1,6 @@
 # Stagecraft reusable React component specification
 
-Status: implemented presentation-component contract, including portable chart authoring. The packages are private workspace packages, not a stable public release. This specification describes supported controls and integration responsibilities; it does not establish full PowerPoint/ODP parity or native visual certification. This workspace includes reusable regions, structural editing, per-run text formatting, and UI plugins. Paragraph formatting, text-body layout, and cross-run range controls and hook wrappers are not included in this React surface; their core commands are described in [Canonical documents](CANONICAL-DOCUMENTS.md).
+Status: implemented presentation-component contract, including portable chart authoring and advanced text formatting. The packages are private workspace packages, not a stable public release. This specification describes supported controls and integration responsibilities; it does not establish full PowerPoint/ODP parity or native visual certification. This workspace includes reusable regions, structural editing, per-run and cross-run text formatting, paragraph formatting, text-body layout, and UI plugins; see [Text editing contract](TEXT-EDITING.md) and [Canonical documents](CANONICAL-DOCUMENTS.md) for command and format boundaries.
 
 ## Entry points and ownership
 

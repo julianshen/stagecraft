@@ -948,7 +948,7 @@ describe('Chart integration (toolbar, PresentationChart canvas, inspector, read-
   });
 });
 
-describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)', () => {
+describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragraph format, autofit)', () => {
   function makeTextTrancheEngine(initialSlides, docExtensions, dispatchSpy) {
     const doc = {
       schemaVersion: 1,
@@ -969,12 +969,50 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
           },
         },
         {
-          id: 'document.bumpRevision',
-          apply(d) {
+          id: 'document.setParagraphFormat',
+          apply(d, p) {
+            dispatchSpy?.('document.setParagraphFormat', p);
             return {
               ...d,
-              slides: d.slides.map((s, i) => (i === 0 ? { ...s, name: 'Bumped' } : s)),
+              slides: d.slides.map(s => ({
+                ...s,
+                objects: s.objects.map(o => (
+                  o.text?.paragraphs
+                    ? {
+                        ...o,
+                        text: {
+                          ...o.text,
+                          paragraphs: o.text.paragraphs.map(para => (
+                            para.id === p.paragraphId ? { ...para, style: { ...para.style, ...p.format } } : para
+                          )),
+                        },
+                      }
+                    : o
+                )),
+              })),
             };
+          },
+        },
+        {
+          id: 'document.setTextBodyLayout',
+          apply(d, p) {
+            dispatchSpy?.('document.setTextBodyLayout', p);
+            return {
+              ...d,
+              slides: d.slides.map(s => ({
+                ...s,
+                objects: s.objects.map(o => (
+                  o.id === p.objectId ? { ...o, bodyLayout: { ...o.bodyLayout, ...p.layout } } : o
+                )),
+              })),
+            };
+          },
+        },
+        {
+          id: 'document.setRunRangeFormat',
+          apply(d, p) {
+            dispatchSpy?.('document.setRunRangeFormat', p);
+            return d;
           },
         },
       ],
@@ -982,7 +1020,7 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
     return createEditor({ document: doc, plugins: [textPlugin] });
   }
 
-  it('edits run fontFamily/color and disables controls on readOnly', () => {
+  it('edits run fontFamily/color, maps partial cross-run UTF-16 selection to Unicode codepoints, and invalidates on readOnly', () => {
     const spy = vi.fn();
     const editor = makeTextTrancheEngine([{
       id: 's1',
@@ -1005,7 +1043,7 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
     const source = {
       capabilities: {
         readOnly: false,
-        edits: ['existing-run-format'],
+        edits: ['existing-run-format', 'paragraph-format', 'text-body-layout', 'run-range-format'],
       },
       export: vi.fn(),
     };
@@ -1032,16 +1070,174 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
     fireEvent.click(screen.getByLabelText('Reset color run 1'));
     expect(spy).toHaveBeenCalledWith('document.setRunFormat', { runId: 'r1', format: { color: null } });
 
-    // Transition to readOnly disables run format controls
+    // Partial cross-run selection: '😀Hi World' -> UTF-16 [2..7] = code points [1..6] ('Hi ' + 'Wo')
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+    const rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 2;
+    rangeArea.selectionEnd = 7;
+    fireEvent.select(rangeArea);
+
+    const rangeBold = screen.getByRole('button', { name: 'Range bold' });
+    expect(rangeBold).not.toBeDisabled();
+    fireEvent.click(rangeBold);
+    expect(spy).toHaveBeenLastCalledWith('document.setRunRangeFormat', {
+      objectId: 't-cross',
+      range: {
+        start: { paragraphId: 'p1', runId: 'r1', offset: 1 },
+        end: { paragraphId: 'p1', runId: 'r2', offset: 2 },
+      },
+      format: { bold: true },
+    });
+
+    // Transition to readOnly clears range selection & disables controls
     rerender(
       <EditorProvider editor={editor}>
         <PresentationEditor source={source} readOnly />
       </EditorProvider>
     );
-    expect(screen.getByLabelText('Font family run 1')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
   });
 
-  it('prefers live run.style typeface/color over imported pptxAppearance', () => {
+  it('edits paragraph format & text body layout with Artwork preview and keeps ODP native paragraphs read-only', () => {
+    const spy = vi.fn();
+    const editor = makeTextTrancheEngine([{
+      id: 's1',
+      objects: [
+        {
+          id: 't-auth',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              runs: [{ id: 'r1', text: 'Item', editable: true, style: { sz: '2400' }, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        },
+        {
+          id: 't-odp-native',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 220 * PT, width: 300 * PT, height: 100 * PT },
+          source: { format: 'odp', part: 'content.xml', path: '0' },
+          text: {
+            paragraphs: [{
+              id: 'p-odp',
+              source: { format: 'odp', part: 'content.xml', path: '0/0' },
+              runs: [{ id: 'r-odp', text: 'ODP Native', editable: true, source: { format: 'odp' }, style: {} }],
+            }],
+          },
+        },
+      ],
+    }], { sourceFormat: 'odp' }, spy);
+    const source = {
+      capabilities: {
+        readOnly: false,
+        edits: ['existing-run-format', 'paragraph-format', 'text-body-layout'],
+      },
+      export: vi.fn(),
+    };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    // Authored object on ODP doc: paragraph format works; autofit restricts to none/resize (no shrink)
+    fireEvent.click(screen.getAllByLabelText('Select object t-auth')[0]);
+    const autofit = screen.getByLabelText('Text autofit');
+    expect(within(autofit).queryByText('Shrink text')).toBeNull();
+    fireEvent.change(autofit, { target: { value: 'resize' } });
+    expect(spy).toHaveBeenLastCalledWith('document.setTextBodyLayout', {
+      objectId: 't-auth',
+      layout: { autofit: 'resize' },
+    });
+
+    fireEvent.change(screen.getByLabelText('Paragraph 1 alignment'), { target: { value: 'center' } });
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'char:•' } });
+    expect(spy).toHaveBeenLastCalledWith('document.setParagraphFormat', {
+      paragraphId: 'p1',
+      format: { bullet: { type: 'char', char: '•' } },
+    });
+
+    const canvas = screen.getByLabelText('Slide canvas');
+    expect(within(canvas).getByText('•')).toBeTruthy();
+
+    // Native ODP paragraph stays strictly read-only
+    fireEvent.click(screen.getAllByLabelText('Select object t-odp-native')[0]);
+    expect(screen.getByText('Native ODP paragraph formatting is read-only.')).toBeTruthy();
+    expect(screen.getByLabelText('Paragraph 1 alignment')).toBeDisabled();
+  });
+
+  it('aligns Artwork/TextBodyLayoutFields with object.bodyLayout, supports indents/insets, and resets drafts on revision change', () => {
+    const spy = vi.fn();
+    const editor = makeTextTrancheEngine([{
+      id: 's1',
+      objects: [{
+        id: 't-pptx',
+        type: 'text',
+        geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+        extensions: { stagecraftAuthored: true },
+        text: {
+          paragraphs: [{
+            id: 'p1',
+            runs: [{ id: 'r1', text: 'Body', editable: true, style: { sz: '2400' }, extensions: { stagecraftAuthored: true } }],
+          }],
+        },
+      }],
+    }], undefined, spy);
+    const source = {
+      capabilities: {
+        readOnly: false,
+        edits: ['paragraph-format', 'text-body-layout'],
+      },
+      export: vi.fn(),
+    };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    fireEvent.click(screen.getAllByLabelText('Select object t-pptx')[0]);
+    fireEvent.change(screen.getByLabelText('Text vertical anchor'), { target: { value: 'middle' } });
+    expect(editor.getSnapshot().document.slides[0].objects[0].bodyLayout).toEqual({ anchor: 'middle' });
+    const canvasObj = screen.getByLabelText('Slide canvas').querySelector('[data-object-id="t-pptx"] .stagecraft-presentation-object');
+    expect(canvasObj.style.justifyContent).toBe('center');
+
+    // Insets & indents
+    const insetLeft = screen.getByLabelText('Text inset left');
+    fireEvent.focus(insetLeft);
+    fireEvent.change(insetLeft, { target: { value: '10' } });
+    fireEvent.blur(insetLeft);
+    expect(spy).toHaveBeenLastCalledWith('document.setTextBodyLayout', {
+      objectId: 't-pptx',
+      layout: { insets: { left: 10 * PT } },
+    });
+
+    const indentStart = screen.getByLabelText('Paragraph 1 indentStart');
+    fireEvent.focus(indentStart);
+    fireEvent.change(indentStart, { target: { value: '12' } });
+    fireEvent.blur(indentStart);
+    expect(spy).toHaveBeenLastCalledWith('document.setParagraphFormat', {
+      paragraphId: 'p1',
+      format: { indentStart: 12 * PT },
+    });
+
+    // Unrelated revision bump resets uncommitted paragraph numeric draft
+    const sb = screen.getByLabelText('Paragraph 1 space before');
+    fireEvent.focus(sb);
+    fireEvent.change(sb, { target: { value: '24' } });
+    expect(sb).toHaveValue(24);
+    act(() => {
+      editor.dispatch('document.setTextBodyLayout', { objectId: 't-pptx', layout: { wrap: 'none' } });
+    });
+    expect(screen.getByLabelText('Paragraph 1 space before')).toHaveValue(null);
+  });
+
+  it('prefers live run.style typeface/color over imported pptxAppearance and invalidates range selection on unrelated revision', () => {
     const editor = makeTextTrancheEngine([{
       id: 's1',
       objects: [{
@@ -1067,7 +1263,7 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
       }],
     }]);
     const source = {
-      capabilities: { readOnly: false, edits: ['existing-run-format'] },
+      capabilities: { readOnly: false, edits: ['run-range-format', 'text-body-layout'] },
       export: vi.fn(),
     };
 
@@ -1082,7 +1278,62 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
     expect(r1Span.style.fontFamily).toContain('Mono');
 
     fireEvent.click(screen.getAllByLabelText('Select object t-live')[0]);
-    expect(screen.getByLabelText('Font family run 1')).toHaveValue('Mono');
+    const rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 0;
+    rangeArea.selectionEnd = 4;
+    fireEvent.select(rangeArea);
+    expect(screen.getByRole('button', { name: 'Range bold' })).not.toBeDisabled();
+
+    // Unrelated revision bump invalidates range selection UI
+    act(() => {
+      editor.dispatch('document.setTextBodyLayout', { objectId: 't-live', layout: { autofit: 'none' } });
+    });
+    expect(screen.getByRole('button', { name: 'Range bold' })).toBeDisabled();
+  });
+
+  it('numbers contiguous matching list items starting at 1 by level, supports bullet {type:none}, and discloses autofit preview', () => {
+    const spy = vi.fn();
+    const editor = makeTextTrancheEngine([{
+      id: 's1',
+      objects: [{
+        id: 't-list',
+        type: 'text',
+        geometry: { x: 72 * PT, y: 72 * PT, width: 320 * PT, height: 180 * PT },
+        extensions: { stagecraftAuthored: true },
+        text: {
+          paragraphs: [
+            { id: 'p0', runs: [{ id: 'r0', text: 'Title', editable: true, style: { sz: '2400' }, extensions: { stagecraftAuthored: true } }] },
+            { id: 'p1', style: { bullet: { type: 'char', char: '•' } }, runs: [{ id: 'r1', text: 'Bullet', editable: true, style: { sz: '2000' }, extensions: { stagecraftAuthored: true } }] },
+            { id: 'p2', style: { bullet: { type: 'number', format: 'arabicPeriod' }, level: 0 }, runs: [{ id: 'r2', text: 'First', editable: true, style: { sz: '2000' }, extensions: { stagecraftAuthored: true } }] },
+            { id: 'p3', style: { bullet: { type: 'number', format: 'lowerAlphaPeriod' }, level: 1 }, runs: [{ id: 'r3', text: 'SubFirst', editable: true, style: { sz: '2000' }, extensions: { stagecraftAuthored: true } }] },
+            { id: 'p4', style: { bullet: { type: 'number', format: 'arabicPeriod' }, level: 0 }, runs: [{ id: 'r4', text: 'Second', editable: true, style: { sz: '2000' }, extensions: { stagecraftAuthored: true } }] },
+          ],
+        },
+      }],
+    }], undefined, spy);
+    const source = {
+      capabilities: { readOnly: false, edits: ['paragraph-format', 'text-body-layout'] },
+      export: vi.fn(),
+    };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    const canvas = screen.getByLabelText('Slide canvas');
+    const markers = [...canvas.querySelectorAll('.stagecraft-presentation-bullet')].map(el => el.textContent.trim());
+    expect(markers).toEqual(['•', '1.', 'a.', '2.']);
+
+    fireEvent.click(screen.getAllByLabelText('Select object t-list')[0]);
+    expect(screen.getByText(/Autofit settings are saved for export/i)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'none' } });
+    expect(spy).toHaveBeenLastCalledWith('document.setParagraphFormat', {
+      paragraphId: 'p0',
+      format: { bullet: { type: 'none' } },
+    });
   });
 
   it('shows Reset color button for run.style.color:null sentinel and dispatches { color: null }', () => {
@@ -1151,8 +1402,8 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
       delete doc1.objects[0].text.paragraphs[0].runs[0].extensions.stagecraftAuthored;
     }
     const editor = makeTextTrancheEngine([doc1], undefined, spy);
-    const source1 = { capabilities: { readOnly: false, edits: ['existing-run-format'] }, export: vi.fn() };
-    const source2 = { capabilities: { readOnly: false, edits: ['existing-run-format'] }, export: vi.fn() };
+    const source1 = { capabilities: { readOnly: false, edits: ['existing-run-format', 'text-body-layout'] }, export: vi.fn() };
+    const source2 = { capabilities: { readOnly: false, edits: ['existing-run-format', 'text-body-layout'] }, export: vi.fn() };
 
     const { rerender } = render(
       <EditorProvider editor={editor}>
@@ -1171,7 +1422,7 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
     fireEvent.change(sizeInput, { target: { value: '77' } });
     const revBefore = editor.getSnapshot().revision;
     act(() => {
-      editor.dispatch('document.bumpRevision', {});
+      editor.dispatch('document.setTextBodyLayout', { objectId: 't1', layout: { autofit: 'none' } });
     });
     expect(editor.getSnapshot().revision).toBe(revBefore + 1);
     expect(screen.getByLabelText('Font family run 1')).toHaveValue('Inter');
@@ -1204,5 +1455,47 @@ describe('Run format controls (fonts/colors, sentinel reset, stale draft safety)
     fireEvent.click(screen.getAllByLabelText('Select object t1')[0]);
     expect(screen.getByLabelText('Font family run 1')).toHaveValue('Inter');
     expect(screen.getByLabelText('Font size run 1')).toHaveValue(24);
+  });
+
+  it('clears level atomically in the same setParagraphFormat command when removing bullet at level > 0 in ODP', () => {
+    const doc = createDocument({
+      id: 'odp-list-deck',
+      extensions: { sourceFormat: 'odp' },
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 't-odp-auth',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 120 * PT },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              style: { level: 2, bullet: { type: 'char', char: '•' } },
+              runs: [{ id: 'r1', text: 'Nested item', editable: true, style: {}, extensions: { stagecraftAuthored: true } }],
+            }],
+          },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = {
+      capabilities: { readOnly: false, edits: ['paragraph-format'] },
+      export: vi.fn(),
+    };
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    fireEvent.click(screen.getAllByLabelText('Select object t-odp-auth')[0]);
+    fireEvent.change(screen.getByLabelText('Paragraph 1 bullet'), { target: { value: 'none' } });
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    const style = editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style;
+    expect(style.bullet).toEqual({ type: 'none' });
+    expect(style.level).toBeUndefined();
   });
 });
