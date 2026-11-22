@@ -18,7 +18,8 @@ function validOptions(geometry, name, used) {
   validText(name);
 }
 function packagePath(path) {
-  if (typeof path !== 'string' || !path || /[\\\x00-\x20?#:%]/.test(path) || path.startsWith('/') || path.split('/').some(v => !v || v === '.' || v === '..')) throw new Error('INVALID_CHART_OWNER');
+  // The reader supplies a decoded ZIP path, not a relationship URI: spaces and literal % are valid.
+  if (typeof path !== 'string' || !path || /[\\\x00-\x1f?#:]/.test(path) || /%[0-9a-f]{2}/i.test(path) || path.startsWith('/') || path.split('/').some(v => !v || v === '.' || v === '..')) throw new Error('INVALID_CHART_OWNER');
 }
 function relative(owner, target) {
   const a = owner.split('/'); a.pop(); const b = target.split('/');
