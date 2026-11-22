@@ -57,7 +57,7 @@ ODP existing-run formatting uses run-local overrides and newly named automatic t
 
 `@stagecraft/source` opens native PPTX and ODP packages and retains their original bytes and mapping privately. A session's `document` is a canonical view, not a complete rendering of every native feature. Native themes, masters, group transforms and unsupported objects are not fully resolved; opaque content remains in the package.
 
-ODP tables with repeated rows, columns or cells remain opaque native objects. The reader does not expand repetition or expose a truncated table preview; their native XML is retained through unrelated edits.
+ODP tables with repeated rows, columns or cells, or with row/column header and grouping containers, remain opaque native objects. The reader does not expand repetition or flatten these containers into a truncated table preview; their native XML is retained through unrelated edits.
 
 Export independently validates and compares the candidate against its baseline. Unsupported changes, source-reference tampering and arbitrary partial/redacted documents are rejected. Dirty parts are derived from that comparison. Capability names indicate available categories, not permission to edit every object in that category. Supported visible deletions may leave unreferenced original parts and relationships, so deletion is not sanitization.
 

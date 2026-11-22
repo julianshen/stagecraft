@@ -5,19 +5,32 @@ import { NS, all } from './xml.js';
 
 const parse = text => new DOMParser().parseFromString(text, 'application/xml');
 const serialize = doc => new XMLSerializer().serializeToString(doc);
-async function fixture(kind, count) {
+async function fixture(kind, count, wrapper) {
   const zip = await JSZip.loadAsync(await writeOdp({ sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [{ id: 'text', type: 'text', x: 100, y: 100, w: 80, h: 80, content: 'Unrelated' }] }] }));
   const doc = parse(await zip.file('content.xml').async('string'));
   const frame = parse(`<draw:frame xmlns:draw="${NS.draw}" xmlns:svg="${NS.svg}" xmlns:table="${NS.table}" xmlns:text="${NS.text}" svg:x="0in" svg:y="0in" svg:width="2in" svg:height="1in"><table:table table:name="Repeated"><table:table-column/><table:table-row><table:table-cell><text:p>Retained cell</text:p></table:table-cell></table:table-row></table:table></draw:frame>`).documentElement;
   const attribute = kind === 'table-row' ? 'number-rows-repeated' : 'number-columns-repeated';
   all(frame, 'table', kind)[0].setAttributeNS(NS.table, `table:${attribute}`, count);
+  if (wrapper) {
+    const table = all(frame, 'table', 'table')[0];
+    const container = frame.ownerDocument.createElementNS(NS.table, `table:${wrapper}`);
+    const wrapped = all(frame, 'table', kind)[0].cloneNode(true);
+    const paragraph = all(wrapped, 'text', 'p')[0];
+    if (paragraph) paragraph.textContent = 'Wrapped cell';
+    container.appendChild(wrapped);
+    table.insertBefore(container, table.firstChild);
+  }
   all(doc, 'draw', 'page')[0].appendChild(doc.importNode(frame, true));
   zip.file('content.xml', serialize(doc));
   return zip.generateAsync({ type: 'uint8array' });
 }
 
-it.each(['table-row', 'table-column', 'table-cell'])('retains repeated %s as opaque through no-op and unrelated edits', async kind => {
-  const bytes = await fixture(kind, '3');
+it.each([
+  ...['table-row', 'table-column', 'table-cell'].map(kind => [kind, '3']),
+  ...['table-header-rows', 'table-rows', 'table-row-group'].map(wrapper => ['table-row', '1', wrapper]),
+  ...['table-header-columns', 'table-columns', 'table-column-group'].map(wrapper => ['table-column', '1', wrapper]),
+])('retains %s repetition %s wrapper %s as opaque through no-op and unrelated edits', async (kind, count, wrapper) => {
+  const bytes = await fixture(kind, count, wrapper);
   const session = await openPresentation(bytes, { format: 'odp' });
   let reopened;
   try {

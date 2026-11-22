@@ -32,6 +32,9 @@ export function readOdpTable(node, part, findStyle = () => undefined) {
     const table = child(node, 'table', 'table');
     if (!table)
         return null;
+    // Wrapped rows/columns are not projected yet; direct children alone would omit content.
+    if (children(table).some(n => n.namespaceURI === NS.table && ['table-header-rows', 'table-rows', 'table-row-group', 'table-header-columns', 'table-columns', 'table-column-group'].includes(n.localName)))
+        return null;
     // Repetition needs bounded expansion before this can be a faithful canonical preview.
     // Until supported, retain the whole native table instead of silently dropping instances.
     for (const [name, attribute] of [['table-row', 'number-rows-repeated'], ['table-column', 'number-columns-repeated'], ['table-cell', 'number-columns-repeated'], ['covered-table-cell', 'number-columns-repeated']]) {
