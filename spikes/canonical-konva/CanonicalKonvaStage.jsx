@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { Stage, Layer, Group, Rect, Ellipse } from 'react-konva/lib/ReactKonvaCore';
 import 'konva/lib/shapes/Rect';
 import 'konva/lib/shapes/Ellipse';
@@ -24,11 +24,11 @@ export function CanonicalKonvaStage(props) {
   const [error, setError] = useState('');
   const [contentEl, setContentEl] = useState(null);
   const prevSelection = useRef(selection);
-  function setStageRef(node) {
+  const setStageRef = useCallback(node => {
     stage.current = node;
     const next = node?.getContent?.() ?? null;
     setContentEl(prev => (prev === next ? prev : next));
-  }
+  }, []);
   function report(cause) {
     setError(String(cause?.code ?? 'MOVE_FAILED'));
     try { latest.current.onError?.(cause); } catch { /* Host reporting must not prevent node restoration. */ }

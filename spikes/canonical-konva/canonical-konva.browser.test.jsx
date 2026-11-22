@@ -355,6 +355,22 @@ it('captures pointer via real CDP mouse and touch input and releases after drag'
   expect(content.hasPointerCapture(capturedIdTouch)).toBe(false);
   expect(editor.getSnapshot().revision).toBe(2);
 });
+it('commits once per host rerender without extra ref-triggered renders', () => {
+  const editor = fixture();
+  const commits = [];
+  const ui = render(
+    <React.Profiler id="stage" onRender={(_id, phase) => commits.push(phase)}>
+      <Host editor={editor} readOnly={false} />
+    </React.Profiler>
+  );
+  const afterMount = commits.length;
+  ui.rerender(
+    <React.Profiler id="stage" onRender={(_id, phase) => commits.push(phase)}>
+      <Host editor={editor} readOnly={false} zoom={2} />
+    </React.Profiler>
+  );
+  expect(commits.length - afterMount).toBe(1);
+});
 it('does not re-evaluate canMove on every pointermove', () => {
   const editor = fixture();
   const canMove = vi.fn(() => true);
