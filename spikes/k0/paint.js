@@ -1,11 +1,11 @@
 // The spike's stand-in for K1's paintNode/paintSlide: officeview painters only.
-import { resolvePreset } from '../../src/vendor/officeview/drawing/geometry';
-import { paintGeometry } from '../../src/vendor/officeview/drawing/paint';
-import { layoutTextBody } from '../../src/vendor/officeview/drawing/text-layout';
-import { paintTextBody, createTextBodyMeasurer } from '../../src/vendor/officeview/drawing/text-paint';
+import { resolvePreset } from '../../packages/renderer/src/vendor/officeview/drawing/geometry.ts';
+import { paintGeometry } from '../../packages/renderer/src/vendor/officeview/drawing/paint.ts';
+import { layoutTextBody } from '../../packages/renderer/src/vendor/officeview/drawing/text-layout.ts';
+import { paintTextBody, createTextBodyMeasurer } from '../../packages/renderer/src/vendor/officeview/drawing/text-paint.ts';
 import { SLIDE_W, SLIDE_H } from './deck.js';
 
-// The app's --f-sans stack (src/styles/main.css), as a full CSS stack.
+// The app's --f-sans stack (packages/react/src/styles/main.css), as a full CSS stack.
 export const resolveFont = () => '"Inter", -apple-system, BlinkMacSystemFont, sans-serif';
 
 // env.cache: per-node geometry/layout cache (decision 6); null = recompute.

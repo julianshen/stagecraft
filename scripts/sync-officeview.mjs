@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Re-vendor officeview's drawing engine into src/vendor/officeview/.
+// Re-vendor officeview's drawing engine into packages/renderer/src/vendor/officeview/.
 //
 //   npm run sync:officeview                          # re-sync the pinned commit
 //   npm run sync:officeview -- --ref main            # move the pin to a new ref
 //   npm run sync:officeview -- --from ../officeview  # a local repo's HEAD (or --ref)
 //
-// The manifest (src/vendor/officeview/officeview.json) names the repo, the pinned
+// The manifest (packages/renderer/src/vendor/officeview/officeview.json) names the repo, the pinned
 // commit, the entry modules and extra files; the entries' import closure is
 // copied unmodified, with the same layout under src/, plus the licence files.
 // The wanted ref is always fetched into a temp clone — committed content only,
@@ -23,7 +23,7 @@ import { importClosure } from './vendorClosure.mjs';
 import { swapIn } from './swapTree.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const VENDOR = path.join(ROOT, 'src/vendor/officeview');
+const VENDOR = path.join(ROOT, 'packages/renderer/src/vendor/officeview');
 const MANIFEST = path.join(VENDOR, 'officeview.json');
 
 const { values: opts } = parseArgs({ options: { ref: { type: 'string' }, from: { type: 'string' } } });

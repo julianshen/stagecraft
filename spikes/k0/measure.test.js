@@ -2,8 +2,8 @@
 import { it } from 'vitest';
 import { deck } from './deck.js';
 import { resolveFont, ms } from './paint.js';
-import { layoutTextBody } from '../../src/vendor/officeview/drawing/text-layout';
-import { createTextBodyMeasurer } from '../../src/vendor/officeview/drawing/text-paint';
+import { layoutTextBody } from '../../packages/renderer/src/vendor/officeview/drawing/text-layout.ts';
+import { createTextBodyMeasurer } from '../../packages/renderer/src/vendor/officeview/drawing/text-paint.ts';
 
 it('counts measurer calls per text box', () => {
   const ctx = document.createElement('canvas').getContext('2d');

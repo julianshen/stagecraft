@@ -35,3 +35,4 @@ jobs:
       # Runs every test project once, under the coverage gate.
       - run: npm run coverage
       - run: npm run build
+      - run: npm run test:consumer
