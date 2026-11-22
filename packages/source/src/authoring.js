@@ -185,8 +185,9 @@ const element = (doc, ns, name, attributes = {}) => {
 const append = (parent,ns,name,attrs) => { const n=element(parent.ownerDocument,ns,name,attrs);parent.appendChild(n);return n; };
 function pptxGeometry(node,g) {
     const doc=node.ownerDocument;
-    let props=child(node,'p','spPr'), xfrm=child(props,'a','xfrm');
-    if (!xfrm) {xfrm=element(doc,'a','xfrm');props.insertBefore(xfrm,props.firstChild);}
+    const frame=is(node,'p','graphicFrame'), props=frame?node:child(node,'p','spPr'), ns=frame?'p':'a';
+    let xfrm=child(props,ns,'xfrm');
+    if (!xfrm) {xfrm=element(doc,ns,'xfrm');props.insertBefore(xfrm,frame?child(node,'a','graphic'):props.firstChild);}
     let off=child(xfrm,'a','off'), ext=child(xfrm,'a','ext');
     if (!off) off=append(xfrm,'a','off'); if (!ext) ext=append(xfrm,'a','ext');
     off.setAttribute('x',String(g.x));off.setAttribute('y',String(g.y));ext.setAttribute('cx',String(g.width));ext.setAttribute('cy',String(g.height));
@@ -862,7 +863,6 @@ function patchNotesBody(doc, text) {
         append(append(nonVisual, 'p', 'cNvSpPr'), 'a', 'spLocks', { noGrp: 1 });
         append(append(nonVisual, 'p', 'nvPr'), 'p', 'ph', { type: 'body', idx: 1 });
         append(body, 'p', 'spPr');
-        append(body, 'p', 'txBody');
         tree.appendChild(body);
     }
     let textBody = child(body, 'p', 'txBody');

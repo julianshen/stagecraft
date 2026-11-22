@@ -77,3 +77,37 @@ describe.each([[false, false], [true, false], [true, true]])('PPTX notes-only cr
     }
   });
 });
+
+describe.each(['placeholder', 'text body'])('PPTX notes missing %s', missing => {
+  it('initializes a DrawingML text body in schema order when adding notes', async () => {
+    const zip = await JSZip.loadAsync(await writePptx({
+      title: 'Notes body', sections: [{ id: 'section', slides: ['slide'] }],
+      slides: [{ id: 'slide', layout: 'blank', elements: [], notes: 'Old notes' }],
+    }));
+    const notesPart = 'ppt/notesSlides/notesSlide1.xml';
+    const notes = parse(await zip.file(notesPart).async('string'));
+    const findBody = doc => Array.from(doc.getElementsByTagNameNS(NS.p, 'sp')).find(shape =>
+      Array.from(shape.getElementsByTagNameNS(NS.p, 'ph')).some(placeholder => placeholder.getAttribute('type') === 'body'));
+    const body = findBody(notes);
+    expect(body).toBeTruthy();
+    if (missing === 'placeholder') body.remove();
+    else body.getElementsByTagNameNS(NS.p, 'txBody')[0].remove();
+    const otherShapes = Array.from(notes.getElementsByTagNameNS(NS.p, 'sp')).filter(shape => shape !== body).map(serialize);
+    zip.file(notesPart, serialize(notes));
+    const session = await openPresentation(await zip.generateAsync({ type: 'uint8array' }), { format: 'pptx' });
+    const next = structuredClone(session.document);
+    next.slides[0].notes = 'New first line\nNew second line';
+    const result = await session.export(next);
+    const output = await JSZip.loadAsync(result.bytes);
+    const patched = parse(await output.file(notesPart).async('string'));
+    const patchedBody = findBody(patched);
+    expect(patchedBody).toBeTruthy();
+    const textBody = patchedBody.getElementsByTagNameNS(NS.p, 'txBody')[0];
+    expect(Array.from(textBody.children).map(node => [node.namespaceURI, node.localName])).toEqual([
+      [NS.a, 'bodyPr'], [NS.a, 'lstStyle'], [NS.a, 'p'], [NS.a, 'p'],
+    ]);
+    expect(Array.from(patched.getElementsByTagNameNS(NS.p, 'sp')).filter(shape => shape !== patchedBody).map(serialize)).toEqual(otherShapes);
+    expect((await openPresentation(result.bytes, { format: 'pptx' })).document.slides[0].notes).toBe('New first line\nNew second line');
+    expect(result.dirtyParts).toEqual([notesPart]);
+  });
+});
