@@ -47,22 +47,24 @@ No SourceSession/raw retained package enters the adapter. No host resource is di
 
 56 standalone Chromium tests at DPR1 and DPR2 (6 geometry, 48 interaction, 2 benchmark). Real core assertions cover one-commit/undo, authorization, stale revision, rotation preservation, capabilities and cancellation (including lost `pointerup` / `buttons === 0`, null `viewport` mid-drag, modified arrow keys with `Shift+Arrow` allowed, non-primary blank-stage clicks, non-overlay reserved-space error alert cleared on selection change, cross-slide selection preservation with dangling-target cleanup, mid-drag `ResizeObserver` on late-mounted `Stage`, rAF layout-shift cancellation, bubbling `<canvas>` `lostpointercapture` isolation, single-commit host rerenders via `React.Profiler`, and no per-move `canMove`). Pixel probes verify actual rect/ellipse rollback. Synthetic `PointerEvent`s do not carry an active browser pointer (so `setPointerCapture` throws and is ignored there), while a dedicated Playwright CDP test exercises real mouse and touch drags and asserts `hasPointerCapture` during and after the drag; pen input and OS-level/native Office fidelity are not exercised.
 
-Three read-only simplify/review passes and three peer-review fix rounds covered reuse, quality/errors/tests and efficiency. Boundaries, types, consumer and production build pass. Full root coverage was not rerun: no production code/config changed, and it would not measure this spike. Production promotion must add permanent browser/type/consumer/coverage gates.
+Three read-only simplify/review passes and four peer-review fix rounds covered reuse, quality/errors/tests and efficiency. Boundaries, types, consumer and production build pass. Full root coverage was not rerun: no production code/config changed, and it would not measure this spike. Production promotion must add permanent browser/type/consumer/coverage gates.
 
 Measurements: macOS 27.2.1 arm64, HeadlessChrome 141.0.7390.37, viewport1600x900. CPU model lookup was unavailable. Twenty mount/draw samples; ten warmups, eighty warm redraws and eighty frame-spaced pointer previews. Values below are median / p95 (nearest-rank `Math.ceil(0.95 * n) - 1`) / max milliseconds, rounded to 0.1ms (zero means below timer resolution).
 
 | DPR / objects | Cold mount + draw | Warm scene + hit draw | Pointer handler + forced draw | Hit lookup |
 | --- | --- | --- | --- | --- |
-| 1 / 16 | 2.5 / 4.2 / 21.3 | 0.0 / 0.1 / 0.2 | 0.2 / 0.3 / 0.6 | 0.2 / 0.6 / 1.1 |
-| 1 / 256 | 9.3 / 10.0 / 12.4 | 0.5 / 0.7 / 2.7 | 0.6 / 0.7 / 0.7 | 0.8 / 0.9 / 1.0 |
-| 2 / 16 | 4.1 / 6.0 / 16.2 | 0.0 / 0.1 / 0.4 | 0.1 / 0.3 / 0.4 | 0.2 / 0.6 / 0.7 |
-| 2 / 256 | 11.0 / 12.7 / 16.6 | 0.6 / 0.8 / 1.2 | 0.6 / 0.7 / 0.8 | 0.8 / 1.0 / 1.0 |
+| 1 / 16 | 2.4 / 3.7 / 21.1 | 0.0 / 0.1 / 0.2 | 0.1 / 0.3 / 0.5 | 0.3 / 0.6 / 1.3 |
+| 1 / 256 | 6.8 / 7.4 / 9.8 | 0.7 / 0.8 / 1.8 | 0.6 / 0.7 / 0.8 | 0.9 / 1.0 / 1.1 |
+| 2 / 16 | 4.3 / 5.8 / 18.4 | 0.0 / 0.1 / 0.2 | 0.1 / 0.3 / 0.4 | 0.2 / 0.5 / 0.6 |
+| 2 / 256 | 9.1 / 10.8 / 12.9 | 0.7 / 0.9 / 2.5 | 0.7 / 0.9 / 1.2 | 1.1 / 1.2 / 1.2 |
 
-These are synchronous CPU submission timings, **not full frame/GPU presentation latency**. Pointer preview also queues a batch draw; the benchmark's forced draw and later scheduled draw are not a single total-frame measurement. Hit readback is separate. Note the cold **max** of **21.3ms** (16 objects DPR1), **16.2ms** (16 objects DPR2), and **16.6ms** (256 objects DPR2) exceed the 16ms target; later passing medians/p95s do not erase those cold-start outlier misses. A production claim needs repeated isolated production-build profiling, actual scheduled-draw/presentation instrumentation, representative Office scenes and thumbnails.
+A/B note: keeping `ResizeObserver` inside the stable `setStageRef` callback ref (instead of storing `contentEl` in React state) eliminated the second full-scene commit on mount and reduced 256-object cold mount median from **9.3ms** to **6.8ms** at DPR1 (and **11.0ms** to **9.1ms** at DPR2) on this machine.
+
+These are synchronous CPU submission timings, **not full frame/GPU presentation latency**. Pointer preview also queues a batch draw; the benchmark's forced draw and later scheduled draw are not a single total-frame measurement. Hit readback is separate. Note the 16-object cold **max** of **21.1ms** (DPR1) and **18.4ms** (DPR2) exceed the 16ms target; later passing medians/p95s do not erase those cold-start outlier misses. A production claim needs repeated isolated production-build profiling, actual scheduled-draw/presentation instrumentation, representative Office scenes and thumbnails.
 
 One layer uses 11,520,000 scene+hit backing bytes at DPR1 and 28,800,000 at DPR2; the lazily allocated stage hit buffer remained 0 in this fixture. These estimates exclude DOM/JS/GPU overhead and future buffers, and are not process-memory measurements. No thumbnails were measured.
 
-Adapter bundle: 377,103 minified bytes; **96,080 bytes gzip**, under 100KiB. Externals (`["react"]`), `konvaShapes` (asserted to be exactly `["konva/lib/shapes/Ellipse", "konva/lib/shapes/Rect"]`), and Konva/React-Konva module imports are derived dynamically from Vite's build output chunks in `bundle.mjs`. This includes adapter code and React-Konva dependencies, not application/core/source bundles. Run the script for current results.
+Adapter bundle: 377,186 minified bytes; **96,088 bytes gzip**, under 100KiB. Externals (`["react"]`), `konvaShapes` (asserted to be exactly `["konva/lib/shapes/Ellipse", "konva/lib/shapes/Rect"]`), and Konva/React-Konva module imports are derived dynamically from Vite's build output chunks in `bundle.mjs`. This includes adapter code and React-Konva dependencies, not application/core/source bundles. Run the script for current results.
 
 Existing K1 on-demand baseline at DPR2: cold17.2/22.5ms, warm0.3/0.4ms, scene construction0.0/0.1ms. K1 paints a richer legacy OfficeView scene; these workloads are not fidelity/performance equivalents. No direct claim of speedup is justified.
 

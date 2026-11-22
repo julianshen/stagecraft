@@ -22,12 +22,18 @@ export function CanonicalKonvaStage(props) {
   const stage = useRef(null);
   const nodes = useRef(new Map());
   const [error, setError] = useState('');
-  const [contentEl, setContentEl] = useState(null);
+  const resizeObserver = useRef(null);
   const prevSelection = useRef(selection);
   const setStageRef = useCallback(node => {
+    resizeObserver.current?.disconnect();
+    resizeObserver.current = null;
     stage.current = node;
-    const next = node?.getContent?.() ?? null;
-    setContentEl(prev => (prev === next ? prev : next));
+    const content = node?.getContent?.();
+    if (content && typeof ResizeObserver === 'function') {
+      const ro = new ResizeObserver(checkRect);
+      ro.observe(content);
+      resizeObserver.current = ro;
+    }
   }, []);
   function report(cause) {
     setError(String(cause?.code ?? 'MOVE_FAILED'));
@@ -149,6 +155,8 @@ export function CanonicalKonvaStage(props) {
     element?.addEventListener('lostpointercapture', cancelLostCapture);
     return () => {
       cancel();
+      resizeObserver.current?.disconnect();
+      resizeObserver.current = null;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', cancelPointer);
@@ -158,12 +166,6 @@ export function CanonicalKonvaStage(props) {
       element?.removeEventListener('lostpointercapture', cancelLostCapture);
     };
   }, []);
-  useLayoutEffect(() => {
-    if (!contentEl || typeof ResizeObserver !== 'function') return;
-    const ro = new ResizeObserver(checkRect);
-    ro.observe(contentEl);
-    return () => ro.disconnect();
-  }, [contentEl]);
   useLayoutEffect(() => {
     if (prevSelection.current?.slideId !== selection?.slideId || prevSelection.current?.objectId !== selection?.objectId) {
       prevSelection.current = selection;
