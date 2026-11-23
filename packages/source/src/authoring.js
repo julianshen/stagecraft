@@ -254,7 +254,7 @@ function pptxParagraphs(doc, text, ns) {
         const written=coalesceSplitBreaks(paragraph.runs);
         for(const [index,run] of paragraph.runs.entries()) {
             const r=element(doc,ns,'r'), properties=element(doc,ns,'rPr');
-            for(const [key,value] of Object.entries(run.style ?? {})) if(!['typeface','color'].includes(key)) properties.setAttribute(key,String(value));
+            for(const [key,value] of Object.entries(run.style ?? {})) if(!['typeface','eastAsian','complexScript','color'].includes(key)) properties.setAttribute(key,String(value));
             applyPptxRunTypography(properties, run);
             r.appendChild(properties);
             const t=element(doc,ns,'t');t.textContent=written[index];
@@ -583,7 +583,7 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                 if(styleName) p.setAttributeNS(NS.text,'text:style-name',styleName);
                 if(paragraph.style?.level&&!inList) throw new Error('Non-list ODP paragraph levels are unsupported');
                 const written=coalesceSplitBreaks(paragraph.runs);
-                for(let index=0;index<paragraph.runs.length;index++){const run=paragraph.runs[index];const placeholder=doc.createTextNode('');p.appendChild(placeholder);const overrides={...(run.style.b!==undefined?{bold:run.style.b==='1'}:{}),...(run.style.i!==undefined?{italic:run.style.i==='1'}:{}),...(run.style.sz!==undefined?{fontSize:Number(run.style.sz)/100}:{}),...(run.style.typeface?{fontFamily:run.style.typeface}:{}),...(run.style.color?{color:run.style.color}:{})};patchOdp(placeholder,written[index],textStyle(overrides));}
+                for(let index=0;index<paragraph.runs.length;index++){const run=paragraph.runs[index];const placeholder=doc.createTextNode('');p.appendChild(placeholder);const overrides={...(run.style.b!==undefined?{bold:run.style.b==='1'}:{}),...(run.style.i!==undefined?{italic:run.style.i==='1'}:{}),...(run.style.sz!==undefined?{fontSize:Number(run.style.sz)/100}:{}),...(run.style.typeface?{fontFamily:run.style.typeface}:{}),...(run.style.eastAsian?{eastAsian:run.style.eastAsian}:{}),...(run.style.complexScript?{complexScript:run.style.complexScript}:{}),...(run.style.color?{color:run.style.color}:{})};patchOdp(placeholder,written[index],textStyle(overrides));}
                 return p;
             };
             const fillText=(box,text)=>{
@@ -896,8 +896,10 @@ export function applyPptxRunTypography(properties, run) {
     removeChildren(properties, 'a', 'solidFill');
     if (run.style?.color)
         append(append(properties, 'a', 'solidFill'), 'a', 'srgbClr', { val: run.style.color.slice(1).toUpperCase() });
-    if (run.style?.typeface)
-        append(properties, 'a', 'latin', { typeface: run.style.typeface });
+    for (const [key, slot] of [['typeface', 'latin'], ['eastAsian', 'ea'], ['complexScript', 'cs']]) {
+        if (key !== 'typeface') removeChildren(properties, 'a', slot);
+        if (run.style?.[key]) append(properties, 'a', slot, { typeface: run.style[key] });
+    }
 }
 
 const REL_NOTES = REL + 'notesSlide';

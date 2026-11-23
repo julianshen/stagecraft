@@ -421,7 +421,7 @@ function updateRun(document, payload, update) {
     fail('UNKNOWN_RUN');
   return d;
 }
-const formatKeys = { bold: 'b', italic: 'i', fontSize: 'sz', fontFamily: 'typeface', color: 'color' };
+const formatKeys = { bold: 'b', italic: 'i', fontSize: 'sz', fontFamily: 'typeface', eastAsian: 'eastAsian', complexScript: 'complexScript', color: 'color' };
 const RUN_FORMAT_KEYS = Object.keys(formatKeys);
 /** XML 1.0 character validity: rejects lone surrogates, U+FFFE/U+FFFF and disallowed controls. */
 const xmlValidChars = value => {
@@ -441,7 +441,7 @@ const xmlValidChars = value => {
 };
 /** Validate one non-null semantic formatting value; null/reset is a caller policy. */
 export function isRunFormatValue(key, value) {
-  if (key === 'fontFamily')
+  if (['fontFamily', 'eastAsian', 'complexScript'].includes(key))
     return typeof value === 'string' && value.length >= 1 && value.length <= 64 && value === value.trim()
       && xmlValidChars(value) && !/[\u0000-\u001f\u007f]/.test(value);
   if (key === 'color')
@@ -680,7 +680,7 @@ function applyRunFormat(run, format) {
   run.style ??= {};
   for (const [key, value] of Object.entries(format)) {
     if (value === null) delete run.style[formatKeys[key]];
-    else if (key === 'fontFamily') run.style.typeface = value;
+    else if (['fontFamily', 'eastAsian', 'complexScript'].includes(key)) run.style[formatKeys[key]] = value;
     else if (key === 'color') run.style.color = value.toLowerCase();
     else run.style[formatKeys[key]] = key === 'fontSize' ? String(Math.round(value * 100)) : value ? '1' : '0';
   }
@@ -727,7 +727,7 @@ function setRunRangeFormat(document, payload) {
         if (Math.min(to, endOffset) <= Math.max(from, startOffset)) continue;
         for (const [key, value] of Object.entries(payload.format)) {
           const current = run.style?.[formatKeys[key]] ?? null;
-          const next = value === null ? null : key === 'fontFamily' ? value : key === 'color' ? value.toLowerCase() : key === 'fontSize' ? String(Math.round(value * 100)) : value ? '1' : '0';
+          const next = value === null ? null : ['fontFamily', 'eastAsian', 'complexScript'].includes(key) ? value : key === 'color' ? value.toLowerCase() : key === 'fontSize' ? String(Math.round(value * 100)) : value ? '1' : '0';
           if ((current ?? null) !== (next ?? null)) return true;
         }
       }
@@ -766,12 +766,7 @@ function setRunFormat(document, payload) {
       }
       return;
     }
-    for (const [key, value] of Object.entries(payload.format)) {
-      if (value === null) delete run.style[formatKeys[key]];
-      else if (key === 'fontFamily') run.style.typeface = value;
-      else if (key === 'color') run.style.color = value.toLowerCase();
-      else run.style[formatKeys[key]] = key === 'fontSize' ? String(Math.round(value * 100)) : value ? '1' : '0';
-    }
+    applyRunFormat(run, payload.format);
   });
 }
 const idSchema = { type: 'string', minLength: 1 };
@@ -848,6 +843,8 @@ export const documentPlugin = Object.freeze({
           bold: { type: ['boolean', 'null'] }, italic: { type: ['boolean', 'null'] },
           fontSize: { type: ['number', 'null'], minimum: 1, maximum: 4000 },
           fontFamily: { type: ['string', 'null'], minLength: 1, maxLength: 64 },
+          eastAsian: { type: ['string', 'null'], minLength: 1, maxLength: 64 },
+          complexScript: { type: ['string', 'null'], minLength: 1, maxLength: 64 },
           color: { type: ['string', 'null'], pattern: '^#[0-9a-fA-F]{6}$' }
         } }
       }, required: ['objectId', 'range', 'format'], additionalProperties: false },
@@ -863,6 +860,8 @@ export const documentPlugin = Object.freeze({
           bold: { type: ['boolean', 'null'] }, italic: { type: ['boolean', 'null'] },
           fontSize: { type: ['number', 'null'], minimum: 1, maximum: 4000, multipleOf: 0.01 },
           fontFamily: { type: ['string', 'null'], minLength: 1, maxLength: 64 },
+          eastAsian: { type: ['string', 'null'], minLength: 1, maxLength: 64 },
+          complexScript: { type: ['string', 'null'], minLength: 1, maxLength: 64 },
           color: { type: ['string', 'null'], pattern: '^#[0-9a-fA-F]{6}$' }
         } }
       }, required: ['runId', 'format'], additionalProperties: false },
@@ -911,10 +910,10 @@ const authoredText = (value, ids) => {
       authoredExtensions(run.extensions);
       if (typeof run.text !== 'string' || !xmlValidChars(run.text) || run.editable !== true || run.text.length > MAX_AUTHORED_RUN_LENGTH)
         fail('INVALID_AUTHORED_SCHEMA');
-      exact(run.style, [], ['b', 'i', 'sz', 'typeface', 'color']);
+      exact(run.style, [], ['b', 'i', 'sz', 'typeface', 'eastAsian', 'complexScript', 'color']);
       for (const [key, v] of Object.entries(run.style)) {
         const valid = key === 'sz' ? typeof v === 'string' && /^[1-9][0-9]*$/.test(v) && Number(v) >= 100 && Number(v) <= 400000
-          : key === 'typeface' ? isRunFormatValue('fontFamily', v)
+          : ['typeface', 'eastAsian', 'complexScript'].includes(key) ? isRunFormatValue('fontFamily', v)
           : key === 'color' ? isRunFormatValue('color', v)
           : v === '0' || v === '1';
         if (!valid)
@@ -1034,6 +1033,8 @@ const authoredRunSchema = {
     style: { type: 'object', additionalProperties: false, properties: {
       b: { enum: ['0', '1'] }, i: { enum: ['0', '1'] }, sz: { type: 'string', pattern: '^[1-9][0-9]*$' },
       typeface: { type: 'string', minLength: 1, maxLength: 64 },
+      eastAsian: { type: 'string', minLength: 1, maxLength: 64 },
+      complexScript: { type: 'string', minLength: 1, maxLength: 64 },
       color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }
     } }
   }

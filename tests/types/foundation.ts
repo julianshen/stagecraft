@@ -182,3 +182,8 @@ async function retainedSource() {
 }
 void localAndHostIO;
 void retainedSource;
+
+// Script-specific fonts extend existing formatting without changing the Latin alias.
+const scriptFonts: import('@stagecraft/core/document').RunFormat = { fontFamily: 'Arial', eastAsian: '+mj-ea', complexScript: null };
+const authoredScriptFonts: import('@stagecraft/core/document').AuthoredRunStyle = { typeface: 'Arial', eastAsian: 'Yu Gothic', complexScript: '+mn-cs' };
+void scriptFonts; void authoredScriptFonts;

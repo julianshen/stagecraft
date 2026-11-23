@@ -173,12 +173,18 @@ export async function readPptx(zip, xml, mapping) {
                             // null denotes an opaque direct fill, not inherited colour. Reset removes its key.
                             const fills = children(runProperties).filter(n => is(n, 'a', n.localName) && ['noFill','solidFill','gradFill','blipFill','pattFill','grpFill'].includes(n.localName));
                             if (fills.length) run.style.color = fills.length === 1 && colour && children(colour).length === 0 && /^[0-9a-f]{6}$/i.test(colour.getAttribute('val') ?? '') ? `#${colour.getAttribute('val').toLowerCase()}` : null;
+                            for (const [key, slot] of [['eastAsian', 'ea'], ['complexScript', 'cs']]) {
+                                const node = child(runProperties, 'a', slot);
+                                if (node) run.style[key] = node.getAttribute('typeface') || null;
+                            }
                             const properties = child(r, 'a', 'rPr');
                             const typeface = child(properties, 'a', 'latin')?.getAttribute('typeface');
                             const color = child(child(properties, 'a', 'solidFill'), 'a', 'srgbClr');
                             // Derived preview data is immutable to the retained-source writer.
                             const appearance = {};
                             if (typeface && !typeface.startsWith('+')) appearance.fontFamily = typeface;
+                            for (const key of ['eastAsian', 'complexScript'])
+                                if (run.style[key] && !run.style[key].startsWith('+')) appearance[key] = run.style[key];
                             if (color && children(color).length === 0 && /^[0-9a-f]{6}$/i.test(color.getAttribute('val') ?? '')) appearance.color = `#${color.getAttribute('val')}`;
                             if (Object.keys(appearance).length) run.extensions = { pptxAppearance: appearance };
                             if (editable)
