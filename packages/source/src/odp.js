@@ -110,6 +110,37 @@ const length = s => {
         throw new Error('Unsupported ODP length');
     return Math.round(Number(m[1]) * { cm: 360000, mm: 36000, in: 914400, pt: 12700, pc: 152400, px: 9525 }[m[2]]);
 };
+// Metadata stays in the retained package; it must not conceal unprojected slide content.
+function presentationPages(body, content, styles) {
+    const nodes = children(body), declarations = new Set(['header-decl', 'footer-decl', 'date-time-decl']);
+    const uses = new Map([...declarations].map(name => [name, new Set()]));
+    if (nodes.some(n => n.namespaceURI === NS.presentation && declarations.has(n.localName))) {
+        for (const doc of [content, styles]) for (const node of Array.from(doc.getElementsByTagNameNS('*', '*'))) {
+            for (const [kind, names] of uses) {
+                const name = attr(node, 'presentation', `use-${kind.slice(0, -5)}-name`);
+                if (name) names.add(name);
+            }
+        }
+    }
+    const invalidContent = node => new Error(`Unsupported ODP presentation metadata content in {${node.namespaceURI}}${node.localName}`);
+    const textContent = node => Array.from(node.childNodes).some(n => (n.nodeType === 3 || n.nodeType === 4) && n.data.trim());
+    for (const node of nodes) {
+        if (is(node, 'draw', 'page')) continue;
+        if (is(node, 'presentation', 'settings')) {
+            if (textContent(node)) throw invalidContent(node);
+            for (const show of children(node)) {
+                if (!is(show, 'presentation', 'show') || children(show).length || textContent(show)) throw invalidContent(node);
+            }
+        } else if (node.namespaceURI === NS.presentation && declarations.has(node.localName)) {
+            if (children(node).length) throw invalidContent(node);
+            if (uses.get(node.localName).has(attr(node, 'presentation', 'name')))
+                throw new Error(`Referenced ODP presentation declaration ${node.localName} is not supported (unresolved visible field content)`);
+        } else {
+            throw new Error(`Unsupported ODP presentation child {${node.namespaceURI}}${node.localName} (not a supported page or retained metadata)`);
+        }
+    }
+    return nodes.filter(n => is(n, 'draw', 'page'));
+}
 export async function readOdp(zip, xml, mapping) {    if (await zip.file('mimetype')?.async('string') !== ODP_MIME)
         throw new Error('Invalid ODP mimetype');
     const manifest = await xmlPart(zip, 'META-INF/manifest.xml', xml);
@@ -123,6 +154,7 @@ export async function readOdp(zip, xml, mapping) {    if (await zip.file('mimety
     const body = child(child(content.documentElement, 'office', 'body'), 'office', 'presentation');
     if (!body)
         throw new Error('Missing ODP presentation');
+    const pages = presentationPages(body, content, styles);
     const appearance = odpAppearanceReader(content, styles);
     const styleNames = reservedOdpStyleNames(content, styles);
     const styleIndex = new Map();
@@ -373,9 +405,7 @@ export async function readOdp(zip, xml, mapping) {    if (await zip.file('mimety
     }
     for (const master of masters.values())
         master.entity.objects = objects(master.node, master.part);
-    for (const page of children(body)) {
-        if (!is(page, 'draw', 'page'))
-            throw new Error('Unsupported ODP presentation child');
+    for (const page of pages) {
         const name = attr(page, 'draw', 'master-page-name'), master = masters.get(name);
         if (!master)
             throw new Error('Missing ODP master page reference');
