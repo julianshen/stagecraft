@@ -236,6 +236,9 @@ async function pptxObject(doc,object,nextId,ctx) {
     if(object.text) {
         const body=append(node,'p','txBody');const bodyProperties=append(body,'a','bodyPr');append(body,'a','lstStyle');
         if(object.bodyLayout) applyPptxBodyLayout(bodyProperties, object.bodyLayout);
+        // FU-AUTOFIT-MEASURE: emit a stored shrink measurement when supplied by the host.
+        const fit = ctx?.fitMap?.get?.(object.id) ?? ctx?.fitMap?.[object.id];
+        if (fit && (object.bodyLayout?.autofit === 'shrink')) applyPptxBodyLayout(bodyProperties, { fit });
         for(const paragraph of pptxParagraphs(doc, object.text, 'a')) body.appendChild(paragraph);
     }
     return node;
@@ -307,7 +310,7 @@ function odpGeometry(node,g) {
 }
 
 /** Capture all original node identities before any text patch inserts/removes siblings. */
-export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get:()=>null}) {
+export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get:()=>null},fitMap=null,snapshot=null) {
     const nodes=new Map();
     for(const slide of baseline.slides) {
         nodes.set(slide,locate(await getDoc(slide.source.part),slide.source.path));
@@ -331,6 +334,30 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
             const node=nodes.get(paragraph); if(!node) throw new Error('Missing mapped paragraph node');
             applyPptxParagraphFormat(node, paragraph.style ?? {}, style ?? {});
             mark(paragraph.source.part);
+        }
+        // FU-AUTOFIT-MEASURE: native objects that need a stored shrink measurement but did not
+        // have a bodyLayout change get a synthetic patch so their normAutofit is updated.
+        if (fitMap) {
+            const snapshotObjects = sourceObjects(snapshot);
+            const baselineToSnapshot = new Map();
+            for (const bo of sourceObjects(baseline)) {
+                const so = snapshotObjects.find(o => o.id === bo.id);
+                if (so) baselineToSnapshot.set(bo, so);
+            }
+            const changedNative = new Set([...(delta.geometries ?? []).map(g => g.object), ...(delta.fills ?? []).map(f => f.object), ...(delta.bodyLayouts ?? []).map(b => b.object)]);
+            for (const [baselineObject, snapshotObject] of baselineToSnapshot) {
+                if (!baselineObject.source || baselineObject.extensions?.stagecraftAuthored === true) continue;
+                if (snapshotObject.bodyLayout?.autofit !== 'shrink') continue;
+                const fit = fitMap.get?.(snapshotObject.id) ?? fitMap[snapshotObject.id];
+                if (!fit) continue;
+                // Only apply fit to objects that changed (geometry/fill/bodyLayout/text) vs baseline.
+                const textChanged = !equal(baselineObject.text, snapshotObject.text);
+                if (!changedNative.has(snapshotObject) && !textChanged) continue;
+                // Only patch if not already covered by a bodyLayout change.
+                if ((delta.bodyLayouts ?? []).some(b => b.object === snapshotObject)) continue;
+                delta.bodyLayouts = delta.bodyLayouts ?? [];
+                delta.bodyLayouts.push({ object: baselineObject, before: baselineObject.bodyLayout, after: { ...snapshotObject.bodyLayout, fit } });
+            }
         }
         for(const {object,before,after} of delta.bodyLayouts ?? []) {
             const node=nodes.get(object); if(!node) throw new Error('Missing mapped object node');
@@ -377,6 +404,11 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
             const bodyPr=child(child(node,'p','txBody'),'a','bodyPr');
             if(!bodyPr) throw new Error('Unsupported text body');
             if(Object.keys(patch).length){ applyPptxBodyLayout(bodyPr, patch); mark(object.source.part); }
+            // FU-AUTOFIT-MEASURE: emit a stored shrink measurement when supplied by the host, for
+            // objects whose autofit is 'shrink' (changed or already native shrink).
+            const fit = fitMap?.get?.(object.id) ?? fitMap?.[object.id];
+            const shrinkAfter = (after?.autofit === 'shrink') || (before?.autofit === 'shrink' && after?.autofit === undefined);
+            if (fit && shrinkAfter && !patch.fit) { applyPptxBodyLayout(bodyPr, { fit }); mark(object.source.part); }
         }
         if(!delta.structures.length && !delta.slideProperties.length) return dirty;
         if(format==='pptx') {
@@ -453,7 +485,7 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                 const slideRels=part.replace(/(^|\/)([^/]+)$/,'$1_rels/$2.rels');
                 const relations=xml.parse(`<Relationships xmlns="${NS.rel}"/>`);
                 relations.documentElement.appendChild(element(relations,'rel','Relationship',{Id:'rId1',Type:REL+'slideLayout',Target:relative(part,baseline.layouts[0]?.source.part)}));
-                const slideCtx={imageRel:imageRel(part,relations),chart:chartFor(part,relations,slideRels)};
+                const slideCtx={imageRel:imageRel(part,relations),chart:chartFor(part,relations,slideRels),fitMap};
                 for(const [index,object] of slide.objects.entries()) tree.appendChild(await pptxObject(doc,object,index+2,slideCtx));
                 zip.file(part,xml.serialize(doc));mark(part);
                 const layout=baseline.layouts[0]?.source.part;if(!layout)throw new Error('New slides require an existing native layout');
@@ -483,7 +515,7 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                     let nativeId=Math.max(1,...all(tree,'p','cNvPr').map(n=>Number(n.getAttribute('id'))||0));
                     const before=new Map(change.before.map(o=>[o.id,nodes.get(o)]));
                     for(const node of before.values())tree.removeChild(node);
-                    const relsFile=await slideRelsDoc(part), slideCtx={imageRel:imageRel(part,relsFile.doc),chart:chartFor(part,relsFile.doc,relsFile.path)};
+                    const relsFile=await slideRelsDoc(part), slideCtx={imageRel:imageRel(part,relsFile.doc),chart:chartFor(part,relsFile.doc,relsFile.path),fitMap};
                     const usedImageRels=children(relsFile.doc.documentElement).length;
                     for(const object of change.after)tree.insertBefore(before.get(object.id)??await pptxObject(tree.ownerDocument,object,++nativeId,slideCtx),child(tree,'p','extLst')??null);
                     mark(part);
@@ -843,6 +875,16 @@ export function applyPptxBodyLayout(bodyPr, layout) {
             const node = element(bodyPr.ownerDocument, 'a', name);
             const following = children(bodyPr).find(n => n.namespaceURI === NS.a && ['scene3d','sp3d','flatTx','extLst'].includes(n.localName));
             bodyPr.insertBefore(node, following ?? null);
+        }
+    }
+    // FU-AUTOFIT-MEASURE: emit stored shrink measurement on a:normAutofit when supplied.
+    if (layout.fit && Object.hasOwn(layout, 'fit')) {
+        const norm = child(bodyPr, 'a', 'normAutofit');
+        if (norm) {
+            if (Number.isSafeInteger(layout.fit.fontScale) && layout.fit.fontScale >= 1 && layout.fit.fontScale <= 100000)
+                norm.setAttribute('fontScale', String(layout.fit.fontScale));
+            if (Number.isSafeInteger(layout.fit.lnSpcReduction) && layout.fit.lnSpcReduction >= 0 && layout.fit.lnSpcReduction <= 100000)
+                norm.setAttribute('lnSpcReduction', String(layout.fit.lnSpcReduction));
         }
     }
 }

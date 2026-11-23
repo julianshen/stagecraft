@@ -163,6 +163,18 @@ export async function openPresentation(source, options = {}) {
             // Synchronous clone/validation/diff precede the first await.
             validateDocument(document);
             const snapshot = clone(document), changes = [];
+            // FU-AUTOFIT-MEASURE: optional measured shrink values supplied by the host (renderer
+            // layer). Map(objectId -> { fontScale, lnSpcReduction }). Validated here; invalid
+            // values throw before any write so a bad measurement never lands in the file.
+            const fitMap = exportOptions.fit instanceof Map ? exportOptions.fit
+                : (exportOptions.fit && typeof exportOptions.fit === 'object') ? new Map(Object.entries(exportOptions.fit)) : null;
+            if (fitMap) {
+                for (const [objectId, value] of fitMap) {
+                    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid autofit measurement');
+                    if (!Number.isSafeInteger(value.fontScale) || value.fontScale < 1 || value.fontScale > 100000) throw new Error('Invalid autofit measurement');
+                    if (!Number.isSafeInteger(value.lnSpcReduction) || value.lnSpcReduction < 0 || value.lnSpcReduction > 100000) throw new Error('Invalid autofit measurement');
+                }
+            }
             // FU-CR: native run-text edits are written one run at a time, so a split CRLF must be
             // coalesced against the paragraph's post-edit runs (the snapshot) — computed from the
             // canonical paragraph, not per change. Empty runs are skipped by the lookahead.
@@ -257,7 +269,7 @@ export async function openPresentation(source, options = {}) {
             }
             diff(baseline, snapshot);
             const authored = delta.structures.length || delta.geometries.length || delta.fills.length || delta.slideProperties.length
-                || (delta.paragraphFormats?.length ?? 0) || (delta.bodyLayouts?.length ?? 0);
+                || (delta.paragraphFormats?.length ?? 0) || (delta.bodyLayouts?.length ?? 0) || (fitMap && fitMap.size > 0);
             if ((changes.length || authored) && signed)
                 throw new Error('Cannot edit signed source package');
             const limits = { ...options, ...exportOptions };
@@ -276,7 +288,7 @@ export async function openPresentation(source, options = {}) {
             check(exportOptions.signal);
             const docs = new Map();
             const getDoc = async part => { if (!docs.has(part)) docs.set(part, await xmlPart(working, part, xml)); return docs.get(part); };
-            const applyAuthoring = authored ? await prepareAuthoring(working, xml, baseline, delta, getDoc, assets) : null;
+            const applyAuthoring = authored ? await prepareAuthoring(working, xml, baseline, delta, getDoc, assets, fitMap, snapshot) : null;
             // FU-CR fix5: coalesce every changed paragraph as a whole, then reconcile each of
             // its runs against the coalesced written text.
             for (const runs of changedParagraphs) {
