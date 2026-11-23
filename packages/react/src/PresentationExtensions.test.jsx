@@ -2286,6 +2286,9 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     const rangeCs = screen.getByLabelText('Range Complex script font');
     expect(rangeEa).toHaveAttribute('placeholder', 'Mixed');
     expect(rangeEa).toHaveValue('');
+    dispatchSpy.mockClear();
+    fireEvent.keyDown(rangeEa, { key: 'Enter' });
+    expect(dispatchSpy).not.toHaveBeenCalled();
     expect(rangeCs).toHaveValue('+mn-cs');
     expect(screen.getAllByText('Theme (minor Complex script)').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Range font sets Latin text; use Font details for East Asian and complex-script text\./)).toBeTruthy();

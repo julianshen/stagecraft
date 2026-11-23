@@ -1935,7 +1935,7 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
                 onKeyDown={e => {
                   if (e.key === 'Enter' && hasRange) {
                     const t = draft.trim();
-                    applyRange({ [slot]: t === '' ? null : t });
+                    if (t !== '') applyRange({ [slot]: t });
                   }
                 }}
               />
