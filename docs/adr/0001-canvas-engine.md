@@ -12,9 +12,9 @@
    - A pinned, unmodified copy of the import closure of the modules Phase K needs lives in `src/vendor/officeview/`.
    - It carries officeview's MIT licence, the Apache-2.0 POI notice for `presets.json` and the Unicode License V3 notice for the vertical-orientation data.
    - `node scripts/sync-officeview.mjs` re-syncs it (`--ref` moves the pin). Fixes go upstream first.
-   - The files stay TypeScript, and Vite/Vitest strip the types with esbuild. Stagecraft gains no `tsc` step.
+   - The files stay TypeScript, and Vite/Vitest strip the types with Oxc. Stagecraft gains no `tsc` step.
    - The pin is `9c9518e` (2026-10-10): 18 source files, about 5.7k lines.
-3. **There are two Vitest projects** (`vitest.workspace.js`):
+3. **There are two Vitest projects** (`vitest.config.js`):
    - `unit`: the existing jsdom suite.
    - `chromium`: headless Chromium through Vitest browser mode + Playwright (`vitest.browser.js`). It runs the `*.paint.test.js` painter pixel probes and the `*.browser.test.jsx` Konva stage tests. The design doc's separate `paint` and `browser` projects are one project here, so a run launches one browser and pre-bundles dependencies once.
    - Locally, the lockfile's Playwright (1.56.1) matches the preinstalled browser. CI installs and caches its own.

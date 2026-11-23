@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 const addPage = vi.fn();
 const addImage = vi.fn();
 const save = vi.fn();
-const jsPDFCtor = vi.fn(() => ({ addPage, addImage, save }));
+const jsPDFCtor = vi.fn(function () { return { addPage, addImage, save }; });
 vi.mock('jspdf', () => ({ jsPDF: jsPDFCtor }));
 
 const domToPng = vi.fn(async (node) => {
