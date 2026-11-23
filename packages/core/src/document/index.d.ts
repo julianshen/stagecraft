@@ -48,6 +48,8 @@ export type AuthoredRunStyle = {
   b?: '0' | '1'; i?: '0' | '1'; sz?: string;
   /** Direct font family (PPTX a:latin). */
   typeface?: string;
+  /** Direct East Asian / complex-script font; PPTX theme tokens remain references. */
+  eastAsian?: string; complexScript?: string;
   /** Direct colour, lowercase '#rrggbb' (PPTX srgbClr). */
   color?: string;
 };
@@ -62,6 +64,7 @@ export type RunFormat = {
   bold?: boolean | null; italic?: boolean | null;
   fontSize?: number | null;            // points
   fontFamily?: string | null;          // 1..64 chars, XML-valid
+  eastAsian?: string | null; complexScript?: string | null;
   color?: string | null;               // '#rrggbb'
 };
 export type BulletFormat =

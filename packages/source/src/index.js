@@ -20,12 +20,13 @@ function patchRunTypography(properties, patch) {
         properties.insertBefore(node, following ?? null);
         return node;
     };
-    if (Object.hasOwn(patch, 'typeface')) {
-        const fonts = children(properties).filter(n => n.namespaceURI === NS.a && n.localName === 'latin');
-        if (patch.typeface === null) for (const font of fonts) properties.removeChild(font);
+    for (const [key, slot] of [['typeface', 'latin'], ['eastAsian', 'ea'], ['complexScript', 'cs']]) {
+        if (!Object.hasOwn(patch, key)) continue;
+        const fonts = children(properties).filter(n => n.namespaceURI === NS.a && n.localName === slot);
+        if (fonts.length > 1) throw new Error('Ambiguous direct font');
+        if (patch[key] === null) for (const font of fonts) properties.removeChild(font);
         else {
-            if (fonts.length > 1) throw new Error('Ambiguous direct font');
-            (fonts[0] ?? insert('latin')).setAttribute('typeface', patch.typeface);
+            (fonts[0] ?? insert(slot)).setAttribute('typeface', patch[key]);
         }
     }
     if (Object.hasOwn(patch, 'color')) {
@@ -249,13 +250,13 @@ export async function openPresentation(source, options = {}) {
                         for (const attribute of new Set([...Object.keys(before), ...Object.keys(after)])) {
                             const value = after[attribute];
                             if (Object.hasOwn(before, attribute) === Object.hasOwn(after, attribute) && before[attribute] === value) continue;
-                            if (!['b', 'i', 'sz', 'typeface', 'color'].includes(attribute)) {
+                            if (!['b', 'i', 'sz', 'typeface', 'eastAsian', 'complexScript', 'color'].includes(attribute)) {
                                 if (!Object.hasOwn(before, attribute) || !Object.hasOwn(after, attribute)) throw new Error('Unsupported run style');
                                 diff(before[attribute], value);
                                 continue;
                             }
-                            if (attribute === 'typeface' || attribute === 'color') {
-                                if (value !== undefined && !isRunFormatValue(attribute === 'typeface' ? 'fontFamily' : 'color', value)) throw new Error('Invalid direct run typography');
+                            if (['typeface', 'eastAsian', 'complexScript', 'color'].includes(attribute)) {
+                                if (value !== undefined && !isRunFormatValue(attribute === 'typeface' ? 'fontFamily' : attribute, value)) throw new Error('Invalid direct run typography');
                             } else if (value !== undefined && (typeof value !== 'string' || (attribute === 'sz'
                                 ? !/^\d+$/.test(value) || Number(value) < 100 || Number(value) > 400000
                                 : !['0', '1', 'true', 'false'].includes(value)))) throw new Error('Invalid direct run formatting');
@@ -345,7 +346,7 @@ export async function openPresentation(source, options = {}) {
                         }
                         patchRunTypography(properties, change.formatting);
                         for (const [name, value] of Object.entries(change.formatting)) {
-                            if (name === 'typeface' || name === 'color') continue;
+                            if (['typeface', 'eastAsian', 'complexScript', 'color'].includes(name)) continue;
                             if (value === null) properties.removeAttribute(name);
                             else properties.setAttribute(name, value);
                         }
