@@ -111,3 +111,81 @@ it('preserves native fontScale on untouched objects (round-trip)', async () => {
   expect(xml2).toContain('fontScale="62500"');
   source.dispose();
 });
+
+// Review findings (coordinator review of b611ac6)
+
+it('applies fit to a native shrink object that is not the first on its slide', async () => {
+  const bytes = await writePptx({ title: 'Deck', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [
+    { id: 'first', type: 'text', x: 10, y: 10, w: 100, h: 100, content: 'First' },
+    { id: 'second', type: 'text', x: 10, y: 120, w: 100, h: 100, content: 'Second' },
+  ] }] });
+  const zip = await JSZip.loadAsync(bytes);
+  const part = 'ppt/slides/slide1.xml';
+  const doc = new DOMParser().parseFromString(await zip.file(part).async('string'), 'application/xml');
+  const bodyPrs = doc.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'bodyPr');
+  for (const bp of bodyPrs) {
+    const norm = doc.createElementNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'a:normAutofit');
+    bp.appendChild(norm);
+  }
+  zip.file(part, new XMLSerializer().serializeToString(doc));
+  const patched = await zip.generateAsync({ type: 'uint8array' });
+  const source = await openPresentation(patched, { format: 'pptx' });
+  const doc2 = structuredClone(source.document);
+  const obj = doc2.slides[0].objects.find(o => o.id.includes('second') || (o.text?.paragraphs?.[0]?.runs?.[0]?.text === 'Second'));
+  // Find by text content
+  const secondObj = doc2.slides[0].objects.find(o => o.text?.paragraphs?.[0]?.runs?.[0]?.text === 'Second');
+  secondObj.text.paragraphs[0].runs[0].text = 'Changed second';
+  const fit = new Map([[secondObj.id, { fontScale: 66000, lnSpcReduction: 3000 }]]);
+  const result = await source.export(doc2, { fit });
+  const zip2 = await JSZip.loadAsync(result.bytes);
+  const xml2 = await zip2.file(part).async('string');
+  expect(xml2).toContain('fontScale="66000"');
+  source.dispose();
+});
+
+it('applies fit on geometry-only change of a native shrink object', async () => {
+  const bytes = await nativeShrinkFixture();
+  const source = await openPresentation(bytes, { format: 'pptx' });
+  const doc2 = structuredClone(source.document);
+  const obj = doc2.slides[0].objects.find(o => o.type === 'text');
+  obj.geometry.x += 12700;
+  const fit = new Map([[obj.id, { fontScale: 70000, lnSpcReduction: 4000 }]]);
+  const result = await source.export(doc2, { fit });
+  const zip2 = await JSZip.loadAsync(result.bytes);
+  const xml2 = await zip2.file('ppt/slides/slide1.xml').async('string');
+  expect(xml2).toContain('fontScale="70000"');
+  source.dispose();
+});
+
+it('produces exactly one bodyLayout entry for a native object with an autofit change', async () => {
+  // This tests that synthetic patch doesn't duplicate existing bodyLayout entries
+  const bytes = await nativeShrinkFixture();
+  const source = await openPresentation(bytes, { format: 'pptx' });
+  const doc2 = structuredClone(source.document);
+  const obj = doc2.slides[0].objects.find(o => o.type === 'text');
+  obj.bodyLayout = { ...obj.bodyLayout, autofit: 'shrink', wrap: 'none' };
+  const fit = new Map([[obj.id, { fontScale: 60000, lnSpcReduction: 2000 }]]);
+  const result = await source.export(doc2, { fit });
+  const zip2 = await JSZip.loadAsync(result.bytes);
+  const xml2 = await zip2.file('ppt/slides/slide1.xml').async('string');
+  expect(xml2).toContain('fontScale="60000"');
+  source.dispose();
+});
+
+it('rejects unknown keys in fit values', async () => {
+  const bytes = await writePptx({ title: 'Deck', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [] }] });
+  const source = await openPresentation(bytes, { format: 'pptx' });
+  const doc = structuredClone(source.document);
+  await expect(source.export(doc, { fit: new Map([['x', { fontScale: 1, lnSpcReduction: 0, extra: 1 }]]) })).rejects.toThrow();
+  source.dispose();
+});
+
+it('signed package + fit map + no edits exports byte-identical', async () => {
+  const bytes = await writePptx({ title: 'Deck', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [{ id: 't', type: 'text', x: 10, y: 10, w: 100, h: 100, content: 'Hello' }] }] });
+  const source = await openPresentation(bytes, { format: 'pptx', signed: true });
+  const fit = new Map([['t', { fontScale: 50000, lnSpcReduction: 10000 }]]);
+  // Signed: should still export byte-identical (fit not applied to untouched, and signed blocks edits)
+  const result = await source.export(source.document, { fit });
+  expect(result.bytes).toEqual(new Uint8Array(bytes));
+  source.dispose();
+});

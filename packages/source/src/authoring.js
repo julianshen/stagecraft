@@ -338,25 +338,26 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
         // FU-AUTOFIT-MEASURE: native objects that need a stored shrink measurement but did not
         // have a bodyLayout change get a synthetic patch so their normAutofit is updated.
         if (fitMap) {
-            const snapshotObjects = sourceObjects(snapshot);
-            const baselineToSnapshot = new Map();
-            for (const bo of sourceObjects(baseline)) {
-                const so = snapshotObjects.find(o => o.id === bo.id);
-                if (so) baselineToSnapshot.set(bo, so);
-            }
+            console.log('FITMAP-SIZE', fitMap.size);
+            // Build a Map once: sourceObjects is a generator and .find inside the loop would
+            // consume it, so only the first baseline object could ever map.
+            const snapshotObjects = new Map([...sourceObjects(snapshot)].map(o => [o.id, o]));
             const changedNative = new Set([...(delta.geometries ?? []).map(g => g.object), ...(delta.fills ?? []).map(f => f.object), ...(delta.bodyLayouts ?? []).map(b => b.object)]);
-            for (const [baselineObject, snapshotObject] of baselineToSnapshot) {
+            for (const baselineObject of sourceObjects(baseline)) {
                 if (!baselineObject.source || baselineObject.extensions?.stagecraftAuthored === true) continue;
+                const snapshotObject = snapshotObjects.get(baselineObject.id);
+                if (!snapshotObject) continue;
                 if (snapshotObject.bodyLayout?.autofit !== 'shrink') continue;
                 const fit = fitMap.get?.(snapshotObject.id) ?? fitMap[snapshotObject.id];
                 if (!fit) continue;
                 // Only apply fit to objects that changed (geometry/fill/bodyLayout/text) vs baseline.
                 const textChanged = !equal(baselineObject.text, snapshotObject.text);
-                if (!changedNative.has(snapshotObject) && !textChanged) continue;
+                if (!changedNative.has(baselineObject) && !textChanged) continue;
                 // Only patch if not already covered by a bodyLayout change.
-                if ((delta.bodyLayouts ?? []).some(b => b.object === snapshotObject)) continue;
+                if ((delta.bodyLayouts ?? []).some(b => b.object === baselineObject)) continue;
                 delta.bodyLayouts = delta.bodyLayouts ?? [];
-                delta.bodyLayouts.push({ object: baselineObject, before: baselineObject.bodyLayout, after: { ...snapshotObject.bodyLayout, fit } });
+                // Store fit separately from the layout patch so the layout patch logic is untouched.
+                delta.bodyLayouts.push({ object: baselineObject, before: baselineObject.bodyLayout, after: snapshotObject.bodyLayout, fit });
             }
         }
         for(const {object,before,after} of delta.bodyLayouts ?? []) {
@@ -404,11 +405,11 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
             const bodyPr=child(child(node,'p','txBody'),'a','bodyPr');
             if(!bodyPr) throw new Error('Unsupported text body');
             if(Object.keys(patch).length){ applyPptxBodyLayout(bodyPr, patch); mark(object.source.part); }
-            // FU-AUTOFIT-MEASURE: emit a stored shrink measurement when supplied by the host, for
-            // objects whose autofit is 'shrink' (changed or already native shrink).
-            const fit = fitMap?.get?.(object.id) ?? fitMap?.[object.id];
-            const shrinkAfter = (after?.autofit === 'shrink') || (before?.autofit === 'shrink' && after?.autofit === undefined);
-            if (fit && shrinkAfter && !patch.fit) { applyPptxBodyLayout(bodyPr, { fit }); mark(object.source.part); }
+            // FU-AUTOFIT-MEASURE: emit a stored shrink measurement when supplied by the host, in a
+            // separate step so the layout patch logic above is untouched.
+            const fit = delta.bodyLayouts?.find(b => b.object === object)?.fit ?? (fitMap?.get?.(object.id) ?? fitMap?.[object.id]);
+            const shrinkAfter = after?.autofit === 'shrink';
+            if (fit && shrinkAfter) { applyPptxBodyLayout(bodyPr, { fit }); mark(object.source.part); }
         }
         if(!delta.structures.length && !delta.slideProperties.length) return dirty;
         if(format==='pptx') {

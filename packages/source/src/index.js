@@ -171,6 +171,7 @@ export async function openPresentation(source, options = {}) {
             if (fitMap) {
                 for (const [objectId, value] of fitMap) {
                     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid autofit measurement');
+                    if (Object.keys(value).some(k => k !== 'fontScale' && k !== 'lnSpcReduction')) throw new Error('Invalid autofit measurement');
                     if (!Number.isSafeInteger(value.fontScale) || value.fontScale < 1 || value.fontScale > 100000) throw new Error('Invalid autofit measurement');
                     if (!Number.isSafeInteger(value.lnSpcReduction) || value.lnSpcReduction < 0 || value.lnSpcReduction > 100000) throw new Error('Invalid autofit measurement');
                 }
@@ -269,7 +270,7 @@ export async function openPresentation(source, options = {}) {
             }
             diff(baseline, snapshot);
             const authored = delta.structures.length || delta.geometries.length || delta.fills.length || delta.slideProperties.length
-                || (delta.paragraphFormats?.length ?? 0) || (delta.bodyLayouts?.length ?? 0) || (fitMap && fitMap.size > 0);
+                || (delta.paragraphFormats?.length ?? 0) || (delta.bodyLayouts?.length ?? 0);
             if ((changes.length || authored) && signed)
                 throw new Error('Cannot edit signed source package');
             const limits = { ...options, ...exportOptions };
@@ -288,7 +289,7 @@ export async function openPresentation(source, options = {}) {
             check(exportOptions.signal);
             const docs = new Map();
             const getDoc = async part => { if (!docs.has(part)) docs.set(part, await xmlPart(working, part, xml)); return docs.get(part); };
-            const applyAuthoring = authored ? await prepareAuthoring(working, xml, baseline, delta, getDoc, assets, fitMap, snapshot) : null;
+            const applyAuthoring = (authored || (fitMap && fitMap.size > 0)) ? await prepareAuthoring(working, xml, baseline, delta, getDoc, assets, fitMap, snapshot) : null;
             // FU-CR fix5: coalesce every changed paragraph as a whole, then reconcile each of
             // its runs against the coalesced written text.
             for (const runs of changedParagraphs) {
