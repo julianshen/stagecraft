@@ -5,6 +5,24 @@ import { patchOdp } from './odp.js';
 import { odpFormattingWriter, reservedOdpStyleNames } from './odp-format.js';
 import { createPptxChartParts, createOdpChartParts } from './chart-authoring.js';
 const REL = NS.r + '/';
+// FU-CR: a CRLF split across adjacent runs within ONE paragraph must render a single native
+// break. PowerPoint renders a preserved CR plus the next run's LF as two breaks (native-verified),
+// and a literal CR alone is normalized to LF by any XML parser anyway, so encoding cannot help:
+// instead the writers drop the trailing CR of a run when the next non-empty run of the same
+// paragraph starts with LF (that LF is the single break). Empty runs are skipped by the lookahead;
+// a CR/LF pair across two paragraphs is canonical content and is written as-is. The canonical
+// reopen therefore carries the folded text (the CR is lost) — accepted: native rendering wins
+// over byte identity, and the folded display is unchanged.
+export const coalesceSplitBreaks = runs => {
+  const result = new Array(runs.length);
+  let nextNonEmpty = '';
+  for (let index = runs.length - 1; index >= 0; index--) {
+    const text = runs[index].text;
+    result[index] = text.endsWith('\r') && nextNonEmpty.startsWith('\n') ? text.slice(0, -1) : text;
+    if (text !== '') nextNonEmpty = text;
+  }
+  return result;
+};
 
 const plain = value => !!value && typeof value === 'object' && !Array.isArray(value);
 const paragraphAliases = { algn: 'alignment', lvl: 'level', marL: 'indentStart', marR: 'indentEnd', indent: 'firstLineIndent' };
@@ -230,13 +248,14 @@ function pptxParagraphs(doc, text, ns) {
         const p=element(doc,ns,'p');
         // Authored paragraph formatting is written from the semantic keys the commands store.
         if(paragraph.style && Object.keys(paragraph.style).length) applyPptxParagraphFormat(p, {}, paragraph.style);
-        for(const run of paragraph.runs) {
+        const written=coalesceSplitBreaks(paragraph.runs);
+        for(const [index,run] of paragraph.runs.entries()) {
             const r=element(doc,ns,'r'), properties=element(doc,ns,'rPr');
             for(const [key,value] of Object.entries(run.style ?? {})) if(!['typeface','color'].includes(key)) properties.setAttribute(key,String(value));
             applyPptxRunTypography(properties, run);
             r.appendChild(properties);
-            const t=element(doc,ns,'t');t.textContent=run.text;
-            if(/^\s|\s$/.test(run.text)) t.setAttributeNS(XML_SPACE,'xml:space','preserve');
+            const t=element(doc,ns,'t');t.textContent=written[index];
+            if(/^\s|\s$/.test(written[index])) t.setAttributeNS(XML_SPACE,'xml:space','preserve');
             r.appendChild(t);p.appendChild(r);
         }
         paragraphs.push(p);
@@ -531,7 +550,8 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                 const styleName=paragraphStyleFor(paragraph.style);
                 if(styleName) p.setAttributeNS(NS.text,'text:style-name',styleName);
                 if(paragraph.style?.level&&!inList) throw new Error('Non-list ODP paragraph levels are unsupported');
-                for(const run of paragraph.runs){const placeholder=doc.createTextNode('');p.appendChild(placeholder);const overrides={...(run.style.b!==undefined?{bold:run.style.b==='1'}:{}),...(run.style.i!==undefined?{italic:run.style.i==='1'}:{}),...(run.style.sz!==undefined?{fontSize:Number(run.style.sz)/100}:{}),...(run.style.typeface?{fontFamily:run.style.typeface}:{}),...(run.style.color?{color:run.style.color}:{})};patchOdp(placeholder,run.text,textStyle(overrides));}
+                const written=coalesceSplitBreaks(paragraph.runs);
+                for(let index=0;index<paragraph.runs.length;index++){const run=paragraph.runs[index];const placeholder=doc.createTextNode('');p.appendChild(placeholder);const overrides={...(run.style.b!==undefined?{bold:run.style.b==='1'}:{}),...(run.style.i!==undefined?{italic:run.style.i==='1'}:{}),...(run.style.sz!==undefined?{fontSize:Number(run.style.sz)/100}:{}),...(run.style.typeface?{fontFamily:run.style.typeface}:{}),...(run.style.color?{color:run.style.color}:{})};patchOdp(placeholder,written[index],textStyle(overrides));}
                 return p;
             };
             const fillText=(box,text)=>{
@@ -872,7 +892,7 @@ function patchNotesBody(doc, text) {
         append(textBody, 'a', 'lstStyle');
     }
     for (const paragraph of children(textBody).filter(n => is(n, 'a', 'p'))) textBody.removeChild(paragraph);
-    for (const line of String(text).split('\n')) {
+    for (const line of String(text).split(/\r\n|\r|\n/)) {
         const paragraph = element(doc, 'a', 'p');
         const run = append(paragraph, 'a', 'r');
         append(run, 'a', 'rPr');
@@ -1060,7 +1080,7 @@ function applyOdpSlideProperties({doc,styles,nodes,slide,properties,automaticSty
             let textBox = child(body, 'draw', 'text-box');
             if (!textBox) textBox = append(body, 'draw', 'text-box');
             for (const paragraph of children(textBox).filter(n => is(n, 'text', 'p'))) textBox.removeChild(paragraph);
-            for (const line of String(properties.notes).split('\n')) {
+            for (const line of String(properties.notes).split(/\r\n|\r|\n/)) {
                 const paragraph = append(textBox, 'text', 'p');
                 // Tokenised write (patchOdp) so repeated spaces, tabs and line breaks survive ODF's
                 // whitespace collapsing rules; a bare text node would be normalised by any reader.

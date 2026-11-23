@@ -6,7 +6,7 @@ import { inspectZip } from '@stagecraft/io/zip';
 import { runtime, xmlPart, locate, validText, all, child, children, NS } from './xml.js';
 import { readPptx } from './pptx.js';
 import { readOdp, patchOdp } from './odp.js';
-import { authoringDiff, prepareAuthoring } from './authoring.js';
+import { authoringDiff, prepareAuthoring, coalesceSplitBreaks } from './authoring.js';
 import { odpFormattingWriter } from './odp-format.js';
 const clone = value => cloneJson(value);
 // CT_TextCharacterProperties is ordered. Insert edited children without rebuilding retained XML.
@@ -163,6 +163,30 @@ export async function openPresentation(source, options = {}) {
             // Synchronous clone/validation/diff precede the first await.
             validateDocument(document);
             const snapshot = clone(document), changes = [];
+            // FU-CR: native run-text edits are written one run at a time, so a split CRLF must be
+            // coalesced against the paragraph's post-edit runs (the snapshot) — computed from the
+            // canonical paragraph, not per change. Empty runs are skipped by the lookahead.
+            const forEachParagraph = (owners, fn) => { for (const owner of owners) { const visit = objects => { for (const object of objects ?? []) {
+                const paragraphs = [...(object.text?.paragraphs ?? []), ...(object.table?.rows ?? []).flatMap(row => (row.cells ?? []).flatMap(cell => cell.text?.paragraphs ?? []))];
+                for (const paragraph of paragraphs) fn(paragraph);
+                visit(object.children);
+            } }; visit(owner.objects); } };
+            const runContexts = new Map(), baselineRunById = new Map();
+            const runToChange = new Map(), textChangedRuns = new Set(), otherChangedRuns = new Set(), changedParagraphs = new Set();
+            forEachParagraph([...snapshot.slides, ...snapshot.layouts, ...snapshot.masters], paragraph => {
+                const texts = paragraph.runs.map(run => ({ text: run.text }));
+                paragraph.runs.forEach((run, index) => runContexts.set(run, { texts, index, runs: paragraph.runs }));
+            });
+            forEachParagraph([...baseline.slides, ...baseline.layouts, ...baseline.masters], paragraph => {
+                for (const run of paragraph.runs) baselineRunById.set(run.id, run);
+            });
+            // FU-CR fix5: ONE general rule, applied after the diff. Every paragraph containing a
+            // text-changed run (text or emptiness) is coalesced as a whole over its post-edit run
+            // texts; then every run in it whose coalesced written text differs from what the file
+            // currently holds gets its change replaced (or a new change emitted, writable slot
+            // required). Documented fallback: a run without a writable slot — or one whose only
+            // change is formatting, which cannot also carry text — stays as-is; an extra blank
+            // line is better than failing the export.
             const delta = authoringDiff(baseline, snapshot, (a,b) => diff(a,b));
             function diff(a, b) {
                 if (delta.hook(a,b)) return;
@@ -184,7 +208,13 @@ export async function openPresentation(source, options = {}) {
                         else if (key === 'style') diff(a.style, { ...b.style, overrides: a.style.overrides });
                         else diff(a[key], b[key]);
                     }
-                    if (a.text !== b.text || Object.keys(overrides).length) changes.push({ ...slot, text: b.text, overrides, replaceText: a.text !== b.text });
+                    if (a.text !== b.text || Object.keys(overrides).length) {
+                        const change = { ...slot, text: b.text, overrides, replaceText: a.text !== b.text };
+                        changes.push(change);
+                        runToChange.set(b, change);
+                        if (a.text !== b.text) { textChangedRuns.add(b); changedParagraphs.add(runContexts.get(b)?.runs); }
+                        else otherChangedRuns.add(b);
+                    }
                     return;
                 }
                 for (const key of ak) {
@@ -207,11 +237,19 @@ export async function openPresentation(source, options = {}) {
                                 : !['0', '1', 'true', 'false'].includes(value)))) throw new Error('Invalid direct run formatting');
                             patch[attribute] = value ?? null;
                         }
-                        if (Object.keys(patch).length) changes.push({ ...editableSlots.get(a), formatting: patch });
+                        if (Object.keys(patch).length) {
+                            const change = { ...editableSlots.get(a), formatting: patch };
+                            changes.push(change);
+                            otherChangedRuns.add(b);
+                        }
                     }
                     else if (key === 'text' && typeof a.text === 'string' && editableSlots.has(a) && a.text !== b.text) {
                         validText(b.text);
-                        changes.push({ ...editableSlots.get(a), text: b.text });
+                        const change = { ...editableSlots.get(a), text: b.text };
+                        changes.push(change);
+                        runToChange.set(b, change);
+                        textChangedRuns.add(b);
+                        changedParagraphs.add(runContexts.get(b)?.runs);
                     }
                     else
                         diff(a[key], b[key]);
@@ -239,6 +277,31 @@ export async function openPresentation(source, options = {}) {
             const docs = new Map();
             const getDoc = async part => { if (!docs.has(part)) docs.set(part, await xmlPart(working, part, xml)); return docs.get(part); };
             const applyAuthoring = authored ? await prepareAuthoring(working, xml, baseline, delta, getDoc, assets) : null;
+            // FU-CR fix5: coalesce every changed paragraph as a whole, then reconcile each of
+            // its runs against the coalesced written text.
+            for (const runs of changedParagraphs) {
+                if (!runs) continue;
+                const written = coalesceSplitBreaks(runs.map(run => ({ text: run.text })));
+                for (const [index, run] of runs.entries()) {
+                    const change = runToChange.get(run);
+                    if (change) {
+                        change.text = written[index];
+                        // An ODP change whose only edit was formatting carries replaceText:false;
+                        // once the coalesced text differs from the run's current text, the file
+                        // must be rewritten, so promote it.
+                        if (written[index] !== run.text) change.replaceText = true;
+                        continue;
+                    }
+                    if (written[index] === run.text) continue;
+                    if (otherChangedRuns.has(run)) continue;
+                    const baselineRun = baselineRunById.get(run.id);
+                    const slot = baselineRun ? editableSlots.get(baselineRun) : undefined;
+                    if (!slot) continue;
+                    const newChange = { ...slot, text: written[index], ...(slot.kind === 'odp' ? { overrides: {}, replaceText: true } : {}) };
+                    changes.push(newChange);
+                    runToChange.set(run, newChange);
+                }
+            }
             let dirtyParts = [...new Set(changes.map(c => c.part))].sort();
             for (const part of dirtyParts) {
                 const doc = await getDoc(part);
