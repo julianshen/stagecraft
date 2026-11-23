@@ -2355,4 +2355,78 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
       expect.any(Object),
     );
   });
+
+  it('clears stale range East Asian / Complex script drafts on unrelated revision, same-value new selection, and readOnly toggle', () => {
+    const doc = createDocument({
+      id: 'stale-font-drafts',
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 't1',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              runs: [
+                { id: 'r1', text: 'First', editable: true, style: { eastAsian: 'Songti TC', complexScript: '+mn-cs' }, extensions: { stagecraftAuthored: true } },
+                { id: 'r2', text: 'Second', editable: true, style: { eastAsian: 'PingFang SC', complexScript: '+mn-cs' }, extensions: { stagecraftAuthored: true } },
+              ],
+            }],
+          },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = { capabilities: { readOnly: false, edits: ['object-text', 'run-range-format', 'existing-run-format'] }, export: vi.fn() };
+    const { rerender } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    fireEvent.click(screen.getAllByLabelText('Select object t1')[0]);
+    const rangeArea = screen.getByLabelText('Select text range');
+    const rangeEa = screen.getByLabelText('Range East Asian text font');
+    const rangeCs = screen.getByLabelText('Range Complex script font');
+
+    // 1. Unrelated revision clears half-typed EA draft
+    rangeArea.selectionStart = 0;
+    rangeArea.selectionEnd = 11; // "FirstSecond" (mixed EA)
+    fireEvent.select(rangeArea);
+    fireEvent.change(rangeEa, { target: { value: 'DraftEA' } });
+    expect(rangeEa).toHaveValue('DraftEA');
+    act(() => {
+      editor.dispatch('document.setRunFormat', { runId: 'r1', format: { bold: true } });
+    });
+    expect(rangeEa).toHaveValue('');
+
+    // 2. Same-value new selection clears half-typed CS draft
+    rangeArea.selectionStart = 0;
+    rangeArea.selectionEnd = 5; // "First" (+mn-cs)
+    fireEvent.select(rangeArea);
+    expect(rangeCs).toHaveValue('+mn-cs');
+    fireEvent.change(rangeCs, { target: { value: 'DraftCS' } });
+    expect(rangeCs).toHaveValue('DraftCS');
+    rangeArea.selectionStart = 5;
+    rangeArea.selectionEnd = 11; // "Second" (also +mn-cs)
+    fireEvent.select(rangeArea);
+    expect(rangeCs).toHaveValue('+mn-cs');
+
+    // 3. readOnly on -> off clears half-typed EA draft
+    fireEvent.change(rangeEa, { target: { value: 'DraftEA2' } });
+    expect(rangeEa).toHaveValue('DraftEA2');
+    rerender(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} readOnly />
+      </EditorProvider>
+    );
+    rerender(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} readOnly={false} />
+      </EditorProvider>
+    );
+    expect(rangeEa).toHaveValue('');
+  });
 });

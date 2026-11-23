@@ -1804,16 +1804,22 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
       }
       setRangeState(null);
       setRangeColor('#000000');
+      setRangeEastAsian('');
+      setRangeComplexScript('');
       return;
     }
     if (!activeSelectionRef.current) {
       setRangeState(null);
+      setRangeEastAsian('');
+      setRangeComplexScript('');
       return;
     }
     const el = textareaRef.current;
     const remapped = el ? mapSelection(el.selectionStart ?? 0, el.selectionEnd ?? 0, revision) : null;
     activeSelectionRef.current = Boolean(remapped);
     setRangeState(remapped);
+    setRangeEastAsian(inspectRangeFontSlot(paragraphs, remapped?.range, 'eastAsian').value);
+    setRangeComplexScript(inspectRangeFontSlot(paragraphs, remapped?.range, 'complexScript').value);
   }, [editor, source, slideId, object.id, object.text, fullText, revision, disabled]);
 
   function handleSelect(event) {
@@ -1823,15 +1829,12 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
     activeSelectionRef.current = Boolean(next);
     setRangeState(next);
     setRangeColor('#000000');
+    setRangeEastAsian(inspectRangeFontSlot(paragraphs, next?.range, 'eastAsian').value);
+    setRangeComplexScript(inspectRangeFontSlot(paragraphs, next?.range, 'complexScript').value);
   }
 
   const eaInfo = inspectRangeFontSlot(paragraphs, rangeState?.range, 'eastAsian');
   const csInfo = inspectRangeFontSlot(paragraphs, rangeState?.range, 'complexScript');
-
-  useEffect(() => {
-    setRangeEastAsian(eaInfo.value);
-    setRangeComplexScript(csInfo.value);
-  }, [eaInfo.value, eaInfo.mixed, csInfo.value, csInfo.mixed]);
 
   const hasRange = Boolean(rangeState?.range) && !disabled;
   const applyRange = format => onApply(rangeState.range, format, rangeState.startRevision);
