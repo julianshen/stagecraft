@@ -61,7 +61,8 @@
   outline: none;
 }
 
-.stagecraft-editor[data-theme="dark"] {
+.stagecraft-editor[data-theme="dark"],
+[data-theme="dark"] .stagecraft-editor:not([data-theme]) {
   --bg:        oklch(0.17 0.01 260);
   --bg-2:      oklch(0.2  0.01 260);
   --bg-3:      oklch(0.235 0.012 260);
@@ -79,14 +80,16 @@
 }
 
 /* density */
-.stagecraft-editor[data-density="compact"] {
+.stagecraft-editor[data-density="compact"],
+[data-density="compact"] .stagecraft-editor:not([data-density]) {
   --topbar-h: 36px;
   --toolbar-h: 32px;
   --statusbar-h: 24px;
   --left-w: 200px;
   --right-w: 272px;
 }
-.stagecraft-editor[data-density="cozy"] {
+.stagecraft-editor[data-density="cozy"],
+[data-density="cozy"] .stagecraft-editor:not([data-density]) {
   --topbar-h: 44px;
   --toolbar-h: 40px;
   --statusbar-h: 32px;
@@ -103,7 +106,36 @@
 .stagecraft-editor *::after { box-sizing: border-box; }
 .stagecraft-editor button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 .stagecraft-editor input,
-.stagecraft-editor textarea { font: inherit; color: inherit; background: none; border: 0; outline: 0; }
+.stagecraft-editor textarea { font: inherit; color: inherit; background: none; border: 0; }
+.stagecraft-editor input:focus:not(:focus-visible),
+.stagecraft-editor textarea:focus:not(:focus-visible) { outline: none; }
+.stagecraft-editor :is(
+  .btn,
+  .iconbtn,
+  .topbar-nav .tab,
+  .inspector-tabs button,
+  .seg button,
+  .menu-item,
+  .ctx-item,
+  .theme-opt,
+  .text-opt,
+  .cmp-item,
+  .chip,
+  .slide-thumb,
+  .sorter-card,
+  input,
+  textarea,
+  select
+):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.stagecraft-editor[data-theme="dark"] .theme-sw,
+[data-theme="dark"] .stagecraft-editor:not([data-theme]) .theme-sw,
+.stagecraft-editor[data-theme="dark"] .swatch,
+[data-theme="dark"] .stagecraft-editor:not([data-theme]) .swatch {
+  border-color: oklch(1 0 0 / 0.18);
+}
 .stagecraft-editor ::selection { background: var(--accent-wash); }
 @keyframes stagecraft-spin { to { transform: rotate(360deg); } }
 
@@ -275,7 +307,7 @@
   display: grid; place-items: center;
   color: var(--ink-2);
 }
-.stagecraft-editor .cmp-item:hover .cmp-ic { background: var(--accent); color: white; }
+.stagecraft-editor .cmp-item:hover .cmp-ic { background: var(--accent); color: var(--accent-ink); }
 .stagecraft-editor .cmp-meta { display: flex; flex-direction: column; min-width: 0; }
 .stagecraft-editor .cmp-name { font-size: 12.5px; font-weight: 550; color: var(--ink); }
 .stagecraft-editor .cmp-item:hover .cmp-name { color: var(--accent); }
@@ -505,7 +537,7 @@
 .stagecraft-editor .btn.primary:hover { background: var(--ink); opacity: 0.9; }
 .stagecraft-editor .btn.accent {
   background: var(--accent);
-  color: white;
+  color: var(--accent-ink);
   font-weight: 550;
 }
 .stagecraft-editor .btn.accent:hover { background: var(--accent-2); }
@@ -1071,10 +1103,10 @@
   cursor: pointer;
 }
 /* .active = keyboard highlight (the ⌘K palette's rows reuse this item style). */
-.stagecraft-editor .ctx-item:hover, .stagecraft-editor .ctx-item.active { background: var(--accent); color: white; }
-.stagecraft-editor .ctx-item:hover .kbd, .stagecraft-editor .ctx-item.active .kbd { color: white; border-color: transparent; background: rgba(255,255,255,0.15); }
+.stagecraft-editor .ctx-item:hover, .stagecraft-editor .ctx-item.active { background: var(--accent); color: var(--accent-ink); }
+.stagecraft-editor .ctx-item:hover .kbd, .stagecraft-editor .ctx-item.active .kbd { color: var(--accent-ink); border-color: transparent; background: rgba(255,255,255,0.15); }
 .stagecraft-editor .ctx-item .ico { width: 14px; color: var(--ink-3); }
-.stagecraft-editor .ctx-item:hover .ico, .stagecraft-editor .ctx-item.active .ico { color: white; }
+.stagecraft-editor .ctx-item:hover .ico, .stagecraft-editor .ctx-item.active .ico { color: var(--accent-ink); }
 .stagecraft-editor .ctx-item .lbl { flex: 1; }
 .stagecraft-editor .ctx-item .kbd { margin-left: 12px; }
 .stagecraft-editor .ctx-sep {
@@ -1245,9 +1277,9 @@
 .stagecraft-editor .new-card.primary .preview {
   background: oklch(0 0 0 / 0.2);
   display: grid; place-items: center;
-  color: rgba(255,255,255,0.9);
+  color: var(--bg);
 }
-.stagecraft-editor .new-card.primary .meta { color: oklch(0.7 0 0); }
+.stagecraft-editor .new-card.primary .meta { color: color-mix(in oklch, var(--bg) 70%, transparent); }
 
 .stagecraft-editor .section-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -1933,13 +1965,13 @@
   font-family: var(--f-mono);
   font-size: 14px; font-weight: 600;
 }
-.stagecraft-editor .provider-card.active .provider-mark { background: var(--accent); color: white; }
+.stagecraft-editor .provider-card.active .provider-mark { background: var(--accent); color: var(--accent-ink); }
 .stagecraft-editor .provider-name { font-size: 12.5px; font-weight: 600; }
 .stagecraft-editor .provider-hint { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
 .stagecraft-editor .provider-check {
   position: absolute; top: 8px; right: 8px;
   width: 16px; height: 16px; border-radius: 50%;
-  background: var(--accent); color: white;
+  background: var(--accent); color: var(--accent-ink);
   display: grid; place-items: center;
 }
 
