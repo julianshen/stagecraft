@@ -169,21 +169,23 @@ export async function openPresentation(source, options = {}) {
             let fitMap = exportOptions.fit instanceof Map ? exportOptions.fit
                 : (exportOptions.fit && typeof exportOptions.fit === 'object') ? new Map(Object.entries(exportOptions.fit)) : null;
             if (fitMap) {
-                for (const [objectId, value] of fitMap) {
-                    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid autofit measurement');
-                    if (Object.keys(value).some(k => k !== 'fontScale' && k !== 'lnSpcReduction')) throw new Error('Invalid autofit measurement');
-                    if (!Number.isSafeInteger(value.fontScale) || value.fontScale < 1 || value.fontScale > 100000) throw new Error('Invalid autofit measurement');
-                    if (!Number.isSafeInteger(value.lnSpcReduction) || value.lnSpcReduction < 0 || value.lnSpcReduction > 100000) throw new Error('Invalid autofit measurement');
-                }
-                // FU-AUTOFIT-MEASURE-PR1 bot1: snapshot the validated values so a host mutating the
-                // original Map or value objects while the export is pending cannot inject unvalidated
-                // values downstream. Frozen; keyed by String(id).
+                // FU-AUTOFIT-MEASURE-PR1 bot1/bot2: read each value ONCE into locals, validate the
+                // locals, then freeze those locals. A getter/Proxy cannot pass validation and then
+                // yield a different value on a later read. Snapshot into a fresh Map keyed by
+                // String(id); do not mutate the caller's exportOptions.fit.
                 const frozen = new Map();
                 for (const [objectId, value] of fitMap) {
-                    frozen.set(String(objectId), Object.freeze({ fontScale: value.fontScale, lnSpcReduction: value.lnSpcReduction }));
+                    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid autofit measurement');
+                    const keys = Object.keys(value);
+                    if (keys.some(k => k !== 'fontScale' && k !== 'lnSpcReduction')) throw new Error('Invalid autofit measurement');
+                    // Read once into locals; all subsequent checks and the freeze use these.
+                    const fontScale = value.fontScale;
+                    const lnSpcReduction = value.lnSpcReduction;
+                    if (!Number.isSafeInteger(fontScale) || fontScale < 1 || fontScale > 100000) throw new Error('Invalid autofit measurement');
+                    if (!Number.isSafeInteger(lnSpcReduction) || lnSpcReduction < 0 || lnSpcReduction > 100000) throw new Error('Invalid autofit measurement');
+                    frozen.set(String(objectId), Object.freeze({ fontScale, lnSpcReduction }));
                 }
                 fitMap = frozen;
-                exportOptions.fit = frozen;
             }
             // FU-CR: native run-text edits are written one run at a time, so a split CRLF must be
             // coalesced against the paragraph's post-edit runs (the snapshot) — computed from the

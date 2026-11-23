@@ -252,3 +252,35 @@ it('snapshots fit values before the first await (mutation during export)', async
   expect(xml2).not.toContain('fontScale="1"');
   source.dispose();
 });
+
+// Bot review fix2 (PR #134 bot P2, 2nd round): read each value ONCE.
+it('snapshots fit values before the first await, defeating a getter that changes (bot2)', async () => {
+  const bytes = await writePptx({ title: 'Deck', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [{ id: 't', type: 'text', x: 10, y: 10, w: 100, h: 100, content: 'Hello world text that overflows', bold: true, fontSize: 18 }] }] });
+  const zip = await JSZip.loadAsync(bytes);
+  const part = 'ppt/slides/slide1.xml';
+  const doc = new DOMParser().parseFromString(await zip.file(part).async('string'), 'application/xml');
+  const bodyPr = doc.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'bodyPr')[0];
+  const ns = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+  const norm = doc.createElementNS(ns, 'a:normAutofit');
+  bodyPr.appendChild(norm);
+  zip.file(part, new XMLSerializer().serializeToString(doc));
+  const patched = await zip.generateAsync({ type: 'uint8array' });
+  const source = await openPresentation(patched, { format: 'pptx' });
+  const doc2 = structuredClone(source.document);
+  const obj = doc2.slides[0].objects.find(o => o.type === 'text');
+  obj.text.paragraphs[0].runs[0].text = 'Changed text';
+  // A value whose fontScale getter returns 77500 on the first read and 1 on later reads.
+  let reads = 0;
+  const sneaky = {};
+  Object.defineProperty(sneaky, 'fontScale', { get() { reads++; return reads === 1 ? 77500 : 1; } });
+  Object.defineProperty(sneaky, 'lnSpcReduction', { get() { return 5000; } });
+  const fit = new Map([[obj.id, sneaky]]);
+  const result = await source.export(doc2, { fit });
+  const zip2 = await JSZip.loadAsync(result.bytes);
+  const xml2 = await zip2.file(part).async('string');
+  expect(xml2).toContain('fontScale="77500"');
+  expect(xml2).not.toContain('fontScale="1"');
+  // Caller options untouched
+  expect(fit.get(obj.id)).toBe(sneaky);
+  source.dispose();
+});
