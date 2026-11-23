@@ -18,3 +18,4 @@
 .stagecraft-canonical .stagecraft-canonical-format label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .stagecraft-canonical .stagecraft-canonical-format input, .stagecraft-canonical .stagecraft-canonical-format select { width: 105px; min-width: 0; padding: 4px; color: #202637; background: white; border: 1px solid #b8c3d6; border-radius: 4px; }
 .stagecraft-canonical .stagecraft-canonical-format:disabled { opacity: .6; }
+.stagecraft-canonical :is(button, input, textarea, select):focus-visible { outline: 2px solid var(--accent, #325ed4); outline-offset: 2px; }

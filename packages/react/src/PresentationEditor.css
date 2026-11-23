@@ -13,6 +13,7 @@
 .stagecraft-presentation-thumbnail svg { width:100%; display:block; background:white; }
 .stagecraft-presentation-canvas { flex:1 1 0; min-width:0; padding:28px; overflow:auto; position:relative; background:var(--stagecraft-presentation-background,#eef1f6); }
 .stagecraft-presentation-canvas:focus-visible { outline:2px solid var(--stagecraft-presentation-accent,#2563eb); outline-offset:-2px; }
+.stagecraft-presentation :is(button,input,textarea,select):focus-visible { outline:2px solid var(--accent, var(--stagecraft-presentation-accent,#2563eb)); outline-offset:2px; }
 .stagecraft-presentation-paper { background:white; box-shadow:0 4px 20px #17203320; max-width:none; margin:0 auto; }
 .stagecraft-presentation-paper svg { width:100%; display:block; touch-action:none; }
 .stagecraft-presentation-object { width:100%; height:100%; overflow:hidden; color:#172033; font:16px sans-serif; white-space:pre-wrap; overflow-wrap:anywhere; }
