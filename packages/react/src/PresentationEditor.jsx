@@ -1,7 +1,7 @@
 import { measureShrinkFits, waitForShrinkFonts } from '@stagecraft/renderer';
 import { createContext, useContext, useEffect, useLayoutEffect, useId, useRef, useState } from 'react';
 import { useEditor, useEditorSnapshot } from './EditorProvider.jsx';
-import { runStyle, RunFormatControls } from './CanonicalEditorSurface.jsx';
+import { runStyle, RunFormatControls, formatFontSlotDisplay } from './CanonicalEditorSurface.jsx';
 import { PresentationChart } from './PresentationChart.jsx';
 import {
   usePresentationPlugins,
@@ -1484,14 +1484,14 @@ function ChartPropertiesFields({ object, editor, source, canEdit, onCommit, onEr
   );
 }
 
-const RUN_STYLE_KEYS = { bold: 'b', italic: 'i', fontSize: 'sz', fontFamily: 'typeface', color: 'color' };
+const RUN_STYLE_KEYS = { bold: 'b', italic: 'i', fontSize: 'sz', fontFamily: 'typeface', eastAsian: 'eastAsian', complexScript: 'complexScript', color: 'color' };
 function applyAuthoredRunFormat(run, format) {
   const nextStyle = { ...(run.style ?? {}) };
   for (const [key, value] of Object.entries(format)) {
     const styleKey = RUN_STYLE_KEYS[key];
     if (!styleKey) continue;
     if (value === null) delete nextStyle[styleKey];
-    else if (key === 'fontFamily') nextStyle.typeface = value;
+    else if (['fontFamily', 'eastAsian', 'complexScript'].includes(key)) nextStyle[styleKey] = value;
     else if (key === 'color') nextStyle.color = value.toLowerCase();
     else if (key === 'fontSize') nextStyle.sz = String(Math.round(value * 100));
     else nextStyle[styleKey] = value ? '1' : '0';
@@ -1741,12 +1741,38 @@ function TextBodyLayoutFields({ object, editor, source, revision, isOdpDoc, disa
   );
 }
 
+function inspectRangeFontSlot(paragraphs, range, styleKey) {
+  if (!range) return { mixed: false, value: '' };
+  const values = new Set();
+  const startP = paragraphs.findIndex(p => p.id === range.start.paragraphId);
+  const endP = paragraphs.findIndex(p => p.id === range.end.paragraphId);
+  if (startP === -1 || endP === -1) return { mixed: false, value: '' };
+  for (let pi = startP; pi <= endP; pi++) {
+    const runs = paragraphs[pi].runs ?? [];
+    const startR = pi === startP ? runs.findIndex(r => r.id === range.start.runId) : 0;
+    const endR = pi === endP ? runs.findIndex(r => r.id === range.end.runId) : runs.length - 1;
+    if (startR === -1 || endR === -1) continue;
+    for (let ri = startR; ri <= endR; ri++) {
+      const run = runs[ri];
+      const len = [...(run.text ?? '')].length;
+      const from = pi === startP && ri === startR ? range.start.offset : 0;
+      const to = pi === endP && ri === endR ? range.end.offset : len;
+      if (Math.min(to, len) > Math.max(from, 0)) values.add(typeof run.style?.[styleKey] === 'string' ? run.style[styleKey] : '');
+    }
+  }
+  if (values.size === 0) return { mixed: false, value: '' };
+  if (values.size > 1) return { mixed: true, value: '' };
+  return { mixed: false, value: [...values][0] };
+}
+
 function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, disabled, onApply }) {
   const paragraphs = object.text?.paragraphs ?? [];
   const fullText = paragraphs.map(p => (p.runs ?? []).map(r => r.text ?? '').join('')).join('\n');
   const [rangeState, setRangeState] = useState(null);
   const [rangeSize, setRangeSize] = useState('');
   const [rangeFont, setRangeFont] = useState('');
+  const [rangeEastAsian, setRangeEastAsian] = useState('');
+  const [rangeComplexScript, setRangeComplexScript] = useState('');
   const [rangeColor, setRangeColor] = useState('#000000');
   const textareaRef = useRef(null);
   const ownerRef = useRef({ editor, source, slideId, objectId: object.id, disabled, fullText });
@@ -1798,6 +1824,14 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
     setRangeState(next);
     setRangeColor('#000000');
   }
+
+  const eaInfo = inspectRangeFontSlot(paragraphs, rangeState?.range, 'eastAsian');
+  const csInfo = inspectRangeFontSlot(paragraphs, rangeState?.range, 'complexScript');
+
+  useEffect(() => {
+    setRangeEastAsian(eaInfo.value);
+    setRangeComplexScript(csInfo.value);
+  }, [eaInfo.value, eaInfo.mixed, csInfo.value, csInfo.mixed]);
 
   const hasRange = Boolean(rangeState?.range) && !disabled;
   const applyRange = format => onApply(rangeState.range, format, rangeState.startRevision);
@@ -1881,7 +1915,44 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
           Apply colour
         </button>
       </div>
-      <small>Range font sets the Latin typeface; East Asian and complex-script fonts are preserved.</small>
+      <details className="stagecraft-font-details">
+        <summary>Font details</summary>
+        {[
+          ['eastAsian', 'East Asian text font', eaInfo, rangeEastAsian, setRangeEastAsian],
+          ['complexScript', 'Complex script font', csInfo, rangeComplexScript, setRangeComplexScript],
+        ].map(([slot, label, info, draft, setDraft]) => (
+          <div key={slot} className="stagecraft-font-slot">
+            <label>
+              Range {label}
+              <input
+                aria-label={`Range ${label}`}
+                type="text"
+                maxLength={64}
+                disabled={!hasRange}
+                placeholder={info.mixed ? 'Mixed' : undefined}
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && hasRange) {
+                    const t = draft.trim();
+                    applyRange({ [slot]: t === '' ? null : t });
+                  }
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              aria-label={`Range reset ${label}`}
+              disabled={!hasRange}
+              onClick={() => applyRange({ [slot]: null })}
+            >
+              Reset
+            </button>
+            {!info.mixed && info.value.startsWith('+') && <small className="stagecraft-font-token">{formatFontSlotDisplay(info.value)}</small>}
+          </div>
+        ))}
+      </details>
+      <small>Range font sets Latin text; use Font details for East Asian and complex-script text.</small>
     </fieldset>
   );
 }

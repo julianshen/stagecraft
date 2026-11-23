@@ -2156,4 +2156,200 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     expect(bulletSelect).toHaveValue('number:romanParenR');
     expect(within(bulletSelect).getByRole('option', { name: 'Number (romanParenR)' })).toBeTruthy();
   });
+
+  it('edits and resets East Asian / complex-script fonts in Font details (PPTX, ODP, theme tokens, mixed range, read-only) while main box sends only fontFamily', () => {
+    // 1. PPTX native run with theme tokens (+mn-ea, +mj-cs) + authored object for range testing
+    const pptxDoc = createDocument({
+      id: 'font-slots-pptx',
+      extensions: { sourceFormat: 'pptx' },
+      slides: [{
+        id: 's1',
+        objects: [
+          {
+            id: 'native-pptx',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
+            source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [0] },
+            text: {
+              paragraphs: [{
+                id: 'p-nat',
+                source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [0, 0] },
+                runs: [{
+                  id: 'r-nat',
+                  text: '日本語',
+                  editable: true,
+                  source: { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [0, 0, 0] },
+                  style: { typeface: 'Calibri', eastAsian: '+mn-ea', complexScript: '+mj-cs' },
+                }],
+              }],
+            },
+          },
+          {
+            id: 'authored-range',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 200 * PT, width: 300 * PT, height: 100 * PT },
+            extensions: { stagecraftAuthored: true },
+            text: {
+              paragraphs: [{
+                id: 'p-auth',
+                runs: [
+                  { id: 'r-a1', text: 'One', editable: true, style: { typeface: 'Arial', eastAsian: 'Songti TC', complexScript: '+mn-cs' }, extensions: { stagecraftAuthored: true } },
+                  { id: 'r-a2', text: 'Two', editable: true, style: { typeface: 'Arial', eastAsian: 'PingFang SC', complexScript: '+mn-cs' }, extensions: { stagecraftAuthored: true } },
+                ],
+              }],
+            },
+          },
+        ],
+      }],
+    });
+    const rawEditor = createEditor({ document: pptxDoc, plugins: [documentPlugin, presentationPlugin] });
+    const dispatchSpy = vi.fn((...args) => rawEditor.dispatch(...args));
+    const editor = { ...rawEditor, dispatch: dispatchSpy };
+    const source = { capabilities: { readOnly: false, edits: ['existing-run-text', 'existing-run-format', 'object-text', 'run-range-format'] }, export: vi.fn() };
+    const { rerender, unmount } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    // Select native PPTX run: theme tokens shown as tokens, never resolved family
+    fireEvent.click(screen.getAllByLabelText('Select object native-pptx')[0]);
+    expect(screen.getByText('Theme (minor East Asian)')).toBeTruthy();
+    expect(screen.getByText('Theme (major Complex script)')).toBeTruthy();
+    const eaRunInput = screen.getByLabelText('East Asian text font run 1');
+    const csRunInput = screen.getByLabelText('Complex script font run 1');
+    expect(eaRunInput).toHaveValue('+mn-ea');
+    expect(csRunInput).toHaveValue('+mj-cs');
+
+    // Main font box sends ONLY fontFamily
+    const mainFontInput = screen.getByLabelText('Font family run 1');
+    fireEvent.change(mainFontInput, { target: { value: 'Georgia' } });
+    fireEvent.blur(mainFontInput);
+    expect(dispatchSpy).toHaveBeenLastCalledWith(
+      'document.setRunFormat',
+      { runId: 'r-nat', format: { fontFamily: 'Georgia' } },
+      expect.any(Object),
+    );
+
+    // Set East Asian & Complex script fonts
+    fireEvent.change(eaRunInput, { target: { value: 'Songti TC' } });
+    fireEvent.blur(eaRunInput);
+    expect(dispatchSpy).toHaveBeenLastCalledWith(
+      'document.setRunFormat',
+      { runId: 'r-nat', format: { eastAsian: 'Songti TC' } },
+      expect.any(Object),
+    );
+    fireEvent.change(csRunInput, { target: { value: 'Geeza Pro' } });
+    fireEvent.blur(csRunInput);
+    expect(dispatchSpy).toHaveBeenLastCalledWith(
+      'document.setRunFormat',
+      { runId: 'r-nat', format: { complexScript: 'Geeza Pro' } },
+      expect.any(Object),
+    );
+
+    // Reset East Asian only -> sends null and preserves fontFamily & complexScript
+    fireEvent.click(screen.getByRole('button', { name: 'Reset east asian text font run 1' }));
+    expect(dispatchSpy).toHaveBeenLastCalledWith(
+      'document.setRunFormat',
+      { runId: 'r-nat', format: { eastAsian: null } },
+      expect.any(Object),
+    );
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[0].style).toMatchObject({
+      typeface: 'Georgia',
+      complexScript: 'Geeza Pro',
+    });
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[0].style.eastAsian).toBeUndefined();
+
+    // Read-only disables Font details inputs and Reset buttons
+    rerender(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} readOnly />
+      </EditorProvider>
+    );
+    expect(screen.getByLabelText('East Asian text font run 1')).toBeDisabled();
+    expect(screen.getByLabelText('Complex script font run 1')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Reset complex script font run 1' })).toBeDisabled();
+
+    // Authored range: mixed East Asian + uniform theme token Complex script
+    rerender(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} readOnly={false} />
+      </EditorProvider>
+    );
+    fireEvent.click(screen.getAllByLabelText('Select object authored-range')[0]);
+    const rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 0;
+    rangeArea.selectionEnd = 6; // "OneTwo"
+    fireEvent.select(rangeArea);
+
+    const rangeEa = screen.getByLabelText('Range East Asian text font');
+    const rangeCs = screen.getByLabelText('Range Complex script font');
+    expect(rangeEa).toHaveAttribute('placeholder', 'Mixed');
+    expect(rangeEa).toHaveValue('');
+    expect(rangeCs).toHaveValue('+mn-cs');
+    expect(screen.getAllByText('Theme (minor Complex script)').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Range font sets Latin text; use Font details for East Asian and complex-script text\./)).toBeTruthy();
+
+    fireEvent.change(rangeEa, { target: { value: 'Yu Mincho' } });
+    fireEvent.keyDown(rangeEa, { key: 'Enter' });
+    expect(dispatchSpy).toHaveBeenLastCalledWith(
+      'document.setRunRangeFormat',
+      expect.objectContaining({ format: { eastAsian: 'Yu Mincho' } }),
+      expect.any(Object),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Range reset Complex script font' }));
+    expect(dispatchSpy).toHaveBeenLastCalledWith(
+      'document.setRunRangeFormat',
+      expect.objectContaining({ format: { complexScript: null } }),
+      expect.any(Object),
+    );
+    unmount();
+
+    // 2. ODP native run overrides
+    const odpDoc = createDocument({
+      id: 'font-slots-odp',
+      extensions: { sourceFormat: 'odp' },
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 'native-odp',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
+          source: { format: 'odp', part: 'content.xml', path: [0] },
+          text: {
+            paragraphs: [{
+              id: 'p-odp',
+              source: { format: 'odp', part: 'content.xml', path: [0, 0] },
+              runs: [{
+                id: 'r-odp',
+                text: '中文',
+                editable: true,
+                source: { format: 'odp', part: 'content.xml', path: [0, 0, 0] },
+                style: { overrides: { eastAsian: 'Noto Sans CJK JP' } },
+              }],
+            }],
+          },
+        }],
+      }],
+    });
+    const rawOdpEditor = createEditor({ document: odpDoc, plugins: [documentPlugin, presentationPlugin] });
+    const odpSpy = vi.fn((...args) => rawOdpEditor.dispatch(...args));
+    const odpEditor = { ...rawOdpEditor, dispatch: odpSpy };
+    render(
+      <EditorProvider editor={odpEditor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+    fireEvent.click(screen.getAllByLabelText('Select object native-odp')[0]);
+    const odpEa = screen.getByLabelText('East Asian text font run 1');
+    expect(odpEa).toHaveValue('Noto Sans CJK JP');
+    fireEvent.change(odpEa, { target: { value: '' } });
+    fireEvent.blur(odpEa);
+    expect(odpSpy).toHaveBeenLastCalledWith(
+      'document.setRunFormat',
+      { runId: 'r-odp', format: { eastAsian: null } },
+      expect.any(Object),
+    );
+  });
 });
