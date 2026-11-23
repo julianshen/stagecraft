@@ -1,7 +1,7 @@
 import React, { useState, useSyncExternalStore } from 'react';
 import { render, fireEvent, cleanup, act } from '@testing-library/react';
 import { afterEach, it, expect, vi } from 'vitest';
-import { cdp } from '@vitest/browser/context';
+import { cdp } from 'vitest/browser';
 import { createEditor } from '../../packages/core/src/editor/index.js';
 import { createDocument, documentPlugin, presentationPlugin } from '../../packages/core/src/document/index.js';
 import { CanonicalKonvaStage } from './CanonicalKonvaStage.jsx';
