@@ -189,8 +189,9 @@ describe('shell stylesheet focus-visible, dark-mode contrast, and ancestor selec
     }
 
     const sourceCss = readCss('apps/playground/src/components/views/SourceWorkspace.css');
-    for (const tok of ['var(--ink,', 'var(--bg,', 'var(--ink-3,', 'var(--accent,', 'var(--panel,', 'var(--danger,', 'var(--f-sans,', 'var(--radius']) {
+    for (const tok of ['var(--ink,', 'var(--bg,', 'var(--ink-3,', 'var(--accent,', 'var(--panel,', 'var(--danger,', 'var(--danger-wash, #fff1f2)', 'var(--f-sans,', 'var(--radius']) {
       expect(sourceCss, `SourceWorkspace.css missing ${tok}`).toContain(tok);
     }
+    expect(sourceCss).not.toContain('color-mix(');
   });
 });

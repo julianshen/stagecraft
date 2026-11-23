@@ -8,5 +8,5 @@
 .stagecraft-source-workspace .source-open input { max-width: 270px; }
 .stagecraft-source-workspace .source-file-name { font-size: 13px; color: var(--ink-3, #526078); }
 .stagecraft-source-workspace .source-empty { padding: 40px; border: 1px dashed var(--line-2, #aab5c6); border-radius: var(--radius-l, 12px); background: var(--panel, white); max-width: 850px; }
-.stagecraft-source-workspace [role="alert"] { color: var(--danger, #9d202b); background: color-mix(in oklch, var(--danger, #9d202b) 8%, var(--panel, #fff1f2)); padding: 12px; border-radius: var(--radius, 6px); }
+.stagecraft-source-workspace [role="alert"] { color: var(--danger, #9d202b); background: var(--danger-wash, #fff1f2); padding: 12px; border-radius: var(--radius, 6px); }
 .stagecraft-source-workspace :is(a, button, input, select, textarea):focus-visible { outline: 2px solid var(--accent, #334fb1); outline-offset: 2px; }
