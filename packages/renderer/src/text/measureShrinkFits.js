@@ -22,21 +22,61 @@ export function scaledTextBody(body, { fontScale, lnSpcReduction }) {
     ...(p.spaceAfter ? { spaceAfter: { ...p.spaceAfter, value: p.spaceAfter.value * scale } } : {}),
   })) };
 }
-function fontsReady(body, theme, fonts, checked) {
+function* fontQueries(body, theme) {
   for (const paragraph of body.paragraphs) for (const run of paragraph.runs) {
-    // The layout engine selects script fonts per grapheme, not per whole mixed-script run.
     for (const text of new Set(graphemes(run.text || ' ').map(g => g.text))) {
       const family = resolveTextFamily({ ...run, text }, theme);
-      const shorthand = fontShorthand({ ...run, fontFamily: family }, canvasFont);
-      const key = JSON.stringify([shorthand, text]);
-      if (!checked.has(key)) {
-        try { if (!fonts.check(shorthand, text)) return false; }
-        catch { return false; }
-        checked.add(key);
-      }
+      yield { shorthand: fontShorthand({ ...run, fontFamily: family }, canvasFont), text };
+    }
+  }
+}
+function fontsReady(body, theme, fonts, checked) {
+  for (const { shorthand, text } of fontQueries(body, theme)) {
+    const key = JSON.stringify([shorthand, text]);
+    if (!checked.has(key)) {
+      try { if (!fonts.check(shorthand, text)) return false; }
+      catch { return false; }
+      checked.add(key);
     }
   }
   return true;
+}
+function* shrinkBodies(document) {
+  for (const slide of document.slides ?? []) {
+    const theme = themeForSlide(document, slide);
+    // Group-relative transforms are not represented by this adapter yet.
+    for (const object of slide.objects ?? []) {
+      if (object.bodyLayout?.autofit !== 'shrink') continue;
+      const a = canonicalTextBody(object, theme);
+      if (a?.body.paragraphs.some(p => p.runs.some(r => r.text.trim()))) yield { object, ...a };
+    }
+  }
+}
+
+/** Load only the captured snapshot's measurable shrink fonts; failure is an optional-fit fallback. */
+export async function waitForShrinkFonts(document, { fonts = globalThis.document?.fonts, timeoutMs = 2000 } = {}) {
+  if (!fonts?.load || !fonts?.check) return false;
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(async () => {
+        const queries = new Map();
+        for (const { body, theme } of shrinkBodies(document)) for (const { shorthand, text } of fontQueries(body, theme)) {
+          if (!queries.has(shorthand)) queries.set(shorthand, new Set());
+          queries.get(shorthand).add(text);
+        }
+        if (!queries.size) return true;
+        await Promise.all([...queries].map(([shorthand, chars]) => {
+          const text = [...chars].join('');
+          return fonts.check(shorthand, text) ? undefined : fonts.load(shorthand, text);
+        }));
+        await fonts.ready;
+        return fonts.status === 'loaded' && [...queries].every(([shorthand, chars]) => fonts.check(shorthand, [...chars].join('')));
+      }),
+      new Promise(resolve => { timer = setTimeout(() => resolve(false), timeoutMs); }),
+    ]);
+  } catch { return false; }
+  finally { clearTimeout(timer); }
 }
 
 /** Synchronous browser measurement. Host must finish font loading before calling. */
@@ -46,24 +86,18 @@ export function measureShrinkFits(document, { fonts = globalThis.document?.fonts
   const ctx = (canvas ?? globalThis.document?.createElement('canvas'))?.getContext('2d');
   if (!ctx) return fits;
   const measure = createTextBodyMeasurer(ctx, canvasFont), checked = new Set();
-  for (const slide of document.slides ?? []) {
-    const theme = themeForSlide(document, slide);
-    // Group-relative transforms are not represented by this adapter yet.
-    for (const object of slide.objects ?? []) {
-      if (object.bodyLayout?.autofit !== 'shrink') continue;
-      const a = canonicalTextBody(object, theme);
-      if (!a || !a.body.paragraphs.some(p => p.runs.some(r => r.text.trim()))) continue;
-      if (!fontsReady(a.body, theme, fonts, checked)) return new Map();
-      const height = body => layoutTextBody(body, a.width, a.height, measure, theme).height;
-      const initialHeight = height(a.body);
-      if (initialHeight <= a.availableHeight) continue;
-      let selected;
-      search: for (const fontScale of SHRINK_FIT_POLICY.fontScales) for (const lnSpcReduction of SHRINK_FIT_POLICY.lineReductions) {
-        selected = { fontScale, lnSpcReduction };
-        if ((fontScale === 100000 && lnSpcReduction === 0 ? initialHeight : height(scaledTextBody(a.body, selected))) <= a.availableHeight * SHRINK_FIT_POLICY.heightMargin) break search;
-      }
-      fits.set(object.id, selected);
+  for (const a of shrinkBodies(document)) {
+    const { object, theme } = a;
+    if (!fontsReady(a.body, theme, fonts, checked)) return new Map();
+    const height = body => layoutTextBody(body, a.width, a.height, measure, theme).height;
+    const initialHeight = height(a.body);
+    if (initialHeight <= a.availableHeight) continue;
+    let selected;
+    search: for (const fontScale of SHRINK_FIT_POLICY.fontScales) for (const lnSpcReduction of SHRINK_FIT_POLICY.lineReductions) {
+      selected = { fontScale, lnSpcReduction };
+      if ((fontScale === 100000 && lnSpcReduction === 0 ? initialHeight : height(scaledTextBody(a.body, selected))) <= a.availableHeight * SHRINK_FIT_POLICY.heightMargin) break search;
     }
+    fits.set(object.id, selected);
   }
   return fits;
 }
