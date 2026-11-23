@@ -97,6 +97,8 @@ export default defineConfig({
         'packages/renderer/src/canvas/scene.js',
         'packages/renderer/src/canvas/paint.js',
         'packages/renderer/src/canvas/assets.js',
+        'packages/renderer/src/text/canonicalTextBody.js',
+        'packages/renderer/src/text/measureShrinkFits.js',
         'packages/react/src/components/ui/SlideCanvas.jsx',
         'apps/playground/src/hooks/useDeckSync.js',
         'packages/react/src/hooks/useReorderDrag.js',

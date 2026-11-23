@@ -5,6 +5,57 @@ import { readPptxParagraphStyle, readPptxBodyLayout } from './authoring.js';
 const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/';
 const paragraphRuns = p => children(p).filter(n => !is(n, 'a', 'pPr') && !is(n, 'a', 'endParaRPr'));
 const runText = r => child(r, 'a', 't')?.textContent ?? (is(r, 'a', 'br') ? '\n' : r.textContent ?? '');
+// Only ordinary first-level defaults are supported; custom inherited metrics remain opaque.
+function plainTextDefaults(node) {
+    if (!node) return true;
+    for (const p of children(node).filter(n => is(n, 'a', 'defPPr') || is(n, 'a', 'lvl1pPr'))) {
+        const harmless = { marL: '0', marR: '0', indent: '0', algn: 'l', defTabSz: '914400', rtl: '0', eaLnBrk: '1', latinLnBrk: '0', hangingPunct: '1' };
+        if (Object.entries(attrs(p)).some(([key, value]) => harmless[key] !== value)) return false;
+        for (const n of children(p)) {
+            if (is(n, 'a', 'buNone')) continue;
+            if (!is(n, 'a', 'defRPr')) return false;
+            if (Object.entries(attrs(n)).some(([key, value]) => key !== 'sz' && !(key === 'kern' && value === '1200') && !(key === 'lang' && value === 'en-US'))) return false;
+            for (const slot of children(n)) {
+                if (is(slot, 'a', 'solidFill')) continue;
+                const expected = { latin: '+mn-lt', ea: '+mn-ea', cs: '+mn-cs' }[slot.localName];
+                if (!is(slot, 'a', slot.localName) || !expected || slot.getAttribute('typeface') !== expected) return false;
+            }
+        }
+    }
+    return true;
+}
+/** Whether the projected canonical text contains all metrics this measurer supports. */
+function textMetrics(shape, body) {
+    const ref = child(child(shape, 'p', 'style'), 'a', 'fontRef')?.getAttribute('idx') ?? 'minor';
+    const bodyPr = child(body, 'a', 'bodyPr');
+    const geometries = children(child(shape, 'p', 'spPr')).filter(n => is(n, 'a', 'prstGeom') || is(n, 'a', 'custGeom'));
+    // Other presets/custom geometry can have an inset text rectangle we do not project.
+    const rectangular = geometries.length === 0 || geometries.length === 1
+        && is(geometries[0], 'a', 'prstGeom') && geometries[0].getAttribute('prst') === 'rect'
+        && children(geometries[0]).every(n => is(n, 'a', 'avLst') && children(n).length === 0);
+    const unsupportedAttrs = (node, allowed) => Object.keys(attrs(node)).some(name => !allowed.includes(name));
+    let supported = rectangular && ['major', 'minor'].includes(ref) && !all(shape, 'p', 'ph').length
+        && !children(child(body, 'a', 'lstStyle')).length
+        && !unsupportedAttrs(bodyPr, ['wrap', 'anchor', 'lIns', 'rIns', 'tIns', 'bIns'])
+        && children(bodyPr).every(n => is(n, 'a', n.localName) && ['normAutofit', 'noAutofit', 'spAutoFit'].includes(n.localName));
+    for (const paragraph of children(body).filter(n => is(n, 'a', 'p'))) {
+        const props = child(paragraph, 'a', 'pPr');
+        if (unsupportedAttrs(props, ['algn', 'lvl', 'marL', 'marR', 'indent'])) supported = false;
+        for (const n of children(props)) {
+            const spacing = { lnSpc: 'spcPct', spcBef: 'spcPts', spcAft: 'spcPts' }[n.localName];
+            if (spacing ? !is(n, 'a', n.localName) || children(n).length !== 1 || !is(children(n)[0], 'a', spacing)
+                : !is(n, 'a', 'buNone')) supported = false;
+        }
+        const end = child(paragraph, 'a', 'endParaRPr');
+        if (children(end).length || unsupportedAttrs(end, ['lang', 'dirty'])) supported = false;
+        for (const run of paragraphRuns(paragraph)) {
+            const rp = child(run, 'a', 'rPr');
+            if (!is(run, 'a', 'r') || unsupportedAttrs(rp, ['lang', 'altLang', 'sz', 'b', 'i', 'dirty', 'smtClean', 'u'])) supported = false;
+            if (children(rp).some(n => !is(n, 'a', n.localName) || !['latin', 'ea', 'cs', 'solidFill', 'highlight'].includes(n.localName))) supported = false;
+        }
+    }
+    return { fontRef: ref, supported };
+}
 /** Canonical, previewable table from an a:tbl node (read-only: native cells are not authored). */
 function readTable(frame, part) {
     const tbl = child(child(child(frame, 'a', 'graphic'), 'a', 'graphicData'), 'a', 'tbl');
@@ -83,6 +134,7 @@ export async function readPptx(zip, xml, mapping) {
     const presentation = await xmlPart(zip, main, xml);
     if (!is(presentation.documentElement, 'p', 'presentation'))
         throw new Error('Invalid presentation');
+    d.extensions.pptxTextDefaultsSupported = plainTextDefaults(child(presentation.documentElement, 'p', 'defaultTextStyle'));
     const size = child(presentation.documentElement, 'p', 'sldSz');
     if (size)
         d.size = { width: Number(size.getAttribute('cx')), height: Number(size.getAttribute('cy')) };
@@ -99,6 +151,25 @@ export async function readPptx(zip, xml, mapping) {
         const item = { id: `${kind}:${part}`, source: source('pptx', part, root) };
         entityIds.set(part, item.id);
         d[kind].push(item);
+        if (kind === 'masters') item.extensions = { ...item.extensions, pptxTextDefaultsSupported: plainTextDefaults(child(child(root, 'p', 'txStyles'), 'p', 'otherStyle')) };
+        if (rels(part).some(r => r.type === REL + 'themeOverride')) item.extensions = { ...item.extensions, pptxThemeOverride: true };
+        if (kind === 'themes') {
+            const scheme = child(child(root, 'a', 'themeElements'), 'a', 'fontScheme');
+            if (scheme) {
+                const fonts = {};
+                for (const [key, tag] of [['major', 'majorFont'], ['minor', 'minorFont']]) {
+                    const group = child(scheme, 'a', tag);
+                    if (!group) continue;
+                    fonts[key] = Object.fromEntries([['latin', 'latin'], ['eastAsian', 'ea'], ['complexScript', 'cs']]
+                        .filter(([, slot]) => child(group, 'a', slot)?.hasAttribute('typeface'))
+                        .map(([name, slot]) => [name, child(group, 'a', slot).getAttribute('typeface')]));
+                    fonts[key].supplemental = Object.fromEntries(children(group).filter(n => is(n, 'a', 'font') && n.hasAttribute('script') && n.hasAttribute('typeface'))
+                        .map(n => [n.getAttribute('script'), n.getAttribute('typeface')]));
+                }
+                // Appearance only: source export retains the original theme part.
+                item.extensions = { ...item.extensions, pptxFontScheme: fonts };
+            }
+        }
         if (kind !== 'themes')
             item.objects = objects(child(child(root, 'p', 'cSld'), 'p', 'spTree'), part);
         const edge = { slides: ['slideLayout', 'layouts', 'layoutId'], layouts: ['slideMaster', 'masters', 'masterId'], masters: ['theme', 'themes', 'themeId'] }[kind];
@@ -159,6 +230,7 @@ export async function readPptx(zip, xml, mapping) {
             const layout = readPptxBodyLayout(child(textBody, 'a', 'bodyPr'));
             if (layout && Object.keys(layout).length) o.bodyLayout = layout;
             if (textBody) {
+                o.extensions.pptxTextMetrics = textMetrics(n, textBody);
                 // A filled geometric sp keeps its shape identity so authored shape text and paint
                 // survive a reopen; an unfilled sp with text is a text box.
                 o.type = isGeometricShape && plainFill ? 'shape' : 'text';
