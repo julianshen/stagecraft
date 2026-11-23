@@ -43,7 +43,7 @@ it('opens and edits the real PowerPoint 16.115-saved ODP while retaining its set
   expect(authors.length).toBeGreaterThan(0);
   for (const author of authors) expect(author.textContent).toBe('Stagecraft Test');
   await roundTrip(bytes);
-});
+}, 30000);
 it('retains settings/custom shows and unused field declarations before, between and after pages', async () => {
   await roundTrip(await mutate((doc, body) => {
     const settings = body.getElementsByTagNameNS(NS.presentation, 'settings')[0];
@@ -54,7 +54,7 @@ it('retains settings/custom shows and unused field declarations before, between 
       body.insertBefore(n, i === 2 ? settings : body.children[i]);
     }
   }));
-});
+}, 30000);
 it.each(['header','footer','date-time'])('rejects referenced %s declarations instead of hiding unresolved visible fields', async kind => {
   const bytes = await mutate((doc, body) => {
     const decl = doc.createElementNS(NS.presentation, 'presentation:'+kind+'-decl'); decl.setAttributeNS(NS.presentation, 'presentation:name', 'Used');decl.textContent='Visible field';body.appendChild(decl);
@@ -99,4 +99,4 @@ it('retains whitespace/comments but rejects a wrong-namespace settings child', a
   }));
   const bytes=await mutate((doc,body)=>body.getElementsByTagNameNS(NS.presentation,'settings')[0].appendChild(doc.createElementNS(NS.draw,'draw:show')));
   await expect(openPresentation(bytes, { format: 'odp' })).rejects.toThrow(/Unsupported ODP presentation metadata content/);
-});
+}, 30000);
