@@ -1153,3 +1153,38 @@ describe('exportToPPTX — malformed decks', () => {
     await expect(exportToPPTX({ title: 'x', slides: [] })).resolves.toBe('x.pptx');
   });
 });
+
+describe('export fallback contracts', () => {
+  it.each([
+    ['cover', 'Untitled'], ['agenda', 'Agenda'], ['divider', ''], ['kpi', ''],
+    ['split', ''], ['chart', 'Chart'], ['table', ''], ['text', null], ['risks', ''],
+    ['roadmap', 'Roadmap'], ['future', 'future'], [undefined, ''],
+  ])('exports an untitled %s slide with its specified title fallback', async (layout, title) => {
+    await exportToPPTX(deckWith({ id:'fallback', layout }));
+    expect(rec.slides).toHaveLength(1);
+    if (title === null) expect(rec.slides[0].texts).toEqual([]);
+    else {
+      expect(rec.slides[0].texts[0].t).toBe(title);
+      expect(rec.slides[0].texts[0].o.fontSize).toBeGreaterThan(0);
+    }
+  });
+
+  it('uses neutral KPI color unless good is explicitly true or false', async () => {
+    await exportToPPTX(deckWith({id:'k',layout:'kpi',kpis:[
+      {label:'Up',val:'1',delta:'+1',good:true},
+      {label:'Down',val:'2',delta:'-2',good:false},
+      {label:'Unknown',val:'3',delta:'0'},
+    ]}));
+    const texts=rec.slides[0].texts;
+    expect(texts.find(t=>t.t==='+1').o.color).toBe('2ECC71');
+    expect(texts.find(t=>t.t==='-2').o.color).toBe('E74C3C');
+    expect(texts.find(t=>t.t==='0').o.color).not.toMatch(/2ECC71|E74C3C/);
+  });
+
+  it('uses the full range for non-finite bounds and a stable fallback download name', async () => {
+    const deck={title:'',sections:[{id:'s',slides:['a','b']}],slides:[{id:'a',layout:'text',title:'A'},{id:'b',layout:'text',title:'B'}]};
+    expect(await exportToPPTX(deck,{range:{from:NaN,to:Infinity}})).toBe('presentation.pptx');
+    expect(rec.slides.map(s=>s.texts[0].t)).toEqual(['A','B']);
+    expect(dl.clicks[0].download).toBe('presentation.pptx');
+  });
+});
