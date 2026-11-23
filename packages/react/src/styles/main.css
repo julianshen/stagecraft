@@ -244,7 +244,7 @@
 .stagecraft-editor .theme-opt.on { background: var(--accent-wash); }
 .stagecraft-editor .theme-sw {
   width: 18px; height: 18px;
-  border-radius: 5px;
+  border-radius: var(--radius);
   border: 1px solid oklch(0 0 0 / 0.12);
   flex-shrink: 0;
 }
@@ -314,7 +314,7 @@
 .stagecraft-editor .cmp-ic {
   width: 28px; height: 28px;
   flex-shrink: 0;
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--bg-3);
   display: grid; place-items: center;
   color: var(--ink-2);
@@ -436,7 +436,7 @@
 }
 .stagecraft-editor .logo-mark {
   width: 20px; height: 20px;
-  border-radius: 5px;
+  border-radius: var(--radius);
   background: var(--ink);
   color: var(--bg);
   display: grid; place-items: center;
@@ -565,7 +565,7 @@
   color: var(--ink-3);
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   display: inline-block;
 }
 .stagecraft-editor .btn .kbd { margin-left: 4px; }
@@ -736,7 +736,7 @@
   color: var(--warn);
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: var(--radius-s);
 }
 
 /* mini slide scaling — we render at real size and scale */
@@ -843,7 +843,7 @@
   font-size: 10.5px;
   font-family: var(--f-mono);
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   white-space: nowrap;
 }
 .stagecraft-editor .guide-line {
@@ -872,7 +872,7 @@
   font-weight: 500;
   color: white;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   white-space: nowrap;
   font-family: var(--f-sans);
 }
@@ -897,7 +897,7 @@
 .stagecraft-editor .statusbar .zoom { display: flex; align-items: center; gap: 2px; }
 .stagecraft-editor .statusbar .zoom button {
   width: 20px; height: 20px; display: grid; place-items: center;
-  color: var(--ink-3); border-radius: 3px;
+  color: var(--ink-3); border-radius: var(--radius-s);
 }
 .stagecraft-editor .statusbar .zoom button:hover { background: var(--bg-3); color: var(--ink); }
 .stagecraft-editor .statusbar .zoom .val {
@@ -997,7 +997,7 @@
   flex: 1;
   display: grid; place-items: center;
   color: var(--ink-3);
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   font-size: 12px;
 }
 .stagecraft-editor .seg button.active {
@@ -1023,9 +1023,9 @@
   display: grid; place-items: center;
   width: var(--ctrl-h-sm); height: var(--ctrl-h-sm);
   color: var(--ink-3);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
 }
-.stagecraft-editor .format-toolbar .seg button { width: 26px; }
+.stagecraft-editor .format-toolbar .seg button { width: var(--ctrl-h-sm); }
 .stagecraft-editor .format-toolbar button:hover { color: var(--ink); background: var(--bg); }
 .stagecraft-editor .format-toolbar .fmt-size {
   min-width: 24px;
@@ -1038,7 +1038,7 @@
   width: var(--ctrl-h-sm); height: var(--ctrl-h-sm);
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   background: none;
   cursor: pointer;
 }
@@ -1050,7 +1050,7 @@
 }
 .stagecraft-editor .swatch {
   aspect-ratio: 1;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   border: 1px solid oklch(0 0 0 / 0.1);
   cursor: pointer;
   position: relative;
@@ -1060,7 +1060,7 @@
   position: absolute;
   inset: -2px;
   border: 1.5px solid var(--ink);
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 
 .stagecraft-editor .tokens-row {
@@ -1070,7 +1070,7 @@
 }
 .stagecraft-editor .tokens-row .swatch-s {
   width: 18px; height: 18px;
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   flex-shrink: 0;
 }
 .stagecraft-editor .tokens-row .name { flex: 1; }
@@ -1342,7 +1342,7 @@
   font-family: var(--f-mono);
   font-size: 9.5px;
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   font-weight: 500;
 }
 
@@ -1405,7 +1405,7 @@
 }
 .stagecraft-editor .deck-table .row .mini {
   width: 40px; aspect-ratio: 16/9;
-  border-radius: 3px; overflow: hidden;
+  border-radius: var(--radius-s); overflow: hidden;
   border: 1px solid var(--line);
   flex-shrink: 0;
 }
@@ -1534,7 +1534,7 @@
   flex: 1;
   background: white;
   color: #111;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   overflow: hidden;
   position: relative;
   box-shadow: 0 20px 60px rgba(0,0,0,0.5);
@@ -1585,7 +1585,7 @@
   aspect-ratio: 16/9;
   background: white;
   color: #111;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   overflow: hidden;
   position: relative;
   box-shadow: 0 8px 24px rgba(0,0,0,0.3);
@@ -1594,7 +1594,7 @@
   flex: 1;
   min-height: 0;
   background: rgba(255,255,255,0.05);
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 16px;
   overflow-y: auto;
   font-size: 15px;
@@ -1624,7 +1624,7 @@
 .stagecraft-editor .presenter-bar .muted { color: rgba(255,255,255,0.45); }
 .stagecraft-editor .presenter-bar button {
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   color: rgba(255,255,255,0.8);
   font-family: var(--f-mono);
   font-size: 11px;
@@ -1780,7 +1780,7 @@
   font-family: var(--f-mono);
   font-size: 10px;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   background: var(--bg);
 }
 
@@ -1970,7 +1970,7 @@
 .stagecraft-editor .provider-card.active { border-color: var(--accent); background: var(--accent-wash); }
 .stagecraft-editor .provider-mark {
   width: 34px; height: 34px; flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-l);
   background: var(--ink);
   color: var(--bg);
   display: grid; place-items: center;
@@ -2028,7 +2028,7 @@
 .stagecraft-editor .model-name { font-size: 12.5px; font-weight: 550; }
 .stagecraft-editor .model-tier {
   font-family: var(--f-mono); font-size: 9.5px;
-  padding: 2px 7px; border-radius: 3px;
+  padding: 2px 7px; border-radius: var(--radius-s);
   background: var(--bg-3); color: var(--ink-2);
   letter-spacing: 0.03em;
 }
@@ -2082,7 +2082,7 @@
   background: var(--panel);
 }
 .stagecraft-editor .routing-ic {
-  width: 36px; height: 36px; border-radius: 8px;
+  width: 36px; height: 36px; border-radius: var(--radius-l);
   background: var(--bg-3); color: var(--ink-2);
   display: grid; place-items: center;
 }
@@ -2126,9 +2126,9 @@
 /* usage */
 .stagecraft-editor .usage-bar-wrap { }
 .stagecraft-editor .usage-bar {
-  height: 8px; border-radius: 4px; background: var(--bg-3); overflow: hidden;
+  height: 8px; border-radius: var(--radius-s); background: var(--bg-3); overflow: hidden;
 }
-.stagecraft-editor .usage-fill { height: 100%; background: var(--accent); border-radius: 4px; }
+.stagecraft-editor .usage-fill { height: 100%; background: var(--accent); border-radius: var(--radius-s); }
 .stagecraft-editor .usage-legend {
   display: flex; align-items: center; justify-content: space-between;
   margin-top: 8px; font-size: 12px;
@@ -2182,7 +2182,7 @@
   font-size: 11px;
   padding: 0 6px;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   background: var(--bg);
   color: var(--ink);
 }
@@ -2195,7 +2195,7 @@
   font-size: 12px;
   padding: 6px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--bg);
   color: var(--ink);
 }

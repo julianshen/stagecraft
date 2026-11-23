@@ -194,4 +194,14 @@ describe('shell stylesheet focus-visible, dark-mode contrast, and ancestor selec
     }
     expect(sourceCss).not.toContain('color-mix(');
   });
+
+  it('replaces shell border-radius literals (3/4/5/6/8/10/12px) with --radius tokens in main.css and aligns .format-toolbar .seg button', () => {
+    const disallowed = /\bborder-radius\s*:\s*(3|4|5|6|8|10|12)px\b/;
+    for (const { selector, body } of mainBlocks) {
+      expect(body, `hardcoded border-radius in ${selector}`).not.toMatch(disallowed);
+    }
+    const fmtSegBtn = mainBlocks.find(b => b.selector === '.stagecraft-editor .format-toolbar .seg button');
+    expect(fmtSegBtn).toBeTruthy();
+    expect(fmtSegBtn.body).toContain('var(--ctrl-h-sm)');
+  });
 });
