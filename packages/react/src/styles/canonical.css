@@ -5,7 +5,7 @@
 .stagecraft-canonical button[aria-current] { background: var(--accent-wash, #dce7ff); border-color: var(--accent, #325ed4); }
 .stagecraft-canonical .stagecraft-canonical-workspace { display: grid; grid-template-columns: 150px minmax(200px, 1fr) 250px; gap: 16px; align-items: start; }
 .stagecraft-canonical nav, .stagecraft-canonical aside { display: grid; gap: 10px; max-height: 650px; overflow: auto; }
-.stagecraft-canonical textarea { display: block; box-sizing: border-box; width: 100%; min-height: 76px; padding: 8px; border: 1px solid var(--line-2, #b8c3d6); border-radius: var(--radius, 6px); font: inherit; color: var(--ink, #202637); background: var(--panel, white); }
+.stagecraft-canonical textarea { display: block; box-sizing: border-box; width: 100%; min-height: 76px; padding: 8px; border: 1px solid var(--line-2, #b8c3d6); border-radius: var(--radius, 6px); font: inherit; color: var(--ink, FieldText); background: var(--panel, Field); }
 .stagecraft-canonical textarea[readonly] { background: var(--bg-3, #e4e8ef); }
 .stagecraft-canonical .stagecraft-canonical-preview svg { display: block; width: 100%; box-shadow: 0 2px 12px #20263720; }
 .stagecraft-canonical .stagecraft-canonical-text { font: 48px/1.2 Arial, sans-serif; color: #111; white-space: pre-wrap; overflow-wrap: anywhere; }

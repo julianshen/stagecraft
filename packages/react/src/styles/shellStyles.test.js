@@ -184,7 +184,7 @@ describe('shell stylesheet focus-visible, dark-mode contrast, and ancestor selec
     }
 
     const canonicalCss = readCss('packages/react/src/styles/canonical.css');
-    for (const tok of ['var(--ink,', 'var(--bg-2,', 'var(--line,', 'var(--panel,', 'var(--accent,', 'var(--danger,', 'var(--f-sans,', 'var(--radius']) {
+    for (const tok of ['var(--ink,', 'var(--bg-2,', 'var(--line,', 'var(--panel,', 'var(--accent,', 'var(--danger,', 'var(--f-sans,', 'var(--radius', 'color: var(--ink, FieldText)', 'background: var(--panel, Field)']) {
       expect(canonicalCss, `canonical.css missing ${tok}`).toContain(tok);
     }
 
