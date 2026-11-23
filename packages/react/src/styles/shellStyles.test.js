@@ -98,10 +98,12 @@ describe('shell stylesheet focus-visible, dark-mode contrast, and ancestor selec
     expect(baseInputRule.body).not.toMatch(/outline\s*:\s*(0|none)\b/i);
   });
 
-  it('supports ancestor [data-theme="dark"] and [data-density] selectors in main.css', () => {
-    expect(mainCss).toContain('[data-theme="dark"] .stagecraft-editor');
-    expect(mainCss).toContain('[data-density="compact"] .stagecraft-editor');
-    expect(mainCss).toContain('[data-density="cozy"] .stagecraft-editor');
+  it('supports ancestor [data-theme="dark"] and [data-density] selectors only when the editor has no own attribute', () => {
+    expect(mainCss).toContain('[data-theme="dark"] .stagecraft-editor:not([data-theme])');
+    expect(mainCss).toContain('[data-density="compact"] .stagecraft-editor:not([data-density])');
+    expect(mainCss).toContain('[data-density="cozy"] .stagecraft-editor:not([data-density])');
+    expect(mainCss).toContain('[data-theme="dark"] .stagecraft-editor:not([data-theme]) .theme-sw');
+    expect(mainCss).toContain('[data-theme="dark"] .stagecraft-editor:not([data-theme]) .swatch');
   });
 
   it('uses theme-aware contrast for .new-card.primary, accent fills, and swatch borders in main.css', () => {

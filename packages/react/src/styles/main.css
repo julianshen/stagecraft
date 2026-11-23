@@ -62,7 +62,7 @@
 }
 
 .stagecraft-editor[data-theme="dark"],
-[data-theme="dark"] .stagecraft-editor {
+[data-theme="dark"] .stagecraft-editor:not([data-theme]) {
   --bg:        oklch(0.17 0.01 260);
   --bg-2:      oklch(0.2  0.01 260);
   --bg-3:      oklch(0.235 0.012 260);
@@ -81,7 +81,7 @@
 
 /* density */
 .stagecraft-editor[data-density="compact"],
-[data-density="compact"] .stagecraft-editor {
+[data-density="compact"] .stagecraft-editor:not([data-density]) {
   --topbar-h: 36px;
   --toolbar-h: 32px;
   --statusbar-h: 24px;
@@ -89,7 +89,7 @@
   --right-w: 272px;
 }
 .stagecraft-editor[data-density="cozy"],
-[data-density="cozy"] .stagecraft-editor {
+[data-density="cozy"] .stagecraft-editor:not([data-density]) {
   --topbar-h: 44px;
   --toolbar-h: 40px;
   --statusbar-h: 32px;
@@ -131,9 +131,9 @@
   outline-offset: 2px;
 }
 .stagecraft-editor[data-theme="dark"] .theme-sw,
-[data-theme="dark"] .stagecraft-editor .theme-sw,
+[data-theme="dark"] .stagecraft-editor:not([data-theme]) .theme-sw,
 .stagecraft-editor[data-theme="dark"] .swatch,
-[data-theme="dark"] .stagecraft-editor .swatch {
+[data-theme="dark"] .stagecraft-editor:not([data-theme]) .swatch {
   border-color: oklch(1 0 0 / 0.18);
 }
 .stagecraft-editor ::selection { background: var(--accent-wash); }
