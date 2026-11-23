@@ -222,3 +222,33 @@ it('reset autofit with fit map does not get fontScale', async () => {
   expect(xml2).not.toContain('fontScale="70000"');
   source.dispose();
 });
+
+// Bot review fix (PR #134 bot P2): fit is retained by reference.
+it('snapshots fit values before the first await (mutation during export)', async () => {
+  const bytes = await writePptx({ title: 'Deck', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [{ id: 't', type: 'text', x: 10, y: 10, w: 100, h: 100, content: 'Hello world text that overflows', bold: true, fontSize: 18 }] }] });
+  const zip = await JSZip.loadAsync(bytes);
+  const part = 'ppt/slides/slide1.xml';
+  const doc = new DOMParser().parseFromString(await zip.file(part).async('string'), 'application/xml');
+  const bodyPr = doc.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'bodyPr')[0];
+  const ns = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+  const norm = doc.createElementNS(ns, 'a:normAutofit');
+  bodyPr.appendChild(norm);
+  zip.file(part, new XMLSerializer().serializeToString(doc));
+  const patched = await zip.generateAsync({ type: 'uint8array' });
+  const source = await openPresentation(patched, { format: 'pptx' });
+  const doc2 = structuredClone(source.document);
+  const obj = doc2.slides[0].objects.find(o => o.type === 'text');
+  obj.text.paragraphs[0].runs[0].text = 'Changed text';
+  const fitValue = { fontScale: 77500, lnSpcReduction: 5000 };
+  const fit = new Map([[obj.id, fitValue]]);
+  // Mutate the original Map and value object before awaiting the export promise.
+  const exportPromise = source.export(doc2, { fit });
+  fitValue.fontScale = 1;
+  fit.set(obj.id, { fontScale: 1, lnSpcReduction: 99999 });
+  const result = await exportPromise;
+  const zip2 = await JSZip.loadAsync(result.bytes);
+  const xml2 = await zip2.file(part).async('string');
+  expect(xml2).toContain('fontScale="77500"');
+  expect(xml2).not.toContain('fontScale="1"');
+  source.dispose();
+});

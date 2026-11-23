@@ -166,7 +166,7 @@ export async function openPresentation(source, options = {}) {
             // FU-AUTOFIT-MEASURE: optional measured shrink values supplied by the host (renderer
             // layer). Map(objectId -> { fontScale, lnSpcReduction }). Validated here; invalid
             // values throw before any write so a bad measurement never lands in the file.
-            const fitMap = exportOptions.fit instanceof Map ? exportOptions.fit
+            let fitMap = exportOptions.fit instanceof Map ? exportOptions.fit
                 : (exportOptions.fit && typeof exportOptions.fit === 'object') ? new Map(Object.entries(exportOptions.fit)) : null;
             if (fitMap) {
                 for (const [objectId, value] of fitMap) {
@@ -175,6 +175,15 @@ export async function openPresentation(source, options = {}) {
                     if (!Number.isSafeInteger(value.fontScale) || value.fontScale < 1 || value.fontScale > 100000) throw new Error('Invalid autofit measurement');
                     if (!Number.isSafeInteger(value.lnSpcReduction) || value.lnSpcReduction < 0 || value.lnSpcReduction > 100000) throw new Error('Invalid autofit measurement');
                 }
+                // FU-AUTOFIT-MEASURE-PR1 bot1: snapshot the validated values so a host mutating the
+                // original Map or value objects while the export is pending cannot inject unvalidated
+                // values downstream. Frozen; keyed by String(id).
+                const frozen = new Map();
+                for (const [objectId, value] of fitMap) {
+                    frozen.set(String(objectId), Object.freeze({ fontScale: value.fontScale, lnSpcReduction: value.lnSpcReduction }));
+                }
+                fitMap = frozen;
+                exportOptions.fit = frozen;
             }
             // FU-CR: native run-text edits are written one run at a time, so a split CRLF must be
             // coalesced against the paragraph's post-edit runs (the snapshot) — computed from the
