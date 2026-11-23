@@ -1798,7 +1798,7 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     const source = { capabilities: { readOnly: false, edits: ['text-body-layout'] }, export: vi.fn() };
     const view = render(<EditorProvider editor={editor}><PresentationEditor source={source} /></EditorProvider>);
     fireEvent.click(screen.getAllByLabelText('Select object shape-with-text')[0]);
-    expect(screen.getByText(/PowerPoint applies shrink-to-fit when the text is next edited there/)).toBeTruthy();
+    expect(screen.getByText('PowerPoint applies shrink-to-fit when the text is next edited there. Exports from this editor include a measured fit; files exported elsewhere may overflow when first opened.')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Text autofit'), { target: { value: 'resize' } });
     expect(screen.getByText(/PowerPoint resizes the shape to fit the text when it is next edited there/)).toBeTruthy();
