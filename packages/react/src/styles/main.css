@@ -41,6 +41,10 @@
   --statusbar-h: 28px;
   --left-w: 220px;
   --right-w: 288px;
+  --ctrl-h: 26px;
+  --ctrl-h-sm: 24px;
+  --ctrl-h-lg: 32px;
+  --pane-pad: 10px 12px;
 
   /* scoped shell defaults */
   box-sizing: border-box;
@@ -87,6 +91,10 @@
   --statusbar-h: 24px;
   --left-w: 200px;
   --right-w: 272px;
+  --ctrl-h: 22px;
+  --ctrl-h-sm: 20px;
+  --ctrl-h-lg: 28px;
+  --pane-pad: 8px 10px;
 }
 .stagecraft-editor[data-density="cozy"],
 [data-density="cozy"] .stagecraft-editor:not([data-density]) {
@@ -95,6 +103,10 @@
   --statusbar-h: 32px;
   --left-w: 240px;
   --right-w: 312px;
+  --ctrl-h: 30px;
+  --ctrl-h-sm: 26px;
+  --ctrl-h-lg: 36px;
+  --pane-pad: 12px 14px;
 }
 
 /* ============================================================
@@ -511,7 +523,7 @@
 
 /* buttons */
 .stagecraft-editor .btn {
-  height: 26px;
+  height: var(--ctrl-h);
   padding: 0 8px;
   font-size: 12.5px;
   font-weight: 500;
@@ -533,7 +545,7 @@
   color: var(--bg);
   font-weight: 550;
 }
-.stagecraft-editor[data-theme="dark"] .btn.primary, [data-theme="dark"] .stagecraft-editor .btn.primary { background: var(--ink); color: var(--bg); }
+.stagecraft-editor[data-theme="dark"] .btn.primary, [data-theme="dark"] .stagecraft-editor:not([data-theme]) .btn.primary { background: var(--ink); color: var(--bg); }
 .stagecraft-editor .btn.primary:hover { background: var(--ink); opacity: 0.9; }
 .stagecraft-editor .btn.accent {
   background: var(--accent);
@@ -541,7 +553,7 @@
   font-weight: 550;
 }
 .stagecraft-editor .btn.accent:hover { background: var(--accent-2); }
-.stagecraft-editor .btn.lg { height: 32px; padding: 0 14px; font-size: 13px; }
+.stagecraft-editor .btn.lg { height: var(--ctrl-h-lg); padding: 0 14px; font-size: 13px; }
 
 .stagecraft-editor .kbd {
   font-family: var(--f-mono);
@@ -560,7 +572,7 @@
 
 /* icon button */
 .stagecraft-editor .iconbtn {
-  width: 26px; height: 26px;
+  width: var(--ctrl-h); height: var(--ctrl-h);
   border-radius: var(--radius);
   display: grid; place-items: center;
   color: var(--ink-3);
@@ -605,7 +617,7 @@
 .stagecraft-editor .tb-select-value { color: var(--ink); font-weight: 550; }
 
 .stagecraft-editor .select {
-  height: 26px;
+  height: var(--ctrl-h);
   padding: 0 7px;
   font-size: 12px;
   font-weight: 500;
@@ -646,7 +658,7 @@
 .stagecraft-editor .rightpane { border-left: 1px solid var(--line); }
 
 .stagecraft-editor .pane-header {
-  height: 32px;
+  height: var(--ctrl-h-lg);
   flex-shrink: 0;
   padding: 0 10px 0 12px;
   display: flex;
@@ -662,7 +674,7 @@
 }
 .stagecraft-editor .pane-header .actions { display: flex; gap: 2px; }
 .stagecraft-editor .pane-section {
-  padding: 10px 12px;
+  padding: var(--pane-pad);
   border-bottom: 1px solid var(--line);
 }
 .stagecraft-editor .pane-section:last-child { border-bottom: 0; }
@@ -800,7 +812,7 @@
   max-height: calc(100% - 32px);
   max-width: calc(100% - 32px);
 }
-.stagecraft-editor[data-theme="dark"] .slide-frame, [data-theme="dark"] .stagecraft-editor .slide-frame { background: white; color: #111; }
+.stagecraft-editor[data-theme="dark"] .slide-frame, [data-theme="dark"] .stagecraft-editor:not([data-theme]) .slide-frame { background: white; color: #111; }
 
 .stagecraft-editor .slide-scale {
   width: 1920px;
@@ -899,7 +911,7 @@
    ============================================================ */
 .stagecraft-editor .inspector-tabs {
   display: flex;
-  height: 32px;
+  height: var(--ctrl-h-lg);
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
 }
@@ -938,7 +950,7 @@
 .stagecraft-editor .input-group {
   display: flex;
   align-items: center;
-  height: 26px;
+  height: var(--ctrl-h);
   border-radius: var(--radius);
   background: var(--bg);
   border: 1px solid var(--line);
@@ -979,7 +991,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 1px;
-  height: 26px;
+  height: var(--ctrl-h);
 }
 .stagecraft-editor .seg button {
   flex: 1;
@@ -1006,10 +1018,10 @@
   box-shadow: var(--shadow-3);
   user-select: none;
 }
-.stagecraft-editor .format-toolbar .seg { height: 24px; }
+.stagecraft-editor .format-toolbar .seg { height: var(--ctrl-h-sm); }
 .stagecraft-editor .format-toolbar button {
   display: grid; place-items: center;
-  width: 24px; height: 24px;
+  width: var(--ctrl-h-sm); height: var(--ctrl-h-sm);
   color: var(--ink-3);
   border-radius: 4px;
 }
@@ -1023,7 +1035,7 @@
   color: var(--ink-2);
 }
 .stagecraft-editor .format-toolbar input[type="color"] {
-  width: 24px; height: 24px;
+  width: var(--ctrl-h-sm); height: var(--ctrl-h-sm);
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -1442,7 +1454,7 @@
   overflow: hidden;
   background: white;
 }
-.stagecraft-editor[data-theme="dark"] .sorter-card .cover, [data-theme="dark"] .stagecraft-editor .sorter-card .cover { background: white; }
+.stagecraft-editor[data-theme="dark"] .sorter-card .cover, [data-theme="dark"] .stagecraft-editor:not([data-theme]) .sorter-card .cover { background: white; }
 .stagecraft-editor .sorter-card .foot {
   display: flex; align-items: center; justify-content: space-between;
   padding: 6px 10px;
@@ -1681,7 +1693,7 @@
   flex-wrap: wrap;
 }
 .stagecraft-editor .tmpl-filter .chip {
-  height: 26px;
+  height: var(--ctrl-h);
   padding: 0 12px;
   font-size: 12px;
   border-radius: 999px;
@@ -2077,7 +2089,7 @@
 .stagecraft-editor .routing-t { font-size: 12.5px; font-weight: 550; }
 .stagecraft-editor .routing-d { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; }
 .stagecraft-editor .routing-select {
-  height: 32px; border: 1px solid var(--line); justify-content: space-between;
+  height: var(--ctrl-h-lg); border: 1px solid var(--line); justify-content: space-between;
   background: var(--bg); position: relative;
 }
 .stagecraft-editor .routing-select select { width: 100%; padding-right: 18px; }
@@ -2166,7 +2178,7 @@
 .stagecraft-editor .cell-input {
   min-width: 0;
   width: 100%;
-  height: 24px;
+  height: var(--ctrl-h-sm);
   font-size: 11px;
   padding: 0 6px;
   border: 1px solid var(--line);

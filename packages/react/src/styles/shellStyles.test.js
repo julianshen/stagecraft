@@ -138,4 +138,59 @@ describe('shell stylesheet focus-visible, dark-mode contrast, and ancestor selec
       expect(hasFocusVisibleOutline(sourceBlocks, sel), `missing :focus-visible outline for ${sel} in SourceWorkspace.css`).toBe(true);
     }
   });
+
+  it('guards every [data-theme="dark"] .stagecraft-editor ancestor selector with :not([data-theme])', () => {
+    const matches = mainCss.match(/\[data-theme="dark"\]\s+\.stagecraft-editor[^\s,{]*/g) ?? [];
+    expect(matches.length).toBeGreaterThan(0);
+    for (const m of matches) {
+      expect(m, `unguarded dark ancestor selector: ${m}`).toContain(':not([data-theme])');
+    }
+  });
+
+  it('defines and applies density-aware control tokens in main.css', () => {
+    const rootBlock = mainBlocks.find(b => b.selector === '.stagecraft-editor');
+    for (const token of ['--ctrl-h: 26px', '--ctrl-h-sm: 24px', '--ctrl-h-lg: 32px', '--pane-pad: 10px 12px']) {
+      expect(rootBlock.body).toContain(token);
+    }
+    const compactBlock = mainBlocks.find(b => b.selector.includes('[data-density="compact"]'));
+    const cozyBlock = mainBlocks.find(b => b.selector.includes('[data-density="cozy"]'));
+    for (const block of [compactBlock, cozyBlock]) {
+      expect(block.body).toContain('--ctrl-h:');
+      expect(block.body).toContain('--ctrl-h-sm:');
+      expect(block.body).toContain('--ctrl-h-lg:');
+      expect(block.body).toContain('--pane-pad:');
+    }
+    const expectBody = (sel, expected) => {
+      const block = mainBlocks.find(b => b.selector === sel);
+      expect(block, `missing block for ${sel}`).toBeTruthy();
+      expect(block.body).toContain(expected);
+    };
+    for (const sel of ['.stagecraft-editor .btn', '.stagecraft-editor .iconbtn', '.stagecraft-editor .select', '.stagecraft-editor .input-group', '.stagecraft-editor .seg', '.stagecraft-editor .tmpl-filter .chip']) {
+      expectBody(sel, 'var(--ctrl-h)');
+    }
+    for (const sel of ['.stagecraft-editor .format-toolbar .seg', '.stagecraft-editor .format-toolbar button', '.stagecraft-editor .format-toolbar input[type="color"]', '.stagecraft-editor .cell-input']) {
+      expectBody(sel, 'var(--ctrl-h-sm)');
+    }
+    for (const sel of ['.stagecraft-editor .btn.lg', '.stagecraft-editor .pane-header', '.stagecraft-editor .inspector-tabs', '.stagecraft-editor .routing-select']) {
+      expectBody(sel, 'var(--ctrl-h-lg)');
+    }
+    expectBody('.stagecraft-editor .pane-section', 'var(--pane-pad)');
+  });
+
+  it('maps PresentationEditor.css, canonical.css, and SourceWorkspace.css to design.md tokens with light fallbacks', () => {
+    const presCss = readCss('packages/react/src/PresentationEditor.css');
+    for (const tok of ['var(--panel,', 'var(--bg,', 'var(--ink,', 'var(--accent,', 'var(--line,', 'var(--f-sans,', 'var(--radius']) {
+      expect(presCss, `PresentationEditor.css missing ${tok}`).toContain(tok);
+    }
+
+    const canonicalCss = readCss('packages/react/src/styles/canonical.css');
+    for (const tok of ['var(--ink,', 'var(--bg-2,', 'var(--line,', 'var(--panel,', 'var(--accent,', 'var(--danger,', 'var(--f-sans,', 'var(--radius']) {
+      expect(canonicalCss, `canonical.css missing ${tok}`).toContain(tok);
+    }
+
+    const sourceCss = readCss('apps/playground/src/components/views/SourceWorkspace.css');
+    for (const tok of ['var(--ink,', 'var(--bg,', 'var(--ink-3,', 'var(--accent,', 'var(--panel,', 'var(--danger,', 'var(--f-sans,', 'var(--radius']) {
+      expect(sourceCss, `SourceWorkspace.css missing ${tok}`).toContain(tok);
+    }
+  });
 });
