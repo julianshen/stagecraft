@@ -1644,6 +1644,13 @@ function TextBodyLayoutFields({ object, editor, source, revision, isOdpDoc, disa
           <option value="resize">Resize shape</option>
         </select>
       </label>
+      {!isOdpDoc && (autofitVal === 'shrink' || autofitVal === 'resize') ? (
+        <small className="stagecraft-autofit-note">
+          {autofitVal === 'shrink'
+            ? 'PowerPoint applies shrink-to-fit when the text is next edited there; the file may overflow when first opened.'
+            : 'PowerPoint resizes the shape to fit the text when it is next edited there; the file keeps this frame when first opened, so text may overflow or overlap nearby shapes.'}
+        </small>
+      ) : null}
       {isOdpDoc ? (
         <small>ODP supports autofit (none/resize) only.</small>
       ) : (

@@ -1779,6 +1779,63 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     expect(screen.queryByLabelText('Text autofit')).toBeNull();
   });
 
+  it('discloses the PowerPoint autofit limitation for shrink and resize, but not for none/inherit or ODP', () => {
+    const doc = createDocument({
+      id: 'autofit-hint-deck',
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 'shape-with-text',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
+          extensions: { stagecraftAuthored: true },
+          bodyLayout: { autofit: 'shrink' },
+          text: { paragraphs: [{ id: 'p1', runs: [{ id: 'r1', text: 'Hello', editable: true, style: { sz: '2400' }, extensions: { stagecraftAuthored: true } }] }] },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const source = { capabilities: { readOnly: false, edits: ['text-body-layout'] }, export: vi.fn() };
+    const view = render(<EditorProvider editor={editor}><PresentationEditor source={source} /></EditorProvider>);
+    fireEvent.click(screen.getAllByLabelText('Select object shape-with-text')[0]);
+    expect(screen.getByText(/PowerPoint applies shrink-to-fit when the text is next edited there/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Text autofit'), { target: { value: 'resize' } });
+    expect(screen.getByText(/PowerPoint resizes the shape to fit the text when it is next edited there/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Text autofit'), { target: { value: 'none' } });
+    expect(screen.queryByText(/PowerPoint applies shrink-to-fit/)).toBeNull();
+    expect(screen.queryByText(/PowerPoint resizes the shape to fit the text when it is next edited there/)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Text autofit'), { target: { value: '' } });
+    expect(screen.queryByText(/PowerPoint applies shrink-to-fit/)).toBeNull();
+    expect(screen.queryByText(/PowerPoint resizes the shape to fit the text when it is next edited there/)).toBeNull();
+
+    // ODP: shrink is unsupported and no PowerPoint hint is shown.
+    const odpDoc = createDocument({
+      id: 'odp-hint-deck',
+      extensions: { sourceFormat: 'odp' },
+      slides: [{
+        id: 's1',
+        objects: [{
+          id: 'shape-with-text',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
+          extensions: { stagecraftAuthored: true },
+          bodyLayout: { autofit: 'resize' },
+          text: { paragraphs: [{ id: 'p1', runs: [{ id: 'r1', text: 'Hello', editable: true, style: { sz: '2400' }, extensions: { stagecraftAuthored: true } }] }] },
+        }],
+      }],
+    });
+    const odpEditor = createEditor({ document: odpDoc, plugins: [documentPlugin, presentationPlugin] });
+    const odpSource = { capabilities: { readOnly: false, edits: ['text-body-layout'] }, export: vi.fn() };
+    view.unmount();
+    render(<EditorProvider editor={odpEditor}><PresentationEditor source={odpSource} /></EditorProvider>);
+    fireEvent.click(screen.getByLabelText('Select object shape-with-text'));
+    expect(screen.queryByText(/PowerPoint applies shrink-to-fit/)).toBeNull();
+    expect(screen.queryByText(/PowerPoint resizes the shape to fit the text when it is next edited there/)).toBeNull();
+  });
+
   it('commits range color on change (including #000000), preserves selection across Bold->Italic->Unbold->Reset, and shows canonical code-point label after CR', () => {
     const doc = createDocument({
       id: 'range-ux-deck',
