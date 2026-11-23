@@ -129,3 +129,11 @@ it.each(['', '<a:ea typeface=""/>', '<a:ea typeface="+mj-ea"/><a:ea typeface="Ot
     }
   } finally { e.dispose(); source.dispose(); }
 });
+it.each(["'Noto Sans'", '"Noto Sans"'])('reuses a quoted ODP family declaration %s without rewriting its value', value => {
+  const doc = odpDoc('<office:font-face-decls><style:font-face style:name="Quoted"/></office:font-face-decls><office:body/>');
+  elements(doc, 'style', 'font-face')[0].setAttributeNS(NS.svg, 'svg:font-family', value);
+  odpFormattingWriter(doc, reservedOdpStyleNames(doc))({ eastAsian: 'Noto Sans' });
+  expect(elements(doc, 'style', 'font-face')).toHaveLength(1);
+  expect(elements(doc, 'style', 'font-face')[0].getAttributeNS(NS.svg, 'font-family')).toBe(value);
+  expect(elements(doc, 'style', 'text-properties')[0].getAttributeNS(NS.style, 'font-name-asian')).toBe('Quoted');
+});

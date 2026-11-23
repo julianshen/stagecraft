@@ -1,4 +1,6 @@
 import { NS, is, all, child, children, attr } from './xml.js';
+// A single quoted family and its bare spelling identify the same font; leave lists alone.
+const familyKey = value => value.replace(/^(['"])([^'"]*)\1$/, '$2');
 const FO = 'urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0';
 
 /** Bounded paragraph/span preview only; graphic/master defaults remain unresolved. */
@@ -114,6 +116,7 @@ export function odpFormattingWriter(doc, reserved) {
     let section;
     let nextFont = 1, declarations, fontFamilies;
     const fontName = family => {
+        const key = familyKey(family);
         if (!fontFamilies) {
             const sections = children(doc.documentElement).filter(n => is(n, 'office', 'font-face-decls'));
             if (sections.length > 1) throw new Error('Ambiguous font face declarations');
@@ -132,10 +135,10 @@ export function odpFormattingWriter(doc, reserved) {
                     && [...face.attributes].every(a => a.namespaceURI === 'http://www.w3.org/2000/xmlns/'
                         || a.namespaceURI === NS.style && a.localName === 'name'
                         || a.namespaceURI === NS.svg && a.localName === 'font-family')
-                    && !fontFamilies.has(value)) fontFamilies.set(value, name);
+                    && !fontFamilies.has(familyKey(value))) fontFamilies.set(familyKey(value), name);
             }
         }
-        if (fontFamilies.has(family)) return fontFamilies.get(family);
+        if (fontFamilies.has(key)) return fontFamilies.get(key);
         if (!declarations) {
             declarations = doc.createElementNS(NS.office, 'office:font-face-decls');
             const following = children(doc.documentElement).find(n => n.namespaceURI === NS.office && ['styles', 'automatic-styles', 'master-styles', 'body'].includes(n.localName));
@@ -147,7 +150,7 @@ export function odpFormattingWriter(doc, reserved) {
         face.setAttributeNS(NS.style, 'style:name', name);
         face.setAttributeNS(NS.svg, 'svg:font-family', family);
         declarations.appendChild(face);
-        fontFamilies.set(family, name);
+        fontFamilies.set(key, name);
         return name;
     };
     return overrides => {
