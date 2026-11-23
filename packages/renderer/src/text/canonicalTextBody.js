@@ -23,6 +23,7 @@ function knownFont(value, theme) {
 /** Minimal DrawingML adapter. Unsupported/inherited metrics return null, never guessed sizes. */
 export function canonicalTextBody(object, theme) {
   const g = object.geometry, layout = object.bodyLayout ?? {};
+  if (object.shape && object.shape !== 'rect') return null;
   if (!g || ![g.width, g.height].every(n => Number.isFinite(n) && n > 0) || !object.text?.paragraphs?.length || object.source?.format === 'odp') return null;
   const metrics = object.extensions?.pptxTextMetrics;
   if (metrics?.supported === false || theme?.metricsSupported === false) return null;

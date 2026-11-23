@@ -85,3 +85,8 @@ it('scales point spacing and font sizes while preserving the authored insets and
 it('treats a rejected font query as unavailable metrics', () => {
   expect(measureShrinkFits(doc(make()), { fonts: { status: 'loaded', check: () => { throw new DOMException('Invalid font', 'SyntaxError'); } } }).size).toBe(0);
 });
+it('skips authored ellipse text before it has native eligibility metadata', () => {
+  const ellipse = { ...make(), type: 'shape', shape: 'ellipse' };
+  expect(measureShrinkFits(doc(ellipse), { fonts: document.fonts }).size).toBe(0);
+  expect(measureShrinkFits(doc({ ...ellipse, shape: 'rect' }), { fonts: document.fonts }).has('box')).toBe(true);
+});

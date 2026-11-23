@@ -28,8 +28,13 @@ function plainTextDefaults(node) {
 function textMetrics(shape, body) {
     const ref = child(child(shape, 'p', 'style'), 'a', 'fontRef')?.getAttribute('idx') ?? 'minor';
     const bodyPr = child(body, 'a', 'bodyPr');
+    const geometries = children(child(shape, 'p', 'spPr')).filter(n => is(n, 'a', 'prstGeom') || is(n, 'a', 'custGeom'));
+    // Other presets/custom geometry can have an inset text rectangle we do not project.
+    const rectangular = geometries.length === 0 || geometries.length === 1
+        && is(geometries[0], 'a', 'prstGeom') && geometries[0].getAttribute('prst') === 'rect'
+        && children(geometries[0]).every(n => is(n, 'a', 'avLst') && children(n).length === 0);
     const unsupportedAttrs = (node, allowed) => Object.keys(attrs(node)).some(name => !allowed.includes(name));
-    let supported = ['major', 'minor'].includes(ref) && !all(shape, 'p', 'ph').length
+    let supported = rectangular && ['major', 'minor'].includes(ref) && !all(shape, 'p', 'ph').length
         && !children(child(body, 'a', 'lstStyle')).length
         && !unsupportedAttrs(bodyPr, ['wrap', 'anchor', 'lIns', 'rIns', 'tIns', 'bIns'])
         && children(bodyPr).every(n => is(n, 'a', n.localName) && ['normAutofit', 'noAutofit', 'spAutoFit'].includes(n.localName));
@@ -146,7 +151,7 @@ export async function readPptx(zip, xml, mapping) {
         const item = { id: `${kind}:${part}`, source: source('pptx', part, root) };
         entityIds.set(part, item.id);
         d[kind].push(item);
-        if (kind === 'masters') item.extensions = { pptxTextDefaultsSupported: plainTextDefaults(child(child(root, 'p', 'txStyles'), 'p', 'otherStyle')) };
+        if (kind === 'masters') item.extensions = { ...item.extensions, pptxTextDefaultsSupported: plainTextDefaults(child(child(root, 'p', 'txStyles'), 'p', 'otherStyle')) };
         if (rels(part).some(r => r.type === REL + 'themeOverride')) item.extensions = { ...item.extensions, pptxThemeOverride: true };
         if (kind === 'themes') {
             const scheme = child(child(root, 'a', 'themeElements'), 'a', 'fontScheme');
@@ -162,7 +167,7 @@ export async function readPptx(zip, xml, mapping) {
                         .map(n => [n.getAttribute('script'), n.getAttribute('typeface')]));
                 }
                 // Appearance only: source export retains the original theme part.
-                item.extensions = { pptxFontScheme: fonts };
+                item.extensions = { ...item.extensions, pptxFontScheme: fonts };
             }
         }
         if (kind !== 'themes')
