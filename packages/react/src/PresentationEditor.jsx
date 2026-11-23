@@ -1648,7 +1648,7 @@ function TextBodyLayoutFields({ object, editor, source, revision, isOdpDoc, disa
         <small className="stagecraft-autofit-note">
           {autofitVal === 'shrink'
             ? 'PowerPoint applies shrink-to-fit when the text is next edited there; the file may overflow when first opened.'
-            : 'PowerPoint grows the shape upward to fit the text on the next edit; the file keeps the authored frame when first opened, so nearby shapes can overlap.'}
+            : 'PowerPoint resizes the shape to fit the text when it is next edited there; the file keeps this frame when first opened, so text may overflow or overlap nearby shapes.'}
         </small>
       ) : null}
       {isOdpDoc ? (
