@@ -182,10 +182,43 @@ it('rejects unknown keys in fit values', async () => {
 
 it('signed package + fit map + no edits exports byte-identical', async () => {
   const bytes = await writePptx({ title: 'Deck', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [{ id: 't', type: 'text', x: 10, y: 10, w: 100, h: 100, content: 'Hello' }] }] });
-  const source = await openPresentation(bytes, { format: 'pptx', signed: true });
-  const fit = new Map([['t', { fontScale: 50000, lnSpcReduction: 10000 }]]);
+  // Make it signed by adding a signature part (source.test.js pattern)
+  const JSZip = (await import('jszip')).default;
+  const zip = await JSZip.loadAsync(bytes);
+  zip.file('_xmlsignatures/sig1.xml', '<signatures/>');
+  const signedBytes = await zip.generateAsync({ type: 'uint8array' });
+  const source = await openPresentation(signedBytes, { format: 'pptx' });
+  const obj = source.document.slides[0].objects.find(o => o.type === 'text');
+  const fit = new Map([[obj.id, { fontScale: 50000, lnSpcReduction: 10000 }]]);
   // Signed: should still export byte-identical (fit not applied to untouched, and signed blocks edits)
   const result = await source.export(source.document, { fit });
+  expect(result.bytes).toEqual(new Uint8Array(signedBytes));
+  source.dispose();
+});
+
+it('unsigned no-op + fit map exports byte-identical', async () => {
+  const bytes = await writePptx({ title: 'Deck', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [{ id: 't', type: 'text', x: 10, y: 10, w: 100, h: 100, content: 'Hello' }] }] });
+  const source = await openPresentation(bytes, { format: 'pptx' });
+  const obj = source.document.slides[0].objects.find(o => o.type === 'text');
+  const fit = new Map([[obj.id, { fontScale: 50000, lnSpcReduction: 10000 }]]);
+  const result = await source.export(source.document, { fit });
   expect(result.bytes).toEqual(new Uint8Array(bytes));
+  source.dispose();
+});
+
+it('reset autofit with fit map does not get fontScale', async () => {
+  const bytes = await nativeShrinkFixture();
+  const source = await openPresentation(bytes, { format: 'pptx' });
+  const doc2 = structuredClone(source.document);
+  const obj = doc2.slides[0].objects.find(o => o.type === 'text');
+  // Reset autofit to null (inherit)
+  obj.bodyLayout = { ...obj.bodyLayout, autofit: null };
+  delete obj.bodyLayout.autofit;
+  const fit = new Map([[obj.id, { fontScale: 70000, lnSpcReduction: 4000 }]]);
+  const result = await source.export(doc2, { fit });
+  const zip2 = await JSZip.loadAsync(result.bytes);
+  const xml2 = await zip2.file('ppt/slides/slide1.xml').async('string');
+  // fit should NOT be applied since autofit is not 'shrink'
+  expect(xml2).not.toContain('fontScale="70000"');
   source.dispose();
 });

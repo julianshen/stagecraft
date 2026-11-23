@@ -338,7 +338,6 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
         // FU-AUTOFIT-MEASURE: native objects that need a stored shrink measurement but did not
         // have a bodyLayout change get a synthetic patch so their normAutofit is updated.
         if (fitMap) {
-            console.log('FITMAP-SIZE', fitMap.size);
             // Build a Map once: sourceObjects is a generator and .find inside the loop would
             // consume it, so only the first baseline object could ever map.
             const snapshotObjects = new Map([...sourceObjects(snapshot)].map(o => [o.id, o]));
@@ -360,7 +359,7 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                 delta.bodyLayouts.push({ object: baselineObject, before: baselineObject.bodyLayout, after: snapshotObject.bodyLayout, fit });
             }
         }
-        for(const {object,before,after} of delta.bodyLayouts ?? []) {
+        for(const {object,before,after,fit:entryFit} of delta.bodyLayouts ?? []) {
             const node=nodes.get(object); if(!node) throw new Error('Missing mapped object node');
             const patch={};
             for(const key of new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})]))
@@ -407,7 +406,7 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
             if(Object.keys(patch).length){ applyPptxBodyLayout(bodyPr, patch); mark(object.source.part); }
             // FU-AUTOFIT-MEASURE: emit a stored shrink measurement when supplied by the host, in a
             // separate step so the layout patch logic above is untouched.
-            const fit = delta.bodyLayouts?.find(b => b.object === object)?.fit ?? (fitMap?.get?.(object.id) ?? fitMap?.[object.id]);
+            const fit = entryFit ?? (fitMap?.get?.(object.id) ?? fitMap?.[object.id]);
             const shrinkAfter = after?.autofit === 'shrink';
             if (fit && shrinkAfter) { applyPptxBodyLayout(bodyPr, { fit }); mark(object.source.part); }
         }
