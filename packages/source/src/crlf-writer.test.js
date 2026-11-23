@@ -5,6 +5,7 @@ import { writeOdp } from '../../odp/src/index.js';
 import { openPresentation } from './index.js';
 import { createEditor } from '@stagecraft/core/editor';
 import { documentPlugin, presentationPlugin, validateDocument } from '@stagecraft/core/document';
+import { coalesceSplitBreaks } from './authoring.js';
 
 // FU-CR: a CRLF split across adjacent runs must render ONE native break. The writers coalesce the
 // split pair within a paragraph (a trailing CR is dropped when the next non-empty run starts with
@@ -376,4 +377,36 @@ it.each(['pptx', 'odp'])('writes CRLF slide notes as single breaks (%s)', async 
     reopened = await openPresentation(result.bytes, { format });
     expect(reopened.document.slides[0].notes).toBe('top\nbottom');
   } finally { editor.dispose(); reopened?.dispose(); source.dispose(); }
+});
+
+it('coalesces in a single reverse pass (linear text accesses)', () => {
+  // PR #129 bot round 2: the lookahead rescanned the empty-run suffix for every run, so it was
+  // quadratic on paragraphs with many empty runs (0.5s at 30k, 2.6s at 60k) even with no CR/LF.
+  // The fix does one reverse pass tracking the next non-empty run. This guard counts .text reads
+  // on a proxied runs array and must fail on the rescanning implementation while staying O(n).
+  const count = 5000;
+  const runs = Array.from({ length: count }, (_, i) => ({ text: '' }));
+  runs[0].text = 'A\r';
+  runs[count - 1].text = '\nB';
+  let accesses = 0;
+  const proxied = new Proxy(runs, {
+    get(target, prop, receiver) {
+      if (typeof prop === 'string' && /^\d+$/.test(prop)) {
+        const run = target[prop];
+        return new Proxy(run, {
+          get(target2, key, receiver2) {
+            if (key === 'text') accesses++;
+            return Reflect.get(target2, key, receiver2);
+          },
+        });
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+  const result = coalesceSplitBreaks(proxied);
+  expect(result[0]).toBe('A');
+  expect(result[count - 1]).toBe('\nB');
+  // Linear: one .text read per run in the reverse pass (plus the cached value reused). The
+  // rescanning implementation reads O(n^2) entries. Bound is generous for the linear path.
+  expect(accesses).toBeLessThan(3 * count);
 });
