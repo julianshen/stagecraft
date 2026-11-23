@@ -18,4 +18,8 @@
 .stagecraft-canonical .stagecraft-canonical-format label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .stagecraft-canonical .stagecraft-canonical-format input, .stagecraft-canonical .stagecraft-canonical-format select { width: 105px; min-width: 0; padding: 4px; color: var(--ink, #202637); background: var(--panel, white); border: 1px solid var(--line-2, #b8c3d6); border-radius: var(--radius-s, 4px); }
 .stagecraft-canonical .stagecraft-canonical-format:disabled { opacity: .6; }
-.stagecraft-canonical :is(button, input, textarea, select):focus-visible { outline: 2px solid var(--accent, #325ed4); outline-offset: 2px; }
+.stagecraft-canonical :is(button, input, textarea, select, summary):focus-visible { outline: 2px solid var(--accent, #325ed4); outline-offset: 2px; }
+.stagecraft-canonical .stagecraft-font-details { border: 1px solid var(--line, #ccd3e0); border-radius: var(--radius-s, 4px); padding: 4px 8px; }
+.stagecraft-canonical .stagecraft-font-details summary { cursor: pointer; font-size: 12px; font-weight: 500; }
+.stagecraft-canonical .stagecraft-font-slot { display: grid; gap: 4px; margin-top: 6px; }
+.stagecraft-canonical .stagecraft-font-token { font-size: 11px; color: var(--ink-3, #526078); }

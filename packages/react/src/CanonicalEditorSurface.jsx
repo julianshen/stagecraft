@@ -28,6 +28,18 @@ export function runStyle(run, scale) {
 const alignment = style => ({ l: 'left', ctr: 'center', r: 'right', just: 'justify' })[style?.algn];
 const directBoolean = value => ['1', 'true', true].includes(value) ? 'true' : ['0', 'false', false].includes(value) ? 'false' : '';
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const THEME_FONT_LABELS = {
+  '+mj-lt': 'Theme (major Latin)',
+  '+mn-lt': 'Theme (minor Latin)',
+  '+mj-ea': 'Theme (major East Asian)',
+  '+mn-ea': 'Theme (minor East Asian)',
+  '+mj-cs': 'Theme (major Complex script)',
+  '+mn-cs': 'Theme (minor Complex script)',
+};
+export function formatFontSlotDisplay(value) {
+  if (typeof value !== 'string' || !value) return '';
+  return THEME_FONT_LABELS[value] ?? (value.startsWith('+') ? `Theme (${value})` : value);
+}
 export function RunFormatControls({ run, index, disabled, onFormat, editor, source, revision }) {
   const odp = run.source?.format === 'odp';
   const original = odp ? 'Original' : 'Inherit';
@@ -38,6 +50,8 @@ export function RunFormatControls({ run, index, disabled, onFormat, editor, sour
         italic: run.style?.i,
         fontSize: run.style?.sz === undefined ? undefined : Number(run.style.sz) / 100,
         fontFamily: run.style?.typeface,
+        eastAsian: run.style?.eastAsian,
+        complexScript: run.style?.complexScript,
         color: run.style?.color,
       };
   const hasColor = odp
@@ -45,8 +59,12 @@ export function RunFormatControls({ run, index, disabled, onFormat, editor, sour
     : Object.hasOwn(run.style ?? {}, 'color');
   const nativeSize = direct.fontSize === undefined ? '' : String(direct.fontSize);
   const nativeFont = typeof direct.fontFamily === 'string' ? direct.fontFamily : '';
+  const nativeEastAsian = typeof direct.eastAsian === 'string' ? direct.eastAsian : '';
+  const nativeComplexScript = typeof direct.complexScript === 'string' ? direct.complexScript : '';
   const [size, setSize] = useState(nativeSize);
   const [fontFamily, setFontFamily] = useState(nativeFont);
+  const [eastAsian, setEastAsian] = useState(nativeEastAsian);
+  const [complexScript, setComplexScript] = useState(nativeComplexScript);
   const startRevRef = useRef(revision);
   useEffect(() => {
     startRevRef.current = revision;
@@ -56,6 +74,11 @@ export function RunFormatControls({ run, index, disabled, onFormat, editor, sour
     startRevRef.current = revision;
     setFontFamily(nativeFont);
   }, [editor, source, revision, run.id, nativeFont, disabled]);
+  useEffect(() => {
+    startRevRef.current = revision;
+    setEastAsian(nativeEastAsian);
+    setComplexScript(nativeComplexScript);
+  }, [editor, source, revision, run.id, nativeEastAsian, nativeComplexScript, disabled]);
   const captureRev = () => { startRevRef.current = revision; };
   return <fieldset disabled={disabled} className="stagecraft-canonical-format">
     <legend>{odp ? 'Formatting overrides' : 'Direct formatting'} · run {index + 1}</legend>
@@ -80,6 +103,26 @@ export function RunFormatControls({ run, index, disabled, onFormat, editor, sour
     <label>Color<input aria-label={`Color run ${index + 1}`} type="color" value={HEX_COLOR.test(direct.color ?? '') ? direct.color : '#000000'}
       onChange={event => onFormat({ color: event.target.value.toLowerCase() }, revision)} /></label>
     {hasColor && <button type="button" aria-label={`Reset color run ${index + 1}`} onClick={() => onFormat({ color: null }, revision)}>{original}</button>}
+    <details className="stagecraft-font-details">
+      <summary>Font details</summary>
+      {[
+        ['eastAsian', 'East Asian text font', nativeEastAsian, eastAsian, setEastAsian],
+        ['complexScript', 'Complex script font', nativeComplexScript, complexScript, setComplexScript],
+      ].map(([slot, label, nativeVal, draft, setDraft]) => (
+        <div key={slot} className="stagecraft-font-slot">
+          <label>{label}<input aria-label={`${label} run ${index + 1}`} type="text" maxLength={64} placeholder={original} value={draft}
+            onFocus={captureRev}
+            onChange={event => setDraft(event.target.value)} onBlur={() => {
+              const trimmed = draft.trim();
+              if (trimmed !== nativeVal) onFormat({ [slot]: trimmed === '' ? null : trimmed }, startRevRef.current);
+              setDraft(nativeVal);
+            }} onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }} /></label>
+          <button type="button" aria-label={`Reset ${label.toLowerCase()} run ${index + 1}`} disabled={disabled || nativeVal === ''}
+            onClick={() => onFormat({ [slot]: null }, revision)}>Reset</button>
+          {nativeVal.startsWith('+') && <small className="stagecraft-font-token">{formatFontSlotDisplay(nativeVal)}</small>}
+        </div>
+      ))}
+    </details>
     {odp && <small>Original restores this file’s imported style.</small>}
   </fieldset>;
 }
