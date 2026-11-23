@@ -33,7 +33,7 @@ for (const [name, code, alsoExternal] of RUNS) {
     out = await build({
       logLevel: 'silent', configFile: false, root: process.cwd(),
       define: { 'process.env.NODE_ENV': '"production"' }, // as the app build does (library mode leaves it alone)
-      build: { write: false, minify: 'esbuild', lib: { entry, formats: ['es'], fileName: 'x' }, rollupOptions: { external: [/^react($|\/)/, /^react-dom($|\/)/, ...alsoExternal] } },
+      build: { write: false, minify: 'oxc', lib: { entry, formats: ['es'], fileName: 'x' }, rolldownOptions: { external: [/^react($|\/)/, /^react-dom($|\/)/, ...alsoExternal] } },
     });
   } finally {
     fs.rmSync(entry, { force: true }); // even when the build fails

@@ -1,5 +1,7 @@
 # Stagecraft library workspaces
 
+Development requires Node.js 22.12+ (22 LTS is used in CI), 24, or 26+. Run `npm install`, then `npx playwright install chromium` before the test suite.
+
 Stagecraft provides private source packages and a Vite playground. The existing React editor uses the legacy deck schema. A separate headless foundation supplies canonical documents, plugin transactions, host-controlled I/O and native PPTX/ODP source sessions. Reusable canonical React workspace components sit on this foundation. Protected-server and agent APIs are outside this milestone.
 
 | Workspace | Ownership |

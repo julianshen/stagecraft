@@ -1,10 +1,28 @@
 import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { chromiumBrowser } from './vitest.browser.js';
+
+const CHROMIUM_TESTS = ['packages/**/*.paint.test.{js,jsx}', 'packages/**/*.browser.test.{js,jsx}', 'tests/**/*.browser.test.{js,jsx}'];
 
 export default defineConfig({
   plugins: [react()],
   test: {
     globals: true,
+    // Preserve the pre-migration mock-history behavior in both projects.
+    clearMocks: false,
+    projects: [
+      { test: { name: 'unit', exclude: [...configDefaults.exclude, 'spikes/**', ...CHROMIUM_TESTS] } },
+      {
+        // Browser projects must not inherit the jsdom environment or excludes.
+        extends: false,
+        plugins: [react()],
+        optimizeDeps: { entries: CHROMIUM_TESTS },
+        test: {
+          name: 'chromium', include: CHROMIUM_TESTS, globals: true, clearMocks: false,
+          setupFiles: ['./tests/helpers/setup.js'], browser: chromiumBrowser(),
+        },
+      },
+    ],
     environment: 'jsdom',
     // spikes/ holds on-demand benchmarks with their own configs.
     exclude: [...configDefaults.exclude, 'spikes/**'],
