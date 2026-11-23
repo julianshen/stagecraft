@@ -53,7 +53,7 @@ The declarations in [PresentationEditor.d.ts](../packages/react/src/Presentation
 | `source` | optional `SourceSession` | Trusted native-package export and image capability; host-owned |
 | `readOnly` | `boolean`, false | Disables built-in document mutations; cannot relax source/core policy |
 | `plugins` | readonly `PresentationUIPlugin[]` | UI contributions, overriding inherited plugins with the same ID |
-| `onExport` | `(result: SourceExport, context: {revision: number}) => void \| Promise<void>` | Host saves the captured export; completion is awaited |
+| `onExport` | `(result: SourceExport, context: ExportContext) => void \| Promise<void>` | Host saves the captured export; completion is awaited |
 | `onError` | `(error: unknown) => void` | Receives command, export, and UI-plugin failures |
 | `onSelectionChange` | `(selection: {slideId: string|null; objectId: string|null}) => void` | Initial and subsequent reconciled selection; not a mutation event |
 
@@ -236,7 +236,7 @@ Imported geometry requires explicit `extensions.editableGeometry`; imported fill
 
 ## Export and host security responsibilities
 
-Export captures the clicked snapshot/revision and permits one in-flight export per provider. Repeated requests while locked are ignored. A result/error from an obsolete editor/source or unmounted provider does not reach host export callbacks. Concurrent editing does not change the captured export. `onExport` completion is awaited and errors are reported. The host decides download/upload destinations and independently authorizes export.
+Export captures the clicked snapshot/revision and permits one in-flight export per provider. Repeated requests while locked are ignored. A result/error from an obsolete editor/source or unmounted provider does not reach host export callbacks. Concurrent editing does not change the captured export. `onExport` completion is awaited and errors are reported. Its `ExportContext` contains `revision` and `shrinkFit` (measured/skipped/failed status, count, and reason/message when applicable); see [SHRINK-MEASUREMENT.md](SHRINK-MEASUREMENT.md#export-outcome-metadata). The host decides download/upload destinations and independently authorizes export.
 
 `source` is a trusted whole-package capability. Never give it to a protected/redacted client: hidden data and untouched original package parts may remain present. Deleting visible objects does not sanitize a source package. Protected export must be rebuilt from an authorized server projection. These React components require a local editor interface. This workspace does not supply protected-session, remote-session, or AI APIs. A host needing a protected client must provide its own authorization, transport, and presentation surface for authorized projections without sending the canonical source.
 

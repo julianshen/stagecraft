@@ -55,7 +55,7 @@ function* shrinkBodies(document) {
 
 /** Load only the captured snapshot's measurable shrink fonts; failure is an optional-fit fallback. */
 export async function waitForShrinkFonts(document, { fonts = globalThis.document?.fonts, timeoutMs = 2000 } = {}) {
-  if (!fonts?.load || !fonts?.check) return false;
+  if (!fonts?.load || !fonts?.check) return { status: 'skipped', reason: 'fonts-unavailable' };
   let timer;
   try {
     return await Promise.race([
@@ -65,17 +65,18 @@ export async function waitForShrinkFonts(document, { fonts = globalThis.document
           if (!queries.has(shorthand)) queries.set(shorthand, new Set());
           queries.get(shorthand).add(text);
         }
-        if (!queries.size) return true;
+        if (!queries.size) return { status: 'skipped', reason: 'no-shrink' };
         await Promise.all([...queries].map(([shorthand, chars]) => {
           const text = [...chars].join('');
           return fonts.check(shorthand, text) ? undefined : fonts.load(shorthand, text);
         }));
         await fonts.ready;
-        return fonts.status === 'loaded' && [...queries].every(([shorthand, chars]) => fonts.check(shorthand, [...chars].join('')));
+        return fonts.status === 'loaded' && [...queries].every(([shorthand, chars]) => fonts.check(shorthand, [...chars].join('')))
+          ? { status: 'ready' } : { status: 'skipped', reason: 'fonts-unavailable' };
       }),
-      new Promise(resolve => { timer = setTimeout(() => resolve(false), timeoutMs); }),
+      new Promise(resolve => { timer = setTimeout(() => resolve({ status: 'skipped', reason: 'fonts-timeout' }), timeoutMs); }),
     ]);
-  } catch { return false; }
+  } catch (error) { return { status: 'failed', reason: 'error', message: error instanceof Error ? error.message : String(error) }; }
   finally { clearTimeout(timer); }
 }
 

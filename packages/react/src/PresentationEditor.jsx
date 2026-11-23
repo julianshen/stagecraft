@@ -445,19 +445,31 @@ export function PresentationEditorProvider({
     const current = () => lifecycle.current === token;
     try {
       let fit;
+      let shrinkFit = { status: 'skipped', count: 0, reason: snapshot.document.extensions?.sourceFormat !== 'pptx'
+        ? 'not-pptx' : locked ? 'locked' : 'no-capability' };
       if (snapshot.document.extensions?.sourceFormat === 'pptx' && !locked && source.capabilities.edits.includes('text-body-layout')) {
         const fonts = globalThis.document?.fonts;
         try {
-          if (await waitForShrinkFonts(snapshot.document, { fonts }) && current() && fitAllowed.current) {
+          const readiness = await waitForShrinkFonts(snapshot.document, { fonts });
+          if (!current()) return;
+          if (!fitAllowed.current) {
+            shrinkFit = { status: 'skipped', reason: 'permission-revoked', count: 0 };
+          } else if (readiness.status === 'ready') {
             fit = measureShrinkFits(snapshot.document, { fonts });
+            shrinkFit = fit.size ? { status: 'measured', count: fit.size } : { status: 'skipped', reason: 'no-fit', count: 0 };
+          } else {
+            shrinkFit = { ...readiness, count: 0 };
           }
-        } catch { /* Measurement is optional; source export remains available. */ }
+        } catch (error) {
+          shrinkFit = { status: 'failed', reason: 'error', message: error instanceof Error ? error.message : String(error), count: 0 };
+        }
         if (!current()) return;
       }
       const result = await (fit ? source.export(snapshot.document, { fit }) : source.export(snapshot.document));
       if (!current()) return;
       await onExport(result, {
-        revision: snapshot.revision
+        revision: snapshot.revision,
+        shrinkFit
       });
       if (current()) setExportedRevision(snapshot.revision);
     } catch (reason) {
