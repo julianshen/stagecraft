@@ -333,6 +333,37 @@ it('keeps the documented fallback for a PPTX run whose only change is formatting
   } finally { nativeEditor.dispose(); native.dispose(); }
 });
 
+it('reconciles changed runs in linear time (perf guard: no quadratic change lookup)', async () => {
+  // PR #129 bot: the fix5 reconcile looked each changed run up with changes.find, which is
+  // quadratic — ~1.5s for 10k changed runs and ~15.7s for 30k, freezing the export. The fix
+  // uses a reverse Map (runToChange) for O(1) lookup. This guard is deterministic: it spies on
+  // Array.prototype.find during the export and asserts the reconcile does not call it for run
+  // lookup. On the quadratic implementation changes.find is invoked once per changed run.
+  const count = 3000;
+  const bytes = await writePptx({ title: 'Deck', sections: [{ id: 'sec', name: 'Section', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [{ id: 'bulk', type: 'text', x: 10, y: 10, w: 600, h: 400, content: Array.from({ length: count }, (_, i) => `t${i}`).join('\n') }] }] });
+  const source = await openPresentation(bytes, { format: 'pptx' });
+  const edited = structuredClone(source.document);
+  let changed = 0;
+  for (const object of edited.slides.flatMap(slide => slide.objects))
+    for (const paragraph of object.text?.paragraphs ?? [])
+      for (const run of paragraph.runs) { run.text = `${run.text}x`; changed++; }
+  expect(changed).toBe(count);
+  const originalFind = Array.prototype.find;
+  let findCalls = 0;
+  Array.prototype.find = function (...args) { findCalls++; return originalFind.apply(this, args); };
+  try {
+    const result = await source.export(edited);
+    const xml = await (await JSZip.loadAsync(result.bytes)).file('ppt/slides/slide1.xml').async('string');
+    expect((xml.match(/t\d+x<\/a:t>/g) ?? []).length).toBeGreaterThan(0);
+  } finally {
+    Array.prototype.find = originalFind;
+    source.dispose();
+  }
+  // The reconcile must do O(n) map gets, not n*m find calls. A generous allowance covers
+  // legitimate uses elsewhere in the export path; the quadratic implementation makes ~9M calls.
+  expect(findCalls).toBeLessThan(100);
+}, 120000);
+
 it.each(['pptx', 'odp'])('writes CRLF slide notes as single breaks (%s)', async format => {
   const write = format === 'pptx' ? writePptx : writeOdp;
   const bytes = await write({ title: 'Deck', sections: [{ id: 'sec', name: 'Section', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [] }] });

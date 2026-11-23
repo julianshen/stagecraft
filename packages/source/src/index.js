@@ -166,27 +166,20 @@ export async function openPresentation(source, options = {}) {
             // FU-CR: native run-text edits are written one run at a time, so a split CRLF must be
             // coalesced against the paragraph's post-edit runs (the snapshot) — computed from the
             // canonical paragraph, not per change. Empty runs are skipped by the lookahead.
+            const forEachParagraph = (owners, fn) => { for (const owner of owners) { const visit = objects => { for (const object of objects ?? []) {
+                const paragraphs = [...(object.text?.paragraphs ?? []), ...(object.table?.rows ?? []).flatMap(row => (row.cells ?? []).flatMap(cell => cell.text?.paragraphs ?? []))];
+                for (const paragraph of paragraphs) fn(paragraph);
+                visit(object.children);
+            } }; visit(owner.objects); } };
             const runContexts = new Map(), baselineRunById = new Map();
-            const changeRun = new Map(), textChangedRuns = new Set(), otherChangedRuns = new Set(), changedParagraphs = new Set();
-            for (const owner of [...snapshot.slides, ...snapshot.layouts, ...snapshot.masters]) {
-                const visit = objects => { for (const object of objects ?? []) {
-                    const paragraphs = [...(object.text?.paragraphs ?? []), ...(object.table?.rows ?? []).flatMap(row => (row.cells ?? []).flatMap(cell => cell.text?.paragraphs ?? []))];
-                    for (const paragraph of paragraphs) {
-                        const texts = paragraph.runs.map(run => ({ text: run.text }));
-                        paragraph.runs.forEach((run, index) => runContexts.set(run, { texts, index, runs: paragraph.runs }));
-                    }
-                    visit(object.children);
-                } };
-                visit(owner.objects);
-            }
-            for (const owner of [...baseline.slides, ...baseline.layouts, ...baseline.masters]) {
-                const visit = objects => { for (const object of objects ?? []) {
-                    const paragraphs = [...(object.text?.paragraphs ?? []), ...(object.table?.rows ?? []).flatMap(row => (row.cells ?? []).flatMap(cell => cell.text?.paragraphs ?? []))];
-                    for (const paragraph of paragraphs) for (const run of paragraph.runs) baselineRunById.set(run.id, run);
-                    visit(object.children);
-                } };
-                visit(owner.objects);
-            }
+            const changeRun = new Map(), runToChange = new Map(), textChangedRuns = new Set(), otherChangedRuns = new Set(), changedParagraphs = new Set();
+            forEachParagraph([...snapshot.slides, ...snapshot.layouts, ...snapshot.masters], paragraph => {
+                const texts = paragraph.runs.map(run => ({ text: run.text }));
+                paragraph.runs.forEach((run, index) => runContexts.set(run, { texts, index, runs: paragraph.runs }));
+            });
+            forEachParagraph([...baseline.slides, ...baseline.layouts, ...baseline.masters], paragraph => {
+                for (const run of paragraph.runs) baselineRunById.set(run.id, run);
+            });
             // FU-CR fix5: ONE general rule, applied after the diff. Every paragraph containing a
             // text-changed run (text or emptiness) is coalesced as a whole over its post-edit run
             // texts; then every run in it whose coalesced written text differs from what the file
@@ -219,6 +212,7 @@ export async function openPresentation(source, options = {}) {
                         const change = { ...slot, text: b.text, overrides, replaceText: a.text !== b.text };
                         changes.push(change);
                         changeRun.set(change, b);
+                        runToChange.set(b, change);
                         if (a.text !== b.text) { textChangedRuns.add(b); changedParagraphs.add(runContexts.get(b)?.runs); }
                         else otherChangedRuns.add(b);
                     }
@@ -255,6 +249,7 @@ export async function openPresentation(source, options = {}) {
                         const change = { ...editableSlots.get(a), text: b.text };
                         changes.push(change);
                         changeRun.set(change, b);
+                        runToChange.set(b, change);
                         textChangedRuns.add(b);
                         changedParagraphs.add(runContexts.get(b)?.runs);
                     }
@@ -290,7 +285,7 @@ export async function openPresentation(source, options = {}) {
                 if (!runs) continue;
                 const written = coalesceSplitBreaks(runs.map(run => ({ text: run.text })));
                 for (const [index, run] of runs.entries()) {
-                    const change = changes.find(change => changeRun.get(change) === run);
+                    const change = runToChange.get(run);
                     if (change) {
                         change.text = written[index];
                         // An ODP change whose only edit was formatting carries replaceText:false;
@@ -307,6 +302,7 @@ export async function openPresentation(source, options = {}) {
                     const newChange = { ...slot, text: written[index], ...(slot.kind === 'odp' ? { overrides: {}, replaceText: true } : {}) };
                     changes.push(newChange);
                     changeRun.set(newChange, run);
+                    runToChange.set(run, newChange);
                 }
             }
             let dirtyParts = [...new Set(changes.map(c => c.part))].sort();
