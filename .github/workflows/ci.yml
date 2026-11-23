@@ -15,10 +15,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
-      # The chromium test project runs in headless Chromium (vitest.workspace.js).
+      # The chromium test project runs in headless Chromium (vitest.config.js).
       # The browser build is cached per Playwright version; its system packages
       # are installed every run.
       - id: playwright
