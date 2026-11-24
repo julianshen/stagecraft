@@ -1237,6 +1237,56 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     expect(screen.getByLabelText('Paragraph 1 space before')).toHaveValue(null);
   });
 
+  it('applies DrawingML default insets in SVG preview when unauthored and preserves authored/zero insets', async () => {
+    const renderer = await import('@stagecraft/renderer');
+    expect(renderer.DEFAULT_TEXT_INSETS_EMU).toEqual({
+      left: 91440,
+      right: 91440,
+      top: 45720,
+      bottom: 45720,
+    });
+
+    const editor = makeTextTrancheEngine([{
+      id: 's1',
+      objects: [
+        {
+          id: 't-default',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
+          text: { paragraphs: [{ id: 'p1', runs: [{ id: 'r1', text: 'Default', style: { sz: '1800' } }] }] },
+        },
+        {
+          id: 't-partial',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 200 * PT, width: 300 * PT, height: 100 * PT },
+          bodyLayout: { insets: { left: 0, top: 10 * PT } },
+          text: { paragraphs: [{ id: 'p2', runs: [{ id: 'r2', text: 'Partial', style: { sz: '1800' } }] }] },
+        },
+      ],
+    }]);
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor />
+      </EditorProvider>,
+    );
+
+    const canvas = screen.getByLabelText('Slide canvas');
+    const defaultObj = canvas.querySelector('[data-object-id="t-default"] .stagecraft-presentation-object');
+    expect(defaultObj.style.boxSizing).toBe('border-box');
+    expect(defaultObj.style.paddingLeft).toBe('9.6px');
+    expect(defaultObj.style.paddingRight).toBe('9.6px');
+    expect(defaultObj.style.paddingTop).toBe('4.8px');
+    expect(defaultObj.style.paddingBottom).toBe('4.8px');
+
+    const partialObj = canvas.querySelector('[data-object-id="t-partial"] .stagecraft-presentation-object');
+    expect(partialObj.style.boxSizing).toBe('border-box');
+    expect(partialObj.style.paddingLeft).toBe('0px');
+    expect(partialObj.style.paddingTop).toBe(`${10 * PT * (960 / 9144000)}px`);
+    expect(partialObj.style.paddingRight).toBe('9.6px');
+    expect(partialObj.style.paddingBottom).toBe('4.8px');
+  });
+
   it('prefers live run.style typeface/color over imported pptxAppearance and invalidates range selection on unrelated revision', () => {
     const editor = makeTextTrancheEngine([{
       id: 's1',
