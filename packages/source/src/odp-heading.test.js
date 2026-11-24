@@ -15,6 +15,23 @@ async function fixture(paragraphs) {
   return openPresentation(await zip.generateAsync({ type: 'uint8array' }), { format: 'odp' });
 }
 
+it('replaces and clears ODP notes containing headings', async () => {
+  const source = await fixture('<text:p>Body</text:p>');
+  try {
+    const replaced = structuredClone(source.document);
+    replaced.slides[0].notes = 'Replacement';
+    const reopened = await openPresentation((await source.export(replaced)).bytes, { format: 'odp' });
+    try {
+      expect(reopened.document.slides[0].notes).toBe('Replacement');
+      const cleared = structuredClone(reopened.document);
+      delete cleared.slides[0].notes;
+      const final = await openPresentation((await reopened.export(cleared)).bytes, { format: 'odp' });
+      try { expect(final.document.slides[0].notes).toBeUndefined(); }
+      finally { final.dispose(); }
+    } finally { reopened.dispose(); }
+  } finally { source.dispose(); }
+});
+
 it.each([
   ['heading-only', '<text:h text:style-name="Heading">Heading</text:h>', ['Heading']],
   ['mixed', '<text:h text:style-name="Heading">Heading</text:h><text:p>Body</text:p>', ['Heading', 'Body']],

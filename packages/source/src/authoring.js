@@ -1110,7 +1110,7 @@ function applyOdpSlideProperties({doc,styles,nodes,slide,properties,automaticSty
             if (!body) return; // unknown notes structure: leave it untouched rather than delete metadata
             const textBox = child(body, 'draw', 'text-box');
             if (!textBox) return;
-            for (const paragraph of children(textBox).filter(n => is(n, 'text', 'p'))) textBox.removeChild(paragraph);
+            for (const paragraph of children(textBox).filter(n => is(n, 'text', 'p') || is(n, 'text', 'h'))) textBox.removeChild(paragraph);
         } else {
             let notes = child(page, 'presentation', 'notes');
             if (!notes) {
@@ -1126,7 +1126,7 @@ function applyOdpSlideProperties({doc,styles,nodes,slide,properties,automaticSty
             }
             let textBox = child(body, 'draw', 'text-box');
             if (!textBox) textBox = append(body, 'draw', 'text-box');
-            for (const paragraph of children(textBox).filter(n => is(n, 'text', 'p'))) textBox.removeChild(paragraph);
+            for (const paragraph of children(textBox).filter(n => is(n, 'text', 'p') || is(n, 'text', 'h'))) textBox.removeChild(paragraph);
             for (const line of String(properties.notes).split(/\r\n|\r|\n/)) {
                 const paragraph = append(textBox, 'text', 'p');
                 // Tokenised write (patchOdp) so repeated spaces, tabs and line breaks survive ODF's
