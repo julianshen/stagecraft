@@ -117,7 +117,7 @@ safeXmlParse('<root/>', ioXml);
 const bytes = new Uint8Array();
 const signal = new AbortController().signal;
 const zipOptions: ZipOptions = { maxBytes: 1024, maxEntries: 10, maxEntryBytes: 1024, maxExpandedBytes: 4096, signal };
-const pptxOptions: PptxImportOptions = { ...zipOptions, xml };
+const pptxOptions: PptxImportOptions = { ...zipOptions, xml, fileName: 'Board.pptx' };
 const pptxWriteOptions: PptxWriteOptions = { xml, signal, includeNotes: true, range: { from: 1, to: 2 } };
 const odpOptions: OdpOptions = { ...zipOptions, xml };
 expectType<FormatAdapter<Deck, PptxImportOptions, PptxWriteOptions>>(pptxAdapter);
@@ -134,12 +134,15 @@ async function localAndHostIO() {
   expectType<Diagnostic[]>(pptx.diagnostics);
   const directPptx = await importPptx(bytes, pptxOptions);
   expectType<Deck>(directPptx.deck);
+  expectType<Deck>((await importPptx(bytes, { fileName: 'Board.pptx' })).deck);
   expectType<Uint8Array>(await writePptx(directPptx.deck, pptxWriteOptions));
   expectType<string>(await exportToPPTX(directPptx.deck, pptxWriteOptions));
   // @ts-expect-error Generated PPTX bytes are not an untrusted ZIP input; write limits are not advertised.
   await writePptx(directPptx.deck, { maxBytes: 1, maxEntries: 1, maxEntryBytes: 1, maxExpandedBytes: 1 });
   // @ts-expect-error The browser download wrapper uses the same writer-only options.
   await exportToPPTX(directPptx.deck, { maxEntries: 1 });
+  // @ts-expect-error fileName is an import title fallback, not a generated-write option.
+  await writePptx(directPptx.deck, { fileName: 'Board.pptx' });
   const odp = await importDocument(new Blob([bytes]), { adapter: odpAdapter, ...odpOptions });
   expectType<OdpDocument>(odp.document);
   expectType<OdpDocument>((await importOdp(bytes, odpOptions)).document);

@@ -6,10 +6,11 @@ export interface Deck { title?: string; author?: string; subtitle?: string; them
 export interface XmlRuntime { parse(text: string): Document; serialize(document: Document): string }
 /** Limits for untrusted ZIP input. Generated PPTX output does not accept these options. */
 export interface PptxImportOptions extends ZipOptions {
+  /** Filename stem used as the deck title only when the package has no core title. */
+  fileName?: string;
   xml?: XmlRuntime;
 }
 export interface PptxWriteOptions {
-  fileName?: string;
   xml?: XmlRuntime;
   includeNotes?: boolean;
   range?: { from: number; to: number } | null;

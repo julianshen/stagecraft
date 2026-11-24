@@ -44,6 +44,23 @@ describe('Node PPTX adapter', () => {
       }
     } finally { window.close(); }
   });
+  it('uses the filename stem as the import title only when the core title is absent', async () => {
+    const window = new JSDOM('').window;
+    const xml = { parse: text => new window.DOMParser().parseFromString(text, 'application/xml'), serialize: doc => new window.XMLSerializer().serializeToString(doc) };
+    try {
+      const bytes = await writePptx(deck, { xml });
+      expect((await importPptx(bytes, { xml, fileName: 'Board.pptx' })).deck.title).toBe('Headless');
+
+      const zip = await JSZip.loadAsync(bytes);
+      const core = xml.parse(await zip.file('docProps/core.xml').async('string'));
+      const title = core.getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', 'title')[0];
+      expect(title).toBeTruthy();
+      title.remove();
+      zip.file('docProps/core.xml', xml.serialize(core));
+      const untitled = await zip.generateAsync({ type: 'uint8array' });
+      expect((await importPptx(untitled, { xml, fileName: 'Board.pptx' })).deck.title).toBe('Board');
+    } finally { window.close(); }
+  });
   it('reports a missing XML runtime instead of silently dropping postprocessing', async () => {
     await expect(writePptx(deck)).rejects.toThrow('XML runtime');
   });
