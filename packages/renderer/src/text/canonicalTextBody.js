@@ -22,6 +22,18 @@ function knownFont(value, theme) {
   return !!group && !!(group[slots[alias[2]]] || group.latin);
 }
 
+/** Shared display normalization; never rewrites canonical/source run text. */
+function canonicalRunTexts(paragraph) {
+  let nextText = '';
+  const text = new Array(paragraph.runs.length);
+  for (let i = paragraph.runs.length - 1; i >= 0; i--) {
+    const raw = paragraph.runs[i].text;
+    text[i] = (raw.endsWith('\r') && nextText.startsWith('\n') ? raw.slice(0, -1) : raw).replace(/\r\n|\r/g, '\n');
+    if (raw) nextText = raw;
+  }
+  return text;
+}
+
 /** Minimal DrawingML adapter. Unsupported/inherited metrics return null, never guessed sizes. */
 export function canonicalTextBody(object, theme) {
   const g = object.geometry, layout = object.bodyLayout ?? {};
@@ -35,14 +47,7 @@ export function canonicalTextBody(object, theme) {
     const p = paragraph.style ?? {};
     if ((p.bullet && p.bullet.type !== 'none') || (p.level ?? 0) > 0) return null;
     const runs = [];
-    // CRLF split across adjacent/empty runs is one canonical display break.
-    let nextText = '';
-    const text = new Array(paragraph.runs.length);
-    for (let i = paragraph.runs.length - 1; i >= 0; i--) {
-      const raw = paragraph.runs[i].text;
-      text[i] = (raw.endsWith('\r') && nextText.startsWith('\n') ? raw.slice(0, -1) : raw).replace(/\r\n|\r/g, '\n');
-      if (raw) nextText = raw;
-    }
+    const text = canonicalRunTexts(paragraph);
     for (const [index, run] of paragraph.runs.entries()) {
       const s = run.style ?? {}, fontSizePt = Number(s.sz) / 100;
       const family = s.typeface ?? `${alias}-lt`;

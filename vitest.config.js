@@ -96,6 +96,7 @@ export default defineConfig({
         'scripts/swapTree.mjs',
         'packages/core/src/lib/slideDims.js',
         'packages/renderer/src/canvas/scene.js',
+        'packages/renderer/src/canonical/*.js',
         'packages/renderer/src/canvas/paint.js',
         'packages/renderer/src/canvas/assets.js',
         'packages/renderer/src/text/canonicalTextBody.js',
