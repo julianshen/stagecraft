@@ -456,7 +456,18 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                 const rid=relationship.id.slice(`rel:${main}:`.length);
                 return [s.id,children(list).find(n=>attr(n,'r','id')===rid)];
             }));
-            let nextPart=1,nextRel=1,nextSlide=Math.max(255,...children(list).map(n=>Number(n.getAttribute('id'))));
+            let nextPart=1,nextRel=1;
+            const usedSlideIds=new Set(children(list).map(n=>Number(n.getAttribute('id'))).filter(id=>Number.isSafeInteger(id)&&id>0));
+            let nextSlide=Math.max(255,...usedSlideIds);
+            const allocateSlideId=()=>{
+                let candidate=nextSlide+1;
+                if(!Number.isSafeInteger(candidate))candidate=256;
+                while(usedSlideIds.has(candidate)){
+                    candidate++;
+                    if(!Number.isSafeInteger(candidate))candidate=256;
+                }
+                usedSlideIds.add(candidate);nextSlide=candidate;return candidate;
+            };
             const partFor=slide=>slide.source?.part;
             const addSlide=async slide=> {
                 let part;do{part=`ppt/slides/stagecraft${nextPart++}.xml`;}while(zip.file(part) || all(types,'ct','Override').some(n=>n.getAttribute('PartName')==='/'+part));
@@ -482,7 +493,7 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                 zip.file(slideRels,xml.serialize(relations));mark(slideRels);
                 append(rels.documentElement,'rel','Relationship',{Id:rid,Type:REL+'slide',Target:relative(main,part)});
                 append(types.documentElement,'ct','Override',{PartName:'/'+part,ContentType:'application/vnd.openxmlformats-officedocument.presentationml.slide+xml'});
-                return element(presentation,'p','sldId',{id:++nextSlide,'r:id':rid});
+                return element(presentation,'p','sldId',{id:allocateSlideId(),'r:id':rid});
             };
             for(const change of delta.structures) {
                 if(change.owner==='slides') {
