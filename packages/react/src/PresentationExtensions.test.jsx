@@ -1271,20 +1271,21 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
       </EditorProvider>,
     );
 
+    const slideScale = 960 / (editor.getSnapshot().document.dimensions?.width ?? 12192000);
     const canvas = screen.getByLabelText('Slide canvas');
     const defaultObj = canvas.querySelector('[data-object-id="t-default"] .stagecraft-presentation-object');
     expect(defaultObj.style.boxSizing).toBe('border-box');
-    expect(defaultObj.style.paddingLeft).toBe('9.6px');
-    expect(defaultObj.style.paddingRight).toBe('9.6px');
-    expect(defaultObj.style.paddingTop).toBe('4.8px');
-    expect(defaultObj.style.paddingBottom).toBe('4.8px');
+    expect(defaultObj.style.paddingLeft).toBe(`${91440 * slideScale}px`);
+    expect(defaultObj.style.paddingRight).toBe(`${91440 * slideScale}px`);
+    expect(defaultObj.style.paddingTop).toBe(`${45720 * slideScale}px`);
+    expect(defaultObj.style.paddingBottom).toBe(`${45720 * slideScale}px`);
 
     const partialObj = canvas.querySelector('[data-object-id="t-partial"] .stagecraft-presentation-object');
     expect(partialObj.style.boxSizing).toBe('border-box');
     expect(partialObj.style.paddingLeft).toBe('0px');
-    expect(partialObj.style.paddingTop).toBe(`${10 * PT * (960 / 9144000)}px`);
-    expect(partialObj.style.paddingRight).toBe('9.6px');
-    expect(partialObj.style.paddingBottom).toBe('4.8px');
+    expect(partialObj.style.paddingTop).toBe(`${10 * PT * slideScale}px`);
+    expect(partialObj.style.paddingRight).toBe(`${91440 * slideScale}px`);
+    expect(partialObj.style.paddingBottom).toBe(`${45720 * slideScale}px`);
   });
 
   it('prefers live run.style typeface/color over imported pptxAppearance and invalidates range selection on unrelated revision', () => {
