@@ -457,14 +457,16 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
                 return [s.id,children(list).find(n=>attr(n,'r','id')===rid)];
             }));
             let nextPart=1,nextRel=1;
-            const usedSlideIds=new Set(children(list).map(n=>Number(n.getAttribute('id'))).filter(id=>Number.isSafeInteger(id)&&id>0));
-            let nextSlide=Math.max(255,...usedSlideIds);
+            const slideIdMin=256,slideIdMax=2147483647;
+            const usedSlideIds=new Set(children(list).map(n=>Number(n.getAttribute('id'))).filter(id=>Number.isSafeInteger(id)&&id>=slideIdMin&&id<=slideIdMax));
+            let nextSlide=Math.max(slideIdMin-1,...usedSlideIds);
             const allocateSlideId=()=>{
+                if(usedSlideIds.size>=slideIdMax-slideIdMin+1)throw new Error('No native slide id available');
                 let candidate=nextSlide+1;
-                if(!Number.isSafeInteger(candidate))candidate=256;
+                if(candidate>slideIdMax)candidate=slideIdMin;
                 while(usedSlideIds.has(candidate)){
                     candidate++;
-                    if(!Number.isSafeInteger(candidate))candidate=256;
+                    if(candidate>slideIdMax)candidate=slideIdMin;
                 }
                 usedSlideIds.add(candidate);nextSlide=candidate;return candidate;
             };
