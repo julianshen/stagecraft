@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { Stage, Layer, Rect, Shape } from 'react-konva/es/ReactKonvaCore';
-import 'konva/lib/Core';
-import 'konva/lib/shapes/Rect';
+import 'konva/lib/Core.js';
+import 'konva/lib/DragAndDrop.js';
+import 'konva/lib/shapes/Rect.js';
 import { createCanonicalPaintEnvironment, paintCanonicalNode } from '@stagecraft/renderer/canonical';
 
 const EMU_PER_PX = 9525;
@@ -67,7 +68,13 @@ export default function KonvaStage({
   useEffect(() => {
     cancelGesture();
     return cancelGesture;
-  }, [ownerKey, policyKey, revision, scene.slideId, selectionId, readOnly, zoom, stageWidth, stageHeight]);
+  }, [ownerKey, policyKey, revision, scene.slideId, readOnly, zoom, stageWidth, stageHeight]);
+
+  useEffect(() => {
+    if (gestureRef.current && selectionId !== gestureRef.current.id) {
+      cancelGesture();
+    }
+  }, [selectionId]);
 
   useEffect(() => {
     const onBlur = () => cancelGesture();
@@ -120,6 +127,7 @@ export default function KonvaStage({
                 width={node.frame.width}
                 height={node.frame.height}
                 rotation={node.frame.rotation}
+                fill="transparent"
                 draggable={movable}
                 onMouseDown={e => {
                   if (e.evt?.button !== undefined && e.evt.button !== 0) return;
@@ -137,7 +145,7 @@ export default function KonvaStage({
                   }
                 }}
                 onDragStart={e => {
-                  if ((e.evt?.button !== undefined && e.evt.button !== 0) || !isMovable(node)) {
+                  if ((e.evt?.buttons !== undefined && (e.evt.buttons & 1) === 0) || !isMovable(node)) {
                     e.target.stopDrag();
                     e.target.position({ x: centerX, y: centerY });
                     return;
@@ -203,9 +211,8 @@ export default function KonvaStage({
                     e.target.getLayer()?.batchDraw();
                   }
                 }}
-                sceneFunc={(ctx, shape) => {
+                sceneFunc={ctx => {
                   paintCanonicalNode(ctx._context, node, getEnv());
-                  ctx.fillStrokeShape(shape);
                 }}
                 hitFunc={(ctx, shape) => {
                   ctx.beginPath();

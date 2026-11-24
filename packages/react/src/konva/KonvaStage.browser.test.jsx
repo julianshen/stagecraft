@@ -240,4 +240,61 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
       );
     }
   });
+
+  it('commits a single undoable geometry move when dragging a shape by pointer', async () => {
+    const editor = makeEditor([makeRect('r1', 72, 72, 240, 100)]);
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    const konvaCanvas = await waitForKonvaCanvas(container);
+    const box = konvaCanvas.getBoundingClientRect();
+    const startX = box.left + box.width * 0.2;
+    const startY = box.top + box.height * 0.25;
+
+    act(() => {
+      konvaCanvas.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: 1,
+        clientX: startX,
+        clientY: startY,
+      }));
+    });
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: 1,
+        clientX: startX + 60,
+        clientY: startY + 40,
+      }));
+    });
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: 0,
+        clientX: startX + 60,
+        clientY: startY + 40,
+      }));
+    });
+
+    await waitFor(() => {
+      const geom = editor.getSnapshot().document.slides[0].objects[0].geometry;
+      expect(geom.x).toBeGreaterThan(72 * PT);
+      expect(geom.y).toBeGreaterThan(72 * PT);
+    });
+
+    act(() => {
+      editor.undo();
+    });
+    const restored = editor.getSnapshot().document.slides[0].objects[0].geometry;
+    expect(restored.x).toBe(72 * PT);
+    expect(restored.y).toBe(72 * PT);
+  });
 });

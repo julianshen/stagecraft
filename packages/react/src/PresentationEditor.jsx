@@ -1293,7 +1293,10 @@ export function PresentationCanvas({
         selectionId={ui.selection.objectId}
         zoom={ui.zoom}
         readOnly={ui.readOnly}
-        canMove={node => ui.can('object-geometry') && geometryEligible(node)}
+        canMove={node => {
+          const object = ui.activeSlide?.objects.find(o => o.id === node.id);
+          return ui.can('object-geometry') && geometryEligible(object);
+        }}
         fontEpochBump={fontState.epoch}
         onSelect={ui.selectObject}
         onMove={({ slideId, objectId, geometry, expectedRevision }) => ui.setGeometry(geometry, expectedRevision, objectId, slideId)}
