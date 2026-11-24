@@ -25,7 +25,9 @@ function plainTextDefaults(node) {
     return true;
 }
 /** Whether the projected canonical text contains all metrics this measurer supports. */
-function textMetrics(shape, body) {
+function textMetrics(shape, body, objectDefaults) {
+    const txBox = child(child(shape, 'p', 'nvSpPr'), 'p', 'cNvSpPr')?.getAttribute('txBox');
+    const inheritedMetrics = objectDefaults?.[['1', 'true'].includes(txBox) ? 'txDef' : 'spDef'];
     const ref = child(child(shape, 'p', 'style'), 'a', 'fontRef')?.getAttribute('idx') ?? 'minor';
     const bodyPr = child(body, 'a', 'bodyPr');
     const geometries = children(child(shape, 'p', 'spPr')).filter(n => is(n, 'a', 'prstGeom') || is(n, 'a', 'custGeom'));
@@ -34,9 +36,11 @@ function textMetrics(shape, body) {
         && is(geometries[0], 'a', 'prstGeom') && geometries[0].getAttribute('prst') === 'rect'
         && children(geometries[0]).every(n => is(n, 'a', 'avLst') && children(n).length === 0);
     const unsupportedAttrs = (node, allowed) => Object.keys(attrs(node)).some(name => !allowed.includes(name));
-    let supported = rectangular && ['major', 'minor'].includes(ref) && !all(shape, 'p', 'ph').length
+    let supported = !inheritedMetrics && rectangular && ['major', 'minor'].includes(ref) && !all(shape, 'p', 'ph').length
         && !children(child(body, 'a', 'lstStyle')).length
         && !unsupportedAttrs(bodyPr, ['wrap', 'anchor', 'lIns', 'rIns', 'tIns', 'bIns'])
+        && (!bodyPr?.hasAttribute('anchor') || ['t', 'ctr', 'b'].includes(bodyPr.getAttribute('anchor')))
+        && (!bodyPr?.hasAttribute('wrap') || ['square', 'none'].includes(bodyPr.getAttribute('wrap')))
         && children(bodyPr).every(n => is(n, 'a', n.localName) && ['normAutofit', 'noAutofit', 'spAutoFit'].includes(n.localName));
     for (const paragraph of children(body).filter(n => is(n, 'a', 'p'))) {
         const props = child(paragraph, 'a', 'pPr');
@@ -140,7 +144,7 @@ export async function readPptx(zip, xml, mapping) {
         d.size = { width: Number(size.getAttribute('cx')), height: Number(size.getAttribute('cy')) };
     for (const r of d.relationships.filter(r => r.type === REL + 'image'))
         d.assets.push({ id: `asset:${r.id}`, relationshipId: r.id, ...(r.mode === 'internal' ? { source: { format: 'pptx', part: r.target, path: [] } } : { extensions: { externalTarget: r.target } }) });
-    const entityIds = new Map();
+    const entityIds = new Map(), objectDefaults = new Map();
     async function entity(part, kind) {
         if (entityIds.has(part))
             return entityIds.get(part);
@@ -154,6 +158,17 @@ export async function readPptx(zip, xml, mapping) {
         if (kind === 'masters') item.extensions = { ...item.extensions, pptxTextDefaultsSupported: plainTextDefaults(child(child(root, 'p', 'txStyles'), 'p', 'otherStyle')) };
         if (rels(part).some(r => r.type === REL + 'themeOverride')) item.extensions = { ...item.extensions, pptxThemeOverride: true };
         if (kind === 'themes') {
+            const defaults = child(root, 'a', 'objectDefaults');
+            // Theme object defaults are not projected into canonical layout. Conservatively
+            // exclude affected text even when a local property might override a default.
+            objectDefaults.set(item.id, Object.fromEntries(['txDef', 'spDef'].map(tag => {
+                const def = child(defaults, 'a', tag);
+                return [tag, ['bodyPr', 'lstStyle'].some(name => {
+                    const node = child(def, 'a', name);
+                    return Object.keys(attrs(node)).length > 0 || children(node).length > 0;
+                })];
+            })));
+            item.extensions = { ...item.extensions, pptxObjectDefaults: objectDefaults.get(item.id) };
             const scheme = child(child(root, 'a', 'themeElements'), 'a', 'fontScheme');
             if (scheme) {
                 const fonts = {};
@@ -170,8 +185,6 @@ export async function readPptx(zip, xml, mapping) {
                 item.extensions = { ...item.extensions, pptxFontScheme: fonts };
             }
         }
-        if (kind !== 'themes')
-            item.objects = objects(child(child(root, 'p', 'cSld'), 'p', 'spTree'), part);
         const edge = { slides: ['slideLayout', 'layouts', 'layoutId'], layouts: ['slideMaster', 'masters', 'masterId'], masters: ['theme', 'themes', 'themeId'] }[kind];
         if (edge) {
             const refs = rels(part).filter(r => r.type === REL + edge[0] && r.mode === 'internal');
@@ -180,9 +193,14 @@ export async function readPptx(zip, xml, mapping) {
             if (refs.length)
                 item[edge[2]] = await entity(refs[0].target, edge[1]);
         }
+        if (kind !== 'themes') {
+            const defaults = objectDefaults.get(item[edge[2]]);
+            objectDefaults.set(item.id, defaults);
+            item.objects = objects(child(child(root, 'p', 'cSld'), 'p', 'spTree'), part, defaults);
+        }
         return item.id;
     }
-    function objects(tree, part, nested = false) {
+    function objects(tree, part, defaults, nested = false) {
         return children(tree).filter(n => !is(n, 'p', 'nvGrpSpPr') && !is(n, 'p', 'grpSpPr') && !is(n, 'p', 'extLst')).map(n => {
             const group = is(n, 'p', 'grpSp'), shape = is(n, 'p', 'sp');
             const o = { id: id(part, n), type: group ? 'group' : shape ? 'shape' : 'opaque', source: source('pptx', part, n), extensions: { attributes: attrs(n) } };
@@ -202,7 +220,7 @@ export async function readPptx(zip, xml, mapping) {
                 if (table) { o.type = 'table'; o.table = table; }
             }
             if (group)
-                o.children = objects(n, part, true);
+                o.children = objects(n, part, defaults, true);
             const xfrm = is(n, 'p', 'graphicFrame') ? child(n, 'p', 'xfrm') : child(child(n, 'p', 'spPr'), 'a', 'xfrm');
             const off = child(xfrm, 'a', 'off'), ext = child(xfrm, 'a', 'ext');
             if (off && ext)
@@ -230,7 +248,7 @@ export async function readPptx(zip, xml, mapping) {
             const layout = readPptxBodyLayout(child(textBody, 'a', 'bodyPr'));
             if (layout && Object.keys(layout).length) o.bodyLayout = layout;
             if (textBody) {
-                o.extensions.pptxTextMetrics = textMetrics(n, textBody);
+                o.extensions.pptxTextMetrics = textMetrics(n, textBody, defaults);
                 // A filled geometric sp keeps its shape identity so authored shape text and paint
                 // survive a reopen; an unfilled sp with text is a text box.
                 o.type = isGeometricShape && plainFill ? 'shape' : 'text';

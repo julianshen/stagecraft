@@ -10,6 +10,12 @@ export interface SourceLimits {
     maxExpandedBytes?: number;
     signal?: AbortSignal;
 }
+/** Transient export measurements in EMU; the canonical document is never changed. */
+export interface SourceExportOptions extends SourceLimits {
+    fit?: Map<string, { fontScale: number; lnSpcReduction: number }> | Record<string, { fontScale: number; lnSpcReduction: number }>;
+    /** Grow-only, top-level unrotated PPTX text boxes. y follows the text anchor and may become negative. */
+    resize?: Map<string, { height: number }> | Record<string, { height: number }>;
+}
 export interface OpenPresentationOptions extends SourceLimits {
     format: 'pptx' | 'odp';
     xml?: XmlRuntime;
@@ -56,7 +62,7 @@ export interface SourceSession {
     getImage(assetId: string): ImageBytes | null;
     /** Asset ids with previewable bytes (authored plus retained native PNG/JPEG). */
     readonly images: readonly string[];
-    export(document: CanonicalDocument, options?: SourceLimits): Promise<SourceExport>;
+    export(document: CanonicalDocument, options?: SourceExportOptions): Promise<SourceExport>;
     dispose(): void;
 }
 export function openPresentation(source: Uint8Array | ArrayBuffer | Blob, options: OpenPresentationOptions): Promise<SourceSession>;
