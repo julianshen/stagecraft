@@ -105,6 +105,13 @@ export default function KonvaStage({
     }
     node.scale({ x: 1, y: 1 });
     node.getLayer()?.batchDraw();
+    if (g.stale) {
+      try {
+        onError?.(new Error('Move could not be applied.'));
+      } catch {
+        return;
+      }
+    }
   }
 
   useEffect(() => {
