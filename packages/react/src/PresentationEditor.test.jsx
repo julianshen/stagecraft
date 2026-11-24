@@ -421,6 +421,7 @@ describe('presentation export', () => {
     });
     await act(async () => fireEvent.click(screen.getByText('Export')));
     expect(screen.getByRole('alert')).toHaveTextContent('source failed');
+    expect(screen.getByRole('alert')).toHaveTextContent('ERROR_CALLBACK_FAILED');
     expect(onError).toHaveBeenCalled();
   });
 });
@@ -436,6 +437,16 @@ describe('canvas gestures and focus', () => {
     });
     return target;
   }
+  it.each([false, true])('releases pointer capture only when owned: %s', owns => {
+    mount(); const target = pointerSetup();
+    target.hasPointerCapture = vi.fn(() => owns);
+    target.releasePointerCapture = vi.fn(() => { if (!owns) throw Error('not captured'); });
+    fireEvent.pointerDown(target, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerCancel(screen.getByLabelText('Slide canvas'));
+    expect(target.hasPointerCapture).toHaveBeenCalled();
+    expect(target.releasePointerCapture).toHaveBeenCalledTimes(owns ? 1 : 0);
+    vi.unstubAllGlobals();
+  });
   it('previews pointer movement and commits once; cancel discards', () => {
     const {
       editor

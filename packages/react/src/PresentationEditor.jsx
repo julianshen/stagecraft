@@ -137,11 +137,18 @@ export function PresentationEditorProvider({
   function can(capability) {
     return !locked && canonical && (capabilityCommands[capability]?.every(command => commandIds.has(command)) ?? false) && (!source || source.capabilities.edits.includes(capability));
   }
+  function reportSecondaryError(code, cause) {
+    setError(previous => [previous, `${code}: ${cause instanceof Error ? cause.message : String(cause)}`].filter(Boolean).join('; '));
+  }
   function reportError(reason) {
     setError(reason instanceof Error ? reason.message : String(reason));
+    const token = lifecycle.current;
+    const callbackFailed = cause => {
+      if (token && lifecycle.current === token) reportSecondaryError('ERROR_CALLBACK_FAILED', cause);
+    };
     try {
-      Promise.resolve(onError?.(reason)).catch(() => {});
-    } catch {/* Host callbacks do not break rendering. */}
+      Promise.resolve(onError?.(reason)).catch(callbackFailed);
+    } catch (cause) { callbackFailed(cause); }
   }
   function dispatch(command, payload, capability, revision = snapshot.revision) {
     if (!can(capability)) return false;
@@ -316,9 +323,7 @@ export function PresentationEditorProvider({
       }, 'object-image');
       if (ok) {
         commandSucceeded = true;
-        // Committed: the bytes stay for the object and its undo history. Commit/selection are
-        // bookkeeping only — their failures must never roll the committed registration back.
-        try { registration.commit?.(); } catch { /* the committed edit already owns the bytes */ }
+        try { registration.commit?.(); } catch (cause) { reportSecondaryError('IMAGE_COMMIT_FAILED', cause); }
         if (slideId === activeSlide?.id) selectObjectAfterInsert(id);
       }
       return ok;
@@ -327,10 +332,7 @@ export function PresentationEditorProvider({
       return false;
     } finally {
       if (registration && !commandSucceeded) {
-        // Denied/failed dispatch: nothing references the bytes, so free the quota now. The
-        // rollback itself is best-effort — a disposed/aborted source must not mask the
-        // original error or escape the UI; dispose frees its quota anyway.
-        try { registration.release?.(); } catch { /* cleanup errors cannot escape */ }
+        try { registration.release?.(); } catch (cause) { reportSecondaryError('IMAGE_RELEASE_FAILED', cause); }
       }
     }
   }
@@ -455,17 +457,17 @@ export function PresentationEditorProvider({
           if (!fitAllowed.current) {
             shrinkFit = { status: 'skipped', reason: 'permission-revoked', count: 0 };
           } else if (readiness.status === 'ready') {
-            fit = measureShrinkFits(snapshot.document, { fonts });
-            shrinkFit = fit.size ? { status: 'measured', count: fit.size } : { status: 'skipped', reason: 'no-fit', count: 0 };
+            const measured = measureShrinkFits(snapshot.document, { fonts });
+            ({ fit, ...shrinkFit } = measured);
           } else {
             shrinkFit = { ...readiness, count: 0 };
           }
         } catch (error) {
-          shrinkFit = { status: 'failed', reason: 'error', message: error instanceof Error ? error.message : String(error), count: 0 };
+          shrinkFit = { status: 'failed', reason: 'error', message: 'Shrink measurement failed.', count: 0 };
         }
         if (!current()) return;
       }
-      const result = await (fit ? source.export(snapshot.document, { fit }) : source.export(snapshot.document));
+      const result = await (fit?.size ? source.export(snapshot.document, { fit }) : source.export(snapshot.document));
       if (!current()) return;
       await onExport(result, {
         revision: snapshot.revision,
@@ -997,18 +999,14 @@ export function PresentationCanvas({
     const active = gesture.current;
     gesture.current = null;
     setPreview(null);
-    try {
-      active?.target.releasePointerCapture?.(active.pointerId);
-    } catch {/* Capture may already be lost. */}
+    if (active?.target.hasPointerCapture?.(active.pointerId)) active.target.releasePointerCapture(active.pointerId);
   }
   useEffect(() => {
     cancel();
     return () => {
       const active = gesture.current;
       gesture.current = null;
-      try {
-        active?.target.releasePointerCapture?.(active.pointerId);
-      } catch {/* Unmounted pointer target. */}
+      if (active?.target.hasPointerCapture?.(active.pointerId)) active.target.releasePointerCapture(active.pointerId);
     };
   }, [ui.editor, ui.source, ui.selection.slideId, ui.readOnly]);
   useEffect(() => {

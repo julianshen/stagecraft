@@ -1,0 +1,37 @@
+# Stable user-facing feature ids; based on runtime-verify's feature-map template.
+app:
+  type: web
+  base_url: http://127.0.0.1:5199
+  start: npm run dev -- --host 127.0.0.1 --port 5199 --strictPort
+  viewport: { width: 1600, height: 1000 }
+features:
+  - id: source.export
+    name: Export local presentation
+    aliases: [source workspace export, download PowerPoint, shrink fit export status]
+    route: /?mode=source
+    steps:
+      - click: "role=button[name='New PPTX']"
+      - click: "role=button[name='Export']"
+      - expect_text: { selector: "[aria-label='Export result']", text: "No shrink-to-fit text to measure." }
+      - shot: export-no-shrink
+    expect: A new deck downloads and reports a successful export with no shrink text to measure.
+  - id: source.text-inspector
+    name: Text inspector and measured export
+    aliases: [attribute panel, text properties, shrink text box, font details]
+    route: /?mode=source
+    steps:
+      - click: "role=button[name='New PPTX']"
+      - click: "role=tab[name='Insert']"
+      - click: "role=button[name='Text box']"
+      - fill: { selector: "[aria-label='Font family run 1']", value: "Arial" }
+      - press: { selector: "[aria-label='Font family run 1']", key: Tab }
+      - fill: { selector: "[aria-label='Height (pt)']", value: "50" }
+      - press: { selector: "[aria-label='Height (pt)']", key: Tab }
+      - fill: { selector: "[aria-label='Text run 1']", value: "Long text for a small frame. This sentence wraps several times. More words require a measured shrink fit. Another sentence ensures that the original text does not fit." }
+      - press: { selector: "[aria-label='Text autofit']", key: s }
+      - press: { selector: "[aria-label='Text autofit']", key: Enter }
+      - click: "role=tab[name='Home']"
+      - click: "role=button[name='Export']"
+      - expect_text: { selector: "[aria-label='Export result']", text: "Shrink-to-fit measured for 1 text box." }
+      - shot: export-measured
+    expect: The inspector edits a text box; exported shrink text has a measured fit and a visible outcome.

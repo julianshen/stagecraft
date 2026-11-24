@@ -57,7 +57,7 @@ it('never rolls back committed bytes when a post-commit callback throws', async 
   expect(handle.commit).toHaveBeenCalledTimes(1);
   expect(handle.release).not.toHaveBeenCalled();
   expect(editor.getSnapshot().document.slides[0].objects.some(o => o.type === 'image')).toBe(true);
-  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByRole('alert')).toHaveTextContent('IMAGE_COMMIT_FAILED');
 });
 
 it('reports the original denial, not a rollback failure, when the source cannot release', async () => {
@@ -69,6 +69,7 @@ it('reports the original denial, not a rollback failure, when the source cannot 
   expect(handle.release).toHaveBeenCalledTimes(1);
   expect(editor.getSnapshot().revision).toBe(0);
   expect(screen.getByRole('alert')).toHaveTextContent('UNAUTHORIZED');
+  expect(screen.getByRole('alert')).toHaveTextContent('IMAGE_RELEASE_FAILED');
 });
 
 it('leaves no quota leak on a real source session after a denied insert', async () => {

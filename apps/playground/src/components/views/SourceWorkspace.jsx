@@ -21,11 +21,33 @@ export function downloadSource(result, { fileName, format }) {
   } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
 }
 
+const SHRINK_SKIP_MESSAGES = {
+  'already-fits': 'Text already fits its frame.',
+  'no-shrink': 'No shrink-to-fit text to measure.',
+  'empty-text': 'Shrink-to-fit text boxes are empty.',
+  'not-pptx': 'Shrink measurement is available for PowerPoint exports only.',
+  locked: 'This document is read-only.',
+  'no-capability': 'This source does not support text layout changes.',
+  'permission-revoked': 'Editing permission changed during export.',
+  'fonts-timeout': 'Fonts did not finish loading in time.',
+  'fonts-unavailable': 'Required fonts are unavailable.',
+  'canvas-unavailable': 'Text measurement is unavailable in this browser.',
+  'unsupported-metrics': 'Some text layouts cannot be measured yet.',
+};
+function exportMessage(revision, shrinkFit) {
+  const prefix = `Exported revision ${revision}.`;
+  if (!shrinkFit) return prefix;
+  if (shrinkFit.status === 'measured') return `${prefix} Shrink-to-fit measured for ${shrinkFit.count} text ${shrinkFit.count === 1 ? 'box' : 'boxes'}.`;
+  if (shrinkFit.status === 'failed') return `${prefix} Shrink-to-fit measurement failed. Exported without measured fit.`;
+  return `${prefix} Shrink-to-fit skipped: ${SHRINK_SKIP_MESSAGES[shrinkFit.reason] ?? 'No measured fit was available.'}`;
+}
+
 /** Local-only reference host. These retained source sessions are never sent to a backend. */
 export default function SourceWorkspace({ openSource = openPresentation, save = downloadSource }) {
   const [resource, setResource] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [exportStatus, setExportStatus] = useState('');
   const active = useRef(null);
   const pending = useRef(null);
   const generation = useRef(0);
@@ -47,6 +69,7 @@ export default function SourceWorkspace({ openSource = openPresentation, save = 
   async function openFile(file, prepare) {
     if (!file) return;
     const request = ++generation.current;
+    setExportStatus('');
     pending.current?.abort();
     pending.current = null;
     const format = /\.(pptx|odp)$/i.exec(file.name)?.[1].toLowerCase();
@@ -66,6 +89,7 @@ export default function SourceWorkspace({ openSource = openPresentation, save = 
       const previous = active.current;
       active.current = next;
       setResource(next);
+      setExportStatus('');
       previous?.source.dispose();
       previous?.editor.dispose();
     } catch (cause) {
@@ -99,8 +123,13 @@ export default function SourceWorkspace({ openSource = openPresentation, save = 
     {error && <p role="alert">{error}</p>}
     {resource ? <section aria-label={resource.fileName}>
       <p className="source-file-name">{resource.fileName} · Local file · Export creates a copy</p>
+      {exportStatus && <p role="status" aria-label="Export result">{exportStatus}</p>}
       <EditorProvider key={resource.id} editor={resource.editor}>
-        <PresentationEditor source={resource.source} onExport={(result, { revision }) => save(result, { fileName: resource.fileName, format: resource.format, revision })} />
+        <PresentationEditor source={resource.source} onExport={async (result, { revision, shrinkFit }) => {
+          const request = generation.current;
+          await save(result, { fileName: resource.fileName, format: resource.format, revision, ...(shrinkFit ? { shrinkFit } : {}) });
+          if (mounted.current && !pending.current && active.current === resource && generation.current === request) setExportStatus(exportMessage(revision, shrinkFit));
+        }} />
       </EditorProvider>
     </section> : <section className="source-empty">
       <h2>Your presentation stays local</h2>

@@ -11,7 +11,7 @@ const fontDescriptor = Object.getOwnPropertyDescriptor(document, 'fonts');
 let fonts, fit, editors;
 beforeEach(() => {
   editors=[]; fit=new Map([['o',{fontScale:77500,lnSpcReduction:10000}]]);
-  measureShrinkFits.mockReset().mockReturnValue(fit);
+  measureShrinkFits.mockReset().mockReturnValue({fit,status:'measured',count:1});
   fonts={status:'loaded',check:vi.fn(()=>true),load:vi.fn(async()=>[]),ready:Promise.resolve()};
   Object.defineProperty(document,'fonts',{configurable:true,value:fonts});
 });
@@ -64,7 +64,7 @@ it('exports without fit after a font-readiness timeout and ignores late completi
 it('exports without fit when loading fonts fails',async()=>{
   fonts.check.mockReturnValue(false);fonts.load.mockRejectedValue(Error('font unavailable'));
   const {editor,source,onExport}=mount();await act(async()=>fireEvent.click(screen.getByText('Export')));
-  expect(onExport).toHaveBeenCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'failed',reason:'error',message:'font unavailable',count:0}});
+  expect(onExport).toHaveBeenCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'failed',reason:'error',message:'Font readiness failed.',count:0}});
   expect(source.export).toHaveBeenCalledWith(editor.getSnapshot().document);expect(measureShrinkFits).not.toHaveBeenCalled();
 });
 it('does not start an obsolete export after unmount during font readiness',async()=>{
@@ -91,7 +91,7 @@ it('exports without fit when browser font APIs are unavailable or measurement th
   Object.defineProperty(document,'fonts',{configurable:true,value:fonts});measureShrinkFits.mockImplementation(()=>{throw Error('canvas unavailable');});
   await act(async()=>fireEvent.click(screen.getByText('Export')));
   expect(view.source.export).toHaveBeenLastCalledWith(view.editor.getSnapshot().document);expect(view.source.export).toHaveBeenCalledTimes(2);
-  expect(view.onExport).toHaveBeenLastCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'failed',reason:'error',message:'canvas unavailable',count:0}});
+  expect(view.onExport).toHaveBeenLastCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'failed',reason:'error',message:'Shrink measurement failed.',count:0}});
 });
 it.each(['prop','source','capability'])('omits fit when %s permission is revoked during font loading',async kind=>{
   const pending=deferred();fonts.status='loading';fonts.check.mockReturnValue(false);fonts.load.mockReturnValue(pending.promise);
@@ -105,7 +105,8 @@ it.each(['prop','source','capability'])('omits fit when %s permission is revoked
 });
 
 it('reports no-fit when measurement produces no adjustment',async()=>{
-  measureShrinkFits.mockReturnValue(new Map());const {onExport}=mount();
+  measureShrinkFits.mockReturnValue({fit:new Map(),status:'skipped',reason:'already-fits',count:0});const {onExport,source,editor}=mount();
   await act(async()=>fireEvent.click(screen.getByText('Export')));
-  expect(onExport).toHaveBeenCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'skipped',reason:'no-fit',count:0}});
+  expect(onExport).toHaveBeenCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'skipped',reason:'already-fits',count:0}});
+  expect(source.export).toHaveBeenCalledWith(editor.getSnapshot().document);
 });
