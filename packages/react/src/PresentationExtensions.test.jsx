@@ -1288,6 +1288,30 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     expect(partialObj.style.paddingBottom).toBe(`${45720 * slideScale}px`);
   });
 
+  it('does not apply DrawingML default insets to ODP documents in SVG preview', () => {
+    const odpEditor = makeTextTrancheEngine([{
+      id: 's1',
+      objects: [{
+        id: 't-odp',
+        type: 'text',
+        geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
+        text: { paragraphs: [{ id: 'p1', runs: [{ id: 'r1', text: 'ODP', style: { sz: '1800' } }] }] },
+      }],
+    }], { sourceFormat: 'odp' });
+
+    render(
+      <EditorProvider editor={odpEditor}>
+        <PresentationEditor />
+      </EditorProvider>,
+    );
+
+    const odpObj = screen.getByLabelText('Slide canvas').querySelector('[data-object-id="t-odp"] .stagecraft-presentation-object');
+    expect(odpObj.style.paddingLeft).toBe('');
+    expect(odpObj.style.paddingRight).toBe('');
+    expect(odpObj.style.paddingTop).toBe('');
+    expect(odpObj.style.paddingBottom).toBe('');
+  });
+
   it('prefers live run.style typeface/color over imported pptxAppearance and invalidates range selection on unrelated revision', () => {
     const editor = makeTextTrancheEngine([{
       id: 's1',
