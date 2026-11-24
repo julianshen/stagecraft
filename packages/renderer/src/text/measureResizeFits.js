@@ -38,7 +38,7 @@ export function measureResizeFits(document,{fonts=globalThis.document?.fonts,can
   let measure, canvasAttempted=false; const checked=new Set();
   for(const candidate of candidates) {
    if(candidate.reason){record('skipped',candidate.reason);continue;}
-   if(fonts?.status!=='loaded'||typeof fonts.check!=='function'){record('skipped','fonts-unavailable');continue;}
+   if(typeof fonts?.check!=='function'){record('skipped','fonts-unavailable');continue;}
    try {
     if(!fontsReady(candidate.body,candidate.theme,fonts,checked)){record('skipped','fonts-unavailable');continue;}
     if(!canvasAttempted){canvasAttempted=true;const ctx=(canvas??globalThis.document?.createElement('canvas'))?.getContext('2d');if(ctx)measure=createTextBodyMeasurer(ctx,canvasFont);}

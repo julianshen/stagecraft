@@ -64,7 +64,7 @@ it('exports without fit after a font-readiness timeout and ignores late completi
 it('exports without fit when loading fonts fails',async()=>{
   fonts.check.mockReturnValue(false);fonts.load.mockRejectedValue(Error('font unavailable'));
   const {editor,source,onExport}=mount();await act(async()=>fireEvent.click(screen.getByText('Export')));
-  expect(onExport).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({revision:0,shrinkFit:{status:'failed',reason:'error',message:'Font readiness failed.',count:0}}));
+  expect(onExport).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({revision:0,shrinkFit:{status:'skipped',reason:'fonts-unavailable',count:0}}));
   expect(source.export).toHaveBeenCalledWith(editor.getSnapshot().document);expect(measureShrinkFits).not.toHaveBeenCalled();
 });
 it('does not start an obsolete export after unmount during font readiness',async()=>{

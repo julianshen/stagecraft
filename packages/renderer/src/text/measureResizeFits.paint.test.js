@@ -73,3 +73,5 @@ it('retains a successful resize when another object fails font checking',()=>{
  const fonts={status:'loaded',check(query){if(query.includes('BrokenFont'))throw Error('SECRET');return true;}};
  const result=measureResizeFits(d,{fonts});expect(result.count).toBe(1);expect(result.status).toBe('failed');expect(result.stats).toEqual({candidates:2,measured:1,skipped:0,failed:1});expect(result.resize.has('box')).toBe(true);expect(JSON.stringify(result)).not.toContain('SECRET');
 });
+
+it('measures available resize fonts while unrelated fonts are loading',()=>{const result=measureResizeFits(doc(make()),{fonts:{status:'loading',check:()=>true}});expect(result.status).toBe('measured');expect(result.resize.size).toBe(1);});

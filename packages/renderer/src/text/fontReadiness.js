@@ -21,17 +21,22 @@ export function fontsReady(body, theme, fonts, checked) {
   return true;
 }
 
+export function collectFontQueries(bodies) {
+  const queries = new Map();
+  for (const { body, theme } of bodies) for (const { shorthand, text } of fontQueries(body, theme)) {
+    if (!queries.has(shorthand)) queries.set(shorthand, new Set());
+    queries.get(shorthand).add(text);
+  }
+  return queries;
+}
+
 export async function waitForBodyFonts(bodies, {fonts,timeoutMs=2000}) {
   if (!fonts?.load || !fonts?.check) return { status: 'skipped', reason: 'fonts-unavailable' };
   let timer;
   try {
     return await Promise.race([
       Promise.resolve().then(async () => {
-        const queries = new Map();
-        for (const { body, theme } of bodies) for (const { shorthand, text } of fontQueries(body, theme)) {
-          if (!queries.has(shorthand)) queries.set(shorthand, new Set());
-          queries.get(shorthand).add(text);
-        }
+        const queries = collectFontQueries(bodies);
         if (!queries.size) return { status: 'ready' };
         await Promise.all([...queries].map(([shorthand, chars]) => {
           const text = [...chars].join('');

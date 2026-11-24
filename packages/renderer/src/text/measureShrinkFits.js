@@ -64,7 +64,7 @@ export function measureShrinkFits(document, { fonts = globalThis.document?.fonts
   try {
     const fits = new Map();
     if (document.extensions?.sourceFormat === 'odp') return skipped('not-pptx');
-    if (fonts?.status !== 'loaded' || typeof fonts.check !== 'function') return skipped('fonts-unavailable');
+    if (typeof fonts?.check !== 'function') return skipped('fonts-unavailable');
     const { bodies, reason } = shrinkBodies(document);
     if (!bodies.length) return skipped(reason);
     const ctx = (canvas ?? globalThis.document?.createElement('canvas'))?.getContext('2d');

@@ -25,10 +25,10 @@ it('chooses the first fitting explicit candidate using the same adapter and real
   }
   expect(input).toEqual(original);
 });
-it('returns no entry for already-fitting and empty text, and no fits while fonts load', () => {
+it('returns no entry for already-fitting and empty text, and checks only the required fonts while unrelated fonts load', () => {
   expect(measureShrinkFits(doc(make('Short')), { fonts: document.fonts }).fit.size).toBe(0);
   expect(measureShrinkFits(doc(make('')), { fonts: document.fonts }).fit.size).toBe(0);
-  expect(measureShrinkFits(doc(make()), { fonts: { status: 'loading', check: () => true } }).fit.size).toBe(0);
+  expect(measureShrinkFits(doc(make()), { fonts: { status: 'loading', check: () => true } }).fit.size).toBe(1);
   expect(measureShrinkFits(doc(make()), { fonts: { status: 'loaded', check: () => false } }).fit.size).toBe(0);
 });
 it('measures multi-run text, respects insets and treats nowrap as height-only', () => {
