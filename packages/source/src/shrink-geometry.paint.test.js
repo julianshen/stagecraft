@@ -30,7 +30,7 @@ it.each([
   const source = await nativeShape(geometry);
   try {
     const object = source.document.slides[0].objects[0];
-    expect(measureShrinkFits(source.document, { fonts: document.fonts }).has(object.id)).toBe(supported);
+    expect(measureShrinkFits(source.document, { fonts: document.fonts }).fit.has(object.id)).toBe(supported);
     expect(object.extensions.pptxTextMetrics.supported).toBe(supported);
   } finally { source.dispose(); }
 });

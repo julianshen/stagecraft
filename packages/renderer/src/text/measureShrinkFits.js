@@ -34,23 +34,36 @@ function fontsReady(body, theme, fonts, checked) {
   for (const { shorthand, text } of fontQueries(body, theme)) {
     const key = JSON.stringify([shorthand, text]);
     if (!checked.has(key)) {
-      try { if (!fonts.check(shorthand, text)) return false; }
-      catch { return false; }
+      if (!fonts.check(shorthand, text)) return false;
       checked.add(key);
     }
   }
   return true;
 }
-function* shrinkBodies(document) {
+function hasNestedShrink(object) {
+  const pending = [...(object.children ?? [])];
+  while (pending.length) {
+    const child = pending.pop();
+    if (child.bodyLayout?.autofit === 'shrink') return true;
+    for (const descendant of child.children ?? []) pending.push(descendant);
+  }
+  return false;
+}
+function shrinkBodies(document) {
+  const bodies = [];
+  let reason = 'no-shrink';
   for (const slide of document.slides ?? []) {
     const theme = themeForSlide(document, slide);
-    // Group-relative transforms are not represented by this adapter yet.
     for (const object of slide.objects ?? []) {
+      if (hasNestedShrink(object)) reason = 'unsupported-metrics';
       if (object.bodyLayout?.autofit !== 'shrink') continue;
       const a = canonicalTextBody(object, theme);
-      if (a?.body.paragraphs.some(p => p.runs.some(r => r.text.trim()))) yield { object, ...a };
+      if (!a) reason = 'unsupported-metrics';
+      else if (a.body.paragraphs.some(p => p.runs.some(r => r.text.trim()))) bodies.push({ object, ...a });
+      else if (reason !== 'unsupported-metrics') reason = 'empty-text';
     }
   }
+  return { bodies, reason };
 }
 
 /** Load only the captured snapshot's measurable shrink fonts; failure is an optional-fit fallback. */
@@ -61,11 +74,12 @@ export async function waitForShrinkFonts(document, { fonts = globalThis.document
     return await Promise.race([
       Promise.resolve().then(async () => {
         const queries = new Map();
-        for (const { body, theme } of shrinkBodies(document)) for (const { shorthand, text } of fontQueries(body, theme)) {
+        const { bodies, reason } = shrinkBodies(document);
+        for (const { body, theme } of bodies) for (const { shorthand, text } of fontQueries(body, theme)) {
           if (!queries.has(shorthand)) queries.set(shorthand, new Set());
           queries.get(shorthand).add(text);
         }
-        if (!queries.size) return { status: 'skipped', reason: 'no-shrink' };
+        if (!queries.size) return { status: 'skipped', reason };
         await Promise.all([...queries].map(([shorthand, chars]) => {
           const text = [...chars].join('');
           return fonts.check(shorthand, text) ? undefined : fonts.load(shorthand, text);
@@ -76,29 +90,37 @@ export async function waitForShrinkFonts(document, { fonts = globalThis.document
       }),
       new Promise(resolve => { timer = setTimeout(() => resolve({ status: 'skipped', reason: 'fonts-timeout' }), timeoutMs); }),
     ]);
-  } catch (error) { return { status: 'failed', reason: 'error', message: error instanceof Error ? error.message : String(error) }; }
+  } catch { return { status: 'failed', reason: 'error', message: 'Font readiness failed.' }; }
   finally { clearTimeout(timer); }
 }
 
 /** Synchronous browser measurement. Host must finish font loading before calling. */
 export function measureShrinkFits(document, { fonts = globalThis.document?.fonts, canvas } = {}) {
-  const fits = new Map();
-  if (fonts?.status !== 'loaded' || typeof fonts.check !== 'function' || document.extensions?.sourceFormat === 'odp') return fits;
-  const ctx = (canvas ?? globalThis.document?.createElement('canvas'))?.getContext('2d');
-  if (!ctx) return fits;
-  const measure = createTextBodyMeasurer(ctx, canvasFont), checked = new Set();
-  for (const a of shrinkBodies(document)) {
-    const { object, theme } = a;
-    if (!fontsReady(a.body, theme, fonts, checked)) return new Map();
-    const height = body => layoutTextBody(body, a.width, a.height, measure, theme).height;
-    const initialHeight = height(a.body);
-    if (initialHeight <= a.availableHeight) continue;
-    let selected;
-    search: for (const fontScale of SHRINK_FIT_POLICY.fontScales) for (const lnSpcReduction of SHRINK_FIT_POLICY.lineReductions) {
-      selected = { fontScale, lnSpcReduction };
-      if ((fontScale === 100000 && lnSpcReduction === 0 ? initialHeight : height(scaledTextBody(a.body, selected))) <= a.availableHeight * SHRINK_FIT_POLICY.heightMargin) break search;
+  const skipped = reason => ({ fit: new Map(), status: 'skipped', reason, count: 0 });
+  try {
+    const fits = new Map();
+    if (document.extensions?.sourceFormat === 'odp') return skipped('not-pptx');
+    if (fonts?.status !== 'loaded' || typeof fonts.check !== 'function') return skipped('fonts-unavailable');
+    const { bodies, reason } = shrinkBodies(document);
+    if (!bodies.length) return skipped(reason);
+    const ctx = (canvas ?? globalThis.document?.createElement('canvas'))?.getContext('2d');
+    if (!ctx) return skipped('canvas-unavailable');
+    const measure = createTextBodyMeasurer(ctx, canvasFont), checked = new Set();
+    for (const a of bodies) {
+      const { object, theme } = a;
+      if (!fontsReady(a.body, theme, fonts, checked)) return skipped('fonts-unavailable');
+      const height = body => layoutTextBody(body, a.width, a.height, measure, theme).height;
+      const initialHeight = height(a.body);
+      if (initialHeight <= a.availableHeight) continue;
+      let selected;
+      search: for (const fontScale of SHRINK_FIT_POLICY.fontScales) for (const lnSpcReduction of SHRINK_FIT_POLICY.lineReductions) {
+        selected = { fontScale, lnSpcReduction };
+        if ((fontScale === 100000 && lnSpcReduction === 0 ? initialHeight : height(scaledTextBody(a.body, selected))) <= a.availableHeight * SHRINK_FIT_POLICY.heightMargin) break search;
+      }
+      fits.set(object.id, selected);
     }
-    fits.set(object.id, selected);
+    return fits.size ? { fit: fits, status: 'measured', count: fits.size } : skipped(reason === 'unsupported-metrics' ? reason : 'already-fits');
+  } catch {
+    return { fit: new Map(), status: 'failed', reason: 'error', message: 'Shrink measurement failed.', count: 0 };
   }
-  return fits;
 }

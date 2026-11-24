@@ -8,7 +8,7 @@ vi.mock('@stagecraft/react/presentation', async () => {
   const { useEditorSnapshot } = await import('@stagecraft/react/editor');
   return { PresentationEditor: ({ source, onExport }) => {
     const snapshot = useEditorSnapshot();
-    return <div><output>{snapshot.document.metadata.title}</output><button onClick={() => onExport({ bytes: new Uint8Array([1]), dirtyParts: [] }, { revision: snapshot.revision })}>Export fixture</button></div>;
+    return <div><output>{snapshot.document.metadata.title}</output><button onClick={() => onExport({ bytes: new Uint8Array([1]), dirtyParts: [] }, { revision: snapshot.revision, shrinkFit: source.shrinkFit })}>Export fixture</button></div>;
   } };
 });
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
@@ -96,4 +96,23 @@ it.each(['PPTX', 'ODP'])('creates a new local %s without a user file', async for
   expect(file.name).toBe(`Untitled.${format.toLowerCase()}`);
   expect(file.size).toBeGreaterThan(0);
   expect(options.format).toBe(format.toLowerCase());
+});
+
+it.each([
+ [{status:'measured',count:2},'Shrink-to-fit measured for 2 text boxes.'],
+ [{status:'skipped',reason:'already-fits',count:0},'Text already fits its frame.'],
+ [{status:'skipped',reason:'no-shrink',count:0},'No shrink-to-fit text to measure.'],
+ [{status:'failed',reason:'error',message:'Private document details',count:0},'Shrink-to-fit measurement failed.'],
+])('shows the export outcome %j without exposing internal messages',async(shrinkFit,text)=>{
+ const opened={...source('Outcomes'),shrinkFit};render(<SourceWorkspace openSource={async()=>opened} save={vi.fn()}/>);choose('status.pptx');await screen.findByText('Outcomes');
+ fireEvent.click(screen.getByText('Export fixture'));expect(await screen.findByRole('status',{name:'Export result'})).toHaveTextContent(text);expect(screen.queryByText(/Private document details/)).toBeNull();expect(screen.queryByRole('alert')).toBeNull();
+});
+it('suppresses old export feedback after document replacement during save',async()=>{
+ const pending=deferred(), a={...source('A'),shrinkFit:{status:'measured',count:1}},b=source('B');
+ render(<SourceWorkspace openSource={vi.fn().mockResolvedValueOnce(a).mockResolvedValueOnce(b)} save={()=>pending.promise}/>);choose('a.pptx');await screen.findByText('A');fireEvent.click(screen.getByText('Export fixture'));choose('b.pptx');await screen.findByText('B');await act(async()=>pending.resolve());expect(screen.queryByText(/Shrink-to-fit measured/)).toBeNull();
+});
+
+it('does not carry export feedback into a replacement already loading',async()=>{
+ const pending=deferred(),a={...source('A'),shrinkFit:{status:'measured',count:1}},b=source('B');
+ render(<SourceWorkspace openSource={vi.fn().mockResolvedValueOnce(a).mockReturnValueOnce(pending.promise)} save={vi.fn()}/>);choose('a.pptx');await screen.findByText('A');choose('b.pptx');fireEvent.click(screen.getByText('Export fixture'));await act(async()=>{});await act(async()=>pending.resolve(b));await screen.findByText('B');expect(screen.queryByLabelText('Export result')).toBeNull();
 });

@@ -19,7 +19,7 @@ import type { SourceExport, SourceSession } from '@stagecraft/source';
 export type PresentationSelection = { slideId: string | null; objectId: string | null };
 export type ShrinkFitOutcome =
   | { status: 'measured'; count: number }
-  | { status: 'skipped'; count: 0; reason: 'not-pptx' | 'locked' | 'no-capability' | 'permission-revoked' | 'fonts-timeout' | 'fonts-unavailable' | 'no-shrink' | 'no-fit' }
+  | { status: 'skipped'; count: 0; reason: 'not-pptx' | 'locked' | 'no-capability' | 'permission-revoked' | 'fonts-timeout' | 'fonts-unavailable' | 'no-shrink' | 'already-fits' | 'empty-text' | 'unsupported-metrics' | 'canvas-unavailable' }
   | { status: 'failed'; count: 0; reason: 'error'; message: string };
 export type ExportContext = { revision: number; shrinkFit: ShrinkFitOutcome };
 export type DeckListItem = { id: string; title: string; description?: string; disabled?: boolean };

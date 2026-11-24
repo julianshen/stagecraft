@@ -187,3 +187,19 @@ void retainedSource;
 const scriptFonts: import('@stagecraft/core/document').RunFormat = { fontFamily: 'Arial', eastAsian: '+mj-ea', complexScript: null };
 const authoredScriptFonts: import('@stagecraft/core/document').AuthoredRunStyle = { typeface: 'Arial', eastAsian: 'Yu Gothic', complexScript: '+mn-cs' };
 void scriptFonts; void authoredScriptFonts;
+
+// Renderer measurement diagnostics are a discriminated outcome, not a Map.
+import { measureShrinkFits, waitForShrinkFonts, scaledTextBody, type ShrinkMeasurement } from '@stagecraft/renderer/text/measureShrinkFits';
+const shrinkMeasurement: ShrinkMeasurement = measureShrinkFits(createDocument(), { fonts: globalThis.document.fonts });
+shrinkMeasurement.fit.get('object')?.fontScale.toFixed();
+if (shrinkMeasurement.status === 'skipped') shrinkMeasurement.reason.toUpperCase();
+if (shrinkMeasurement.status === 'failed') shrinkMeasurement.message.toUpperCase();
+// @ts-expect-error The old bare Map result is no longer supported.
+shrinkMeasurement.get('object');
+void waitForShrinkFonts(createDocument(), { fonts: globalThis.document.fonts }).then(result => {
+  if (result.status === 'skipped') result.reason.toUpperCase();
+});
+
+const scaledBody = scaledTextBody({paragraphs:[{runs:[{fontSizePt:18}],endProperties:{fontSizePt:18},lineSpacing:{kind:'percent',value:1}}]}, {fontScale:50000,lnSpcReduction:0});
+expectType<'percent'>(scaledBody.paragraphs[0].lineSpacing.kind);
+expectType<number>(scaledBody.paragraphs[0].runs[0].fontSizePt);

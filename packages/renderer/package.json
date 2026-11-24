@@ -5,7 +5,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.js",
-    "./canvas/*": "./src/canvas/*"
+    "./canvas/*": "./src/canvas/*",
+    "./text/measureShrinkFits": {
+      "types": "./src/text/measureShrinkFits.d.ts",
+      "default": "./src/text/measureShrinkFits.js"
+    }
   },
   "files": [
     "src"
