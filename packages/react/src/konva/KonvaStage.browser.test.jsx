@@ -228,9 +228,11 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
       </div>,
     );
     await waitForKonvaCanvas(container);
-    expect(onSurfaceChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ active: 'konva', status: 'ready' }),
-    );
+    await waitFor(() => {
+      expect(onSurfaceChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ active: 'konva', status: 'ready' }),
+      );
+    });
 
     rerender(
       <div style={{ transform: 'rotate(10deg)' }}>
@@ -916,5 +918,157 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
     expect(calls2[0][0]).toBe('presentation.setGeometry');
     expect(calls2[0][1]).toMatchObject({ slideId: 's1', objectId: 'r1' });
     expect(calls2[0][2]).toEqual({ expectedRevision: 0, origin: 'react' });
+  });
+
+  it('selects and moves an unselected shape on single-finger touch drag with one dispatch', async () => {
+    const baseEditor = makeEditor([makeRect('r1', 72, 72, 240, 100)]);
+    let dispatchCount = 0;
+    const editor = {
+      ...baseEditor,
+      dispatch: (...args) => { dispatchCount += 1; return baseEditor.dispatch(...args); },
+    };
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    const konvaCanvas = await waitForKonvaCanvas(container);
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const stage = getStageForContainer(Konva, container);
+    const shapeNode = stage.findOne('.r1');
+
+    let stagePt = { x: 0, y: 0 };
+    await waitFor(() => {
+      stagePt = { x: shapeNode.x() * stage.scaleX(), y: shapeNode.y() * stage.scaleY() };
+      if (stage.getIntersection(stagePt) !== shapeNode) throw new Error('hit not ready');
+    });
+    const box = konvaCanvas.getBoundingClientRect();
+    const startX = Math.round(box.left + stagePt.x);
+    const startY = Math.round(box.top + stagePt.y);
+
+    const makeTouch = (x, y) => new Touch({
+      identifier: 1,
+      target: konvaCanvas,
+      clientX: x,
+      clientY: y,
+      pageX: x,
+      pageY: y,
+    });
+    const initialX = shapeNode.x();
+
+    act(() => {
+      const t = makeTouch(startX, startY);
+      konvaCanvas.dispatchEvent(new TouchEvent('touchstart', {
+        bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t],
+      }));
+    });
+    act(() => {
+      const t = makeTouch(startX + 60, startY + 40);
+      window.dispatchEvent(new TouchEvent('touchmove', {
+        bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t],
+      }));
+    });
+    await waitFor(() => expect(shapeNode.x()).toBeGreaterThan(initialX));
+    act(() => {
+      const t = makeTouch(startX + 60, startY + 40);
+      window.dispatchEvent(new TouchEvent('touchend', {
+        bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t],
+      }));
+    });
+
+    await waitFor(() => expect(dispatchCount).toBe(1));
+    expect(screen.getByRole('button', { name: 'Select object r1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(editor.getSnapshot().document.slides[0].objects[0].geometry.x).toBeGreaterThan(72 * PT);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('single-sources relevant font families for EA, CS, and resolved theme-alias (+mn-ea) faces', async () => {
+    const fontListeners = new Map();
+    const checkSpy = vi.fn(() => true);
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      value: {
+        status: 'loaded',
+        check: checkSpy,
+        load: vi.fn(async () => []),
+        addEventListener: (type, fn) => {
+          if (!fontListeners.has(type)) fontListeners.set(type, new Set());
+          fontListeners.get(type).add(fn);
+        },
+        removeEventListener: (type, fn) => {
+          fontListeners.get(type)?.delete(fn);
+        },
+        ready: Promise.resolve(),
+      },
+    });
+
+    const doc = createDocument({
+      id: 'ea-cs-theme-deck',
+      layouts: [{ id: 'l1', masterId: 'm1' }],
+      masters: [{ id: 'm1', themeId: 'theme-1' }],
+      themes: [{
+        id: 'theme-1',
+        extensions: {
+          pptxFontScheme: {
+            major: { latin: 'Calibri', eastAsian: 'Yu Gothic', complexScript: 'Tahoma' },
+            minor: { latin: 'Arial', eastAsian: 'Noto Sans JP', complexScript: 'Amiri' },
+          },
+        },
+      }],
+      slides: [{
+        id: 's1',
+        layoutId: 'l1',
+        extensions: { stagecraftAuthored: true },
+        background: { type: 'solid', color: '#ffffff' },
+        objects: [{
+          id: 't1',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 200 * PT, height: 80 * PT, rotation: 0 },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              runs: [{
+                id: 'r1',
+                text: 'A漢ع',
+                editable: true,
+                style: { typeface: 'Arial', eastAsian: '+mn-ea', complexScript: 'Cairo', sz: '1800' },
+                extensions: { stagecraftAuthored: true },
+              }],
+            }],
+          },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    await waitForKonvaCanvas(container);
+    let checks = checkSpy.mock.calls.length;
+
+    // Unrelated face -> ignored
+    await act(async () => {
+      fontListeners.get('loadingdone')?.forEach(fn => fn({ fontfaces: [{ family: 'UnrelatedFont' }] }));
+      await Promise.resolve();
+    });
+    expect(checkSpy.mock.calls.length).toBe(checks);
+
+    // Resolved +mn-ea theme-alias EA font ('Noto Sans JP') -> triggers readiness rerun
+    await act(async () => {
+      fontListeners.get('loadingdone')?.forEach(fn => fn({ fontfaces: [{ family: 'Noto Sans JP' }] }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(checkSpy.mock.calls.length).toBeGreaterThan(checks));
+    checks = checkSpy.mock.calls.length;
+
+    // Explicit CS font ('Cairo') -> triggers readiness rerun
+    await act(async () => {
+      fontListeners.get('loadingdone')?.forEach(fn => fn({ fontfaces: [{ family: 'Cairo' }] }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(checkSpy.mock.calls.length).toBeGreaterThan(checks));
   });
 });
