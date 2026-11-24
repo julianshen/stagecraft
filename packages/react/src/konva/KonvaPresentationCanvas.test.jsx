@@ -254,4 +254,78 @@ describe('KONVA-2b surface decision, fallback wording, and API boundary', () => 
     expect(onSurfaceChange.mock.calls.every(([, ] = []) => true)).toBe(true);
     expect(onSurfaceChange.mock.calls.at(-1)[0].active).toBe('svg');
   });
+
+  it('uses diagnostic-specific wording for inherited-appearance variants without showing white-background action for non-background causes', async () => {
+    const { surfaceMessageForReason } = await import('./surfaceDecision.js');
+    expect(surfaceMessageForReason('inherited-appearance', [{ code: 'inherited-background' }])).toContain('layout background');
+    expect(surfaceMessageForReason('inherited-appearance', [{ code: 'inherited-artwork' }])).toContain('artwork');
+    expect(surfaceMessageForReason('inherited-appearance', [{ code: 'authored-layout-mismatch' }])).toContain('layout');
+    expect(surfaceMessageForReason('inherited-appearance', [{ code: 'theme-object-defaults' }])).toContain('theme');
+  });
+
+  it('B8: resets load-failed on slide/content change and explicit re-request without a repaint loop', async () => {
+    let failImport = true;
+    let importAttempts = 0;
+    vi.resetModules();
+    vi.doMock('./KonvaSurfaceShell.jsx', () => {
+      importAttempts += 1;
+      if (failImport) {
+        throw new Error('transient network error');
+      }
+      return {
+        default: ({ onUseSvg }) => (
+          <div data-testid="mock-konva-shell">
+            <button type="button" onClick={onUseSvg}>Switch to standard view</button>
+          </div>
+        ),
+      };
+    });
+
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({});
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      value: { status: 'loaded', check: () => true, load: async () => [], ready: Promise.resolve() },
+    });
+
+    const { EditorProvider: FreshEditorProvider } = await import('../EditorProvider.jsx');
+    const { PresentationEditor: FreshPresentationEditor } = await import('../PresentationEditor.jsx');
+    const doc = createDocument({
+      id: 'b8-deck',
+      slides: [
+        { id: 's1', extensions: { stagecraftAuthored: true }, background: { type: 'solid', color: '#ffffff' }, objects: [] },
+        { id: 's2', extensions: { stagecraftAuthored: true }, background: { type: 'solid', color: '#ffffff' }, objects: [] },
+      ],
+    });
+    const editor = makeEditor(doc);
+    const onSurfaceChange = vi.fn();
+
+    render(
+      <FreshEditorProvider editor={editor}>
+        <FreshPresentationEditor surface="konva" onSurfaceChange={onSurfaceChange} />
+      </FreshEditorProvider>,
+    );
+
+    await waitFor(() => {
+      expect(onSurfaceChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ active: 'svg', status: 'fallback', reason: 'load-failed' }),
+      );
+    });
+    const attemptsAfterFail = importAttempts;
+
+    // Unrelated repaint/selection does not loop retries while load-failed is active
+    expect(importAttempts).toBe(attemptsAfterFail);
+
+    // Content change (revision bump) retries and succeeds once import recovers
+    failImport = false;
+    act(() => {
+      editor.dispatch('presentation.setSlideProperties', { slideId: 's1', properties: { name: 'Updated' } });
+    });
+
+    await waitFor(() => {
+      expect(onSurfaceChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ active: 'konva', status: 'ready', revision: 1 }),
+      );
+    });
+    vi.doUnmock('./KonvaSurfaceShell.jsx');
+  });
 });

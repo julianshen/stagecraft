@@ -6,6 +6,8 @@ import { odpAdapter } from '@stagecraft/odp';
 import { createDocument, validateDocument, documentPlugin, migrateLegacyDeck, toLegacyDeck } from '@stagecraft/core/document';
 import { openPresentation } from '@stagecraft/source';
 import { CanonicalEditorSurface } from '@stagecraft/react/canonical';
+import type { PresentationSurfaceOutcome, PresentationSurfaceReason } from '@stagecraft/react/presentation';
+import { KonvaPresentationCanvas } from '@stagecraft/react/konva';
 
 const editor = createEditor({ document: { title: 'Typed host', slides: [], sections: [] }, plugins: [{
   id: 'title', version: '1', commands: [{ id: 'title', apply: (draft, payload) => ({ ...draft, title: String(payload) }) }],
@@ -107,3 +109,36 @@ export const unsupportedCanvasHeight = <SlideCanvas slide={{}} deck={{}} height=
 export const unsupportedCanvasScale = <SlideCanvas slide={{}} deck={{}} scale={2} />;
 // @ts-expect-error The paint environment requires its caches and font epoch.
 export const incompleteCanvasEnvironment = <SlideCanvas slide={{}} deck={{}} env={{ imageLimit: 64 }} />;
+
+export function exhaustiveSurfaceReason(reason: PresentationSurfaceReason): string {
+  switch (reason) {
+    case 'loading':
+    case 'no-slide':
+    case 'not-canonical':
+    case 'unsupported-format':
+    case 'plugin-renderer':
+    case 'inherited-appearance':
+    case 'unsupported-content':
+    case 'unresolved-appearance':
+    case 'invalid-geometry':
+    case 'unsupported-embedding':
+    case 'fonts-unavailable':
+    case 'fonts-timeout':
+    case 'canvas-unavailable':
+    case 'load-failed':
+    case 'render-failed':
+      return reason;
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
+  }
+}
+
+export const konvaCanvas = (
+  <KonvaPresentationCanvas
+    onSurfaceChange={(outcome: PresentationSurfaceOutcome) => {
+      if (outcome.reason) void exhaustiveSurfaceReason(outcome.reason);
+    }}
+  />
+);

@@ -16,7 +16,22 @@ export const SURFACE_REASON_MESSAGES = Object.freeze({
   'render-failed': 'Showing the standard view: canvas view could not start.',
 });
 
-export function surfaceMessageForReason(reason) {
+export const INHERITED_APPEARANCE_MESSAGES = Object.freeze({
+  'inherited-background': 'Showing the standard view: this slide uses its layout background. Set a slide background to use canvas view.',
+  'inherited-artwork': 'Showing the standard view: this slide inherits layout or master artwork.',
+  'authored-layout-mismatch': 'Showing the standard view: this slide uses a layout not supported in canvas view yet.',
+  'theme-object-defaults': 'Showing the standard view: this slide uses theme default styling not supported in canvas view yet.',
+});
+
+export function surfaceMessageForReason(reason, diagnostics = []) {
+  if (reason === 'inherited-appearance' && Array.isArray(diagnostics)) {
+    for (const d of diagnostics) {
+      if (d?.code && INHERITED_APPEARANCE_MESSAGES[d.code]) {
+        return INHERITED_APPEARANCE_MESSAGES[d.code];
+      }
+    }
+    return 'Showing the standard view: this slide uses inherited layout styling.';
+  }
   return SURFACE_REASON_MESSAGES[reason] ?? 'Showing the standard view.';
 }
 

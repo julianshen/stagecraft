@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { Component, useEffect, useRef } from 'react';
 import { Stage, Layer, Rect, Shape } from 'react-konva/es/ReactKonvaCore';
 import 'konva/lib/Core.js';
 import 'konva/lib/DragAndDrop.js';
@@ -6,6 +6,15 @@ import 'konva/lib/shapes/Rect.js';
 import { createCanonicalPaintEnvironment, paintCanonicalNode } from '@stagecraft/renderer/canonical';
 
 const EMU_PER_PX = 9525;
+
+class GestureUnmountGuard extends Component {
+  componentWillUnmount() {
+    this.props.onUnmount?.();
+  }
+  render() {
+    return this.props.children;
+  }
+}
 
 export default function KonvaStage({
   scene,
@@ -18,6 +27,7 @@ export default function KonvaStage({
   canMove,
   fontEpochBump = 0,
   cancelToken = 0,
+  invalidateGestureRef,
   onSelect,
   onMove,
   onRequestTextEdit,
@@ -26,6 +36,17 @@ export default function KonvaStage({
   const gestureRef = useRef(null);
   const envRef = useRef(null);
   const stageRef = useRef(null);
+  const sceneRef = useRef(scene);
+  sceneRef.current = scene;
+  const lastContextRef = useRef(null);
+  const nextContext = [ownerKey, policyKey, revision, scene.slideId, readOnly, zoom];
+  if (
+    lastContextRef.current
+    && lastContextRef.current.some((val, idx) => val !== nextContext[idx])
+  ) {
+    gestureRef.current = null;
+  }
+  lastContextRef.current = nextContext;
 
   function getEnv() {
     if (!envRef.current || envRef.current.getStats().disposed) {
@@ -54,7 +75,14 @@ export default function KonvaStage({
   const stageWidth = Math.max(1, Math.round(paperWidth));
   const stageHeight = Math.max(1, Math.round(scene.height * scale));
 
-  function cancelGesture() {
+  function invalidateGesture() {
+    gestureRef.current = null;
+  }
+  if (invalidateGestureRef) {
+    invalidateGestureRef.current = invalidateGesture;
+  }
+
+  function cancelGesture({ restoreStart = true } = {}) {
     const g = gestureRef.current;
     if (!g) return;
     gestureRef.current = null;
@@ -63,19 +91,33 @@ export default function KonvaStage({
     if (node.isDragging()) {
       node.stopDrag();
     }
-    node.position({ x: g.startCenterX, y: g.startCenterY });
+    if (restoreStart) {
+      node.position({ x: g.startCenterX, y: g.startCenterY });
+    } else {
+      const latest = sceneRef.current?.nodes.find(n => n.id === g.id);
+      if (latest) {
+        node.position({
+          x: latest.frame.x + latest.frame.width / 2,
+          y: latest.frame.y + latest.frame.height / 2,
+        });
+      }
+    }
     node.scale({ x: 1, y: 1 });
     node.getLayer()?.batchDraw();
   }
 
   useEffect(() => {
-    cancelGesture();
-    return cancelGesture;
-  }, [ownerKey, policyKey, revision, scene.slideId, readOnly, zoom, stageWidth, stageHeight, cancelToken]);
+    cancelGesture({ restoreStart: false });
+    return () => cancelGesture({ restoreStart: false });
+  }, [ownerKey, policyKey, revision, scene.slideId, readOnly, zoom, stageWidth, stageHeight]);
+
+  useEffect(() => {
+    cancelGesture({ restoreStart: true });
+  }, [cancelToken]);
 
   useEffect(() => {
     if (gestureRef.current && selectionId !== gestureRef.current.id) {
-      cancelGesture();
+      cancelGesture({ restoreStart: true });
     }
   }, [selectionId]);
 
@@ -119,6 +161,7 @@ export default function KonvaStage({
   const selectedNode = scene.nodes.find(n => n.id === selectionId) ?? null;
 
   return (
+    <GestureUnmountGuard onUnmount={invalidateGesture}>
       <Stage
         ref={stageRef}
         width={stageWidth}
@@ -189,9 +232,13 @@ export default function KonvaStage({
                 onDragEnd={e => {
                   const g = gestureRef.current;
                   gestureRef.current = null;
+                  if (!e.target.getStage()) {
+                    return;
+                  }
                   if (
                     !g
                     || g.id !== node.id
+                    || g.id !== selectionId
                     || g.ownerKey !== ownerKey
                     || g.policyKey !== policyKey
                     || g.slideId !== scene.slideId
@@ -214,8 +261,13 @@ export default function KonvaStage({
                   const nextY = g.geometry.y + dy;
                   if (!Number.isSafeInteger(nextX) || !Number.isSafeInteger(nextY)) {
                     e.target.position({ x: g.startCenterX, y: g.startCenterY });
+                    e.target.scale({ x: 1, y: 1 });
                     e.target.getLayer()?.batchDraw();
-                    onError?.(new Error('Invalid geometry coordinates.'));
+                    try {
+                      onError?.(new Error('Invalid geometry coordinates.'));
+                    } catch {
+                      return;
+                    }
                     return;
                   }
                   let committed = false;
@@ -227,12 +279,18 @@ export default function KonvaStage({
                       expectedRevision: g.revision,
                     });
                     committed = result === true || (typeof result === 'object' && result !== null && result.ok === true);
-                  } catch (err) {
-                    onError?.(err);
+                  } catch {
+                    committed = false;
                   }
                   if (!committed) {
                     e.target.position({ x: g.startCenterX, y: g.startCenterY });
+                    e.target.scale({ x: 1, y: 1 });
                     e.target.getLayer()?.batchDraw();
+                    try {
+                      onError?.(new Error('Move could not be applied.'));
+                    } catch {
+                      return;
+                    }
                   }
                 }}
                 sceneFunc={ctx => {
@@ -277,5 +335,6 @@ export default function KonvaStage({
           )}
         </Layer>
       </Stage>
+    </GestureUnmountGuard>
   );
 }

@@ -33,6 +33,7 @@ export default function KonvaSurfaceShell({
   canMove,
   fontEpochBump = 0,
   cancelToken = 0,
+  invalidateGestureRef,
   onSelect,
   onMove,
   onRequestTextEdit,
@@ -66,7 +67,7 @@ export default function KonvaSurfaceShell({
           ))}
         </div>
       </div>
-      <div className="stagecraft-presentation-paper stagecraft-konva-paper" style={{ width: `${960 * zoom / 100}px` }}>
+      <div className="stagecraft-presentation-paper stagecraft-konva-paper" style={{ width: `${960 * zoom / 100}px`, touchAction: 'none' }}>
         <KonvaErrorBoundary resetKey={`${scene.slideId}:${revision}:${fontEpochBump}`} onError={onRenderError}>
           <KonvaStage
             scene={scene}
@@ -79,6 +80,7 @@ export default function KonvaSurfaceShell({
             canMove={canMove}
             fontEpochBump={fontEpochBump}
             cancelToken={cancelToken}
+            invalidateGestureRef={invalidateGestureRef}
             onSelect={onSelect}
             onMove={onMove}
             onRequestTextEdit={onRequestTextEdit}

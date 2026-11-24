@@ -31,6 +31,7 @@ import { isParagraphFormatValue } from '@stagecraft/core/document';
 import { canonicalRangeCodePointSpan, mapDisplaySelectionToCanonicalRange } from './textSelection.js';
 import './PresentationEditor.css';
 const Context = createContext(null);
+const editorPanelRefs = new WeakMap();
 const PT = 12700;
 /** EMU → points as an input string (two decimals); undefined → ''. */
 const emuToPt = emu => (emu === undefined ? '' : String(Math.round((emu / PT) * 100) / 100));
@@ -987,9 +988,11 @@ export function PresentationCanvas({
     [KonvaShell, setKonvaShell] = useState(null),
     [konvaLoadError, setKonvaLoadError] = useState(false),
     [konvaRenderError, setKonvaRenderError] = useState(false),
-    [fontState, setFontState] = useState({ key: null, status: 'loading', epoch: 0 }),
+    [fontState, setFontState] = useState({ key: null, owner: null, status: 'loading', epoch: 0 }),
+    [fontRetrySeq, setFontRetrySeq] = useState(0),
     [outerTransformUnsupported, setOuterTransformUnsupported] = useState(false),
     [surfaceNotice, setSurfaceNotice] = useState(''),
+    konvaGestureInvalidateRef = useRef(null),
     lastOutcomeRef = useRef(null);
 
   const canMoveGeometry = ui.can('object-geometry');
@@ -1004,6 +1007,7 @@ export function PresentationCanvas({
   }, [surface, ui.editor, ui.source]);
 
   useEffect(() => {
+    setKonvaLoadError(false);
     setKonvaRenderError(false);
     setSurfaceNotice('');
   }, [ui.activeSlide?.id, ui.snapshot.revision]);
@@ -1050,12 +1054,16 @@ export function PresentationCanvas({
   }, [canAttemptKonva, KonvaShell, konvaLoadError]);
 
   const sceneFontKey = canAttemptKonva ? `${ui.activeSlide?.id}:${ui.snapshot.revision}` : null;
+  const sceneFontSignature = useMemo(() => {
+    if (!canAttemptKonva || !sceneResult?.scene) return '';
+    return JSON.stringify(sceneResult.scene.nodes.map(n => n.paint.text?.body ?? null));
+  }, [canAttemptKonva, sceneResult]);
   useEffect(() => {
     if (!canAttemptKonva || !sceneResult?.scene) return;
     let cancelled = false;
     const hasCanvas = typeof document !== 'undefined' && Boolean(document.createElement('canvas')?.getContext?.('2d'));
     if (!hasCanvas) {
-      setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, status: 'canvas-unavailable', epoch: prev.epoch }));
+      setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, fontSignature: sceneFontSignature, status: 'canvas-unavailable', epoch: prev.epoch }));
       return;
     }
     const fonts = globalThis.document?.fonts;
@@ -1063,21 +1071,35 @@ export function PresentationCanvas({
       .then(res => {
         if (cancelled) return;
         if (res.status === 'ready') {
-          setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, status: 'ready', epoch: prev.epoch + 1 }));
+          setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, fontSignature: sceneFontSignature, status: 'ready', epoch: prev.epoch + 1 }));
         } else if (res.status === 'skipped') {
-          setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, status: res.reason, epoch: prev.epoch }));
+          setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, fontSignature: sceneFontSignature, status: res.reason, epoch: prev.epoch }));
         } else {
-          setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, status: 'canvas-unavailable', epoch: prev.epoch }));
+          setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, fontSignature: sceneFontSignature, status: 'canvas-unavailable', epoch: prev.epoch }));
         }
       })
       .catch(() => {
-        if (!cancelled) setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, status: 'fonts-unavailable', epoch: prev.epoch }));
+        if (!cancelled) setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, fontSignature: sceneFontSignature, status: 'fonts-unavailable', epoch: prev.epoch }));
       });
     return () => { cancelled = true; };
-  }, [canAttemptKonva, sceneResult, sceneFontKey, ownerKey]);
+  }, [canAttemptKonva, sceneResult, sceneFontKey, ownerKey, fontRetrySeq, sceneFontSignature]);
 
-  const sameSlideReady = fontState.status === 'ready' && fontState.slideId === ui.activeSlide?.id && fontState.owner === ownerKey;
-  const currentFontStatus = fontState.key === sceneFontKey ? fontState.status : (sameSlideReady ? 'ready' : 'loading');
+  const sameOwnerFontsReady = fontState.owner === ownerKey
+    && fontState.status === 'ready'
+    && fontState.slideId === ui.activeSlide?.id
+    && fontState.fontSignature === sceneFontSignature;
+  const currentFontStatus = (fontState.owner === ownerKey && fontState.key === sceneFontKey)
+    ? fontState.status
+    : (sameOwnerFontsReady ? 'ready' : 'loading');
+
+  useEffect(() => {
+    if (currentFontStatus !== 'fonts-timeout') return undefined;
+    const fonts = globalThis.document?.fonts;
+    if (!fonts || typeof fonts.addEventListener !== 'function') return undefined;
+    const onLoadingDone = () => setFontRetrySeq(n => n + 1);
+    fonts.addEventListener('loadingdone', onLoadingDone);
+    return () => fonts.removeEventListener('loadingdone', onLoadingDone);
+  }, [currentFontStatus, sceneFontKey, ownerKey]);
   const decision = computeSurfaceDecision({
     requested: surface,
     svgOverride,
@@ -1237,11 +1259,12 @@ export function PresentationCanvas({
   }
   function keyboard(event) {
     if (event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return;
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z') {
       event.preventDefault();
       event.shiftKey ? ui.redo() : ui.undo();
       return;
     }
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key === 'Escape') {
       cancel();
       ui.selectObject(null);
@@ -1270,6 +1293,22 @@ export function PresentationCanvas({
     }
   }
   const konvaActive = decision.active === 'konva' && KonvaShell && sceneResult?.status === 'ready';
+  if (!konvaActive) {
+    konvaGestureInvalidateRef.current?.();
+  }
+  const prevKonvaActiveRef = useRef(konvaActive);
+  const prevSvgOverrideRef = useRef(svgOverride);
+  useEffect(() => {
+    const wasKonva = prevKonvaActiveRef.current;
+    const wasOverride = prevSvgOverrideRef.current;
+    prevKonvaActiveRef.current = konvaActive;
+    prevSvgOverrideRef.current = svgOverride;
+    if ((wasKonva && !konvaActive) || (wasOverride && !svgOverride)) {
+      if (typeof document !== 'undefined' && (!document.activeElement || document.activeElement === document.body)) {
+        ui.canvasRef.current?.focus();
+      }
+    }
+  }, [konvaActive, svgOverride]);
   const showFallbackNotice = surface === 'konva' && !svgOverride && decision.status === 'fallback' && decision.reason;
   const canSetWhiteBg = decision.reason === 'inherited-appearance'
     && sceneResult?.diagnostics?.every(d => d.code === 'inherited-background')
@@ -1279,9 +1318,19 @@ export function PresentationCanvas({
     ui.selectObject(objectId);
     setSurfaceNotice('Text editing is available in the inspector or via Switch to standard view.');
     requestAnimationFrame(() => {
-      const panel = ui.canvasRef.current?.closest('.stagecraft-presentation')?.querySelector('.stagecraft-presentation-attributes');
-      const target = panel?.querySelector('input:not([disabled]), textarea:not([disabled]), select:not([disabled])');
-      target?.focus();
+      const panels = [
+        ...(editorPanelRefs.get(ui.editor) ?? []),
+        ui.canvasRef.current?.closest('.stagecraft-presentation')?.querySelector('.stagecraft-presentation-attributes'),
+      ].filter(Boolean);
+      for (const panel of panels) {
+        const target = panel.querySelector('.stagecraft-presentation-run textarea:not([disabled]):not([readonly])')
+          ?? panel.querySelector('.stagecraft-presentation-run textarea:not([disabled])')
+          ?? panel.querySelector('[data-range-control]:not([disabled])');
+        if (target) {
+          target.focus();
+          return;
+        }
+      }
     });
   }
 
@@ -1301,6 +1350,7 @@ export function PresentationCanvas({
         }}
         fontEpochBump={fontState.epoch}
         cancelToken={konvaCancelToken}
+        invalidateGestureRef={konvaGestureInvalidateRef}
         onSelect={ui.selectObject}
         onMove={({ slideId, objectId, geometry, expectedRevision }) => ui.setGeometry(geometry, expectedRevision, objectId, slideId)}
         onRequestTextEdit={handleRequestTextEdit}
@@ -1317,12 +1367,16 @@ export function PresentationCanvas({
     }}><Artwork slide={ui.activeSlide} size={ui.snapshot.document.size} selectedId={ui.selection.objectId} preview={preview} editorCtx={ui} inlineEdit={inlineEdit} onStartInlineEdit={ui.can('existing-run-text') ? startInlineEdit : undefined} onInlineDraftChange={draft => setInlineEdit(prev => (prev ? { ...prev, draft } : prev))} onInlineCommit={commitInlineEdit} onInlineCancel={cancelInlineEdit} onSelect={ui.selectObject} onPointerDown={start} onResize={ui.can('object-geometry') ? (event, object) => start(event, object, true) : undefined} /></div>}
     {surface === 'konva' && svgOverride && (
       <div className="stagecraft-konva-fallback-bar">
-        <button type="button" onClick={() => setSvgOverride(false)}>Return to canvas view</button>
+        <button type="button" onClick={() => {
+          setSvgOverride(false);
+          setKonvaLoadError(false);
+          setKonvaRenderError(false);
+        }}>Return to canvas view</button>
       </div>
     )}
     {showFallbackNotice && (
       <div className="stagecraft-konva-fallback-bar">
-        <p role="status">{surfaceMessageForReason(decision.reason)}</p>
+        <p role="status">{surfaceMessageForReason(decision.reason, sceneResult?.diagnostics)}</p>
         {canSetWhiteBg && (
           <button type="button" onClick={() => ui.setSlideProperties({ background: { type: 'solid', color: '#ffffff' } }, ui.activeSlide.id)}>
             Use a white background
@@ -2204,9 +2258,24 @@ export function AttributePanel({
     reportPredicateError = usePluginErrorReporter(ui.reportError),
     pluginSections = collectInspectorSections(ui.plugins ?? [], ui, reportPredicateError);
 
+  const panelRef = useRef(null);
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el || !ui.editor) return undefined;
+    let set = editorPanelRefs.get(ui.editor);
+    if (!set) {
+      set = new Set();
+      editorPanelRefs.set(ui.editor, set);
+    }
+    set.add(el);
+    return () => {
+      set.delete(el);
+    };
+  }, [ui.editor]);
+
   let runCounter = 0;
 
-  return <aside aria-label="Attribute panel" className={`stagecraft-presentation-attributes ${className}`} style={style}>
+  return <aside ref={panelRef} aria-label="Attribute panel" className={`stagecraft-presentation-attributes ${className}`} style={style}>
     {!object ? <p>Select an object to inspect its properties.</p> : <>
       <h2>Object properties</h2>
       <p>{object.type}</p>
