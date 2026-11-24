@@ -105,7 +105,7 @@ it.each([
  [{status:'failed',reason:'error',message:'Private document details',count:0},'Shrink-to-fit measurement failed.'],
 ])('shows the export outcome %j without exposing internal messages',async(shrinkFit,text)=>{
  const opened={...source('Outcomes'),shrinkFit};render(<SourceWorkspace openSource={async()=>opened} save={vi.fn()}/>);choose('status.pptx');await screen.findByText('Outcomes');
- fireEvent.click(screen.getByText('Export fixture'));expect(await screen.findByRole('status',{name:'Export result'})).toHaveTextContent(text);expect(screen.queryByText(/Private document details/)).toBeNull();expect(screen.queryByRole('alert')).toBeNull();
+ fireEvent.click(screen.getByText('Export fixture'));expect(await screen.findByRole('status',{name:'Export result'})).toHaveTextContent(text);expect(screen.getByRole('status',{name:'Export result'})).not.toHaveTextContent(/Exported revision/);expect(screen.queryByText(/Private document details/)).toBeNull();expect(screen.queryByRole('alert')).toBeNull();
 });
 it('suppresses old export feedback after document replacement during save',async()=>{
  const pending=deferred(), a={...source('A'),shrinkFit:{status:'measured',count:1}},b=source('B');

@@ -34,12 +34,11 @@ const SHRINK_SKIP_MESSAGES = {
   'canvas-unavailable': 'Text measurement is unavailable in this browser.',
   'unsupported-metrics': 'Some text layouts cannot be measured yet.',
 };
-function exportMessage(revision, shrinkFit) {
-  const prefix = `Exported revision ${revision}.`;
-  if (!shrinkFit) return prefix;
-  if (shrinkFit.status === 'measured') return `${prefix} Shrink-to-fit measured for ${shrinkFit.count} text ${shrinkFit.count === 1 ? 'box' : 'boxes'}.`;
-  if (shrinkFit.status === 'failed') return `${prefix} Shrink-to-fit measurement failed. Exported without measured fit.`;
-  return `${prefix} Shrink-to-fit skipped: ${SHRINK_SKIP_MESSAGES[shrinkFit.reason] ?? 'No measured fit was available.'}`;
+function shrinkFitMessage(shrinkFit) {
+  if (!shrinkFit) return '';
+  if (shrinkFit.status === 'measured') return `Shrink-to-fit measured for ${shrinkFit.count} text ${shrinkFit.count === 1 ? 'box' : 'boxes'}.`;
+  if (shrinkFit.status === 'failed') return `Shrink-to-fit measurement failed. Exported without measured fit.`;
+  return `Shrink-to-fit skipped: ${SHRINK_SKIP_MESSAGES[shrinkFit.reason] ?? 'No measured fit was available.'}`;
 }
 
 /** Local-only reference host. These retained source sessions are never sent to a backend. */
@@ -128,7 +127,7 @@ export default function SourceWorkspace({ openSource = openPresentation, save = 
         <PresentationEditor source={resource.source} onExport={async (result, { revision, shrinkFit }) => {
           const request = generation.current;
           await save(result, { fileName: resource.fileName, format: resource.format, revision, ...(shrinkFit ? { shrinkFit } : {}) });
-          if (mounted.current && !pending.current && active.current === resource && generation.current === request) setExportStatus(exportMessage(revision, shrinkFit));
+          if (mounted.current && !pending.current && active.current === resource && generation.current === request) setExportStatus(shrinkFitMessage(shrinkFit));
         }} />
       </EditorProvider>
     </section> : <section className="source-empty">
