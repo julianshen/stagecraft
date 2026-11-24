@@ -268,6 +268,25 @@ describe('postProcess', () => {
     expect(imported.deck.slides[0].elements.filter(el => el.groupId)).toHaveLength(2);
   });
 
+  it('keeps name indices aligned when the element array contains null entries', async () => {
+    const deck = { title: 'Sparse names', sections: [{ id: 's', name: 'S', slides: ['one'] }], slides: [{ id: 'one', layout: 'blank', elements: [
+      null,
+      { id: 'a', type: 'rect', x: 300, y: 300, w: 100, h: 100, fill: '#112233', gradient: { from: '#112233', to: '#aabbcc', angle: 45 } },
+      { id: 'a', type: 'rect', x: 500, y: 300, w: 100, h: 100, fill: '#112233', groupId: 'G' },
+      { id: 'b', type: 'ellipse', x: 650, y: 300, w: 100, h: 100, fill: '#112233', groupId: 'G' },
+    ] }] };
+    const bytes = await writePptx(deck);
+    const objectNames = slideObjectNames(deck.slides[0]);
+    expect([...objectNames.keys()]).toEqual([1, 2, 3]);
+    const doc = parse(await (await JSZip.loadAsync(bytes)).file('ppt/slides/slide1.xml').async('string'));
+    expect(byName(doc, 'a').closest('sp')).toBe(doc.getElementsByTagNameNS(P, 'sp')[0]);
+    expect(byName(doc, 'a').closest('sp').getElementsByTagNameNS(A, 'gradFill')).toHaveLength(1);
+    expect(byName(doc, 'a (2)').closest('sp').getElementsByTagNameNS(A, 'gradFill')).toHaveLength(0);
+    const group = doc.getElementsByTagNameNS(P, 'grpSp')[0];
+    expect(group).toBeTruthy();
+    expect(childNames(group)).toEqual(['a (2)', 'b']);
+  });
+
   it('round-trips through PowerPoint XML: real pptxgenjs output → patched → re-imported with its gradient, group and flip', async () => {
     const pptx = new pptxgen();
     pptx.layout = 'LAYOUT_16x9';

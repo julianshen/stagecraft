@@ -149,8 +149,9 @@ function imageSizing(el, geo) {
 function addElements(pptx, sld, slide, objectNames) {
   const ST = pptx.ShapeType;
   // The deck is persisted/agent-authorable, so tolerate a non-array or null entries.
-  const elements = (Array.isArray(slide.elements) ? slide.elements : []).filter(Boolean);
+  const elements = Array.isArray(slide.elements) ? slide.elements : [];
   for (const [index, el] of elements.entries()) {
+    if (!el) continue;
     const geo = elementGeo(el, objectNames.get(index));
     const transparency = Number.isFinite(el.opacity) ? clampPct(100 - el.opacity) : undefined;
     const withOpacity = transparency != null ? { transparency } : {};
