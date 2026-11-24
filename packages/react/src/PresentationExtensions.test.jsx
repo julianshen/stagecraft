@@ -2429,4 +2429,161 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     );
     expect(rangeEa).toHaveValue('');
   });
+
+  it('skips unchanged range Enter, resets drafts on owner change, disables Font details on denied capability, sends only fontFamily from Range font, and renders authored table-cell ea/cs slots', () => {
+    const doc = createDocument({
+      id: 'fu142-followups',
+      slides: [
+        {
+          id: 's1',
+          objects: [
+            {
+              id: 't1',
+              type: 'text',
+              geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
+              extensions: { stagecraftAuthored: true },
+              text: {
+                paragraphs: [{
+                  id: 'p1',
+                  runs: [{ id: 'r1', text: 'Alpha', editable: true, style: { typeface: 'Arial', eastAsian: 'Songti TC', complexScript: 'Geeza Pro' }, extensions: { stagecraftAuthored: true } }],
+                }],
+              },
+            },
+            {
+              id: 'tbl1',
+              type: 'table',
+              geometry: { x: 72 * PT, y: 200 * PT, width: 300 * PT, height: 100 * PT },
+              extensions: { stagecraftAuthored: true },
+              table: {
+                columns: [{ id: 'col1', width: 300 * PT }],
+                rows: [{
+                  id: 'row1',
+                  cells: [{
+                    id: 'c1',
+                    text: {
+                      paragraphs: [{
+                        id: 'cp1',
+                        runs: [{ id: 'cr1', text: 'Cell', editable: true, style: { eastAsian: 'Yu Mincho', complexScript: 'Tahoma' }, extensions: { stagecraftAuthored: true } }],
+                      }],
+                    },
+                  }],
+                }],
+              },
+            },
+          ],
+        },
+        {
+          id: 's2',
+          objects: [{
+            id: 't2',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
+            extensions: { stagecraftAuthored: true },
+            text: {
+              paragraphs: [{
+                id: 'p2',
+                runs: [{ id: 'r2', text: 'Beta', editable: true, style: { eastAsian: 'Songti TC' }, extensions: { stagecraftAuthored: true } }],
+              }],
+            },
+          }],
+        },
+      ],
+    });
+    const rawEditor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
+    const dispatchSpy = vi.fn((...args) => rawEditor.dispatch(...args));
+    const editor = { ...rawEditor, dispatch: dispatchSpy };
+    const source = { capabilities: { readOnly: false, edits: ['object-text', 'run-range-format', 'existing-run-format', 'object-table'] }, export: vi.fn() };
+    const { rerender } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+
+    // Select t1 and select range "Alpha"
+    fireEvent.click(screen.getAllByLabelText('Select object t1')[0]);
+    const rangeArea = screen.getByLabelText('Select text range');
+    rangeArea.selectionStart = 0;
+    rangeArea.selectionEnd = 5;
+    fireEvent.select(rangeArea);
+
+    const rangeEa = screen.getByLabelText('Range East Asian text font');
+    const rangeCs = screen.getByLabelText('Range Complex script font');
+    const rangeFont = screen.getByLabelText('Range font family');
+    expect(rangeEa).toHaveValue('Songti TC');
+    expect(rangeCs).toHaveValue('Geeza Pro');
+
+    // 1. Unchanged Enter is a no-op
+    dispatchSpy.mockClear();
+    fireEvent.keyDown(rangeEa, { key: 'Enter' });
+    fireEvent.keyDown(rangeCs, { key: 'Enter' });
+    expect(dispatchSpy).not.toHaveBeenCalled();
+
+    // 2. Range font family sends ONLY fontFamily
+    fireEvent.change(rangeFont, { target: { value: 'Georgia' } });
+    fireEvent.keyDown(rangeFont, { key: 'Enter' });
+    expect(dispatchSpy).toHaveBeenLastCalledWith(
+      'document.setRunRangeFormat',
+      expect.objectContaining({ format: { fontFamily: 'Georgia' } }),
+      expect.any(Object),
+    );
+
+    // 3. Owner change (source swap) resets half-typed drafts
+    fireEvent.change(rangeEa, { target: { value: 'HalfTypedEA' } });
+    fireEvent.change(rangeCs, { target: { value: 'HalfTypedCS' } });
+    expect(rangeEa).toHaveValue('HalfTypedEA');
+    const nextSource = { capabilities: { readOnly: false, edits: ['object-text', 'run-range-format', 'existing-run-format', 'object-table'] }, export: vi.fn() };
+    rerender(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={nextSource} />
+      </EditorProvider>
+    );
+    fireEvent.click(screen.getAllByLabelText('Select object t1')[0]);
+    expect(screen.getByLabelText('Range East Asian text font')).toHaveValue('');
+    expect(screen.getByLabelText('Range Complex script font')).toHaveValue('');
+
+    // 4. Denied capability disables Font details
+    const deniedSource = { capabilities: { readOnly: false, edits: ['object-text'] }, export: vi.fn() };
+    rerender(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={deniedSource} />
+      </EditorProvider>
+    );
+    fireEvent.click(screen.getAllByLabelText('Select object t1')[0]);
+    expect(screen.getByLabelText('East Asian text font run 1')).toBeDisabled();
+    expect(screen.getByLabelText('Complex script font run 1')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Reset east asian text font run 1' })).toBeDisabled();
+    // Range Font details fields are disabled when run-range-format capability is denied
+    expect(screen.getByLabelText('Range East Asian text font')).toBeDisabled();
+    expect(screen.getByLabelText('Range Complex script font')).toBeDisabled();
+
+    // 5. Authored table-cell ea/cs slots display and edit
+    rerender(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} />
+      </EditorProvider>
+    );
+    fireEvent.click(screen.getAllByLabelText('Select object tbl1')[0]);
+    const cellEa = screen.getByLabelText('East Asian text font run 1');
+    const cellCs = screen.getByLabelText('Complex script font run 1');
+    expect(cellEa).toHaveValue('Yu Mincho');
+    expect(cellCs).toHaveValue('Tahoma');
+    fireEvent.change(cellEa, { target: { value: 'PingFang TC' } });
+    fireEvent.blur(cellEa);
+    expect(dispatchSpy).toHaveBeenLastCalledWith(
+      'presentation.setTableCell',
+      expect.objectContaining({
+        cellId: 'c1',
+        text: expect.objectContaining({
+          paragraphs: expect.arrayContaining([
+            expect.objectContaining({
+              runs: expect.arrayContaining([
+                expect.objectContaining({ style: expect.objectContaining({ eastAsian: 'PingFang TC', complexScript: 'Tahoma' }) }),
+              ]),
+            }),
+          ]),
+        }),
+      }),
+      expect.any(Object),
+    );
+  });
 });

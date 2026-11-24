@@ -1938,7 +1938,7 @@ function CrossRunRangeFormatFields({ object, editor, source, slideId, revision, 
                 onKeyDown={e => {
                   if (e.key === 'Enter' && hasRange) {
                     const t = draft.trim();
-                    if (t !== '') applyRange({ [slot]: t });
+                    if (t !== '' && (info.mixed || t !== info.value)) applyRange({ [slot]: t });
                   }
                 }}
               />
