@@ -35,6 +35,7 @@ export default defineConfig({
       // added for more of the app, widen `include` to bring them under the gate.
       include: [
         'packages/core/src/lib/jsonEqual.js',
+        'packages/core/src/lib/authoredText.js',
         'packages/core/src/lib/resizeGeometry.js',
         'packages/core/src/editor/**/*.js',
         'packages/core/src/document/**/*.js',
@@ -96,6 +97,7 @@ export default defineConfig({
         'scripts/swapTree.mjs',
         'packages/core/src/lib/slideDims.js',
         'packages/renderer/src/canvas/scene.js',
+        'packages/renderer/src/canonical/*.js',
         'packages/renderer/src/canvas/paint.js',
         'packages/renderer/src/canvas/assets.js',
         'packages/renderer/src/text/canonicalTextBody.js',

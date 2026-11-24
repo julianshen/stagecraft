@@ -16,6 +16,7 @@
   },
   "include": [
     "foundation.ts",
+    "canonical-renderer.ts",
     "react-workspace.tsx",
     "server.ts"
   ]

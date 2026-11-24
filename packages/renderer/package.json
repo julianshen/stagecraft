@@ -17,6 +17,10 @@
     "./text/waitForAutofitFonts": {
       "types": "./src/text/waitForAutofitFonts.d.ts",
       "default": "./src/text/waitForAutofitFonts.js"
+    },
+    "./canonical": {
+      "types": "./src/canonical/index.d.ts",
+      "default": "./src/canonical/index.js"
     }
   },
   "files": [

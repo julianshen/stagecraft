@@ -1,3 +1,4 @@
+import { AUTHORED_TEXT_COLOR } from '@stagecraft/core/lib/authoredText.js';
 import { measureShrinkFits, measureResizeFits, resizeFallback, waitForAutofitFonts } from '@stagecraft/renderer';
 import { createContext, useContext, useEffect, useLayoutEffect, useId, useRef, useState } from 'react';
 import { useEditor, useEditorSnapshot } from './EditorProvider.jsx';
@@ -856,7 +857,7 @@ function Artwork({
               ? <ellipse cx={x + width / 2} cy={y + h / 2} rx={width / 2} ry={h / 2} fill={fill} />
               : <rect x={x} y={y} width={width} height={h} fill={fill} />)}
             {(!primitive || text) && <foreignObject x={x} y={y} width={width} height={h}>
-              <div className="stagecraft-presentation-object" style={text ? textBodyCss(object, scale) : undefined}>{text
+              <div className="stagecraft-presentation-object" style={{ color: AUTHORED_TEXT_COLOR, ...(text ? textBodyCss(object, scale) : {}) }}>{text
                 ? (() => {
                   const numIndices = computeNumberedIndices(object.text.paragraphs);
                   return object.text.paragraphs.map((p, pIdx) => {

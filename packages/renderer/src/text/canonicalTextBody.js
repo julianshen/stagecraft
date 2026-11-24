@@ -1,10 +1,15 @@
 const EMU_PER_PX = 9525;
 const slots = { lt: 'latin', ea: 'eastAsian', cs: 'complexScript' };
 
+/** New authored slides use the first layout in the PPTX writer; native slides retain their relationship. */
+export function layoutForSlide(document, slide) {
+  return slide.extensions?.stagecraftAuthored && !slide.source
+    ? document.layouts?.[0] : document.layouts?.find(item => item.id === slide.layoutId);
+}
+
 /** Read-only theme appearance; never replace tokens in the canonical snapshot. */
 export function themeForSlide(document, slide) {
-  const layout = slide.extensions?.stagecraftAuthored && !slide.source
-    ? document.layouts?.[0] : document.layouts?.find(item => item.id === slide.layoutId);
+  const layout = layoutForSlide(document, slide);
   const master = document.masters?.find(item => item.id === layout?.masterId);
   const appearance = document.themes?.find(item => item.id === master?.themeId)?.extensions;
   const fonts = appearance?.pptxFontScheme;
@@ -22,6 +27,18 @@ function knownFont(value, theme) {
   return !!group && !!(group[slots[alias[2]]] || group.latin);
 }
 
+/** Shared display normalization; never rewrites canonical/source run text. */
+function canonicalRunTexts(paragraph) {
+  let nextText = '';
+  const text = new Array(paragraph.runs.length);
+  for (let i = paragraph.runs.length - 1; i >= 0; i--) {
+    const raw = paragraph.runs[i].text;
+    text[i] = (raw.endsWith('\r') && nextText.startsWith('\n') ? raw.slice(0, -1) : raw).replace(/\r\n|\r/g, '\n');
+    if (raw) nextText = raw;
+  }
+  return text;
+}
+
 /** Minimal DrawingML adapter. Unsupported/inherited metrics return null, never guessed sizes. */
 export function canonicalTextBody(object, theme) {
   const g = object.geometry, layout = object.bodyLayout ?? {};
@@ -35,14 +52,7 @@ export function canonicalTextBody(object, theme) {
     const p = paragraph.style ?? {};
     if ((p.bullet && p.bullet.type !== 'none') || (p.level ?? 0) > 0) return null;
     const runs = [];
-    // CRLF split across adjacent/empty runs is one canonical display break.
-    let nextText = '';
-    const text = new Array(paragraph.runs.length);
-    for (let i = paragraph.runs.length - 1; i >= 0; i--) {
-      const raw = paragraph.runs[i].text;
-      text[i] = (raw.endsWith('\r') && nextText.startsWith('\n') ? raw.slice(0, -1) : raw).replace(/\r\n|\r/g, '\n');
-      if (raw) nextText = raw;
-    }
+    const text = canonicalRunTexts(paragraph);
     for (const [index, run] of paragraph.runs.entries()) {
       const s = run.style ?? {}, fontSizePt = Number(s.sz) / 100;
       const family = s.typeface ?? `${alias}-lt`;
