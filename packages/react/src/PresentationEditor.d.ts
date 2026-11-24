@@ -26,6 +26,25 @@ export type ShrinkFitOutcome = { stats?: ShrinkFitStats; reasons?: Partial<Recor
 export type ExportContext = { revision: number; shrinkFit: ShrinkFitOutcome; resizeFit: ResizeFitOutcome };
 export type DeckListItem = { id: string; title: string; description?: string; disabled?: boolean };
 export interface RegionProps { className?: string; style?: CSSProperties }
+export type PresentationSurface = 'svg' | 'konva';
+export type PresentationSurfaceReason =
+  | 'loading' | 'no-slide' | 'not-canonical' | 'unsupported-format'
+  | 'plugin-renderer' | 'inherited-appearance' | 'unsupported-content' | 'unresolved-appearance'
+  | 'invalid-geometry' | 'unsupported-embedding'
+  | 'fonts-unavailable' | 'fonts-timeout' | 'canvas-unavailable'
+  | 'load-failed' | 'render-failed';
+export type PresentationSurfaceOutcome = {
+  requested: PresentationSurface;
+  active: PresentationSurface;
+  status: 'ready' | 'fallback';
+  reason?: PresentationSurfaceReason;
+  slideId: string | null;
+  revision: number;
+};
+export interface PresentationCanvasProps extends RegionProps {
+  surface?: PresentationSurface;
+  onSurfaceChange?: (outcome: PresentationSurfaceOutcome) => void;
+}
 
 export type PresentationToolbarTab = 'Home' | 'Insert' | 'View';
 
@@ -98,6 +117,8 @@ export interface PresentationEditorProps extends RegionProps, Omit<PresentationE
   activeDeckId?: string | null;
   onDeckSelect?: (id: string) => void;
   renderToolbar?: () => ReactNode;
+  surface?: PresentationSurface;
+  onSurfaceChange?: (outcome: PresentationSurfaceOutcome) => void;
 }
 
 export interface DeckListProps extends RegionProps {
@@ -205,7 +226,7 @@ export function PresentationEditor(props: PresentationEditorProps): ReactElement
 export function DeckList(props: DeckListProps): ReactElement;
 export function SlideList(props: RegionProps): ReactElement;
 export function PresentationToolbar(props: RegionProps): ReactElement;
-export function PresentationCanvas(props: RegionProps): ReactElement;
+export function PresentationCanvas(props: PresentationCanvasProps): ReactElement;
 export function AttributePanel(props: RegionProps): ReactElement;
 export function NotesPanel(props: RegionProps): ReactElement;
 

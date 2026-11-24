@@ -16,7 +16,11 @@ export default defineConfig({
         // Browser projects must not inherit the jsdom environment or excludes.
         extends: false,
         plugins: [react()],
-        optimizeDeps: { entries: CHROMIUM_TESTS },
+        resolve: { dedupe: ['konva', 'react', 'react-dom'] },
+        optimizeDeps: {
+          entries: CHROMIUM_TESTS,
+          include: ['react-konva/es/ReactKonvaCore', 'konva/lib/Core.js', 'konva/lib/DragAndDrop.js', 'konva/lib/shapes/Rect.js'],
+        },
         test: {
           name: 'chromium', include: CHROMIUM_TESTS, globals: true, clearMocks: false,
           setupFiles: ['./tests/helpers/setup.js'], browser: chromiumBrowser(),
@@ -50,6 +54,7 @@ export default defineConfig({
         'packages/react/src/EditorProvider.jsx',
         'packages/react/src/CanonicalEditorSurface.jsx',
         'packages/react/src/PresentationEditor.jsx',
+        'packages/react/src/konva/**/*.{js,jsx}',
         'packages/react/src/textSelection.js',
         'packages/react/src/PresentationChart.jsx',
         'packages/react/src/presentationPlugins.jsx',

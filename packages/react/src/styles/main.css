@@ -2285,3 +2285,37 @@
 .stagecraft-editor .ai-deck-outline .iconbtn { margin-left: auto; }
 .stagecraft-editor .ai-deck-status { flex: 1; font-size: 12px; font-family: var(--f-mono); color: var(--ink-3); }
 .stagecraft-editor .ai-deck-status[role='alert'] { color: var(--danger); }
+
+/* Konva opt-in canvas view */
+.stagecraft-konva-surface { display: flex; flex-direction: column; gap: 8px; }
+.stagecraft-konva-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.stagecraft-konva-object-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.stagecraft-konva-controls button,
+.stagecraft-konva-fallback-bar button {
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line, #cbd5e1);
+  background: var(--panel, #ffffff);
+  color: var(--ink, #0f172a);
+  font-size: 12px;
+  cursor: pointer;
+}
+.stagecraft-konva-controls button[aria-pressed='true'] {
+  border-color: var(--accent, #2563eb);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #2563eb) 25%, transparent);
+}
+.stagecraft-konva-controls button:focus-visible,
+.stagecraft-konva-fallback-bar button:focus-visible {
+  outline: 2px solid var(--accent, #2563eb);
+  outline-offset: 2px;
+}
+.stagecraft-konva-fallback-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--ink-3, #475569);
+}
+.stagecraft-konva-fallback-bar p { margin: 0; }

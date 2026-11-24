@@ -24,6 +24,10 @@
     "./presentation": {
       "types": "./src/PresentationEditor.d.ts",
       "default": "./src/PresentationEditor.jsx"
+    },
+    "./konva": {
+      "types": "./src/konva/KonvaPresentationCanvas.d.ts",
+      "default": "./src/konva/KonvaPresentationCanvas.jsx"
     }
   },
   "files": [
@@ -32,7 +36,9 @@
   "dependencies": {
     "@stagecraft/core": "0.1.0",
     "@stagecraft/renderer": "0.1.0",
-    "@stagecraft/source": "0.1.0"
+    "@stagecraft/source": "0.1.0",
+    "konva": "^10.7.1",
+    "react-konva": "^18.2.16"
   },
   "peerDependencies": {
     "react": "^18.3.1",
