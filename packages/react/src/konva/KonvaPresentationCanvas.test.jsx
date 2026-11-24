@@ -317,9 +317,7 @@ describe('KONVA-2b surface decision, fallback wording, and API boundary', () => 
 
     // Slide change resets load-failed and retries
     failImport = false;
-    act(() => {
-      editor.dispatch('document.selectSlide', { slideId: 's2' });
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'Slide 2' }));
 
     await waitFor(() => {
       expect(onSurfaceChange).toHaveBeenLastCalledWith(

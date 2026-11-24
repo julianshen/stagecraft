@@ -8,6 +8,7 @@ import { PresentationChart } from './PresentationChart.jsx';
 import {
   computeSurfaceDecision,
   hasNonEmptyObjectRenderers,
+  isRelevantFontEvent,
   isUnsupportedCssTransform,
   surfaceMessageForReason,
 } from './konva/surfaceDecision.js';
@@ -1093,13 +1094,21 @@ export function PresentationCanvas({
     : (sameOwnerFontsReady ? 'ready' : 'loading');
 
   useEffect(() => {
-    if (currentFontStatus !== 'fonts-timeout') return undefined;
+    if (!canAttemptKonva || !sceneResult?.scene) return undefined;
     const fonts = globalThis.document?.fonts;
     if (!fonts || typeof fonts.addEventListener !== 'function') return undefined;
-    const onLoadingDone = () => setFontRetrySeq(n => n + 1);
-    fonts.addEventListener('loadingdone', onLoadingDone);
-    return () => fonts.removeEventListener('loadingdone', onLoadingDone);
-  }, [currentFontStatus, sceneFontKey, ownerKey]);
+    const onFontEvent = event => {
+      if (!isRelevantFontEvent(sceneResult.scene, event)) return;
+      setFontState(prev => ({ ...prev, epoch: prev.epoch + 1 }));
+      setFontRetrySeq(n => n + 1);
+    };
+    fonts.addEventListener('loadingdone', onFontEvent);
+    fonts.addEventListener('loadingerror', onFontEvent);
+    return () => {
+      fonts.removeEventListener('loadingdone', onFontEvent);
+      fonts.removeEventListener('loadingerror', onFontEvent);
+    };
+  }, [canAttemptKonva, sceneResult, sceneFontKey, ownerKey]);
   const decision = computeSurfaceDecision({
     requested: surface,
     svgOverride,

@@ -233,12 +233,11 @@ export default function KonvaStage({
                 onDragEnd={e => {
                   const g = gestureRef.current;
                   gestureRef.current = null;
-                  if (!e.target.getStage()) {
+                  if (!e.target.getStage() || !g) {
                     return;
                   }
                   if (
-                    !g
-                    || g.stale
+                    g.stale
                     || g.id !== node.id
                     || g.id !== selectionId
                     || g.ownerKey !== ownerKey
@@ -250,6 +249,11 @@ export default function KonvaStage({
                     e.target.position({ x: centerX, y: centerY });
                     e.target.scale({ x: 1, y: 1 });
                     e.target.getLayer()?.batchDraw();
+                    try {
+                      onError?.(new Error('Move could not be applied.'));
+                    } catch {
+                      return;
+                    }
                     return;
                   }
                   const dx = Math.round((e.target.x() - g.startCenterX) * EMU_PER_PX);

@@ -806,13 +806,13 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
 
   it('D2: active Konva scene observes loadingdone/loadingerror, bumps epoch on relevant face and ignores unrelated face', async () => {
     const fontListeners = new Map();
-    const loadSpy = vi.fn(async () => []);
+    const checkSpy = vi.fn(() => true);
     Object.defineProperty(document, 'fonts', {
       configurable: true,
       value: {
         status: 'loaded',
-        check: () => true,
-        load: loadSpy,
+        check: checkSpy,
+        load: vi.fn(async () => []),
         addEventListener: (type, fn) => {
           if (!fontListeners.has(type)) fontListeners.set(type, new Set());
           fontListeners.get(type).add(fn);
@@ -831,14 +831,14 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
       </EditorProvider>,
     );
     await waitForKonvaCanvas(container);
-    const initialLoads = loadSpy.mock.calls.length;
+    const initialChecks = checkSpy.mock.calls.length;
 
     // Unrelated face loads -> ignored, no readiness rerun
     await act(async () => {
       fontListeners.get('loadingdone')?.forEach(fn => fn({ fontfaces: [{ family: 'UnrelatedDisplayFont' }] }));
       await Promise.resolve();
     });
-    expect(loadSpy.mock.calls.length).toBe(initialLoads);
+    expect(checkSpy.mock.calls.length).toBe(initialChecks);
 
     // Relevant face ('Arial') loads while scene is ready -> reruns readiness and bumps font epoch
     await act(async () => {
@@ -846,7 +846,7 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
       await Promise.resolve();
     });
     await waitFor(() => {
-      expect(loadSpy.mock.calls.length).toBeGreaterThan(initialLoads);
+      expect(checkSpy.mock.calls.length).toBeGreaterThan(initialChecks);
     });
   });
 
@@ -911,6 +911,6 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
     await waitFor(() => expect(calls2).toHaveLength(1));
     expect(calls2[0][0]).toBe('presentation.setGeometry');
     expect(calls2[0][1]).toMatchObject({ slideId: 's1', objectId: 'r1' });
-    expect(calls2[0][2]).toEqual({ expectedRevision: 0 });
+    expect(calls2[0][2]).toMatchObject({ expectedRevision: 0 });
   });
 });

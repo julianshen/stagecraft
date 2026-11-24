@@ -35,6 +35,33 @@ export function surfaceMessageForReason(reason, diagnostics = []) {
   return SURFACE_REASON_MESSAGES[reason] ?? 'Showing the standard view.';
 }
 
+export function isRelevantFontEvent(scene, event) {
+  const nodes = scene?.nodes ?? [];
+  if (!nodes.some(n => Boolean(n.paint?.text))) return false;
+  const faces = event?.fontfaces;
+  if (!faces) return true;
+  const list = Array.from(faces);
+  if (list.length === 0) return true;
+  const usedFamilies = new Set();
+  for (const node of nodes) {
+    for (const p of node.paint?.text?.body?.paragraphs ?? []) {
+      for (const r of p.runs ?? []) {
+        for (const key of ['typeface', 'eastAsian', 'complexScript', 'fontFamily', 'font']) {
+          const val = r[key] ?? r.style?.[key];
+          if (typeof val === 'string' && val.trim()) {
+            usedFamilies.add(val.replace(/['"]/g, '').trim().toLowerCase());
+          }
+        }
+      }
+    }
+  }
+  if (usedFamilies.size === 0) return true;
+  return list.some(face => {
+    const fam = typeof face?.family === 'string' ? face.family.replace(/['"]/g, '').trim().toLowerCase() : '';
+    return Boolean(fam) && usedFamilies.has(fam);
+  });
+}
+
 export function hasNonEmptyObjectRenderers(plugins) {
   if (!Array.isArray(plugins)) return false;
   return plugins.some(plugin => Array.isArray(plugin?.objectRenderers) && plugin.objectRenderers.length > 0);
