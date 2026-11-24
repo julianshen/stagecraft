@@ -1,4 +1,4 @@
-import { measureShrinkFits, waitForShrinkFonts } from '@stagecraft/renderer';
+import { measureShrinkFits, measureResizeFits, resizeFallback, waitForAutofitFonts } from '@stagecraft/renderer';
 import { createContext, useContext, useEffect, useLayoutEffect, useId, useRef, useState } from 'react';
 import { useEditor, useEditorSnapshot } from './EditorProvider.jsx';
 import { runStyle, RunFormatControls, formatFontSlotDisplay } from './CanonicalEditorSurface.jsx';
@@ -126,9 +126,10 @@ export function PresentationEditorProvider({
     }
   }, [selection.slideId, selection.objectId, editor, source]);
   const locked = readOnly || source?.capabilities.readOnly === true;
-  const fitAllowed = useRef(false);
+  const fitAllowed = useRef(false), resizeAllowed = useRef(false);
   useLayoutEffect(() => {
     fitAllowed.current = !locked && source?.capabilities.edits.includes('text-body-layout');
+    resizeAllowed.current = fitAllowed.current && source?.capabilities.edits.includes('object-geometry');
   });
   const commandIds = new Set(editor.getCommands().map(command => command.id));
   function hasCommand(id) {
@@ -446,32 +447,47 @@ export function PresentationEditorProvider({
     setExportedRevision(null);
     const current = () => lifecycle.current === token;
     try {
-      let fit;
-      let shrinkFit = { status: 'skipped', count: 0, reason: snapshot.document.extensions?.sourceFormat !== 'pptx'
-        ? 'not-pptx' : locked ? 'locked' : 'no-capability' };
-      if (snapshot.document.extensions?.sourceFormat === 'pptx' && !locked && source.capabilities.edits.includes('text-body-layout')) {
+      let fit, resize;
+      const excluded = snapshot.document.extensions?.sourceFormat !== 'pptx' ? 'not-pptx' : locked ? 'locked' : 'no-capability';
+      let shrinkFit = { status: 'skipped', count: 0, reason: excluded };
+      const resizeResult = (status, reason, message) => {
+        const { resize: unused, ...outcome } = resizeFallback(snapshot.document, status, reason, message);
+        return outcome;
+      };
+      let resizeFit = resizeResult('skipped', excluded);
+      const shrinkEnabled = snapshot.document.extensions?.sourceFormat === 'pptx' && !locked && source.capabilities.edits.includes('text-body-layout');
+      const resizeEnabled = shrinkEnabled && source.capabilities.edits.includes('object-geometry');
+      if (shrinkEnabled) {
         const fonts = globalThis.document?.fonts;
+        let readiness;
         try {
-          const readiness = await waitForShrinkFonts(snapshot.document, { fonts });
-          if (!current()) return;
-          if (!fitAllowed.current) {
-            shrinkFit = { status: 'skipped', reason: 'permission-revoked', count: 0 };
-          } else if (readiness.status === 'ready') {
-            const measured = measureShrinkFits(snapshot.document, { fonts });
-            ({ fit, ...shrinkFit } = measured);
-          } else {
-            shrinkFit = { ...readiness, count: 0 };
-          }
-        } catch (error) {
-          shrinkFit = { status: 'failed', reason: 'error', message: 'Shrink measurement failed.', count: 0 };
+          readiness = await waitForAutofitFonts(snapshot.document, { fonts, kinds: resizeEnabled ? ['shrink', 'resize'] : ['shrink'] });
+        } catch {
+          readiness = { shrink: {status:'failed',reason:'error',message:'Font readiness failed.'}, resize: {status:'failed',reason:'error',message:'Font readiness failed.'} };
         }
         if (!current()) return;
+        if (!fitAllowed.current) shrinkFit = { status: 'skipped', reason: 'permission-revoked', count: 0 };
+        else if (readiness.shrink.status !== 'ready') shrinkFit = { ...readiness.shrink, count: 0 };
+        else {
+          try { ({ fit, ...shrinkFit } = measureShrinkFits(snapshot.document, { fonts })); }
+          catch { shrinkFit = { status:'failed',reason:'error',message:'Shrink measurement failed.',count:0 }; }
+        }
+        if (resizeEnabled) {
+          if (!resizeAllowed.current) resizeFit = resizeResult('skipped','permission-revoked');
+          else if (readiness.resize.status !== 'ready') resizeFit = resizeResult(readiness.resize.status,readiness.resize.reason,readiness.resize.message);
+          else {
+            try { ({resize,...resizeFit} = measureResizeFits(snapshot.document,{fonts})); }
+            catch { resizeFit = resizeResult('failed','error','Resize measurement failed.'); }
+          }
+        }
       }
-      const result = await (fit?.size ? source.export(snapshot.document, { fit }) : source.export(snapshot.document));
+      const options = { ...(fit?.size ? {fit} : {}), ...(resize?.size ? {resize} : {}) };
+      const result = await (Object.keys(options).length ? source.export(snapshot.document, options) : source.export(snapshot.document));
       if (!current()) return;
       await onExport(result, {
         revision: snapshot.revision,
-        shrinkFit
+        shrinkFit,
+        resizeFit
       });
       if (current()) setExportedRevision(snapshot.revision);
     } catch (reason) {
@@ -1673,7 +1689,7 @@ function TextBodyLayoutFields({ object, editor, source, revision, isOdpDoc, disa
         <small className="stagecraft-autofit-note">
           {autofitVal === 'shrink'
             ? 'PowerPoint applies shrink-to-fit when the text is next edited there. Exports from this editor include a measured fit; files exported elsewhere may overflow when first opened.'
-            : 'PowerPoint resizes the shape to fit the text when it is next edited there; the file keeps this frame when first opened, so text may overflow or overlap nearby shapes.'}
+            : 'Exports from this editor size the box to fit, growing from its anchor. The canvas shows the drawn size; files exported elsewhere may overflow until edited in PowerPoint.'}
         </small>
       ) : null}
       {isOdpDoc ? (

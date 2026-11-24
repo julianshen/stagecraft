@@ -8,7 +8,7 @@ vi.mock('@stagecraft/react/presentation', async () => {
   const { useEditorSnapshot } = await import('@stagecraft/react/editor');
   return { PresentationEditor: ({ source, onExport }) => {
     const snapshot = useEditorSnapshot();
-    return <div><output>{snapshot.document.metadata.title}</output><button onClick={() => onExport({ bytes: new Uint8Array([1]), dirtyParts: [] }, { revision: snapshot.revision, shrinkFit: source.shrinkFit })}>Export fixture</button></div>;
+    return <div><output>{snapshot.document.metadata.title}</output><button onClick={() => onExport({ bytes: new Uint8Array([1]), dirtyParts: [] }, { revision: snapshot.revision, shrinkFit: source.shrinkFit, resizeFit: source.resizeFit })}>Export fixture</button></div>;
   } };
 });
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
@@ -115,4 +115,14 @@ it('suppresses old export feedback after document replacement during save',async
 it('does not carry export feedback into a replacement already loading',async()=>{
  const pending=deferred(),a={...source('A'),shrinkFit:{status:'measured',count:1}},b=source('B');
  render(<SourceWorkspace openSource={vi.fn().mockResolvedValueOnce(a).mockReturnValueOnce(pending.promise)} save={vi.fn()}/>);choose('a.pptx');await screen.findByText('A');choose('b.pptx');fireEvent.click(screen.getByText('Export fixture'));await act(async()=>{});await act(async()=>pending.resolve(b));await screen.findByText('B');expect(screen.queryByLabelText('Export result')).toBeNull();
+});
+
+it.each([
+ [{status:'measured',count:1,stats:{skipped:1}},'Sized 1 text box for export; the canvas size is unchanged. 1 text box was skipped.'],
+ [{status:'measured',count:0,stats:{skipped:0}},'Resize text already fits; no growth was needed.'],
+ [{status:'failed',count:1,stats:{failed:1,skipped:0},message:'SECRET'},'Resize measurement failed for 1 text box. 1 box was sized for export.'],
+ [{status:'skipped',count:0,reason:'no-resize'},'No resize text to measure.'],
+])('shows resize outcome %j',async(resizeFit,text)=>{
+ const opened={...source('Resize outcomes'),resizeFit};render(<SourceWorkspace openSource={async()=>opened} save={vi.fn()}/>);choose('status.pptx');await screen.findByText('Resize outcomes');
+ fireEvent.click(screen.getByText('Export fixture'));expect(await screen.findByLabelText('Export result')).toHaveTextContent(text);expect(screen.queryByText(/SECRET/)).toBeNull();
 });

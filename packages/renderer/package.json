@@ -9,6 +9,14 @@
     "./text/measureShrinkFits": {
       "types": "./src/text/measureShrinkFits.d.ts",
       "default": "./src/text/measureShrinkFits.js"
+    },
+    "./text/measureResizeFits": {
+      "types": "./src/text/measureResizeFits.d.ts",
+      "default": "./src/text/measureResizeFits.js"
+    },
+    "./text/waitForAutofitFonts": {
+      "types": "./src/text/waitForAutofitFonts.d.ts",
+      "default": "./src/text/waitForAutofitFonts.js"
     }
   },
   "files": [

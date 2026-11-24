@@ -1,8 +1,8 @@
 import { canvasFont } from '../canvas/paint.js';
-import { graphemes } from '../vendor/officeview/core/text-recording.ts';
+import { fontsReady, waitForBodyFonts } from './fontReadiness.js';
 import { canonicalTextBody, themeForSlide } from './canonicalTextBody.js';
-import { layoutTextBody, resolveTextFamily } from '../vendor/officeview/drawing/text-layout.ts';
-import { createTextBodyMeasurer, fontShorthand } from '../vendor/officeview/drawing/text-paint.ts';
+import { layoutTextBody } from '../vendor/officeview/drawing/text-layout.ts';
+import { createTextBodyMeasurer } from '../vendor/officeview/drawing/text-paint.ts';
 
 // PowerPoint Mac 16.115 samples reached a 25000 floor. Policy remains version-specific,
 // not a claim that this search duplicates PowerPoint's layout algorithm.
@@ -22,24 +22,6 @@ export function scaledTextBody(body, { fontScale, lnSpcReduction }) {
     ...(p.spaceAfter ? { spaceAfter: { ...p.spaceAfter, value: p.spaceAfter.value * scale } } : {}),
   })) };
 }
-function* fontQueries(body, theme) {
-  for (const paragraph of body.paragraphs) for (const run of paragraph.runs) {
-    for (const text of new Set(graphemes(run.text || ' ').map(g => g.text))) {
-      const family = resolveTextFamily({ ...run, text }, theme);
-      yield { shorthand: fontShorthand({ ...run, fontFamily: family }, canvasFont), text };
-    }
-  }
-}
-function fontsReady(body, theme, fonts, checked) {
-  for (const { shorthand, text } of fontQueries(body, theme)) {
-    const key = JSON.stringify([shorthand, text]);
-    if (!checked.has(key)) {
-      if (!fonts.check(shorthand, text)) return false;
-      checked.add(key);
-    }
-  }
-  return true;
-}
 function hasNestedShrink(object) {
   const pending = [...(object.children ?? [])];
   while (pending.length) {
@@ -49,7 +31,7 @@ function hasNestedShrink(object) {
   }
   return false;
 }
-function shrinkBodies(document) {
+export function shrinkBodies(document) {
   const bodies = [];
   let reason = 'no-shrink';
   for (const slide of document.slides ?? []) {
@@ -68,30 +50,12 @@ function shrinkBodies(document) {
 
 /** Load only the captured snapshot's measurable shrink fonts; failure is an optional-fit fallback. */
 export async function waitForShrinkFonts(document, { fonts = globalThis.document?.fonts, timeoutMs = 2000 } = {}) {
-  if (!fonts?.load || !fonts?.check) return { status: 'skipped', reason: 'fonts-unavailable' };
-  let timer;
+  if (!fonts?.load || !fonts?.check) return {status:'skipped',reason:'fonts-unavailable'};
   try {
-    return await Promise.race([
-      Promise.resolve().then(async () => {
-        const queries = new Map();
-        const { bodies, reason } = shrinkBodies(document);
-        for (const { body, theme } of bodies) for (const { shorthand, text } of fontQueries(body, theme)) {
-          if (!queries.has(shorthand)) queries.set(shorthand, new Set());
-          queries.get(shorthand).add(text);
-        }
-        if (!queries.size) return { status: 'skipped', reason };
-        await Promise.all([...queries].map(([shorthand, chars]) => {
-          const text = [...chars].join('');
-          return fonts.check(shorthand, text) ? undefined : fonts.load(shorthand, text);
-        }));
-        await fonts.ready;
-        return fonts.status === 'loaded' && [...queries].every(([shorthand, chars]) => fonts.check(shorthand, [...chars].join('')))
-          ? { status: 'ready' } : { status: 'skipped', reason: 'fonts-unavailable' };
-      }),
-      new Promise(resolve => { timer = setTimeout(() => resolve({ status: 'skipped', reason: 'fonts-timeout' }), timeoutMs); }),
-    ]);
-  } catch { return { status: 'failed', reason: 'error', message: 'Font readiness failed.' }; }
-  finally { clearTimeout(timer); }
+    const {bodies,reason}=shrinkBodies(document);
+    if(!bodies.length)return {status:'skipped',reason};
+    return await waitForBodyFonts(bodies,{fonts,timeoutMs});
+  } catch { return {status:'failed',reason:'error',message:'Font readiness failed.'}; }
 }
 
 /** Synchronous browser measurement. Host must finish font loading before calling. */
@@ -100,7 +64,7 @@ export function measureShrinkFits(document, { fonts = globalThis.document?.fonts
   try {
     const fits = new Map();
     if (document.extensions?.sourceFormat === 'odp') return skipped('not-pptx');
-    if (fonts?.status !== 'loaded' || typeof fonts.check !== 'function') return skipped('fonts-unavailable');
+    if (typeof fonts?.check !== 'function') return skipped('fonts-unavailable');
     const { bodies, reason } = shrinkBodies(document);
     if (!bodies.length) return skipped(reason);
     const ctx = (canvas ?? globalThis.document?.createElement('canvas'))?.getContext('2d');

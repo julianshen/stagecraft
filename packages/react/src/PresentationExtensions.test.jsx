@@ -1801,15 +1801,15 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     expect(screen.getByText('PowerPoint applies shrink-to-fit when the text is next edited there. Exports from this editor include a measured fit; files exported elsewhere may overflow when first opened.')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Text autofit'), { target: { value: 'resize' } });
-    expect(screen.getByText(/PowerPoint resizes the shape to fit the text when it is next edited there/)).toBeTruthy();
+    expect(screen.getByText(/Exports from this editor size the box to fit, growing from its anchor/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Text autofit'), { target: { value: 'none' } });
     expect(screen.queryByText(/PowerPoint applies shrink-to-fit/)).toBeNull();
-    expect(screen.queryByText(/PowerPoint resizes the shape to fit the text when it is next edited there/)).toBeNull();
+    expect(screen.queryByText(/Exports from this editor size the box to fit, growing from its anchor/)).toBeNull();
 
     fireEvent.change(screen.getByLabelText('Text autofit'), { target: { value: '' } });
     expect(screen.queryByText(/PowerPoint applies shrink-to-fit/)).toBeNull();
-    expect(screen.queryByText(/PowerPoint resizes the shape to fit the text when it is next edited there/)).toBeNull();
+    expect(screen.queryByText(/Exports from this editor size the box to fit, growing from its anchor/)).toBeNull();
 
     // ODP: shrink is unsupported and no PowerPoint hint is shown.
     const odpDoc = createDocument({
@@ -1833,7 +1833,7 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     render(<EditorProvider editor={odpEditor}><PresentationEditor source={odpSource} /></EditorProvider>);
     fireEvent.click(screen.getByLabelText('Select object shape-with-text'));
     expect(screen.queryByText(/PowerPoint applies shrink-to-fit/)).toBeNull();
-    expect(screen.queryByText(/PowerPoint resizes the shape to fit the text when it is next edited there/)).toBeNull();
+    expect(screen.queryByText(/Exports from this editor size the box to fit, growing from its anchor/)).toBeNull();
   });
 
   it('commits range color on change (including #000000), preserves selection across Bold->Italic->Unbold->Reset, and shows canonical code-point label after CR', () => {

@@ -358,7 +358,7 @@ describe('presentation export', () => {
       bytes: new Uint8Array()
     }));
     expect(onExport).toHaveBeenCalledWith(expect.anything(), {
-      revision: 0, shrinkFit: {status: 'skipped', reason: 'not-pptx', count: 0}
+      revision: 0, resizeFit: expect.objectContaining({status:'skipped',reason:'no-resize',count:0}), shrinkFit: {status: 'skipped', reason: 'not-pptx', count: 0}
     });
     expect(screen.getByText('Exporting…')).toBeDisabled();
     await act(async () => saved.resolve());
@@ -385,7 +385,7 @@ describe('presentation export', () => {
     });
     expect(s.export).toHaveBeenCalledTimes(1);
     expect(s.export.mock.calls[0][0].slides).toEqual([]);
-    expect(onExport).toHaveBeenCalledWith(exported, { revision: 0, shrinkFit: {status: 'skipped', reason: 'not-pptx', count: 0} });
+    expect(onExport).toHaveBeenCalledWith(exported, { revision: 0, resizeFit: expect.objectContaining({status:'skipped',reason:'no-resize',count:0}), shrinkFit: {status: 'skipped', reason: 'not-pptx', count: 0} });
   });
   it.each(['source', 'editor', 'unmount'])('suppresses stale completion after %s replacement', async kind => {
     const s = source(),
