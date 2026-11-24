@@ -10,11 +10,13 @@ export interface SourceLimits {
     maxExpandedBytes?: number;
     signal?: AbortSignal;
 }
-/** Transient export measurements; geometry heights are EMU, shrink scales/reductions are hundred-thousandths. The canonical document is never changed. */
+/** Transient export measurements; the canonical document is never changed. */
 export interface SourceExportOptions extends SourceLimits {
-    /** Shrink hints apply only to authored boxes and native boxes whose text, geometry, or bodyLayout changed since import. Stale native hints throw. */
+    /** Shrink hints use hundred-thousandths: 100000 is unchanged scale and 10000 is one line-spacing reduction step.
+     *  Hints apply only to authored boxes and native boxes whose text, geometry, or bodyLayout changed since import; stale native hints throw. */
     fit?: Map<string, { fontScale: number; lnSpcReduction: number }> | Record<string, { fontScale: number; lnSpcReduction: number }>;
-    /** Grow-only, top-level unrotated PPTX text boxes. Untouched native hints throw; y follows the text anchor and may become negative. */
+    /** Grow-only text-frame heights in EMU (12700 EMU = 1pt), not shrink-scale units.
+     *  Applies to top-level unrotated PPTX text boxes; untouched native hints throw and y follows the text anchor. */
     resize?: Map<string, { height: number }> | Record<string, { height: number }>;
 }
 export interface OpenPresentationOptions extends SourceLimits {
@@ -42,6 +44,8 @@ export interface RegisteredImage {
     release(): boolean;
 }
 export interface ImageBytes { bytes: Uint8Array; contentType: 'image/png' | 'image/jpeg' }
+/** Hard limits for host-supplied image bytes and retained previews. */
+export const IMAGE_LIMITS: Readonly<{ maxBytes: 5242880; maxTotalBytes: 33554432; maxImages: 64 }>;
 export interface SourceSession {
     document: CanonicalDocument;
     diagnostics: readonly DocumentDiagnostic[];

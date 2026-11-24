@@ -17,9 +17,9 @@ import {
   type FormatAdapter, type ByteSource, type Diagnostic, type ExportMetadata, type XmlRuntime as IoXmlRuntime,
 } from '@stagecraft/io';
 import { inspectZip, type ZipOptions } from '@stagecraft/io/zip';
-import { pptxAdapter, importPptx, writePptx, type Deck, type PptxOptions } from '@stagecraft/pptx';
+import { pptxAdapter, importPptx, writePptx, exportToPPTX, type Deck, type PptxImportOptions, type PptxWriteOptions } from '@stagecraft/pptx';
 import { odpAdapter, importOdp, writeOdp, type OdpDocument, type OdpOptions } from '@stagecraft/odp';
-import { openPresentation, type SourceSession, type SourceCapability, type XmlRuntime } from '@stagecraft/source';
+import { IMAGE_LIMITS, openPresentation, type SourceSession, type SourceCapability, type SourceExportOptions, type XmlRuntime } from '@stagecraft/source';
 
 function expectType<T>(_value: T): void {}
 function assertJsonPayloads<T extends Record<keyof T, JsonValue>>(): void {}
@@ -117,10 +117,12 @@ safeXmlParse('<root/>', ioXml);
 const bytes = new Uint8Array();
 const signal = new AbortController().signal;
 const zipOptions: ZipOptions = { maxBytes: 1024, maxEntries: 10, maxEntryBytes: 1024, maxExpandedBytes: 4096, signal };
-const pptxOptions: PptxOptions = { ...zipOptions, xml, includeNotes: true, range: { from: 1, to: 2 } };
+const pptxOptions: PptxImportOptions = { ...zipOptions, xml, fileName: 'Board.pptx' };
+const pptxWriteOptions: PptxWriteOptions = { xml, signal, includeNotes: true, range: { from: 1, to: 2 } };
 const odpOptions: OdpOptions = { ...zipOptions, xml };
-expectType<FormatAdapter<Deck, PptxOptions>>(pptxAdapter);
+expectType<FormatAdapter<Deck, PptxImportOptions, PptxWriteOptions>>(pptxAdapter);
 expectType<FormatAdapter<OdpDocument, OdpOptions>>(odpAdapter);
+expectType<Readonly<{ maxBytes: 5242880; maxTotalBytes: 33554432; maxImages: 64 }>>(IMAGE_LIMITS);
 
 async function localAndHostIO() {
   expectType<Uint8Array>(await readBytes(new Blob([bytes]), { signal }));
@@ -132,7 +134,15 @@ async function localAndHostIO() {
   expectType<Diagnostic[]>(pptx.diagnostics);
   const directPptx = await importPptx(bytes, pptxOptions);
   expectType<Deck>(directPptx.deck);
-  expectType<Uint8Array>(await writePptx(directPptx.deck, pptxOptions));
+  expectType<Deck>((await importPptx(bytes, { fileName: 'Board.pptx' })).deck);
+  expectType<Uint8Array>(await writePptx(directPptx.deck, pptxWriteOptions));
+  expectType<string>(await exportToPPTX(directPptx.deck, pptxWriteOptions));
+  // @ts-expect-error Generated PPTX bytes are not an untrusted ZIP input; write limits are not advertised.
+  await writePptx(directPptx.deck, { maxBytes: 1, maxEntries: 1, maxEntryBytes: 1, maxExpandedBytes: 1 });
+  // @ts-expect-error The browser download wrapper uses the same writer-only options.
+  await exportToPPTX(directPptx.deck, { maxEntries: 1 });
+  // @ts-expect-error fileName is an import title fallback, not a generated-write option.
+  await writePptx(directPptx.deck, { fileName: 'Board.pptx' });
   const odp = await importDocument(new Blob([bytes]), { adapter: odpAdapter, ...odpOptions });
   expectType<OdpDocument>(odp.document);
   expectType<OdpDocument>((await importOdp(bytes, odpOptions)).document);
@@ -146,7 +156,7 @@ async function localAndHostIO() {
     },
   });
   const saved = await exportDocument(loaded.document, {
-    adapter: pptxAdapter, ...pptxOptions, fileName: 'edited.pptx',
+    adapter: pptxAdapter, ...pptxWriteOptions, maxBytes: 1024, fileName: 'edited.pptx',
     async save(output, metadata) {
       expectType<Uint8Array>(output);
       expectType<ExportMetadata>(metadata);
@@ -156,7 +166,9 @@ async function localAndHostIO() {
   expectType<Uint8Array>(saved.bytes);
   expectType<string>(saved.metadata.fileName);
   expectType<Uint8Array>((await exportDocument(odp.document, { adapter: odpAdapter, ...odpOptions })).bytes);
-  expectType<ByteSource>((await pptxAdapter.export(loaded.document, pptxOptions)).bytes);
+  expectType<ByteSource>((await pptxAdapter.export(loaded.document, pptxWriteOptions)).bytes);
+  // @ts-expect-error Adapter exports use writer options, not import-only ZIP entry limits.
+  await pptxAdapter.export(loaded.document, { maxEntries: 1 });
   // @ts-expect-error Adapter exports require the adapter's document shape.
   await exportDocument('invalid document', { adapter: pptxAdapter });
 }
@@ -221,6 +233,12 @@ import { measureResizeFits, type ResizeMeasurement } from '@stagecraft/renderer/
 import { waitForAutofitFonts } from '@stagecraft/renderer/text/waitForAutofitFonts';
 const resized: ResizeMeasurement = measureResizeFits(createDocument(), { baseline: createDocument() });
 resized.resize.get('box')?.height.toFixed();
+const measuredFit: NonNullable<SourceExportOptions['fit']> = new Map(
+  [...shrinkMeasurement.fit].map(([id, value]) => [id, { fontScale: value.fontScale, lnSpcReduction: value.lnSpcReduction }]),
+);
+const measuredResize: NonNullable<SourceExportOptions['resize']> = resized.resize;
+expectType<number>(measuredFit instanceof Map ? measuredFit.get('object')!.fontScale : 0);
+expectType<number>(measuredResize instanceof Map ? measuredResize.get('box')!.height : 0);
 resized.stats.skipped.toFixed();
 waitForAutofitFonts(createDocument(), { kinds: ['resize', 'shrink'], timeoutMs: 2000, baseline: createDocument() });
 // @ts-expect-error Unsupported measurement kind.
