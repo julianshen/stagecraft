@@ -64,14 +64,14 @@ export function odpAppearanceReader(content, styles) {
     function resolve(node, family) {
         if (!node) return {};
         if (cache.has(node)) return cache.get(node);
-        const chain = [], seen = new Set();
+        const requested = node, chain = [], seen = new Set();
         while (node && !seen.has(node) && chain.length < 64) {
             seen.add(node); chain.push(node);
             node = common.get(`${family}:${attr(node, 'style', 'parent-style-name')}`);
         }
         const result = {};
-        for (const n of chain.reverse()) apply(result, child(n, 'style', 'text-properties'));
-        cache.set(chain[chain.length - 1], result);
+        for (const n of chain.slice().reverse()) apply(result, child(n, 'style', 'text-properties'));
+        cache.set(requested, result);
         return result;
     }
     return (node, part) => {

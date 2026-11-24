@@ -14,6 +14,13 @@ describe('bounded ODP formatting preview', () => {
     expect(read(text(content), 'content.xml')).toEqual({ bold: true, italic: true, color: '#123456', fontFamily: 'Arial' });
     expect(read(text(content), 'content.xml')).toEqual(read(text(content), 'content.xml'));
   });
+  it('does not leak a child override into a parent resolved later', () => {
+    const styles = doc('<office:styles><style:style style:name="Base" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style><style:style style:name="Child" style:family="text" style:parent-style-name="Base"><style:text-properties fo:font-style="italic"/></style:style></office:styles>', 'styles');
+    const content = doc('<office:body><text:p><text:span text:style-name="Child">Child</text:span><text:span text:style-name="Base">Base</text:span></text:p></office:body>');
+    const read = odpAppearanceReader(content, styles), spans = content.getElementsByTagNameNS(NS.text, 'span');
+    expect(read(spans[0].firstChild, 'content.xml')).toEqual({ bold: true, italic: true });
+    expect(read(spans[1].firstChild, 'content.xml')).toEqual({ bold: true });
+  });
   it('bounds cyclic common parents, ignores ambiguous names and clears unsupported nested properties', () => {
     const styles = doc('<office:styles><style:style style:name="A" style:family="text" style:parent-style-name="B"><style:text-properties fo:font-weight="bold"/></style:style><style:style style:name="B" style:family="text" style:parent-style-name="A"><style:text-properties fo:font-style="italic"/></style:style><style:style style:name="Duplicate" style:family="text"/><style:style style:name="Duplicate" style:family="text"/></office:styles>', 'styles');
     const content = doc('<office:automatic-styles><style:style style:name="P" style:family="paragraph"><style:text-properties fo:font-size="20pt" fo:color="#123456"/></style:style><style:style style:name="Child" style:family="text"><style:text-properties fo:font-weight="invalid" fo:font-style="oblique" fo:font-size="120%" fo:color="auto"/></style:style></office:automatic-styles><office:body><text:p text:style-name="P"><text:span text:style-name="A"><text:span text:style-name="Child">Value</text:span></text:span><text:span text:style-name="Duplicate">Other</text:span></text:p></office:body>');
