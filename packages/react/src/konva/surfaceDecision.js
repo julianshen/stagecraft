@@ -1,4 +1,4 @@
-import { collectFontQueries } from '@stagecraft/renderer';
+import { fontFamiliesFor } from '@stagecraft/renderer';
 
 export const SURFACE_REASON_MESSAGES = Object.freeze({
   loading: 'Loading canvas view...',
@@ -44,18 +44,10 @@ export function isRelevantFontEvent(scene, event) {
   if (!faces) return true;
   const list = Array.from(faces);
   if (list.length === 0) return true;
-  const usedFamilies = new Set();
-  for (const shorthand of collectFontQueries(bodies).keys()) {
-    const match = /\b\d+(?:\.\d+)?(?:px|pt)\s+(.+)$/.exec(shorthand);
-    if (!match) continue;
-    for (const part of match[1].split(',')) {
-      const fam = part.replace(/['"]/g, '').trim().toLowerCase();
-      if (fam) usedFamilies.add(fam);
-    }
-  }
+  const usedFamilies = new Set([...fontFamiliesFor(bodies)].map(f => f.toLowerCase()));
   if (usedFamilies.size === 0) return true;
   return list.some(face => {
-    const fam = typeof face?.family === 'string' ? face.family.replace(/['"]/g, '').trim().toLowerCase() : '';
+    const fam = typeof face?.family === 'string' ? face.family.replace(/^['"]|['"]$/g, '').trim().toLowerCase() : '';
     return Boolean(fam) && usedFamilies.has(fam);
   });
 }
