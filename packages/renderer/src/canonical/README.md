@@ -6,7 +6,7 @@ New PPTX slides use the writer's first native layout. A conflicting authored `la
 
 Horizontal text **spills outside its frame**, including bottom-anchored overflow and `wrap: none`, through the OfficeView painter. Hit testing and selection still use the frame (or the ellipse geometry for ellipse shapes); spilled glyphs do not expand the hit region. Canvas preview does not apply export autofit hints.
 
-The supported envelopes are deliberately closed. Unknown fields refuse the entire slide; `extensions` remains opaque host data and is never passed to the painter.
+Every candidate object must pass core `validateAuthoredObject` before display adaptation. The renderer then applies its additional display-only restrictions (for example, unsupported list formatting). Unknown fields and retained native appearance refuse the entire slide. The core authored schema admits only its exact authored extension marker; it does not admit arbitrary object/run extensions, paragraph/run source references, or text/paragraph extension envelopes.
 
 | Envelope / field | Outcome |
 | --- | --- |
@@ -16,6 +16,9 @@ The supported envelopes are deliberately closed. Unknown fields refuse the entir
 | Paragraph `direction` / `tabs` | Refused |
 | Run `baseline` / `hyperlink` | Refused |
 | Unknown paragraph/run style fields | Refused |
-| Text / paragraph / run `extensions` | Retained as opaque metadata; no rendering semantics |
+| Paragraph/run `source`, or run `extensions.pptxAppearance` | Refused by core authored schema |
+| Text/paragraph extensions or extra object/run extension keys | Refused by core authored schema |
+| Text object without a text body | Refused by core authored schema |
+| Shape without a solid fill | Refused by core authored schema |
 
 K2b owns asynchronous lifecycle safety: a late font result must never activate a scene from an obsolete editor/source, slide, revision or request. Integration tests must cover replacement during a pending load, suppress stale completion, and invalidate the paint environment after relevant font changes. The renderer's bounded font wait alone cannot establish ownership. Dispose environments on owner replacement/unmount.

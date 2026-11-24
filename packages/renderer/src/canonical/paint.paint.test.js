@@ -15,7 +15,7 @@ it('rotates around frame center and restores caller canvas state',()=>{
  paintCanonicalScene(ctx,s,createCanonicalPaintEnvironment());expect(pixel(ctx,150,80)[3]).toBeGreaterThan(0);expect(pixel(ctx,110,110).slice(0,3)).toEqual([255,255,255]);expect(ctx.fillStyle).toBe('#abcdef');expect(ctx.globalAlpha).toBe(.5);expect(ctx.getTransform().isIdentity).toBe(true);
 });
 it('paints multi-run direct colors and caches layout across translation but invalidates font epoch',async()=>{
- const o=box();o.text.paragraphs[0].runs.push({id:'b',text:' world',style:{sz:'1800',typeface:'Arial',b:'1',i:'1',color:'#0000ff'}});
+ const o=box();o.text.paragraphs[0].runs.push({id:'b',text:' world',editable:true,extensions:{stagecraftAuthored:true},style:{sz:'1800',typeface:'Arial',b:'1',i:'1',color:'#0000ff'}});
  const s=scene([o]);expect(await waitForCanonicalFonts(s)).toEqual({status:'ready'});const ctx=canvas(),env=createCanonicalPaintEnvironment();paintCanonicalScene(ctx,s,env);
  const data=ctx.getImageData(10,20,300,200).data;let red=0,blue=0;for(let i=0;i<data.length;i+=4){if(data[i]>150&&data[i+1]<80&&data[i+2]<80)red++;if(data[i+2]>150&&data[i]<80&&data[i+1]<80)blue++;}expect(red).toBeGreaterThan(20);expect(blue).toBeGreaterThan(20);
  expect(env.getStats().layoutBuilds).toBe(1);o.geometry.x+=95250;paintCanonicalScene(ctx,scene([o]),env);expect(env.getStats().layoutBuilds).toBe(1);env.invalidateFonts();paintCanonicalScene(ctx,s,env);expect(env.getStats().layoutBuilds).toBe(2);
@@ -49,7 +49,7 @@ it('lays out alignment, paragraph spacing and wrapping through the real painter'
  const draw=o=>{const ctx=canvas(),calls=[],original=ctx.fillText.bind(ctx);vi.spyOn(ctx,'fillText').mockImplementation((text,x,y,...rest)=>{calls.push({text,x,y});return original(text,x,y,...rest);});paintCanonicalNode(ctx,scene([o]).nodes[0],createCanonicalPaintEnvironment());return calls;};
  const left=box(),center=structuredClone(left),right=structuredClone(left);center.text.paragraphs[0].style={alignment:'center'};right.text.paragraphs[0].style={alignment:'right'};
  expect(draw(left)[0].x).toBeLessThan(draw(center)[0].x);expect(draw(center)[0].x).toBeLessThan(draw(right)[0].x);
- const paragraphs=box();paragraphs.text.paragraphs.push({...structuredClone(paragraphs.text.paragraphs[0]),id:'p2'});const normal=draw(paragraphs);paragraphs.text.paragraphs[0].style={spaceAfter:18};const spaced=draw(paragraphs);expect(spaced[0].y).toBe(normal[0].y);expect(spaced.at(-1).y-normal.at(-1).y).toBeCloseTo(24,1);
+ const paragraphs=box();paragraphs.text.paragraphs.push({...structuredClone(paragraphs.text.paragraphs[0]),id:'p2',runs:[{...structuredClone(paragraphs.text.paragraphs[0].runs[0]),id:'r2'}]});const normal=draw(paragraphs);paragraphs.text.paragraphs[0].style={spaceAfter:18};const spaced=draw(paragraphs);expect(spaced[0].y).toBe(normal[0].y);expect(spaced.at(-1).y-normal.at(-1).y).toBeCloseTo(24,1);
  const wrapped=box({geometry:{x:0,y:0,width:952500,height:2857500}});wrapped.text.paragraphs[0].runs[0].text='one two three four five';const unwrapped=structuredClone(wrapped);unwrapped.bodyLayout={wrap:'none'};
  expect(new Set(draw(wrapped).map(c=>c.y)).size).toBeGreaterThan(1);expect(new Set(draw(unwrapped).map(c=>c.y)).size).toBe(1);
 });

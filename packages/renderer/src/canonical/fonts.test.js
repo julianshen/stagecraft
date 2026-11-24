@@ -7,7 +7,7 @@ it('loads only scene queries once and does not wait on unrelated fonts',async()=
  expect(await waitForCanonicalFonts(s,{fonts})).toEqual({status:'ready'});expect(fonts.load).toHaveBeenCalledTimes(1);expect(fonts.load.mock.calls[0][0]).toContain('Arial');
 });
 it('returns ready for shape-only scenes without a font API',async()=>{
- const s=buildCanonicalScene(deck([box({type:'shape',shape:'rect',text:undefined})]),'s').scene;
+ const s=buildCanonicalScene(deck([box({type:'shape',shape:'rect',fill:'#ff0000',text:undefined})]),'s').scene;
  expect(await waitForCanonicalFonts(s,{fonts:{}})).toEqual({status:'ready'});
 });
 it('reports missing APIs, rejected loads and thrown checks without leaking content',async()=>{

@@ -54,8 +54,8 @@ it.each([
 ])('refuses %s without a partial scene',(_label,mutate,reason)=>{
  const d=deck();mutate(d);expect(buildCanonicalScene(d,'s')).toMatchObject({status:'unsupported',reason});expect(buildCanonicalScene(d,'s').scene).toBeUndefined();
 });
-it('ignores non-rendering extension data and resolves theme script font references without flattening them',()=>{
- const d=deck(),o=d.slides[0].objects[0];o.extensions.hostMetadata={id:42};o.text.paragraphs[0].runs[0].style={sz:'2400',typeface:'+mn-lt',eastAsian:'+mn-ea',complexScript:'+mn-cs'};o.text.paragraphs[0].runs[0].text='A漢字العربية';
+it('resolves theme script font references without flattening them',()=>{
+ const d=deck(),o=d.slides[0].objects[0];o.text.paragraphs[0].runs[0].style={sz:'2400',typeface:'+mn-lt',eastAsian:'+mn-ea',complexScript:'+mn-cs'};o.text.paragraphs[0].runs[0].text='A漢字العربية';
  d.layouts=[{id:'l',masterId:'m'}];d.masters=[{id:'m',themeId:'t'}];d.themes=[{id:'t',extensions:{pptxFontScheme:{minor:{latin:'Arial',eastAsian:'Courier New',complexScript:'Times New Roman'}}}}];
  const before=structuredClone(d);expect(buildCanonicalScene(d,'s').status).toBe('ready');expect(d).toEqual(before);
  d.themes[0].extensions.pptxObjectDefaults={txDef:true};expect(buildCanonicalScene(d,'s')).toMatchObject({reason:'inherited-appearance',diagnostics:[{code:'theme-object-defaults',objectId:'box'}]});
@@ -82,12 +82,26 @@ it.each([
 ])('refuses unsupported text envelope: %s',(_label,mutate)=>{
  const d=deck();mutate(d.slides[0].objects[0].text);const r=buildCanonicalScene(d,'s');expect(r).toMatchObject({status:'unsupported',reason:'unsupported-content'});expect(r.scene).toBeUndefined();
 });
-it('allows opaque extensions on text, paragraph and run envelopes',()=>{
- const d=deck(),t=d.slides[0].objects[0].text;t.extensions={host:1};t.paragraphs[0].extensions={host:2};t.paragraphs[0].runs[0].extensions.host=3;expect(buildCanonicalScene(d,'s').status).toBe('ready');
+it('refuses extension envelopes that the core authored schema does not permit',()=>{
+ const d=deck(),t=d.slides[0].objects[0].text;t.extensions={host:1};t.paragraphs[0].extensions={host:2};t.paragraphs[0].runs[0].extensions.host=3;expect(buildCanonicalScene(d,'s').status).toBe('unsupported');
 });
 it('selects the writer theme for new slides and the linked theme for native slides',async()=>{
  const {themeForSlide}=await import('../text/canonicalTextBody.js');const d=deck();
  d.layouts=[{id:'first',masterId:'m0'},{id:'second',masterId:'m1'}];d.masters=[{id:'m0',themeId:'t0'},{id:'m1',themeId:'t1'}];d.themes=[{id:'t0',extensions:{pptxFontScheme:{minor:{latin:'Arial'}}}},{id:'t1',extensions:{pptxFontScheme:{minor:{latin:'Georgia'}}}}];
  const s=d.slides[0];s.layoutId='second';expect(themeForSlide(d,s).fonts.minor.latin).toBe('Arial');expect(buildCanonicalScene(d,'s').reason).toBe('inherited-appearance');
  s.source={format:'pptx',part:'ppt/slides/slide1.xml',path:[]};expect(themeForSlide(d,s).fonts.minor.latin).toBe('Georgia');expect(buildCanonicalScene(d,'s').reason).toBe('unresolved-appearance');
+});
+it.each(['native-run','missing-body'])('refuses an object outside the core authored schema: %s',kind=>{
+ const d=deck(),o=d.slides[0].objects[0];
+ if(kind==='native-run') {const r=o.text.paragraphs[0].runs[0];r.style={sz:'1800',typeface:'Arial'};r.source={format:'pptx',part:'ppt/slides/slide1.xml',path:[0]};r.extensions={stagecraftAuthored:true,pptxAppearance:{color:'#0000ff'}};}
+ else delete o.text;
+ const result=buildCanonicalScene(d,'s');expect(result.status).toBe('unsupported');expect(result.scene).toBeUndefined();
+});
+it.each(['paragraph-source','run-source','appearance-only'])('refuses native provenance independently: %s',kind=>{
+ const d=deck(),p=d.slides[0].objects[0].text.paragraphs[0],r=p.runs[0];
+ const source={format:'pptx',part:'ppt/slides/slide1.xml',path:[0]};
+ if(kind==='paragraph-source')p.source=source;
+ else if(kind==='run-source')r.source=source;
+ else r.extensions.pptxAppearance={color:'#0000ff'};
+ expect(buildCanonicalScene(d,'s')).toMatchObject({status:'unsupported',reason:'unsupported-content',diagnostics:[{code:'authored-object-schema',objectId:'box'}]});
 });
