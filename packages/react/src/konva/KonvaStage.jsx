@@ -43,8 +43,9 @@ export default function KonvaStage({
   if (
     lastContextRef.current
     && lastContextRef.current.some((val, idx) => val !== nextContext[idx])
+    && gestureRef.current
   ) {
-    gestureRef.current = null;
+    gestureRef.current.stale = true;
   }
   lastContextRef.current = nextContext;
 
@@ -237,6 +238,7 @@ export default function KonvaStage({
                   }
                   if (
                     !g
+                    || g.stale
                     || g.id !== node.id
                     || g.id !== selectionId
                     || g.ownerKey !== ownerKey

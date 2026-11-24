@@ -287,30 +287,9 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
       </EditorProvider>,
     );
     const konvaCanvas = await waitForKonvaCanvas(container);
-    const box = konvaCanvas.getBoundingClientRect();
-    const startX = box.left + box.width * 0.2;
-    const startY = box.top + box.height * 0.25;
-
-    act(() => {
-      konvaCanvas.dispatchEvent(new MouseEvent('mousedown', {
-        bubbles: true,
-        cancelable: true,
-        button: 0,
-        buttons: 1,
-        clientX: startX,
-        clientY: startY,
-      }));
-    });
-    act(() => {
-      window.dispatchEvent(new MouseEvent('mousemove', {
-        bubbles: true,
-        cancelable: true,
-        button: 0,
-        buttons: 1,
-        clientX: startX + 60,
-        clientY: startY + 40,
-      }));
-    });
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const shapeNode = getStageForContainer(Konva, container).findOne('.r1');
+    const { startX, startY } = await startShapeDrag(konvaCanvas, shapeNode);
     act(() => {
       window.dispatchEvent(new MouseEvent('mouseup', {
         bubbles: true,
@@ -585,8 +564,13 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
     expect(editor.getSnapshot().revision).toBe(0);
   });
 
-  it('B3: snapshot change during drag restores to latest scene geometry instead of drag-start coordinates', async () => {
-    const editor = makeEditor([makeRect('r1', 72, 72, 240, 100)]);
+  it('B3: snapshot change during drag stops dragging immediately and restores to latest scene geometry', async () => {
+    const baseEditor = makeEditor([makeRect('r1', 72, 72, 240, 100)]);
+    let dispatchCount = 0;
+    const editor = {
+      ...baseEditor,
+      dispatch: (...args) => { dispatchCount += 1; return baseEditor.dispatch(...args); },
+    };
     const { container } = render(
       <EditorProvider editor={editor}>
         <PresentationEditor surface="konva" />
@@ -597,26 +581,31 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
     const stage = getStageForContainer(Konva, container);
     const shapeNode = stage.findOne('.r1');
     const { startX, startY, initialX } = await startShapeDrag(konvaCanvas, shapeNode, 40, 0);
+    expect(shapeNode.isDragging()).toBe(true);
 
     act(() => {
-      editor.dispatch('presentation.setGeometry', {
+      baseEditor.dispatch('presentation.setGeometry', {
         slideId: 's1',
         objectId: 'r1',
         geometry: { x: 200 * PT, y: 72 * PT, width: 240 * PT, height: 100 * PT, rotation: 0 },
       });
     });
+    expect(shapeNode.isDragging()).toBe(false);
     await waitFor(() => {
       expect(Math.round(shapeNode.x())).toBe(Math.round(200 * (96 / 72) + (240 * (96 / 72)) / 2));
     });
+
+    dispatchCount = 0;
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: startX + 40, clientY: startY }));
+    });
+    expect(dispatchCount).toBe(0);
 
     act(() => {
       editor.undo();
     });
     await waitFor(() => {
       expect(Math.round(shapeNode.x())).toBe(Math.round(initialX));
-    });
-    act(() => {
-      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: startX + 40, clientY: startY }));
     });
   });
 
