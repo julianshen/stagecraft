@@ -383,19 +383,23 @@ export function toLegacyDeck(document) {
     return [el];
   };
   deck.slides = d.slides.map(slide => {
-    const projected = copy(slide.extensions?.legacy ?? { layout: 'blank' });
+    const legacy = slide.extensions?.legacy;
+    const projected = copy(legacy ?? { layout: 'blank' });
     delete projected.title;
     if (slide.name !== undefined)
       projected.title = slide.name;
-    projected.id = slide.extensions?.legacy?.id ?? slide.id;
+    projected.id = legacy?.id ?? slide.id;
     projected.elements = slide.objects.flatMap(project);
-    delete projected.notes;
+    const retainedNotesMappable = !record(legacy) || typeof legacy.notes !== 'string' || xmlValidText(legacy.notes);
     if (slide.notes !== undefined) projected.notes = slide.notes;
-    delete projected.bgColor;
-    if (slide.background !== undefined) {
-      if (slide.background.type === 'solid' && /^#[0-9a-f]{6}$/i.test(slide.background.color))
-        projected.bgColor = slide.background.color;
-      else diagnostics.push(diagnostic('UNSUPPORTED_SLIDE_BACKGROUND', 'Legacy projection omits an unsupported slide background.', slide.id));
+    else if (retainedNotesMappable) delete projected.notes;
+    const retainedBackgroundMappable = !record(legacy) || typeof legacy.bgColor !== 'string' || /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(legacy.bgColor);
+    if (slide.background?.type === 'solid' && /^#[0-9a-f]{6}$/i.test(slide.background.color))
+      projected.bgColor = slide.background.color;
+    else {
+      if (retainedBackgroundMappable) delete projected.bgColor;
+      if (slide.background !== undefined)
+        diagnostics.push(diagnostic('UNSUPPORTED_SLIDE_BACKGROUND', 'Legacy projection omits an unsupported slide background.', slide.id));
     }
     return projected;
   });
