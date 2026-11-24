@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { JSDOM } from 'jsdom';
 import JSZip from 'jszip';
-import { pptxAdapter, writePptx } from './index.js';
+import { pptxAdapter, importPptx, writePptx } from './index.js';
 import { importDocument, exportDocument } from '@stagecraft/io';
 const deck = { title: 'Headless', sections: [{ id: 'section', name: 'One', slides: ['slide'] }], slides: [
   { id: 'slide', layout: 'blank', elements: [
@@ -32,6 +32,16 @@ describe('Node PPTX adapter', () => {
       expect(result.document.slides).toHaveLength(1);
       expect(result.document.slides[0].elements).toHaveLength(2);
       expect(typeof document).toBe('undefined');
+    } finally { window.close(); }
+  });
+  it('enforces ZIP input limits at the public PPTX import boundary', async () => {
+    const window = new JSDOM('').window;
+    const xml = { parse: text => new window.DOMParser().parseFromString(text, 'application/xml'), serialize: doc => new window.XMLSerializer().serializeToString(doc) };
+    try {
+      const bytes = await writePptx(deck, { xml });
+      for (const limits of [{ maxBytes: 1 }, { maxEntries: 0 }, { maxEntryBytes: 0 }, { maxExpandedBytes: 0 }]) {
+        await expect(importPptx(bytes, { xml, ...limits })).rejects.toThrow();
+      }
     } finally { window.close(); }
   });
   it('reports a missing XML runtime instead of silently dropping postprocessing', async () => {
