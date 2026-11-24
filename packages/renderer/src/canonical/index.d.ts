@@ -1,12 +1,16 @@
 import type { CanonicalDocument, DocumentObject } from '@stagecraft/core/document';
 export type CanonicalSceneReason = 'no-slide' | 'not-canonical' | 'unsupported-format' | 'unsupported-content' | 'unresolved-appearance' | 'inherited-appearance' | 'invalid-geometry';
 export type CanonicalDiagnostic = { readonly code: string; readonly objectId?: string };
+declare const canonicalNodeBrand: unique symbol;
+/** Opaque, immutable painter input. Obtain nodes from buildCanonicalScene. */
 export interface CanonicalNode {
+ readonly [canonicalNodeBrand]: true;
  readonly id: string;
  readonly type: 'text' | 'shape';
  readonly geometry: Readonly<NonNullable<DocumentObject['geometry']>>;
  /** CSS slide pixels, 9525 EMU/px; rotation in degrees about the frame center. */
  readonly frame: Readonly<{ x: number; y: number; width: number; height: number; rotation: number }>;
+ /** Hit region stays the frame even when horizontal text spills outside it. */
  readonly hitShape: 'rect' | 'ellipse';
  readonly textIds: readonly { readonly paragraphId: string; readonly runIds: readonly string[] }[];
 }

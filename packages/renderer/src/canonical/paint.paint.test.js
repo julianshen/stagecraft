@@ -30,8 +30,8 @@ it('keeps CRLF across runs and empty runs equivalent to a single display break',
  const a=box(),b=box();a.text.paragraphs[0].runs[0].text='A\r';a.text.paragraphs[0].runs.push({...a.text.paragraphs[0].runs[0],id:'empty',text:''},{...a.text.paragraphs[0].runs[0],id:'last',text:'\nB😀'});b.text.paragraphs[0].runs[0].text='A\nB😀';
  const ctxA=canvas(),ctxB=canvas();paintCanonicalScene(ctxA,scene([a]),createCanonicalPaintEnvironment());paintCanonicalScene(ctxB,scene([b]),createCanonicalPaintEnvironment());expect(ctxA.getImageData(0,0,400,300).data).toEqual(ctxB.getImageData(0,0,400,300).data);
 });
-it('honors an authored text box solid fill behind its text',()=>{
- const s=scene([box({fill:'#ffff00'})]),ctx=canvas();paintCanonicalScene(ctx,s,createCanonicalPaintEnvironment());expect(pixel(ctx,295,195)).toEqual([255,255,0,255]);
+it('honors a rectangular text-bearing shape fill behind its text',()=>{
+ const s=scene([box({type:'shape',shape:'rect',fill:'#ffff00'})]),ctx=canvas();paintCanonicalScene(ctx,s,createCanonicalPaintEnvironment());expect(pixel(ctx,295,195)).toEqual([255,255,0,255]);
 });
 it('honors anchor and inset placement without applying export autofit',()=>{
  const bounds=o=>{const ctx=canvas();paintCanonicalScene(ctx,scene([o]),createCanonicalPaintEnvironment());const data=ctx.getImageData(0,0,400,300).data;let top=300,left=400,bottom=0;for(let y=0;y<300;y++)for(let x=0;x<400;x++){const i=(y*400+x)*4;if(data[i]>150&&data[i+1]<80&&data[i+2]<80){top=Math.min(top,y);left=Math.min(left,x);bottom=Math.max(bottom,y);}}return {top,left,bottom};};
@@ -52,4 +52,14 @@ it('lays out alignment, paragraph spacing and wrapping through the real painter'
  const paragraphs=box();paragraphs.text.paragraphs.push({...structuredClone(paragraphs.text.paragraphs[0]),id:'p2'});const normal=draw(paragraphs);paragraphs.text.paragraphs[0].style={spaceAfter:18};const spaced=draw(paragraphs);expect(spaced[0].y).toBe(normal[0].y);expect(spaced.at(-1).y-normal.at(-1).y).toBeCloseTo(24,1);
  const wrapped=box({geometry:{x:0,y:0,width:952500,height:2857500}});wrapped.text.paragraphs[0].runs[0].text='one two three four five';const unwrapped=structuredClone(wrapped);unwrapped.bodyLayout={wrap:'none'};
  expect(new Set(draw(wrapped).map(c=>c.y)).size).toBeGreaterThan(1);expect(new Set(draw(unwrapped).map(c=>c.y)).size).toBe(1);
+});
+it.each(['bottom','nowrap'])('spills horizontal text outside its frame: %s',kind=>{
+ const o=box({geometry:{x:952500,y:952500,width:952500,height:285750},bodyLayout:{anchor:kind==='bottom'?'bottom':'top',wrap:kind==='nowrap'?'none':'square',insets:{left:0,right:0,top:0,bottom:0}}});o.text.paragraphs[0].runs[0].text=kind==='bottom'?'Hello\nHello\nHello':'Hello Hello Hello Hello';
+ const ctx=canvas();paintCanonicalScene(ctx,scene([o]),createCanonicalPaintEnvironment());const area=kind==='bottom'?[100,40,100,60]:[201,100,250,30];const data=ctx.getImageData(...area).data;let red=0;for(let i=0;i<data.length;i+=4)if(data[i]>150&&data[i+1]<80&&data[i+2]<80)red++;
+ expect(red).toBeGreaterThan(20);expect(scene([o]).nodes[0].frame).toMatchObject({x:100,y:100,width:100,height:30});
+});
+it('evicts filled-shape geometry at the configured cache limit',()=>{
+ const env=createCanonicalPaintEnvironment({cacheLimit:1}),ctx=canvas();
+ for(const [shape,fill] of [['rect','#ff0000'],['ellipse','#00ff00']]) {paintCanonicalScene(ctx,scene([box({type:'shape',shape,fill,text:undefined})]),env);expect(env.getStats().geometryEntries).toBe(1);}
+ expect(pixel(ctx,160,120)).toEqual([0,255,0,255]);env.dispose();expect(env.getStats().geometryEntries).toBe(0);
 });

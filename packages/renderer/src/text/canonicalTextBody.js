@@ -1,10 +1,15 @@
 const EMU_PER_PX = 9525;
 const slots = { lt: 'latin', ea: 'eastAsian', cs: 'complexScript' };
 
+/** New authored slides use the first layout in the PPTX writer; native slides retain their relationship. */
+export function layoutForSlide(document, slide) {
+  return slide.extensions?.stagecraftAuthored && !slide.source
+    ? document.layouts?.[0] : document.layouts?.find(item => item.id === slide.layoutId);
+}
+
 /** Read-only theme appearance; never replace tokens in the canonical snapshot. */
 export function themeForSlide(document, slide) {
-  const layout = slide.extensions?.stagecraftAuthored && !slide.source
-    ? document.layouts?.[0] : document.layouts?.find(item => item.id === slide.layoutId);
+  const layout = layoutForSlide(document, slide);
   const master = document.masters?.find(item => item.id === layout?.masterId);
   const appearance = document.themes?.find(item => item.id === master?.themeId)?.extensions;
   const fonts = appearance?.pptxFontScheme;

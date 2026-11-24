@@ -16,7 +16,7 @@
 .stagecraft-presentation :is(button,input,textarea,select):focus-visible { outline:2px solid var(--accent, var(--stagecraft-presentation-accent,#2563eb)); outline-offset:2px; }
 .stagecraft-presentation-paper { background:white; box-shadow:0 4px 20px #17203320; max-width:none; margin:0 auto; }
 .stagecraft-presentation-paper svg { width:100%; display:block; touch-action:none; }
-.stagecraft-presentation-object { width:100%; height:100%; overflow:hidden; color:#172033; font:16px sans-serif; white-space:pre-wrap; overflow-wrap:anywhere; }
+.stagecraft-presentation-object { width:100%; height:100%; overflow:hidden; font:16px sans-serif; white-space:pre-wrap; overflow-wrap:anywhere; }
 .stagecraft-presentation-object p { margin:0; }
 .stagecraft-presentation-placeholder { font-size:12px; color:var(--ink-3,#64748b); background:var(--bg-2,#f1f5f9); }
 .stagecraft-presentation-notice { max-width:65em; font-size:12px; color:var(--ink-3,#64748b); }

@@ -34,7 +34,7 @@ export function paintCanonicalNode(ctx,node,environment) {
   if(text) {
    const key=node.paint.layoutKey;
    const layout=cached(s.layouts,key,s.limit,()=>{s.layoutBuilds++;return layoutTextBody(text.body,width,height,createTextBodyMeasurer(ctx,canvasFont),text.theme);});
-   paintTextBody(text.body,ctx,0,0,width,height,canvasFont,text.theme,{layout,clip:{x:0,y:0,width,height}});
+   paintTextBody(text.body,ctx,0,0,width,height,canvasFont,text.theme,{layout});
   }
  }finally{ctx.restore();}
 }

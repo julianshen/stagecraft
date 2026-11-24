@@ -60,3 +60,34 @@ it('ignores non-rendering extension data and resolves theme script font referenc
  const before=structuredClone(d);expect(buildCanonicalScene(d,'s').status).toBe('ready');expect(d).toEqual(before);
  d.themes[0].extensions.pptxObjectDefaults={txDef:true};expect(buildCanonicalScene(d,'s')).toMatchObject({reason:'inherited-appearance',diagnostics:[{code:'theme-object-defaults',objectId:'box'}]});
 });
+it('refuses a conflicting authored layout reference rather than hiding its artwork',()=>{
+ const d=deck();d.layouts=[{id:'first',masterId:'m0'},{id:'second',masterId:'m1',objects:[box()]}];
+ d.slides[0].layoutId='second';
+ expect(buildCanonicalScene(d,'s')).toMatchObject({status:'unsupported',reason:'inherited-appearance',diagnostics:[{code:'authored-layout-mismatch'}]});
+ d.slides[0].layoutId='first';expect(buildCanonicalScene(d,'s').status).toBe('ready');
+ delete d.slides[0].layoutId;expect(buildCanonicalScene(d,'s').status).toBe('ready');
+});
+it('uses the SVG default color for ordinary authored sz-only runs',()=>{
+ const d=deck();d.slides[0].objects[0].text.paragraphs[0].runs[0].style={sz:'2400'};
+ d.layouts=[{id:'l',masterId:'m'}];d.masters=[{id:'m',themeId:'t'}];d.themes=[{id:'t',extensions:{pptxFontScheme:{minor:{latin:'Arial'}}}}];
+ const r=buildCanonicalScene(d,'s');expect(r.status).toBe('ready');expect(r.scene.nodes[0].paint.text.body.paragraphs[0].runs[0].color).toBe('#172033');
+});
+it.each(['fill','shape'])('refuses shape-only field %s on a text object',key=>{
+ const d=deck();d.slides[0].objects[0][key]=key==='fill'?'#ff0000':'rect';expect(buildCanonicalScene(d,'s')).toMatchObject({status:'unsupported',reason:'unsupported-content'});
+});
+it.each([
+ ['vertical text',(t)=>{t.direction='vert';}],['columns',(t)=>{t.columns=2;}],
+ ['paragraph direction',(t)=>{t.paragraphs[0].direction='rtl';}],['paragraph tabs',(t)=>{t.paragraphs[0].tabs=[100];}],
+ ['run baseline',(t)=>{t.paragraphs[0].runs[0].baseline=30000;}],['run hyperlink',(t)=>{t.paragraphs[0].runs[0].hyperlink='https://example.test';}],
+])('refuses unsupported text envelope: %s',(_label,mutate)=>{
+ const d=deck();mutate(d.slides[0].objects[0].text);const r=buildCanonicalScene(d,'s');expect(r).toMatchObject({status:'unsupported',reason:'unsupported-content'});expect(r.scene).toBeUndefined();
+});
+it('allows opaque extensions on text, paragraph and run envelopes',()=>{
+ const d=deck(),t=d.slides[0].objects[0].text;t.extensions={host:1};t.paragraphs[0].extensions={host:2};t.paragraphs[0].runs[0].extensions.host=3;expect(buildCanonicalScene(d,'s').status).toBe('ready');
+});
+it('selects the writer theme for new slides and the linked theme for native slides',async()=>{
+ const {themeForSlide}=await import('../text/canonicalTextBody.js');const d=deck();
+ d.layouts=[{id:'first',masterId:'m0'},{id:'second',masterId:'m1'}];d.masters=[{id:'m0',themeId:'t0'},{id:'m1',themeId:'t1'}];d.themes=[{id:'t0',extensions:{pptxFontScheme:{minor:{latin:'Arial'}}}},{id:'t1',extensions:{pptxFontScheme:{minor:{latin:'Georgia'}}}}];
+ const s=d.slides[0];s.layoutId='second';expect(themeForSlide(d,s).fonts.minor.latin).toBe('Arial');expect(buildCanonicalScene(d,'s').reason).toBe('inherited-appearance');
+ s.source={format:'pptx',part:'ppt/slides/slide1.xml',path:[]};expect(themeForSlide(d,s).fonts.minor.latin).toBe('Georgia');expect(buildCanonicalScene(d,'s').reason).toBe('unresolved-appearance');
+});
