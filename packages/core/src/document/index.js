@@ -293,9 +293,15 @@ export function migrateLegacyDeck(input) {
         diagnostics.push(diagnostic('OPAQUE_LEGACY_OBJECT', 'Unsupported legacy object retained without conversion.', objectId));
       return object;
     });
+    const background = typeof slide.bgColor === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(slide.bgColor)
+      ? { type: 'solid', color: slide.bgColor.length === 4
+        ? '#' + slide.bgColor.slice(1).split('').map(char => char + char).join('') : slide.bgColor }
+      : undefined;
     return {
       id,
       ...(typeof slide.title === 'string' ? { name: slide.title } : {}),
+      ...(typeof slide.notes === 'string' ? { notes: slide.notes } : {}),
+      ...(background ? { background } : {}),
       objects,
       extensions: { legacy: copy(slide) }
     };
@@ -378,6 +384,14 @@ export function toLegacyDeck(document) {
       projected.title = slide.name;
     projected.id = slide.extensions?.legacy?.id ?? slide.id;
     projected.elements = slide.objects.flatMap(project);
+    delete projected.notes;
+    if (slide.notes !== undefined) projected.notes = slide.notes;
+    delete projected.bgColor;
+    if (slide.background !== undefined) {
+      if (slide.background.type === 'solid' && /^#[0-9a-f]{6}$/i.test(slide.background.color))
+        projected.bgColor = slide.background.color;
+      else diagnostics.push(diagnostic('UNSUPPORTED_SLIDE_BACKGROUND', 'Legacy projection omits an unsupported slide background.', slide.id));
+    }
     return projected;
   });
   // Rebuild section membership when canonical order/membership changes.

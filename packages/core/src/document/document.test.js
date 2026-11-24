@@ -100,6 +100,45 @@ describe('canonical document', () => {
     expect(toLegacyDeck(a.document).deck).toEqual(deck);
     expect(a.diagnostics.length).toBeGreaterThan(0);
   });
+  it('migrates legacy notes and solid backgrounds, then projects canonical edits back', () => {
+    const deck = { title: 'Original', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', title: 'Slide', notes: 'Speaker note', bgColor: '#112233', elements: [] }] };
+    const { document } = migrateLegacyDeck(deck);
+    expect(document.slides[0].notes).toBe('Speaker note');
+    expect(document.slides[0].background).toEqual({ type: 'solid', color: '#112233' });
+    const changed = structuredClone(document);
+    changed.slides[0].notes = 'Updated note';
+    changed.slides[0].background = { type: 'solid', color: '#445566' };
+    const projected = toLegacyDeck(changed).deck.slides[0];
+    expect(projected.notes).toBe('Updated note');
+    expect(projected.bgColor).toBe('#445566');
+  });
+  it('expands legacy shorthand background hex during migration', () => {
+    const { document } = migrateLegacyDeck({ slides: [{ id: 's', layout: 'blank', bgColor: '#AbC', elements: [] }] });
+    expect(document.slides[0].background).toEqual({ type: 'solid', color: '#AAbbCC' });
+  });
+  it('projects authored canonical notes/background and migrates them back', () => {
+    const document = createDocument({ slides: [{ id: 's', objects: [], notes: 'Authored note', background: { type: 'solid', color: '#778899' } }] });
+    const legacy = toLegacyDeck(document).deck;
+    expect(legacy.slides[0]).toMatchObject({ notes: 'Authored note', bgColor: '#778899' });
+    const migrated = migrateLegacyDeck(legacy).document.slides[0];
+    expect(migrated.notes).toBe('Authored note');
+    expect(migrated.background).toEqual({ type: 'solid', color: '#778899' });
+  });
+  it('clears retained legacy properties and diagnoses unsupported canonical backgrounds', () => {
+    const deck = { sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', notes: 'Old note', bgColor: '#112233', elements: [] }] };
+    const { document } = migrateLegacyDeck(deck);
+    const cleared = structuredClone(document);
+    delete cleared.slides[0].notes;
+    delete cleared.slides[0].background;
+    const projected = toLegacyDeck(cleared).deck.slides[0];
+    expect(projected).not.toHaveProperty('notes');
+    expect(projected).not.toHaveProperty('bgColor');
+    const unsupported = structuredClone(document);
+    unsupported.slides[0].background = { type: 'theme' };
+    const result = toLegacyDeck(unsupported);
+    expect(result.deck.slides[0]).not.toHaveProperty('bgColor');
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'UNSUPPORTED_SLIDE_BACKGROUND', objectId: 'legacy-slide-0' }));
+  });
   it('supports pure text command, validation and history', () => {
     const d = fixture();
     const e = createEditor({
