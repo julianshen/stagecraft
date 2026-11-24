@@ -1,5 +1,5 @@
 import { AUTHORED_TEXT_COLOR } from '@stagecraft/core/lib/authoredText.js';
-import { measureShrinkFits, measureResizeFits, resizeFallback, waitForAutofitFonts } from '@stagecraft/renderer';
+import { DEFAULT_TEXT_INSETS_EMU, measureShrinkFits, measureResizeFits, resizeFallback, waitForAutofitFonts } from '@stagecraft/renderer';
 import { buildCanonicalScene, waitForCanonicalFonts } from '@stagecraft/renderer/canonical';
 import { createContext, useContext, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { useEditor, useEditorSnapshot } from './EditorProvider.jsx';
@@ -760,20 +760,17 @@ function paragraphStyleCss(style, scale) {
 }
 
 function textBodyCss(object, scale) {
-  const layout = object?.bodyLayout;
-  if (!layout) return undefined;
-  const css = {};
+  const layout = object?.bodyLayout ?? {};
+  const css = { boxSizing: 'border-box' };
   if (layout.anchor === 'middle') { css.display = 'flex'; css.flexDirection = 'column'; css.justifyContent = 'center'; }
   else if (layout.anchor === 'bottom') { css.display = 'flex'; css.flexDirection = 'column'; css.justifyContent = 'flex-end'; }
   if (layout.wrap === 'none') css.whiteSpace = 'nowrap';
-  if (layout.insets) {
-    const ins = layout.insets;
-    if (Number.isFinite(ins.top)) css.paddingTop = `${ins.top * scale}px`;
-    if (Number.isFinite(ins.right)) css.paddingRight = `${ins.right * scale}px`;
-    if (Number.isFinite(ins.bottom)) css.paddingBottom = `${ins.bottom * scale}px`;
-    if (Number.isFinite(ins.left)) css.paddingLeft = `${ins.left * scale}px`;
+  const ins = layout.insets;
+  for (const [side, prop] of [['top', 'paddingTop'], ['right', 'paddingRight'], ['bottom', 'paddingBottom'], ['left', 'paddingLeft']]) {
+    const val = Number.isFinite(ins?.[side]) ? ins[side] : DEFAULT_TEXT_INSETS_EMU[side];
+    css[prop] = `${val * scale}px`;
   }
-  return Object.keys(css).length ? css : undefined;
+  return css;
 }
 
 const slideBackground = slide => (
