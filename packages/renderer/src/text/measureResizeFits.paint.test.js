@@ -74,4 +74,15 @@ it('retains a successful resize when another object fails font checking',()=>{
  const result=measureResizeFits(d,{fonts});expect(result.count).toBe(1);expect(result.status).toBe('failed');expect(result.stats).toEqual({candidates:2,measured:1,skipped:0,failed:1});expect(result.resize.has('box')).toBe(true);expect(JSON.stringify(result)).not.toContain('SECRET');
 });
 
+it('skips untouched native resize boxes and measures only native text edits', async () => {
+ await document.fonts.ready;
+ const object=make();delete object.extensions.stagecraftAuthored;object.source={format:'pptx',part:'ppt/slides/slide1.xml',path:[0]};object.extensions={editableGeometry:true,pptxTextMetrics:{supported:true}};
+ const input=doc(object),baseline=structuredClone(input);
+ const unchanged=measureResizeFits(input,{fonts:document.fonts,baseline});
+ expect(unchanged).toMatchObject({status:'skipped',reason:'unchanged-native',count:0,reasons:{'unchanged-native':1}});expect(unchanged.resize.size).toBe(0);
+ object.text.paragraphs[0].runs[0].text+=' Edited';
+ const changed=measureResizeFits(input,{fonts:document.fonts,baseline});
+ expect(changed.status).toBe('measured');expect(changed.resize.has('box')).toBe(true);
+});
+
 it('measures available resize fonts while unrelated fonts are loading',()=>{const result=measureResizeFits(doc(make()),{fonts:{status:'loading',check:()=>true}});expect(result.status).toBe('measured');expect(result.resize.size).toBe(1);});

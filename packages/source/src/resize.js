@@ -1,4 +1,4 @@
-import { resizeIneligibility, resizedGeometry } from '@stagecraft/core/lib/resizeGeometry.js';
+import { autofitHintEligibility, resizeIneligibility, resizedGeometry } from '@stagecraft/core/lib/resizeGeometry.js';
 const invalid = () => { throw new Error('Invalid resize measurement'); };
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
     && [Object.prototype, null].includes(Object.getPrototypeOf(value));
@@ -32,6 +32,7 @@ export function applyResize(snapshot, baseline, input, format) {
         if (typeof id !== 'string' || !record(value) || !Object.hasOwn(value, 'height') || Reflect.ownKeys(value).some(key => key !== 'height')) invalid();
         const height = value.height, object = objects.get(id), original = retained.get(id);
         if (!object || !Number.isSafeInteger(height) || height <= 0) invalid();
+        if (autofitHintEligibility(object, original)) invalid();
         if (resizeIneligibility(object, original, defaultsByObject.get(id))) invalid();
         const geometry = resizedGeometry(object, height);
         if (!geometry) invalid();

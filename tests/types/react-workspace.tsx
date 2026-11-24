@@ -67,7 +67,7 @@ function CustomToolbar() {
   return <button onClick={() => ui.addObject('text')}>Text</button>;
 }
 export const visual = <EditorProvider editor={visualEditor}>
-  <PresentationEditor onExport={(result, context) => { result.bytes.byteLength; context.shrinkFit.count.toFixed(); if (context.shrinkFit.status === "failed") context.shrinkFit.message.toUpperCase(); }} showToolbar={false} showSlideList showAttributePanel={false}
+  <PresentationEditor onExport={(result, context) => { result.bytes.byteLength; context.shrinkFit.count.toFixed(); if (context.shrinkFit.status === "failed") context.shrinkFit.message.toUpperCase(); if (context.shrinkFit.status === "skipped") { const unchanged: 'unchanged-native' | undefined = context.shrinkFit.reason === 'unchanged-native' ? context.shrinkFit.reason : undefined; void unchanged; context.shrinkFit.reasons?.['unchanged-native']?.toFixed(); } }} showToolbar={false} showSlideList showAttributePanel={false}
     showDeckList decks={[{ id: 'deck', title: 'Deck' }]} activeDeckId="deck"
     onDeckSelect={id => { id.toUpperCase(); }} onSelectionChange={selection => { selection.slideId?.toUpperCase(); }} />
 </EditorProvider>;

@@ -1,17 +1,18 @@
 import type { CanonicalDocument } from '@stagecraft/core/document';
-export type ShrinkSkipReason = 'not-pptx' | 'fonts-unavailable' | 'canvas-unavailable' | 'no-shrink' | 'empty-text' | 'unsupported-metrics' | 'already-fits';
+export type ShrinkSkipReason = 'not-pptx' | 'fonts-unavailable' | 'canvas-unavailable' | 'no-shrink' | 'empty-text' | 'unsupported-metrics' | 'already-fits' | 'unchanged-native';
 export type ShrinkFit = { fontScale: number; lnSpcReduction: number };
-export type ShrinkMeasurement = { fit: Map<string, ShrinkFit> } & (
+export interface ShrinkFitStats { candidates: number; measured: number; skipped: number; failed: number }
+export type ShrinkMeasurement = { fit: Map<string, ShrinkFit>; stats: ShrinkFitStats; reasons: Partial<Record<ShrinkSkipReason, number>> } & (
   | { status: 'measured'; count: number }
   | { status: 'skipped'; count: 0; reason: ShrinkSkipReason }
   | { status: 'failed'; count: 0; reason: 'error'; message: string }
 );
 export type ShrinkFontReadiness =
   | { status: 'ready' }
-  | { status: 'skipped'; reason: 'fonts-unavailable' | 'fonts-timeout' | 'no-shrink' | 'empty-text' | 'unsupported-metrics' }
+  | { status: 'skipped'; reason: ShrinkSkipReason; count?: number; reasons?: Partial<Record<ShrinkSkipReason, number>> }
   | { status: 'failed'; reason: 'error'; message: string };
-export function measureShrinkFits(document: CanonicalDocument, options?: { fonts?: FontFaceSet; canvas?: HTMLCanvasElement }): ShrinkMeasurement;
-export function waitForShrinkFonts(document: CanonicalDocument, options?: { fonts?: FontFaceSet; timeoutMs?: number }): Promise<ShrinkFontReadiness>;
+export function measureShrinkFits(document: CanonicalDocument, options?: { fonts?: FontFaceSet; canvas?: HTMLCanvasElement; baseline?: CanonicalDocument }): ShrinkMeasurement;
+export function waitForShrinkFonts(document: CanonicalDocument, options?: { fonts?: FontFaceSet; timeoutMs?: number; baseline?: CanonicalDocument }): Promise<ShrinkFontReadiness>;
 export const SHRINK_FIT_POLICY: Readonly<{ fontScales: readonly number[]; lineReductions: readonly number[]; heightMargin: number }>;
 
 export interface ScalableParagraph {

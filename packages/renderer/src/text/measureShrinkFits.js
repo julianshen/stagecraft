@@ -1,3 +1,4 @@
+import { autofitHintEligibility } from '@stagecraft/core/lib/resizeGeometry.js';
 import { canvasFont } from '../canvas/paint.js';
 import { fontsReady, waitForBodyFonts } from './fontReadiness.js';
 import { canonicalTextBody, themeForSlide } from './canonicalTextBody.js';
@@ -31,51 +32,68 @@ function hasNestedShrink(object) {
   }
   return false;
 }
-export function shrinkBodies(document) {
-  const bodies = [];
-  let reason = 'no-shrink';
+export function shrinkBodies(document, { baseline } = {}) {
+  const bodies = [], reasons = {};
+  const originals = new Map();
+  const visit = objects => { for (const object of objects ?? []) { originals.set(object.id, object); visit(object.children); } };
+  for (const owner of [...(baseline?.slides ?? []), ...(baseline?.layouts ?? []), ...(baseline?.masters ?? [])]) visit(owner.objects);
+  const skip = reason => { reasons[reason] = (reasons[reason] ?? 0) + 1; };
+  let reason = 'no-shrink', candidates = 0;
   for (const slide of document.slides ?? []) {
     const theme = themeForSlide(document, slide);
     for (const object of slide.objects ?? []) {
       if (hasNestedShrink(object)) reason = 'unsupported-metrics';
       if (object.bodyLayout?.autofit !== 'shrink') continue;
+      candidates++;
+      const eligibility = autofitHintEligibility(object, originals.get(object.id));
+      if (eligibility) { reason = eligibility; skip(eligibility); continue; }
       const a = canonicalTextBody(object, theme);
-      if (!a) reason = 'unsupported-metrics';
+      if (!a) { reason = 'unsupported-metrics'; skip(reason); }
       else if (a.body.paragraphs.some(p => p.runs.some(r => r.text.trim()))) bodies.push({ object, ...a });
-      else if (reason !== 'unsupported-metrics') reason = 'empty-text';
+      else { if (reason !== 'unsupported-metrics') reason = 'empty-text'; skip('empty-text'); }
     }
   }
-  return { bodies, reason };
+  return { bodies, reason, candidates, reasons };
 }
 
 /** Load only the captured snapshot's measurable shrink fonts; failure is an optional-fit fallback. */
-export async function waitForShrinkFonts(document, { fonts = globalThis.document?.fonts, timeoutMs = 2000 } = {}) {
+export async function waitForShrinkFonts(document, { fonts = globalThis.document?.fonts, timeoutMs = 2000, baseline } = {}) {
   if (!fonts?.load || !fonts?.check) return {status:'skipped',reason:'fonts-unavailable'};
   try {
-    const {bodies,reason}=shrinkBodies(document);
-    if(!bodies.length)return {status:'skipped',reason};
+    const {bodies,reason,reasons}=shrinkBodies(document,{baseline});
+    if(!bodies.length)return {status:'skipped',reason,count:0,reasons};
     return await waitForBodyFonts(bodies,{fonts,timeoutMs});
   } catch { return {status:'failed',reason:'error',message:'Font readiness failed.'}; }
 }
 
 /** Synchronous browser measurement. Host must finish font loading before calling. */
-export function measureShrinkFits(document, { fonts = globalThis.document?.fonts, canvas } = {}) {
-  const skipped = reason => ({ fit: new Map(), status: 'skipped', reason, count: 0 });
+export function measureShrinkFits(document, { fonts = globalThis.document?.fonts, canvas, baseline } = {}) {
+  const skipped = (reason, candidates = 0, reasons = {}) => ({
+    fit: new Map(), status: 'skipped', reason, count: 0,
+    stats: { candidates, measured: 0, skipped: candidates, failed: 0 },
+    reasons: Object.keys(reasons).length ? reasons : { [reason]: candidates },
+  });
   try {
     const fits = new Map();
     if (document.extensions?.sourceFormat === 'odp') return skipped('not-pptx');
     if (typeof fonts?.check !== 'function') return skipped('fonts-unavailable');
-    const { bodies, reason } = shrinkBodies(document);
-    if (!bodies.length) return skipped(reason);
+    const { bodies, reason, candidates, reasons } = shrinkBodies(document, { baseline });
+    if (!bodies.length) return skipped(reason, candidates, reasons);
     const ctx = (canvas ?? globalThis.document?.createElement('canvas'))?.getContext('2d');
-    if (!ctx) return skipped('canvas-unavailable');
+    if (!ctx) {
+      reasons['canvas-unavailable'] = (reasons['canvas-unavailable'] ?? 0) + bodies.length;
+      return skipped('canvas-unavailable', candidates, reasons);
+    }
     const measure = createTextBodyMeasurer(ctx, canvasFont), checked = new Set();
     for (const a of bodies) {
       const { object, theme } = a;
-      if (!fontsReady(a.body, theme, fonts, checked)) return skipped('fonts-unavailable');
+      if (!fontsReady(a.body, theme, fonts, checked)) {
+        reasons['fonts-unavailable'] = (reasons['fonts-unavailable'] ?? 0) + bodies.length;
+        return skipped('fonts-unavailable', candidates, reasons);
+      }
       const height = body => layoutTextBody(body, a.width, a.height, measure, theme).height;
       const initialHeight = height(a.body);
-      if (initialHeight <= a.availableHeight) continue;
+      if (initialHeight <= a.availableHeight) { reasons['already-fits'] = (reasons['already-fits'] ?? 0) + 1; continue; }
       let selected;
       search: for (const fontScale of SHRINK_FIT_POLICY.fontScales) for (const lnSpcReduction of SHRINK_FIT_POLICY.lineReductions) {
         selected = { fontScale, lnSpcReduction };
@@ -83,8 +101,12 @@ export function measureShrinkFits(document, { fonts = globalThis.document?.fonts
       }
       fits.set(object.id, selected);
     }
-    return fits.size ? { fit: fits, status: 'measured', count: fits.size } : skipped(reason === 'unsupported-metrics' ? reason : 'already-fits');
+    const stats = { candidates, measured: fits.size, skipped: candidates - fits.size, failed: 0 };
+    return fits.size
+      ? { fit: fits, status: 'measured', count: fits.size, stats, reasons }
+      : skipped(reason === 'unsupported-metrics' ? reason : 'already-fits', candidates, reasons);
   } catch {
-    return { fit: new Map(), status: 'failed', reason: 'error', message: 'Shrink measurement failed.', count: 0 };
+    return { fit: new Map(), status: 'failed', reason: 'error', message: 'Shrink measurement failed.', count: 0,
+      stats: { candidates: 0, measured: 0, skipped: 0, failed: 0 }, reasons: {} };
   }
 }

@@ -1,4 +1,5 @@
 import type { ResizeFitOutcome } from '@stagecraft/renderer/text/measureResizeFits';
+import type { ShrinkFitStats, ShrinkSkipReason } from '@stagecraft/renderer/text/measureShrinkFits';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
 import type { Editor, EditorSnapshot } from '@stagecraft/core/editor';
 import type {
@@ -18,10 +19,10 @@ import type {
 import type { SourceExport, SourceSession } from '@stagecraft/source';
 
 export type PresentationSelection = { slideId: string | null; objectId: string | null };
-export type ShrinkFitOutcome =
+export type ShrinkFitOutcome = { stats?: ShrinkFitStats; reasons?: Partial<Record<ShrinkSkipReason, number>> } & (
   | { status: 'measured'; count: number }
-  | { status: 'skipped'; count: 0; reason: 'not-pptx' | 'locked' | 'no-capability' | 'permission-revoked' | 'fonts-timeout' | 'fonts-unavailable' | 'no-shrink' | 'already-fits' | 'empty-text' | 'unsupported-metrics' | 'canvas-unavailable' }
-  | { status: 'failed'; count: 0; reason: 'error'; message: string };
+  | { status: 'skipped'; count: 0; reason: 'not-pptx' | 'locked' | 'no-capability' | 'permission-revoked' | 'fonts-timeout' | 'fonts-unavailable' | 'no-shrink' | 'already-fits' | 'empty-text' | 'unsupported-metrics' | 'canvas-unavailable' | 'unchanged-native' }
+  | { status: 'failed'; count: 0; reason: 'error'; message: string });
 export type ExportContext = { revision: number; shrinkFit: ShrinkFitOutcome; resizeFit: ResizeFitOutcome };
 export type DeckListItem = { id: string; title: string; description?: string; disabled?: boolean };
 export interface RegionProps { className?: string; style?: CSSProperties }

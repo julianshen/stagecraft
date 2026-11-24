@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { writePptx } from '../../pptx/src/index.js';
+import { writeOdp } from '../../odp/src/index.js';
 import { openPresentation } from './index.js';
 import JSZip from 'jszip';
 
@@ -56,18 +57,14 @@ it('emits fontScale and lnSpcReduction on normAutofit for native changed objects
   source.dispose();
 });
 
-it('does not apply fit to untouched native objects (no-op preservation)', async () => {
+it('rejects fit for untouched native objects instead of reporting a silent no-op', async () => {
   const bytes = await nativeShrinkFixture();
   const source = await openPresentation(bytes, { format: 'pptx' });
   const doc = structuredClone(source.document);
-  // No changes, but provide fit
   const obj = doc.slides[0].objects.find(o => o.type === 'text');
   const fit = new Map([[obj.id, { fontScale: 50000, lnSpcReduction: 20000 }]]);
-  const result = await source.export(doc, { fit });
-  const zip = await JSZip.loadAsync(result.bytes);
-  const xml = await zip.file('ppt/slides/slide1.xml').async('string');
-  // Should NOT contain the supplied fit values since the object didn't change
-  expect(xml).not.toContain('fontScale="50000"');
+  await expect(source.export(doc, { fit })).rejects.toThrow('Invalid autofit measurement');
+  expect((await source.export(doc)).bytes).toEqual(bytes);
   source.dispose();
 });
 
@@ -79,6 +76,7 @@ it('validates fit values and rejects invalid ones', async () => {
   await expect(source.export(doc, { fit: new Map([['x', { fontScale: 100001, lnSpcReduction: 0 }]]) })).rejects.toThrow();
   await expect(source.export(doc, { fit: new Map([['x', { fontScale: 1, lnSpcReduction: 100001 }]]) })).rejects.toThrow();
   await expect(source.export(doc, { fit: new Map([['x', { fontScale: 1.5, lnSpcReduction: 0 }]]) })).rejects.toThrow();
+  await expect(source.export(doc, { fit: new Map([['missing', { fontScale: 50000, lnSpcReduction: 0 }]]) })).rejects.toThrow('Invalid autofit measurement');
   source.dispose();
 });
 
@@ -89,6 +87,18 @@ it('missing or empty fit map = today exactly (no-op)', async () => {
   const result2 = await source.export(source.document, { fit: new Map() });
   expect(result1.bytes).toEqual(result2.bytes);
   source.dispose();
+});
+
+it('keeps empty fit maps byte-identical for ODP', async () => {
+  const bytes = await writeOdp({ title: 'ODP', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [] }] });
+  const source = await openPresentation(bytes, { format: 'odp' });
+  try {
+    for (const fit of [new Map(), {}]) {
+      const result = await source.export(source.document, { fit });
+      expect(result.bytes).toEqual(new Uint8Array(bytes));
+      expect(result.dirtyParts).toEqual([]);
+    }
+  } finally { source.dispose(); }
 });
 
 it('preserves native fontScale on untouched objects (round-trip)', async () => {
@@ -180,7 +190,7 @@ it('rejects unknown keys in fit values', async () => {
   source.dispose();
 });
 
-it('signed package + fit map + no edits exports byte-identical', async () => {
+it('signed package + stale fit map rejects before any write', async () => {
   const bytes = await writePptx({ title: 'Deck', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [{ id: 't', type: 'text', x: 10, y: 10, w: 100, h: 100, content: 'Hello' }] }] });
   // Make it signed by adding a signature part (source.test.js pattern)
   const JSZip = (await import('jszip')).default;
@@ -190,23 +200,23 @@ it('signed package + fit map + no edits exports byte-identical', async () => {
   const source = await openPresentation(signedBytes, { format: 'pptx' });
   const obj = source.document.slides[0].objects.find(o => o.type === 'text');
   const fit = new Map([[obj.id, { fontScale: 50000, lnSpcReduction: 10000 }]]);
-  // Signed: should still export byte-identical (fit not applied to untouched, and signed blocks edits)
-  const result = await source.export(source.document, { fit });
-  expect(result.bytes).toEqual(new Uint8Array(signedBytes));
+  // Signed-package rejection keeps precedence over stale-hint validation.
+  await expect(source.export(source.document, { fit })).rejects.toThrow('Cannot edit signed source package');
+  expect((await source.export(source.document)).bytes).toEqual(new Uint8Array(signedBytes));
   source.dispose();
 });
 
-it('unsigned no-op + fit map exports byte-identical', async () => {
+it('unsigned no-op + stale fit map rejects and exports byte-identically without hints', async () => {
   const bytes = await writePptx({ title: 'Deck', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [{ id: 't', type: 'text', x: 10, y: 10, w: 100, h: 100, content: 'Hello' }] }] });
   const source = await openPresentation(bytes, { format: 'pptx' });
   const obj = source.document.slides[0].objects.find(o => o.type === 'text');
   const fit = new Map([[obj.id, { fontScale: 50000, lnSpcReduction: 10000 }]]);
-  const result = await source.export(source.document, { fit });
-  expect(result.bytes).toEqual(new Uint8Array(bytes));
+  await expect(source.export(source.document, { fit })).rejects.toThrow('Invalid autofit measurement');
+  expect((await source.export(source.document)).bytes).toEqual(new Uint8Array(bytes));
   source.dispose();
 });
 
-it('reset autofit with fit map does not get fontScale', async () => {
+it('rejects fit when autofit was reset away from shrink', async () => {
   const bytes = await nativeShrinkFixture();
   const source = await openPresentation(bytes, { format: 'pptx' });
   const doc2 = structuredClone(source.document);
@@ -215,10 +225,9 @@ it('reset autofit with fit map does not get fontScale', async () => {
   obj.bodyLayout = { ...obj.bodyLayout, autofit: null };
   delete obj.bodyLayout.autofit;
   const fit = new Map([[obj.id, { fontScale: 70000, lnSpcReduction: 4000 }]]);
-  const result = await source.export(doc2, { fit });
-  const zip2 = await JSZip.loadAsync(result.bytes);
+  await expect(source.export(doc2, { fit })).rejects.toThrow('Invalid autofit measurement');
+  const zip2 = await JSZip.loadAsync((await source.export(doc2)).bytes);
   const xml2 = await zip2.file('ppt/slides/slide1.xml').async('string');
-  // fit should NOT be applied since autofit is not 'shrink'
   expect(xml2).not.toContain('fontScale="70000"');
   source.dispose();
 });
