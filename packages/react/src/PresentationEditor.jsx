@@ -759,18 +759,22 @@ function paragraphStyleCss(style, scale) {
   return Object.keys(css).length ? css : undefined;
 }
 
-function textBodyCss(object, scale) {
-  const layout = object?.bodyLayout ?? {};
-  const css = { boxSizing: 'border-box' };
-  if (layout.anchor === 'middle') { css.display = 'flex'; css.flexDirection = 'column'; css.justifyContent = 'center'; }
-  else if (layout.anchor === 'bottom') { css.display = 'flex'; css.flexDirection = 'column'; css.justifyContent = 'flex-end'; }
-  if (layout.wrap === 'none') css.whiteSpace = 'nowrap';
-  const ins = layout.insets;
-  for (const [side, prop] of [['top', 'paddingTop'], ['right', 'paddingRight'], ['bottom', 'paddingBottom'], ['left', 'paddingLeft']]) {
-    const val = Number.isFinite(ins?.[side]) ? ins[side] : DEFAULT_TEXT_INSETS_EMU[side];
-    css[prop] = `${val * scale}px`;
+function textBodyCss(object, scale, applyDefaultInsets = true) {
+  const layout = object?.bodyLayout;
+  if (!layout && !applyDefaultInsets) return undefined;
+  const css = {};
+  if (layout?.anchor === 'middle') { css.display = 'flex'; css.flexDirection = 'column'; css.justifyContent = 'center'; }
+  else if (layout?.anchor === 'bottom') { css.display = 'flex'; css.flexDirection = 'column'; css.justifyContent = 'flex-end'; }
+  if (layout?.wrap === 'none') css.whiteSpace = 'nowrap';
+  const ins = layout?.insets;
+  if (applyDefaultInsets || ins) {
+    if (applyDefaultInsets) css.boxSizing = 'border-box';
+    for (const [side, prop] of [['top', 'paddingTop'], ['right', 'paddingRight'], ['bottom', 'paddingBottom'], ['left', 'paddingLeft']]) {
+      const val = Number.isFinite(ins?.[side]) ? ins[side] : (applyDefaultInsets ? DEFAULT_TEXT_INSETS_EMU[side] : undefined);
+      if (Number.isFinite(val)) css[prop] = `${val * scale}px`;
+    }
   }
-  return css;
+  return Object.keys(css).length ? css : undefined;
 }
 
 const slideBackground = slide => (
@@ -863,7 +867,7 @@ function Artwork({
               ? <ellipse cx={x + width / 2} cy={y + h / 2} rx={width / 2} ry={h / 2} fill={fill} />
               : <rect x={x} y={y} width={width} height={h} fill={fill} />)}
             {(!primitive || text) && <foreignObject x={x} y={y} width={width} height={h}>
-              <div className="stagecraft-presentation-object" style={{ color: AUTHORED_TEXT_COLOR, ...(text ? textBodyCss(object, scale) : {}) }}>{text
+              <div className="stagecraft-presentation-object" style={{ color: AUTHORED_TEXT_COLOR, ...(text ? textBodyCss(object, scale, (object?.source?.format ?? editorCtx?.snapshot?.document?.extensions?.sourceFormat) !== 'odp') : {}) }}>{text
                 ? (() => {
                   const numIndices = computeNumberedIndices(object.text.paragraphs);
                   return object.text.paragraphs.map((p, pIdx) => {
