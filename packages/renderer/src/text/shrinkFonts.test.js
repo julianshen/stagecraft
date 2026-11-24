@@ -33,3 +33,8 @@ it('does not wait for unrelated fonts when there is no eligible shrink text',asy
     await vi.advanceTimersByTimeAsync(0);expect(done).toEqual({status:'skipped',reason:'no-shrink'});expect(vi.getTimerCount()).toBe(0);expect(fonts.load).not.toHaveBeenCalled();
   } finally {vi.useRealTimers();}
 });
+it('keeps missing-font precedence and converts collection errors into failed readiness',async()=>{
+ expect(await waitForShrinkFonts({slides:[]},{fonts:{}})).toEqual({status:'skipped',reason:'fonts-unavailable'});
+ const broken={get slides(){throw Error('secret');}};
+ await expect(waitForShrinkFonts(broken,{fonts:{load:async()=>[],check:()=>true}})).resolves.toEqual({status:'failed',reason:'error',message:'Font readiness failed.'});
+});

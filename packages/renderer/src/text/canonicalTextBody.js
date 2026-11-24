@@ -6,10 +6,12 @@ export function themeForSlide(document, slide) {
   const layout = slide.extensions?.stagecraftAuthored && !slide.source
     ? document.layouts?.[0] : document.layouts?.find(item => item.id === slide.layoutId);
   const master = document.masters?.find(item => item.id === layout?.masterId);
-  const fonts = document.themes?.find(item => item.id === master?.themeId)?.extensions?.pptxFontScheme;
+  const appearance = document.themes?.find(item => item.id === master?.themeId)?.extensions;
+  const fonts = appearance?.pptxFontScheme;
+  const objectDefaults = appearance?.pptxObjectDefaults;
   const metricsSupported = document.extensions?.pptxTextDefaultsSupported !== false && master?.extensions?.pptxTextDefaultsSupported !== false
     && ![slide, layout, master].some(item => item?.extensions?.pptxThemeOverride);
-  return fonts || !metricsSupported ? { fonts, metricsSupported } : undefined;
+  return fonts || objectDefaults || !metricsSupported ? { fonts, metricsSupported, ...(objectDefaults ? { objectDefaults } : {}) } : undefined;
 }
 
 function knownFont(value, theme) {

@@ -1,3 +1,4 @@
+import { resizeIneligibility, resizedGeometry } from '@stagecraft/core/lib/resizeGeometry.js';
 const invalid = () => { throw new Error('Invalid resize measurement'); };
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
     && [Object.prototype, null].includes(Object.getPrototypeOf(value));
@@ -31,22 +32,10 @@ export function applyResize(snapshot, baseline, input, format) {
         if (typeof id !== 'string' || !record(value) || !Object.hasOwn(value, 'height') || Reflect.ownKeys(value).some(key => key !== 'height')) invalid();
         const height = value.height, object = objects.get(id), original = retained.get(id);
         if (!object || !Number.isSafeInteger(height) || height <= 0) invalid();
-        const g = object.geometry, layout = object.bodyLayout;
-        if (!['text', 'shape'].includes(object.type) || !object.text || object.children?.length
-            || object.shape && object.shape !== 'rect' || layout?.autofit !== 'resize'
-            || layout.wrap === 'none' || layout.anchor !== undefined && !['top', 'middle', 'bottom'].includes(layout.anchor)
-            || !g || !['x', 'y', 'width', 'height'].every(key => Number.isSafeInteger(g[key]))
-            || g.width <= 0 || g.height <= 0 || (g.rotation ?? 0) !== 0 || g.flipH || g.flipV || height < g.height) invalid();
-        if (original) {
-            if (original.source?.format !== 'pptx' || original.extensions?.editableGeometry !== true
-                || original.extensions?.pptxTextMetrics?.supported !== true) invalid();
-        } else if (object.source || object.extensions?.stagecraftAuthored !== true
-            || defaultsByObject.get(id)?.[object.type === 'text' ? 'txDef' : 'spDef']) invalid();
-        const growth = height - g.height;
-        const offset = layout.anchor === 'bottom' ? growth : layout.anchor === 'middle' ? Math.floor(growth / 2) : 0;
-        const y = g.y - offset;
-        if (!Number.isSafeInteger(y)) invalid();
-        patches.push({ object, geometry: { ...g, y, height } });
+        if (resizeIneligibility(object, original, defaultsByObject.get(id))) invalid();
+        const geometry = resizedGeometry(object, height);
+        if (!geometry) invalid();
+        patches.push({ object, geometry });
     }
     for (const { object, geometry } of patches) object.geometry = geometry;
 }
