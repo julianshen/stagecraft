@@ -100,6 +100,87 @@ describe('canonical document', () => {
     expect(toLegacyDeck(a.document).deck).toEqual(deck);
     expect(a.diagnostics.length).toBeGreaterThan(0);
   });
+  it('migrates legacy notes and solid backgrounds, then projects canonical edits back', () => {
+    const deck = { title: 'Original', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', title: 'Slide', notes: 'Speaker note', bgColor: '#112233', elements: [] }] };
+    const { document } = migrateLegacyDeck(deck);
+    expect(document.slides[0].notes).toBe('Speaker note');
+    expect(document.slides[0].background).toEqual({ type: 'solid', color: '#112233' });
+    const changed = structuredClone(document);
+    changed.slides[0].notes = 'Updated note';
+    changed.slides[0].background = { type: 'solid', color: '#445566' };
+    const projected = toLegacyDeck(changed).deck.slides[0];
+    expect(projected.notes).toBe('Updated note');
+    expect(projected.bgColor).toBe('#445566');
+  });
+  it('expands legacy shorthand background hex during migration', () => {
+    const { document } = migrateLegacyDeck({ slides: [{ id: 's', layout: 'blank', bgColor: '#AbC', elements: [] }] });
+    expect(document.slides[0].background).toEqual({ type: 'solid', color: '#AAbbCC' });
+  });
+  it('keeps XML-invalid legacy notes opaque and diagnoses them without failing migration', () => {
+    const notes = 'Pasted \u0001 text \u007f';
+    const result = migrateLegacyDeck({ slides: [{ id: 's', layout: 'blank', notes, elements: [] }] });
+    expect(result.document.slides[0].notes).toBeUndefined();
+    expect(result.document.slides[0].extensions.legacy.notes).toBe(notes);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'UNSUPPORTED_LEGACY_NOTES', objectId: 'legacy-slide-0' }));
+  });
+  it('ignores invalid legacy background colors without failing migration', () => {
+    const result = migrateLegacyDeck({ slides: [{ id: 's', layout: 'blank', bgColor: 'url(secret)', elements: [] }] });
+    expect(result.document.slides[0].background).toBeUndefined();
+    expect(result.document.slides[0].extensions.legacy.bgColor).toBe('url(secret)');
+  });
+  it('preserves opaque XML-invalid notes through a real projection', () => {
+    const notes = 'Pasted \u0001 text \u007f';
+    const { document } = migrateLegacyDeck({ slides: [{ id: 's', layout: 'blank', notes, elements: [] }] });
+    const changed = structuredClone(document);
+    changed.slides[0].name = 'Edited slide';
+    expect(toLegacyDeck(changed).deck.slides[0].notes).toBe(notes);
+    changed.slides[0].notes = 'Replacement note';
+    expect(toLegacyDeck(changed).deck.slides[0].notes).toBe('Replacement note');
+  });
+  it('preserves an opaque invalid background through a real projection', () => {
+    const bgColor = 'url(secret)';
+    const { document } = migrateLegacyDeck({ slides: [{ id: 's', layout: 'blank', bgColor, elements: [] }] });
+    const changed = structuredClone(document);
+    changed.slides[0].name = 'Edited slide';
+    expect(toLegacyDeck(changed).deck.slides[0].bgColor).toBe(bgColor);
+    changed.slides[0].background = { type: 'solid', color: '#445566' };
+    expect(toLegacyDeck(changed).deck.slides[0].bgColor).toBe('#445566');
+  });
+  it('preserves valid legacy-only properties from older migrations through unrelated edits', () => {
+    const notes = 'Legacy-only note', bgColor = '#112233';
+    const { document } = migrateLegacyDeck({ slides: [{ id: 's', layout: 'blank', notes, bgColor, elements: [] }] });
+    delete document.slides[0].notes;
+    delete document.slides[0].background;
+    delete document.extensions.legacy.baseline.slides[0].notes;
+    delete document.extensions.legacy.baseline.slides[0].background;
+    document.slides[0].name = 'Unrelated edit';
+    const projected = toLegacyDeck(document).deck.slides[0];
+    expect(projected.notes).toBe(notes);
+    expect(projected.bgColor).toBe(bgColor);
+  });
+  it('projects authored canonical notes/background and migrates them back', () => {
+    const document = createDocument({ slides: [{ id: 's', objects: [], notes: 'Authored note', background: { type: 'solid', color: '#778899' } }] });
+    const legacy = toLegacyDeck(document).deck;
+    expect(legacy.slides[0]).toMatchObject({ notes: 'Authored note', bgColor: '#778899' });
+    const migrated = migrateLegacyDeck(legacy).document.slides[0];
+    expect(migrated.notes).toBe('Authored note');
+    expect(migrated.background).toEqual({ type: 'solid', color: '#778899' });
+  });
+  it('clears retained legacy properties and diagnoses unsupported canonical backgrounds', () => {
+    const deck = { sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', notes: 'Old note', bgColor: '#112233', elements: [] }] };
+    const { document } = migrateLegacyDeck(deck);
+    const cleared = structuredClone(document);
+    delete cleared.slides[0].notes;
+    delete cleared.slides[0].background;
+    const projected = toLegacyDeck(cleared).deck.slides[0];
+    expect(projected).not.toHaveProperty('notes');
+    expect(projected).not.toHaveProperty('bgColor');
+    const unsupported = structuredClone(document);
+    unsupported.slides[0].background = { type: 'theme' };
+    const result = toLegacyDeck(unsupported);
+    expect(result.deck.slides[0]).not.toHaveProperty('bgColor');
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'UNSUPPORTED_SLIDE_BACKGROUND', objectId: 'legacy-slide-0' }));
+  });
   it('supports pure text command, validation and history', () => {
     const d = fixture();
     const e = createEditor({

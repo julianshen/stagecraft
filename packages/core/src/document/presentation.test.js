@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { createEditor } from '../editor/index.js';
-import { createDocument, validateDocument, documentPlugin, presentationPlugin, validateAuthoredObject, validateAuthoredSlide } from './index.js';
+import { createDocument, validateDocument, documentPlugin, presentationPlugin, validateAuthoredObject, validateAuthoredSlide, migrateLegacyDeck, toLegacyDeck } from './index.js';
 const shape = (id = 'o') => ({ id, type: 'shape', geometry: { x: -1, y: 0, width: 10, height: 20 }, shape: 'rect', fill: '#123456', extensions: { stagecraftAuthored: true } });
 const text = () => ({ id: 'text', type: 'text', geometry: shape().geometry, extensions: shape().extensions, text: { paragraphs: [{ id: 'p', runs: [{ id: 'r', text: 'Hi', editable: true, style: {}, extensions: shape().extensions }] }] } });
 const table = (id = 'table') => ({ id, type: 'table', geometry: { x: 0, y: 0, width: 900, height: 400 }, extensions: { stagecraftAuthored: true },
@@ -147,6 +147,31 @@ it('sets slide name, solid background and notes, and clears them', () => {
     expect(() => e.dispatch('presentation.setSlideProperties', { slideId: 's', properties })).toThrow();
   expect(() => e.dispatch('presentation.setSlideProperties', { slideId: 'missing', properties: { name: 'x' } })).toThrowError(/UNKNOWN_SLIDE/);
   expect(e.getSnapshot()).toEqual(before);
+});
+it('supersedes opaque legacy notes/background on explicit set and clear', () => {
+  const notes = 'Pasted \u0001 text';
+  const { document } = migrateLegacyDeck({ slides: [{ id: 's', layout: 'blank', notes, bgColor: 'url(secret)', elements: [] }] });
+  const e = engine({ document });
+  const slideId = document.slides[0].id;
+  e.dispatch('presentation.setSlideProperties', { slideId, properties: { notes: 'Replacement note', background: { type: 'solid', color: '#445566' } } });
+  let slide = e.getSnapshot().document.slides[0];
+  expect(slide.notes).toBe('Replacement note');
+  expect(slide.background).toEqual({ type: 'solid', color: '#445566' });
+  expect(slide.extensions.legacy).not.toHaveProperty('notes');
+  expect(slide.extensions.legacy).not.toHaveProperty('bgColor');
+  const beforeClear = e.getSnapshot();
+  e.dispatch('presentation.setSlideProperties', { slideId, properties: { notes: null, background: null } });
+  slide = e.getSnapshot().document.slides[0];
+  expect(slide.notes).toBeUndefined();
+  expect(slide.background).toBeUndefined();
+  expect(slide.extensions.legacy).not.toHaveProperty('notes');
+  expect(slide.extensions.legacy).not.toHaveProperty('bgColor');
+  const projected = toLegacyDeck(e.getSnapshot().document).deck.slides[0];
+  expect(projected).not.toHaveProperty('notes');
+  expect(projected).not.toHaveProperty('bgColor');
+  e.undo();
+  expect(e.getSnapshot().document).toEqual(beforeClear.document);
+  expect(e.getSnapshot().canRedo).toBe(true);
 });
 it('keeps imported native slide properties that exceed authoring limits', () => {
   // Preservation: the global schema must not narrow native values to authoring limits.

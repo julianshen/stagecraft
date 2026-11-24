@@ -293,9 +293,20 @@ export function migrateLegacyDeck(input) {
         diagnostics.push(diagnostic('OPAQUE_LEGACY_OBJECT', 'Unsupported legacy object retained without conversion.', objectId));
       return object;
     });
+    const background = typeof slide.bgColor === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(slide.bgColor)
+      ? { type: 'solid', color: slide.bgColor.length === 4
+        ? '#' + slide.bgColor.slice(1).split('').map(char => char + char).join('') : slide.bgColor }
+      : undefined;
+    let notes;
+    if (typeof slide.notes === 'string') {
+      if (xmlValidText(slide.notes)) notes = slide.notes;
+      else diagnostics.push(diagnostic('UNSUPPORTED_LEGACY_NOTES', 'Legacy notes contain XML-invalid text and remain only in the retained payload.', id));
+    }
     return {
       id,
       ...(typeof slide.title === 'string' ? { name: slide.title } : {}),
+      ...(notes !== undefined ? { notes } : {}),
+      ...(background ? { background } : {}),
       objects,
       extensions: { legacy: copy(slide) }
     };
@@ -314,6 +325,7 @@ export function toLegacyDeck(document) {
   validateDocument(document);
   const d = copy(document), diagnostics = [];
   const original = d.extensions.legacy;
+  const baselineSlides = new Map((Array.isArray(original?.baseline?.slides) ? original.baseline.slides : []).map(slide => [slide.id, slide]));
   if (record(original) && record(original.deck) && jsonEqual(original.baseline, baseView(d)))
     return {
       deck: copy(original.deck),
@@ -372,12 +384,22 @@ export function toLegacyDeck(document) {
     return [el];
   };
   deck.slides = d.slides.map(slide => {
-    const projected = copy(slide.extensions?.legacy ?? { layout: 'blank' });
+    const legacy = slide.extensions?.legacy, baselineSlide = baselineSlides.get(slide.id);
+    const projected = copy(legacy ?? { layout: 'blank' });
     delete projected.title;
     if (slide.name !== undefined)
       projected.title = slide.name;
-    projected.id = slide.extensions?.legacy?.id ?? slide.id;
+    projected.id = legacy?.id ?? slide.id;
     projected.elements = slide.objects.flatMap(project);
+    if (slide.notes !== undefined) projected.notes = slide.notes;
+    else if (baselineSlide && Object.hasOwn(baselineSlide, 'notes')) delete projected.notes;
+    if (slide.background?.type === 'solid' && /^#[0-9a-f]{6}$/i.test(slide.background.color))
+      projected.bgColor = slide.background.color;
+    else {
+      if (baselineSlide && Object.hasOwn(baselineSlide, 'background')) delete projected.bgColor;
+      if (slide.background !== undefined)
+        diagnostics.push(diagnostic('UNSUPPORTED_SLIDE_BACKGROUND', 'Legacy projection omits an unsupported slide background.', slide.id));
+    }
     return projected;
   });
   // Rebuild section membership when canonical order/membership changes.
@@ -1258,10 +1280,12 @@ export const presentationPlugin = Object.freeze({
         else slide.name = properties.name;
       }
       if (properties.background !== undefined) {
+        if (record(slide.extensions?.legacy)) delete slide.extensions.legacy.bgColor;
         if (properties.background === null) delete slide.background;
         else slide.background = { type: 'solid', color: properties.background.color };
       }
       if (properties.notes !== undefined) {
+        if (record(slide.extensions?.legacy)) delete slide.extensions.legacy.notes;
         if (properties.notes === null || properties.notes === '') delete slide.notes;
         else slide.notes = properties.notes;
       }
