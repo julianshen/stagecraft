@@ -28,6 +28,7 @@ export default function KonvaStage({
   fontEpochBump = 0,
   cancelToken = 0,
   invalidateGestureRef,
+  cancelGestureRef,
   onSelect,
   onMove,
   onRequestTextEdit,
@@ -81,6 +82,9 @@ export default function KonvaStage({
   }
   if (invalidateGestureRef) {
     invalidateGestureRef.current = invalidateGesture;
+  }
+  if (cancelGestureRef) {
+    cancelGestureRef.current = () => cancelGesture({ restoreStart: false });
   }
 
   function cancelGesture({ restoreStart = true } = {}) {

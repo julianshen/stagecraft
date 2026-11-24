@@ -995,6 +995,7 @@ export function PresentationCanvas({
     [outerTransformUnsupported, setOuterTransformUnsupported] = useState(false),
     [surfaceNotice, setSurfaceNotice] = useState(''),
     konvaGestureInvalidateRef = useRef(null),
+    konvaCancelGestureRef = useRef(null),
     lastOutcomeRef = useRef(null);
 
   const canMoveGeometry = ui.can('object-geometry');
@@ -1037,7 +1038,7 @@ export function PresentationCanvas({
         }
       }
       if (unsupported) {
-        konvaGestureInvalidateRef.current?.();
+        konvaCancelGestureRef.current?.();
       }
       setOuterTransformUnsupported(prev => (prev === unsupported ? prev : unsupported));
     };
@@ -1093,7 +1094,7 @@ export function PresentationCanvas({
         window.removeEventListener('resize', scheduleCheck);
       }
     };
-  }, [wantsKonva, ui.canvasRef, ui.activeSlide?.id]);
+  }, [wantsKonva, ui.canvasRef, ui.activeSlide?.id, ownerKey]);
 
   const pluginsHaveObjectRenderers = hasNonEmptyObjectRenderers(ui.plugins);
   const canAttemptKonva = wantsKonva && sceneResult?.status === 'ready' && !pluginsHaveObjectRenderers && !outerTransformUnsupported;
@@ -1420,6 +1421,7 @@ export function PresentationCanvas({
         fontEpochBump={fontState.epoch}
         cancelToken={konvaCancelToken}
         invalidateGestureRef={konvaGestureInvalidateRef}
+        cancelGestureRef={konvaCancelGestureRef}
         onSelect={ui.selectObject}
         onMove={({ slideId, objectId, geometry, expectedRevision }) => ui.setGeometry(geometry, expectedRevision, objectId, slideId)}
         onRequestTextEdit={handleRequestTextEdit}
