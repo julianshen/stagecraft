@@ -99,7 +99,7 @@ function odpSlideProperties(page, content) {
     const notes = child(page, 'presentation', 'notes');
     if (notes) {
         const body = [notes, ...Array.from(notes.getElementsByTagNameNS('*', '*'))].find(n => is(n, 'draw', 'frame') && attr(n, 'presentation', 'class') === 'notes') ?? notes;
-        const text = children(child(body, 'draw', 'text-box')).filter(n => is(n, 'text', 'p')).map(p => odfText(p)).join('\n');
+        const text = children(child(body, 'draw', 'text-box')).filter(n => is(n, 'text', 'p') || is(n, 'text', 'h')).map(p => odfText(p)).join('\n');
         if (text) out.notes = text;
     }
     return out;
@@ -398,7 +398,7 @@ export async function readOdp(zip, xml, mapping) {    if (await zip.file('mimety
             const parsedParagraphs = box ? parseParagraphs(box, part)
                 : (is(n, 'draw', 'rect') || is(n, 'draw', 'ellipse')) ? parseParagraphs(n, part)
                 : null;
-            // Shapes carry text:p children directly (draw:text-box is only valid in a frame).
+            // Shapes carry text:p/text:h children directly (draw:text-box is only valid in a frame).
             if (parsedParagraphs && parsedParagraphs.length) o.text = { paragraphs: parsedParagraphs };
             return o;
         });

@@ -77,11 +77,11 @@ export function odpAppearanceReader(content, styles) {
     return (node, part) => {
         const ancestors = [];
         for (let parent = node.parentNode; parent && ancestors.length < 128; parent = parent.parentNode) {
-            if (is(parent, 'text', 'span') || is(parent, 'text', 'p')) ancestors.push(parent);
+            if (is(parent, 'text', 'span') || is(parent, 'text', 'p') || is(parent, 'text', 'h')) ancestors.push(parent);
         }
         const result = {};
         for (const n of ancestors.reverse()) {
-            const family = is(n, 'text', 'p') ? 'paragraph' : 'text';
+            const family = is(n, 'text', 'p') || is(n, 'text', 'h') ? 'paragraph' : 'text';
             const key = `${family}:${attr(n, 'text', 'style-name')}`;
             const map = local.get(part);
             const resolved = resolve(map.has(key) ? map.get(key) : common.get(key), family);
