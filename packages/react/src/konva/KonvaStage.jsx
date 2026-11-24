@@ -209,6 +209,11 @@ export default function KonvaStage({
                   e.cancelBubble = true;
                   onSelect?.(node.id);
                 }}
+                onTouchStart={e => {
+                  if (e.evt?.touches && e.evt.touches.length > 1) return;
+                  e.cancelBubble = true;
+                  onSelect?.(node.id);
+                }}
                 onTap={e => {
                   e.cancelBubble = true;
                   onSelect?.(node.id);
@@ -220,7 +225,11 @@ export default function KonvaStage({
                   }
                 }}
                 onDragStart={e => {
-                  if ((e.evt?.buttons !== undefined && (e.evt.buttons & 1) === 0) || !isMovable(node)) {
+                  if (
+                    (e.evt?.buttons !== undefined && (e.evt.buttons & 1) === 0)
+                    || (e.evt?.touches && e.evt.touches.length > 1)
+                    || !isMovable(node)
+                  ) {
                     e.target.stopDrag();
                     e.target.position({ x: centerX, y: centerY });
                     return;

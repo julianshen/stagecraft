@@ -1,3 +1,5 @@
+import { collectFontQueries } from '@stagecraft/renderer';
+
 export const SURFACE_REASON_MESSAGES = Object.freeze({
   loading: 'Loading canvas view...',
   'no-slide': 'Showing the standard view: there is no slide to show.',
@@ -36,23 +38,19 @@ export function surfaceMessageForReason(reason, diagnostics = []) {
 }
 
 export function isRelevantFontEvent(scene, event) {
-  const nodes = scene?.nodes ?? [];
-  if (!nodes.some(n => Boolean(n.paint?.text))) return false;
+  const bodies = (scene?.nodes ?? []).flatMap(n => (n.paint?.text ? [n.paint.text] : []));
+  if (bodies.length === 0) return false;
   const faces = event?.fontfaces;
   if (!faces) return true;
   const list = Array.from(faces);
   if (list.length === 0) return true;
   const usedFamilies = new Set();
-  for (const node of nodes) {
-    for (const p of node.paint?.text?.body?.paragraphs ?? []) {
-      for (const r of p.runs ?? []) {
-        for (const key of ['typeface', 'eastAsian', 'complexScript', 'fontFamily', 'font']) {
-          const val = r[key] ?? r.style?.[key];
-          if (typeof val === 'string' && val.trim()) {
-            usedFamilies.add(val.replace(/['"]/g, '').trim().toLowerCase());
-          }
-        }
-      }
+  for (const shorthand of collectFontQueries(bodies).keys()) {
+    const match = /\b\d+(?:\.\d+)?(?:px|pt)\s+(.+)$/.exec(shorthand);
+    if (!match) continue;
+    for (const part of match[1].split(',')) {
+      const fam = part.replace(/['"]/g, '').trim().toLowerCase();
+      if (fam) usedFamilies.add(fam);
     }
   }
   if (usedFamilies.size === 0) return true;
