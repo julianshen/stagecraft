@@ -212,7 +212,7 @@ export async function readOdp(zip, xml, mapping) {    if (await zip.file('mimety
         const walk = (parent, listInfo = {}, depth = 0) => {
             if (depth > 128) throw new Error('ODP list nesting limit');
             for (const node of children(parent)) {
-                if (is(node, 'text', 'p')) result.push({ p: node, listInfo });
+                if (is(node, 'text', 'p') || is(node, 'text', 'h')) result.push({ p: node, listInfo });
                 else if (is(node, 'text', 'list')) {
                     const level = listInfo.level === undefined ? 0 : listInfo.level + 1;
                     walk(node, { level, ...listStyle(node, part, level) }, depth + 1);
@@ -305,7 +305,7 @@ export async function readOdp(zip, xml, mapping) {    if (await zip.file('mimety
             throw new Error('ODP text expansion limit');
         return s;
     };
-    /** Paragraphs/runs of a text container (a draw:text-box, or a shape's direct text:p children). */
+    /** Paragraphs/runs of a text container (a draw:text-box, or a shape's direct text:p/text:h children). */
     const parseParagraphs = (container, part) => paragraphNodes(container, part).map(({ p, listInfo }) => {
                         const runs = [];
                         function walk(parent, style) {
