@@ -1,5 +1,5 @@
-import { afterEach, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createEditor } from '@stagecraft/core/editor';
 import { documentPlugin, presentationPlugin, validateDocument } from '@stagecraft/core/document';
 import { writePptx } from '@stagecraft/pptx';
@@ -7,7 +7,19 @@ import { openPresentation } from '@stagecraft/source';
 import { EditorProvider } from './EditorProvider.jsx';
 import { PresentationEditor } from './PresentationEditor.jsx';
 
-afterEach(cleanup);
+const fontsDescriptor = Object.getOwnPropertyDescriptor(document, 'fonts');
+beforeEach(() => {
+  // CI must not spend the editor's 2000 ms font budget before this export-semantics test runs.
+  Object.defineProperty(document, 'fonts', { configurable: true, value: {
+    status: 'loaded', check: () => true, load: async () => [], ready: Promise.resolve(),
+  } });
+});
+afterEach(() => {
+  if (fontsDescriptor) Object.defineProperty(document, 'fonts', fontsDescriptor);
+  else delete document.fonts;
+  vi.restoreAllMocks();
+  cleanup();
+});
 
 const overflowText = 'Native text that must not be remeasured while untouched. '.repeat(20);
 const box = (id, autofit, y) => ({
@@ -37,11 +49,13 @@ it('exports an untouched native PPTX byte-identically and reports both autofit k
   const { source, bytes } = await nativeFixture();
   const editor = createEditor({ document: source.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
   const onExport = vi.fn();
+  let finish;
+  const exported = new Promise(resolve => { finish = resolve; });
+  onExport.mockImplementation((...args) => finish(args));
   try {
     render(<EditorProvider editor={editor}><PresentationEditor source={source} onExport={onExport} /></EditorProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'Export', exact: true }));
-    await waitFor(() => expect(onExport).toHaveBeenCalledTimes(1));
-    const [result, outcome] = onExport.mock.calls[0];
+    const [result, outcome] = await exported;
     expect(new Uint8Array(result.bytes)).toEqual(new Uint8Array(bytes));
     expect(result.dirtyParts).toEqual([]);
     expect(outcome.shrinkFit).toMatchObject({ status: 'skipped', reason: 'unchanged-native', count: 0, reasons: { 'unchanged-native': 1 } });
@@ -56,15 +70,17 @@ it.each(['shrink', 'resize'])('emits a hint only for the edited native %s box', 
   const { source } = await nativeFixture();
   const editor = createEditor({ document: source.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
   const onExport = vi.fn();
+  let finish;
+  const exported = new Promise(resolve => { finish = resolve; });
+  onExport.mockImplementation((...args) => finish(args));
   const exportSpy = vi.spyOn(source, 'export');
   try {
     render(<EditorProvider editor={editor}><PresentationEditor source={source} onExport={onExport} /></EditorProvider>);
     const object = editor.getSnapshot().document.slides[0].objects.find(o => o.bodyLayout.autofit === kind);
     act(() => editor.dispatch('document.setRunText', { runId: object.text.paragraphs[0].runs[0].id, text: `${overflowText} Edited` }));
     fireEvent.click(screen.getByRole('button', { name: 'Export', exact: true }));
-    await waitFor(() => expect(onExport).toHaveBeenCalledTimes(1));
+    const [, outcome] = await exported;
     const options = exportSpy.mock.calls[0][1];
-    const outcome = onExport.mock.calls[0][1];
     const hintKey = kind === 'shrink' ? 'fit' : 'resize';
     const otherKey = kind === 'shrink' ? 'resize' : 'fit';
     expect(Object.keys(options)).toEqual([hintKey]);

@@ -183,7 +183,7 @@ export async function openPresentation(source, options = {}) {
             // values throw before any write so a bad measurement never lands in the file.
             let fitMap = exportOptions.fit instanceof Map ? exportOptions.fit
                 : (exportOptions.fit && typeof exportOptions.fit === 'object') ? new Map(Object.entries(exportOptions.fit)) : null;
-            if (fitMap) {
+            if (fitMap?.size) {
                 if (format !== 'pptx') invalidAutofit();
                 // FU-AUTOFIT-MEASURE-PR1 bot1/bot2: read each value ONCE into locals, validate the
                 // locals, then freeze those locals. A getter/Proxy cannot pass validation and then

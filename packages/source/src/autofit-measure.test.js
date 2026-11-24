@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { writePptx } from '../../pptx/src/index.js';
+import { writeOdp } from '../../odp/src/index.js';
 import { openPresentation } from './index.js';
 import JSZip from 'jszip';
 
@@ -86,6 +87,18 @@ it('missing or empty fit map = today exactly (no-op)', async () => {
   const result2 = await source.export(source.document, { fit: new Map() });
   expect(result1.bytes).toEqual(result2.bytes);
   source.dispose();
+});
+
+it('keeps empty fit maps byte-identical for ODP', async () => {
+  const bytes = await writeOdp({ title: 'ODP', sections: [{ id: 'sec', slides: ['s'] }], slides: [{ id: 's', layout: 'blank', elements: [] }] });
+  const source = await openPresentation(bytes, { format: 'odp' });
+  try {
+    for (const fit of [new Map(), {}]) {
+      const result = await source.export(source.document, { fit });
+      expect(result.bytes).toEqual(new Uint8Array(bytes));
+      expect(result.dirtyParts).toEqual([]);
+    }
+  } finally { source.dispose(); }
 });
 
 it('preserves native fontScale on untouched objects (round-trip)', async () => {
