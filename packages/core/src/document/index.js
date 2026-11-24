@@ -297,10 +297,15 @@ export function migrateLegacyDeck(input) {
       ? { type: 'solid', color: slide.bgColor.length === 4
         ? '#' + slide.bgColor.slice(1).split('').map(char => char + char).join('') : slide.bgColor }
       : undefined;
+    let notes;
+    if (typeof slide.notes === 'string') {
+      if (xmlValidText(slide.notes)) notes = slide.notes;
+      else diagnostics.push(diagnostic('UNSUPPORTED_LEGACY_NOTES', 'Legacy notes contain XML-invalid text and remain only in the retained payload.', id));
+    }
     return {
       id,
       ...(typeof slide.title === 'string' ? { name: slide.title } : {}),
-      ...(typeof slide.notes === 'string' ? { notes: slide.notes } : {}),
+      ...(notes !== undefined ? { notes } : {}),
       ...(background ? { background } : {}),
       objects,
       extensions: { legacy: copy(slide) }

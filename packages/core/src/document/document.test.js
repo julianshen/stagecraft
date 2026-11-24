@@ -116,6 +116,18 @@ describe('canonical document', () => {
     const { document } = migrateLegacyDeck({ slides: [{ id: 's', layout: 'blank', bgColor: '#AbC', elements: [] }] });
     expect(document.slides[0].background).toEqual({ type: 'solid', color: '#AAbbCC' });
   });
+  it('keeps XML-invalid legacy notes opaque and diagnoses them without failing migration', () => {
+    const notes = 'Pasted \u0001 text \u007f';
+    const result = migrateLegacyDeck({ slides: [{ id: 's', layout: 'blank', notes, elements: [] }] });
+    expect(result.document.slides[0].notes).toBeUndefined();
+    expect(result.document.slides[0].extensions.legacy.notes).toBe(notes);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'UNSUPPORTED_LEGACY_NOTES', objectId: 'legacy-slide-0' }));
+  });
+  it('ignores invalid legacy background colors without failing migration', () => {
+    const result = migrateLegacyDeck({ slides: [{ id: 's', layout: 'blank', bgColor: 'url(secret)', elements: [] }] });
+    expect(result.document.slides[0].background).toBeUndefined();
+    expect(result.document.slides[0].extensions.legacy.bgColor).toBe('url(secret)');
+  });
   it('projects authored canonical notes/background and migrates them back', () => {
     const document = createDocument({ slides: [{ id: 's', objects: [], notes: 'Authored note', background: { type: 'solid', color: '#778899' } }] });
     const legacy = toLegacyDeck(document).deck;
