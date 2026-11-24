@@ -1022,19 +1022,78 @@ export function PresentationCanvas({
   }, [wantsKonva, ui.canonical, isOdpDoc, ui.snapshot.document, ui.activeSlide]);
 
   useEffect(() => {
-    if (!wantsKonva || !ui.canvasRef.current || typeof getComputedStyle !== 'function') {
+    const rootEl = ui.canvasRef.current;
+    if (!wantsKonva || !rootEl || typeof getComputedStyle !== 'function') {
       setOuterTransformUnsupported(prev => (prev ? false : prev));
       return;
     }
-    let unsupported = false;
-    for (let el = ui.canvasRef.current; el && el.nodeType === 1; el = el.parentElement) {
-      if (isUnsupportedCssTransform(getComputedStyle(el).transform)) {
-        unsupported = true;
-        break;
+
+    const checkEmbedding = () => {
+      let unsupported = false;
+      for (let el = rootEl; el && el.nodeType === 1; el = el.parentElement) {
+        if (isUnsupportedCssTransform(getComputedStyle(el).transform)) {
+          unsupported = true;
+          break;
+        }
+      }
+      if (unsupported) {
+        konvaGestureInvalidateRef.current?.();
+      }
+      setOuterTransformUnsupported(prev => (prev === unsupported ? prev : unsupported));
+    };
+
+    checkEmbedding();
+
+    let rafId = 0;
+    const scheduleCheck = () => {
+      if (rafId) return;
+      if (typeof requestAnimationFrame === 'function') {
+        rafId = requestAnimationFrame(() => {
+          rafId = 0;
+          checkEmbedding();
+        });
+      } else {
+        checkEmbedding();
+      }
+    };
+
+    const ancestors = [];
+    for (let el = rootEl; el && el.nodeType === 1; el = el.parentElement) {
+      ancestors.push(el);
+    }
+
+    let mutationObserver = null;
+    if (typeof MutationObserver === 'function') {
+      mutationObserver = new MutationObserver(scheduleCheck);
+      for (const el of ancestors) {
+        mutationObserver.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
       }
     }
-    setOuterTransformUnsupported(prev => (prev === unsupported ? prev : unsupported));
-  });
+
+    let resizeObserver = null;
+    if (typeof ResizeObserver === 'function') {
+      resizeObserver = new ResizeObserver(scheduleCheck);
+      resizeObserver.observe(rootEl);
+      if (typeof document !== 'undefined' && document.documentElement && document.documentElement !== rootEl) {
+        resizeObserver.observe(document.documentElement);
+      }
+    }
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('resize', scheduleCheck);
+    }
+
+    return () => {
+      if (rafId && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(rafId);
+      }
+      mutationObserver?.disconnect();
+      resizeObserver?.disconnect();
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('resize', scheduleCheck);
+      }
+    };
+  }, [wantsKonva, ui.canvasRef, ui.activeSlide?.id]);
 
   const pluginsHaveObjectRenderers = hasNonEmptyObjectRenderers(ui.plugins);
   const canAttemptKonva = wantsKonva && sceneResult?.status === 'ready' && !pluginsHaveObjectRenderers && !outerTransformUnsupported;
