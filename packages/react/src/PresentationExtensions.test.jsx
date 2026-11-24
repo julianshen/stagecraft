@@ -2560,6 +2560,41 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     expect(screen.getByLabelText('Range Complex script font')).toBeDisabled();
   });
 
+  it('disables range controls and Reset and blocks dispatch when run-range-format is revoked after range selection', () => {
+    const { editor, source, dispatchSpy, rerender } = mountFu142Fixture();
+    selectT1Range();
+    const rangeEa = screen.getByLabelText('Range East Asian text font');
+    const rangeCs = screen.getByLabelText('Range Complex script font');
+    const boldBtn = screen.getByRole('button', { name: 'Range bold' });
+    const resetEa = screen.getByRole('button', { name: 'Range reset East Asian text font' });
+    const resetCs = screen.getByRole('button', { name: 'Range reset Complex script font' });
+    expect(boldBtn).toBeEnabled();
+    expect(rangeEa).toBeEnabled();
+    expect(resetEa).toBeEnabled();
+
+    // Revoke run-range-format on the same source reference so CrossRunRangeFormatFields stays mounted
+    source.capabilities = { readOnly: false, edits: ['object-text', 'existing-run-format'] };
+    rerender(
+      <EditorProvider editor={editor}>
+        <PresentationEditor source={source} className="revoked" />
+      </EditorProvider>,
+    );
+
+    expect(boldBtn).toBeDisabled();
+    expect(rangeEa).toBeDisabled();
+    expect(rangeCs).toBeDisabled();
+    expect(resetEa).toBeDisabled();
+    expect(resetCs).toBeDisabled();
+
+    dispatchSpy.mockClear();
+    fireEvent.click(boldBtn);
+    fireEvent.click(resetEa);
+    fireEvent.click(resetCs);
+    fireEvent.change(rangeEa, { target: { value: 'PingFang SC' } });
+    fireEvent.keyDown(rangeEa, { key: 'Enter' });
+    expect(dispatchSpy).not.toHaveBeenCalled();
+  });
+
   it('displays and edits authored table-cell eastAsian and complexScript font slots', () => {
     const { dispatchSpy } = mountFu142Fixture();
     fireEvent.click(screen.getAllByLabelText('Select object tbl1')[0]);
