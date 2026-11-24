@@ -1198,4 +1198,104 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
     expect(screen.getByRole('button', { name: 'Select object r1' })).toHaveAttribute('aria-pressed', 'false');
     expect(editor.getSnapshot().document.slides[0].objects[0].geometry.x).toBe(72 * PT);
   });
+
+  it('N4: observes host-only ancestor transform changes while idle without React rerender and recovers when cleared', async () => {
+    const editor = makeEditor([makeRect('r1')]);
+    const onSurfaceChange = vi.fn();
+    const hostRef = { current: null };
+    const { container } = render(
+      <div ref={el => { hostRef.current = el; }} style={{ transform: 'scale(1.1)' }}>
+        <EditorProvider editor={editor}>
+          <PresentationEditor surface="konva" onSurfaceChange={onSurfaceChange} />
+        </EditorProvider>
+      </div>,
+    );
+    await waitForKonvaCanvas(container);
+    await waitFor(() => {
+      expect(onSurfaceChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ active: 'konva', status: 'ready' }),
+      );
+    });
+
+    // Mutate ancestor transform directly on DOM without any React rerender
+    hostRef.current.style.transform = 'rotate(12deg)';
+    await waitFor(() => {
+      expect(onSurfaceChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ requested: 'konva', active: 'svg', status: 'fallback', reason: 'unsupported-embedding' }),
+      );
+    });
+    expect(container.querySelector('.stagecraft-presentation-paper canvas')).toBeNull();
+
+    // Clearing the unsupported transform restores Konva canvas
+    hostRef.current.style.transform = '';
+    await waitForKonvaCanvas(container);
+    await waitFor(() => {
+      expect(onSurfaceChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ active: 'konva', status: 'ready' }),
+      );
+    });
+  });
+
+  it('N4: cancels an active Konva drag and falls back with 0 dispatches when an ancestor transform changes mid-drag', async () => {
+    const baseEditor = makeEditor([makeRect('r1', 72, 72, 240, 100)]);
+    let dispatchCount = 0;
+    const editor = {
+      ...baseEditor,
+      dispatch: (...args) => { dispatchCount += 1; return baseEditor.dispatch(...args); },
+    };
+    const onSurfaceChange = vi.fn();
+    const hostRef = { current: null };
+    const { container } = render(
+      <div ref={el => { hostRef.current = el; }}>
+        <EditorProvider editor={editor}>
+          <PresentationEditor surface="konva" onSurfaceChange={onSurfaceChange} />
+        </EditorProvider>
+      </div>,
+    );
+    const konvaCanvas = await waitForKonvaCanvas(container);
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const stage = getStageForContainer(Konva, container);
+    const shapeNode = stage.findOne('.r1');
+
+    let stagePt = { x: 0, y: 0 };
+    await waitFor(() => {
+      stagePt = { x: shapeNode.x() * stage.scaleX(), y: shapeNode.y() * stage.scaleY() };
+      if (stage.getIntersection(stagePt) !== shapeNode) throw new Error('hit not ready');
+    });
+
+    const box = konvaCanvas.getBoundingClientRect();
+    const startX = box.left + stagePt.x + 20;
+    const startY = box.top + stagePt.y + 20;
+    const initialX = shapeNode.x();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select object r1' }));
+    act(() => {
+      konvaCanvas.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, clientX: startX, clientY: startY, button: 0, buttons: 1,
+      }));
+    });
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', {
+        bubbles: true, cancelable: true, clientX: startX + 60, clientY: startY + 40, buttons: 1,
+      }));
+    });
+    await waitFor(() => expect(shapeNode.x()).toBeGreaterThan(initialX));
+
+    // Mutate ancestor transform directly on DOM mid-drag (no React rerender)
+    hostRef.current.style.transform = 'skewX(15deg)';
+    await waitFor(() => {
+      expect(onSurfaceChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ requested: 'konva', active: 'svg', status: 'fallback', reason: 'unsupported-embedding' }),
+      );
+    });
+
+    // Release pointer after fallback; late mouseup/dragend must be inert
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true, cancelable: true, clientX: startX + 60, clientY: startY + 40, button: 0,
+      }));
+    });
+    expect(dispatchCount).toBe(0);
+    expect(editor.getSnapshot().document.slides[0].objects[0].geometry.x).toBe(72 * PT);
+  });
 });
