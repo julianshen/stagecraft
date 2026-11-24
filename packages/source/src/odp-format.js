@@ -64,24 +64,24 @@ export function odpAppearanceReader(content, styles) {
     function resolve(node, family) {
         if (!node) return {};
         if (cache.has(node)) return cache.get(node);
-        const chain = [], seen = new Set();
+        const requested = node, chain = [], seen = new Set();
         while (node && !seen.has(node) && chain.length < 64) {
             seen.add(node); chain.push(node);
             node = common.get(`${family}:${attr(node, 'style', 'parent-style-name')}`);
         }
         const result = {};
-        for (const n of chain.reverse()) apply(result, child(n, 'style', 'text-properties'));
-        cache.set(chain[chain.length - 1], result);
+        for (const n of chain.slice().reverse()) apply(result, child(n, 'style', 'text-properties'));
+        cache.set(requested, result);
         return result;
     }
     return (node, part) => {
         const ancestors = [];
         for (let parent = node.parentNode; parent && ancestors.length < 128; parent = parent.parentNode) {
-            if (is(parent, 'text', 'span') || is(parent, 'text', 'p')) ancestors.push(parent);
+            if (is(parent, 'text', 'span') || is(parent, 'text', 'p') || is(parent, 'text', 'h')) ancestors.push(parent);
         }
         const result = {};
         for (const n of ancestors.reverse()) {
-            const family = is(n, 'text', 'p') ? 'paragraph' : 'text';
+            const family = is(n, 'text', 'p') || is(n, 'text', 'h') ? 'paragraph' : 'text';
             const key = `${family}:${attr(n, 'text', 'style-name')}`;
             const map = local.get(part);
             const resolved = resolve(map.has(key) ? map.get(key) : common.get(key), family);

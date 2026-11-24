@@ -29,6 +29,39 @@ describe.each(['pptx','odp'])('%s native authoring', format => {
   });
 });
 
+it.each([
+  ['missing', refs => refs.forEach(ref => ref.removeAttribute('id')), 256],
+  ['nonnumeric', refs => refs.forEach(ref => ref.setAttribute('id', 'bogus')), 256],
+  ['zero', refs => refs.forEach(ref => ref.setAttribute('id', '0')), 256],
+  ['below minimum', refs => refs.forEach(ref => ref.setAttribute('id', '255')), 256],
+  ['duplicate', refs => refs.forEach(ref => ref.setAttribute('id', '256')), 257],
+  ['schema maximum', refs => refs.forEach(ref => ref.setAttribute('id', '2147483647')), 256],
+  ['unsafe', refs => refs.forEach(ref => ref.setAttribute('id', String(Number.MAX_SAFE_INTEGER))), 256],
+])('allocates a schema-valid PPTX slide id when native ids are %s', async (_label, mutate, expected) => {
+  const source = await open('pptx');
+  try {
+    const zip = await JSZip.loadAsync((await source.export(source.document)).bytes);
+    const part = 'ppt/presentation.xml';
+    const xml = new DOMParser().parseFromString(await zip.file(part).async('string'), 'application/xml');
+    const refs = Array.from(xml.getElementsByTagNameNS('http://schemas.openxmlformats.org/presentationml/2006/main', 'sldId'));
+    mutate(refs);
+    zip.file(part, new XMLSerializer().serializeToString(xml));
+    const session = await openPresentation(await zip.generateAsync({ type: 'uint8array' }), { format: 'pptx' });
+    try {
+      const next = structuredClone(session.document);
+      next.slides.push({ id: 'added-slide', objects: [], extensions: { stagecraftAuthored: true } });
+      const output = await JSZip.loadAsync((await session.export(next)).bytes);
+      const written = new DOMParser().parseFromString(await output.file(part).async('string'), 'application/xml');
+      const ids = Array.from(written.getElementsByTagNameNS('http://schemas.openxmlformats.org/presentationml/2006/main', 'sldId')).map(ref => ref.getAttribute('id'));
+      expect(ids).not.toContain('NaN');
+      const added = Number(ids.at(-1));
+      expect(added).toBe(expected);
+      expect(added).toBeGreaterThanOrEqual(256);
+      expect(added).toBeLessThanOrEqual(2147483647);
+    } finally { session.dispose(); }
+  } finally { source.dispose(); }
+});
+
 const simpleDeck = { title:'Deck', sections:[{id:'section',name:'Section',slides:['a','b']}], slides:['a','b'].map((id,i)=>({id,title:id,layout:'blank',elements:[{id:id+'text',type:'text',x:10,y:10,w:100,h:100,content:'Original'+i},{id:id+'rect',type:'rect',x:30,y:30,w:100,h:100,fill:'#abcdef'}]})) };
 const open = async format => {
  const bytes = await (format==='pptx'?writePptx:writeOdp)(simpleDeck), zip=await JSZip.loadAsync(bytes);

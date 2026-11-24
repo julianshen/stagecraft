@@ -99,7 +99,7 @@ function odpSlideProperties(page, content) {
     const notes = child(page, 'presentation', 'notes');
     if (notes) {
         const body = [notes, ...Array.from(notes.getElementsByTagNameNS('*', '*'))].find(n => is(n, 'draw', 'frame') && attr(n, 'presentation', 'class') === 'notes') ?? notes;
-        const text = children(child(body, 'draw', 'text-box')).filter(n => is(n, 'text', 'p')).map(p => odfText(p)).join('\n');
+        const text = children(child(body, 'draw', 'text-box')).filter(n => is(n, 'text', 'p') || is(n, 'text', 'h')).map(p => odfText(p)).join('\n');
         if (text) out.notes = text;
     }
     return out;
@@ -212,7 +212,7 @@ export async function readOdp(zip, xml, mapping) {    if (await zip.file('mimety
         const walk = (parent, listInfo = {}, depth = 0) => {
             if (depth > 128) throw new Error('ODP list nesting limit');
             for (const node of children(parent)) {
-                if (is(node, 'text', 'p')) result.push({ p: node, listInfo });
+                if (is(node, 'text', 'p') || is(node, 'text', 'h')) result.push({ p: node, listInfo });
                 else if (is(node, 'text', 'list')) {
                     const level = listInfo.level === undefined ? 0 : listInfo.level + 1;
                     walk(node, { level, ...listStyle(node, part, level) }, depth + 1);
@@ -305,7 +305,7 @@ export async function readOdp(zip, xml, mapping) {    if (await zip.file('mimety
             throw new Error('ODP text expansion limit');
         return s;
     };
-    /** Paragraphs/runs of a text container (a draw:text-box, or a shape's direct text:p children). */
+    /** Paragraphs/runs of a text container (a draw:text-box, or a shape's direct text:p/text:h children). */
     const parseParagraphs = (container, part) => paragraphNodes(container, part).map(({ p, listInfo }) => {
                         const runs = [];
                         function walk(parent, style) {
@@ -398,7 +398,7 @@ export async function readOdp(zip, xml, mapping) {    if (await zip.file('mimety
             const parsedParagraphs = box ? parseParagraphs(box, part)
                 : (is(n, 'draw', 'rect') || is(n, 'draw', 'ellipse')) ? parseParagraphs(n, part)
                 : null;
-            // Shapes carry text:p children directly (draw:text-box is only valid in a frame).
+            // Shapes carry text:p/text:h children directly (draw:text-box is only valid in a frame).
             if (parsedParagraphs && parsedParagraphs.length) o.text = { paragraphs: parsedParagraphs };
             return o;
         });
