@@ -1336,4 +1336,35 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
       resizeDisconnectSpy.mockRestore();
     }
   });
+
+  it('N4: recovers canvas view after transitionend when an ancestor removes rotation with transition: transform', async () => {
+    const editor = makeEditor([makeRect('r1')]);
+    const onSurfaceChange = vi.fn();
+    const hostRef = { current: null };
+    const { container } = render(
+      <div
+        ref={el => { hostRef.current = el; }}
+        style={{ transition: 'transform 80ms linear', transform: 'rotate(15deg)' }}
+      >
+        <EditorProvider editor={editor}>
+          <PresentationEditor surface="konva" onSurfaceChange={onSurfaceChange} />
+        </EditorProvider>
+      </div>,
+    );
+    await waitFor(() => {
+      expect(onSurfaceChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ requested: 'konva', active: 'svg', status: 'fallback', reason: 'unsupported-embedding' }),
+      );
+    });
+
+    // Removing transform triggers an 80ms CSS transition; the initial rAF check runs mid-transition
+    // (still rotated), so recovery depends on observing transitionend once the transform settles.
+    hostRef.current.style.transform = '';
+    await waitForKonvaCanvas(container);
+    await waitFor(() => {
+      expect(onSurfaceChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ active: 'konva', status: 'ready' }),
+      );
+    });
+  });
 });
