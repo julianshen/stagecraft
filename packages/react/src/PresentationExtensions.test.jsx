@@ -1237,6 +1237,81 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     expect(screen.getByLabelText('Paragraph 1 space before')).toHaveValue(null);
   });
 
+  it('applies DrawingML default insets in SVG preview when unauthored and preserves authored/zero insets', async () => {
+    const renderer = await import('@stagecraft/renderer');
+    expect(renderer.DEFAULT_TEXT_INSETS_EMU).toEqual({
+      left: 91440,
+      right: 91440,
+      top: 45720,
+      bottom: 45720,
+    });
+
+    const editor = makeTextTrancheEngine([{
+      id: 's1',
+      objects: [
+        {
+          id: 't-default',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
+          text: { paragraphs: [{ id: 'p1', runs: [{ id: 'r1', text: 'Default', style: { sz: '1800' } }] }] },
+        },
+        {
+          id: 't-partial',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 200 * PT, width: 300 * PT, height: 100 * PT },
+          bodyLayout: { insets: { left: 0, top: 10 * PT } },
+          text: { paragraphs: [{ id: 'p2', runs: [{ id: 'r2', text: 'Partial', style: { sz: '1800' } }] }] },
+        },
+      ],
+    }]);
+
+    render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor />
+      </EditorProvider>,
+    );
+
+    const slideScale = 960 / (editor.getSnapshot().document.dimensions?.width ?? 12192000);
+    const canvas = screen.getByLabelText('Slide canvas');
+    const defaultObj = canvas.querySelector('[data-object-id="t-default"] .stagecraft-presentation-object');
+    expect(defaultObj.style.boxSizing).toBe('border-box');
+    expect(defaultObj.style.paddingLeft).toBe(`${91440 * slideScale}px`);
+    expect(defaultObj.style.paddingRight).toBe(`${91440 * slideScale}px`);
+    expect(defaultObj.style.paddingTop).toBe(`${45720 * slideScale}px`);
+    expect(defaultObj.style.paddingBottom).toBe(`${45720 * slideScale}px`);
+
+    const partialObj = canvas.querySelector('[data-object-id="t-partial"] .stagecraft-presentation-object');
+    expect(partialObj.style.boxSizing).toBe('border-box');
+    expect(partialObj.style.paddingLeft).toBe('0px');
+    expect(partialObj.style.paddingTop).toBe(`${10 * PT * slideScale}px`);
+    expect(partialObj.style.paddingRight).toBe(`${91440 * slideScale}px`);
+    expect(partialObj.style.paddingBottom).toBe(`${45720 * slideScale}px`);
+  });
+
+  it('does not apply DrawingML default insets to ODP documents in SVG preview', () => {
+    const odpEditor = makeTextTrancheEngine([{
+      id: 's1',
+      objects: [{
+        id: 't-odp',
+        type: 'text',
+        geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
+        text: { paragraphs: [{ id: 'p1', runs: [{ id: 'r1', text: 'ODP', style: { sz: '1800' } }] }] },
+      }],
+    }], { sourceFormat: 'odp' });
+
+    render(
+      <EditorProvider editor={odpEditor}>
+        <PresentationEditor />
+      </EditorProvider>,
+    );
+
+    const odpObj = screen.getByLabelText('Slide canvas').querySelector('[data-object-id="t-odp"] .stagecraft-presentation-object');
+    expect(odpObj.style.paddingLeft).toBe('');
+    expect(odpObj.style.paddingRight).toBe('');
+    expect(odpObj.style.paddingTop).toBe('');
+    expect(odpObj.style.paddingBottom).toBe('');
+  });
+
   it('prefers live run.style typeface/color over imported pptxAppearance and invalidates range selection on unrelated revision', () => {
     const editor = makeTextTrancheEngine([{
       id: 's1',

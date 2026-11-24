@@ -1,5 +1,5 @@
 import { AUTHORED_TEXT_COLOR } from '@stagecraft/core/lib/authoredText.js';
-import { measureShrinkFits, measureResizeFits, resizeFallback, waitForAutofitFonts } from '@stagecraft/renderer';
+import { DEFAULT_TEXT_INSETS_EMU, measureShrinkFits, measureResizeFits, resizeFallback, waitForAutofitFonts } from '@stagecraft/renderer';
 import { buildCanonicalScene, waitForCanonicalFonts } from '@stagecraft/renderer/canonical';
 import { createContext, useContext, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { useEditor, useEditorSnapshot } from './EditorProvider.jsx';
@@ -759,19 +759,20 @@ function paragraphStyleCss(style, scale) {
   return Object.keys(css).length ? css : undefined;
 }
 
-function textBodyCss(object, scale) {
+function textBodyCss(object, scale, applyDefaultInsets = true) {
   const layout = object?.bodyLayout;
-  if (!layout) return undefined;
+  if (!layout && !applyDefaultInsets) return undefined;
   const css = {};
-  if (layout.anchor === 'middle') { css.display = 'flex'; css.flexDirection = 'column'; css.justifyContent = 'center'; }
-  else if (layout.anchor === 'bottom') { css.display = 'flex'; css.flexDirection = 'column'; css.justifyContent = 'flex-end'; }
-  if (layout.wrap === 'none') css.whiteSpace = 'nowrap';
-  if (layout.insets) {
-    const ins = layout.insets;
-    if (Number.isFinite(ins.top)) css.paddingTop = `${ins.top * scale}px`;
-    if (Number.isFinite(ins.right)) css.paddingRight = `${ins.right * scale}px`;
-    if (Number.isFinite(ins.bottom)) css.paddingBottom = `${ins.bottom * scale}px`;
-    if (Number.isFinite(ins.left)) css.paddingLeft = `${ins.left * scale}px`;
+  if (layout?.anchor === 'middle') { css.display = 'flex'; css.flexDirection = 'column'; css.justifyContent = 'center'; }
+  else if (layout?.anchor === 'bottom') { css.display = 'flex'; css.flexDirection = 'column'; css.justifyContent = 'flex-end'; }
+  if (layout?.wrap === 'none') css.whiteSpace = 'nowrap';
+  const ins = layout?.insets;
+  if (applyDefaultInsets || ins) {
+    if (applyDefaultInsets) css.boxSizing = 'border-box';
+    for (const [side, prop] of [['top', 'paddingTop'], ['right', 'paddingRight'], ['bottom', 'paddingBottom'], ['left', 'paddingLeft']]) {
+      const val = Number.isFinite(ins?.[side]) ? ins[side] : (applyDefaultInsets ? DEFAULT_TEXT_INSETS_EMU[side] : undefined);
+      if (Number.isFinite(val)) css[prop] = `${val * scale}px`;
+    }
   }
   return Object.keys(css).length ? css : undefined;
 }
@@ -866,7 +867,7 @@ function Artwork({
               ? <ellipse cx={x + width / 2} cy={y + h / 2} rx={width / 2} ry={h / 2} fill={fill} />
               : <rect x={x} y={y} width={width} height={h} fill={fill} />)}
             {(!primitive || text) && <foreignObject x={x} y={y} width={width} height={h}>
-              <div className="stagecraft-presentation-object" style={{ color: AUTHORED_TEXT_COLOR, ...(text ? textBodyCss(object, scale) : {}) }}>{text
+              <div className="stagecraft-presentation-object" style={{ color: AUTHORED_TEXT_COLOR, ...(text ? textBodyCss(object, scale, (object?.source?.format ?? editorCtx?.snapshot?.document?.extensions?.sourceFormat) !== 'odp') : {}) }}>{text
                 ? (() => {
                   const numIndices = computeNumberedIndices(object.text.paragraphs);
                   return object.text.paragraphs.map((p, pIdx) => {

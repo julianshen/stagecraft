@@ -5,3 +5,4 @@ export { measureShrinkFits, waitForShrinkFonts, SHRINK_FIT_POLICY } from './text
 export { measureResizeFits, resizeFallback, RESIZE_FIT_POLICY } from './text/measureResizeFits.js';
 export { waitForAutofitFonts } from './text/waitForAutofitFonts.js';
 export { collectFontQueries, fontFamiliesFor } from './text/fontReadiness.js';
+export { DEFAULT_TEXT_INSETS_EMU } from './text/canonicalTextBody.js';

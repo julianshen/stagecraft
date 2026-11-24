@@ -39,6 +39,8 @@ function canonicalRunTexts(paragraph) {
   return text;
 }
 
+export const DEFAULT_TEXT_INSETS_EMU = Object.freeze({ left: 91440, right: 91440, top: 45720, bottom: 45720 });
+
 /** Minimal DrawingML adapter. Unsupported/inherited metrics return null, never guessed sizes. */
 export function canonicalTextBody(object, theme) {
   const g = object.geometry, layout = object.bodyLayout ?? {};
@@ -73,7 +75,7 @@ export function canonicalTextBody(object, theme) {
       ...(p.spaceBefore != null ? { spaceBefore: { kind: 'points', value: p.spaceBefore } } : {}),
       ...(p.spaceAfter != null ? { spaceAfter: { kind: 'points', value: p.spaceAfter } } : {}) });
   }
-  const insets = { left: 91440, right: 91440, top: 45720, bottom: 45720, ...layout.insets };
+  const insets = { ...DEFAULT_TEXT_INSETS_EMU, ...layout.insets };
   if (!Object.values(insets).every(n => Number.isFinite(n) && n >= 0)) return null;
   const width = g.width / EMU_PER_PX, height = g.height / EMU_PER_PX;
   const availableHeight = (g.height - insets.top - insets.bottom) / EMU_PER_PX;
