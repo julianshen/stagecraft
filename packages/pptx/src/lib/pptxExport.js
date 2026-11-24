@@ -13,7 +13,7 @@ import { dataImageSize } from '@stagecraft/core/lib/imageSize.js';
 import { shapeDef, hasVisibleStroke } from '@stagecraft/core/lib/shapes.js';
 import { slideBgClass } from '@stagecraft/core/lib/slideScheme.js';
 import { uprightSlides } from '@stagecraft/core/lib/imageOrientation.js';
-import { postProcess, planFor, objectNameOf } from './pptxPost.js';
+import { postProcess, planFor, slideObjectNames } from './pptxPost.js';
 
 // ---- deck theme accent (fallback to indigo) ----
 // The deck theme only tints accents; the slide background/ink come from the
@@ -116,11 +116,11 @@ function fmtText(sld, slide, key, value, opts) {
   sld.addText(value, { ...base, ...fmtOpts(fmt), fontSize: scaledPt(base.fontSize * sc, basePx * sc, fmt?.fontSize) });
 }
 
-function elementGeo(el) {
+function elementGeo(el, objectName) {
   const g = { x: IN(num(el.x)), y: IN(num(el.y)), w: IN(num(el.w)), h: IN(num(el.h)) };
   const rot = num(el.rot);
   if (rot) g.rotate = rot; // pptx rotates about the shape centre, like the canvas
-  if (el.id != null) g.objectName = objectNameOf(el.id); // what the post-processor's patches key on
+  if (el.id != null) g.objectName = objectName; // shared with the post-processor's patch plan
   // Flips are native xfrm attributes (PowerPoint handles flipped text itself).
   if (el.flipH) g.flipH = true;
   if (el.flipV) g.flipV = true;
@@ -145,13 +145,14 @@ function imageSizing(el, geo) {
 // Draw a slide's free-form elements over whatever the layout builder produced,
 // so anything placed on the canvas survives export. Geometry/rotation/opacity
 // map 1:1; image objectFit and text auto-fit aren't reproduced exactly.
-// Each element is named by its id, which the post-processor (pptxPost.js) keys on.
-function addElements(pptx, sld, slide) {
+// Each element keeps its encoded id as the visible name; only duplicate ids receive a suffix.
+function addElements(pptx, sld, slide, objectNames) {
   const ST = pptx.ShapeType;
   // The deck is persisted/agent-authorable, so tolerate a non-array or null entries.
-  const elements = (Array.isArray(slide.elements) ? slide.elements : []).filter(Boolean);
-  for (const el of elements) {
-    const geo = elementGeo(el);
+  const elements = Array.isArray(slide.elements) ? slide.elements : [];
+  for (const [index, el] of elements.entries()) {
+    if (!el) continue;
+    const geo = elementGeo(el, objectNames.get(index));
     const transparency = Number.isFinite(el.opacity) ? clampPct(100 - el.opacity) : undefined;
     const withOpacity = transparency != null ? { transparency } : {};
     // A drop shadow (any element type) → a pptx outer shadow. x/y px offset →
@@ -609,8 +610,9 @@ export async function writePptx(deck, { includeNotes = true, range = null, xml, 
     sld.background = { color: tc.bg };
     if (slide.layout !== 'blank') (BUILDERS.get(slide.layout) || addGenericSlide)(pptx, sld, slide, tc);
     // Overlay the free-form elements layer (any layout may carry it).
-    addElements(pptx, sld, slide);
-    plans.push(planFor(slide));
+    const objectNames = slideObjectNames(slide);
+    addElements(pptx, sld, slide, objectNames);
+    plans.push(planFor(slide, objectNames));
     if (includeNotes) {
       const n = resolveNotes(slide);
       if (n) sld.addNotes(n);

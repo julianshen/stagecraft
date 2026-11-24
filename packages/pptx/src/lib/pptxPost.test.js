@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
 import pptxgen from 'pptxgenjs';
-import { patchSlideXml, postProcess, planFor, objectNameOf } from './pptxPost.js';
+import { patchSlideXml, postProcess, planFor, objectNameOf, slideObjectNames } from './pptxPost.js';
 import { linAngle } from '@stagecraft/core/lib/elements.js';
 import { importPptx } from './pptxImport.js';
+import { writePptx } from '../index.js';
 import { NS, tree } from '../../../../tests/helpers/pptxFixture.js';
 
 const A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
@@ -80,14 +81,22 @@ describe('planFor (a slide\'s post-processing plan, read from its elements)', ()
   });
 });
 
-describe('objectNameOf (the XML-safe, one-to-one name an element exports under)', () => {
-  it('encodes lone UTF-16 surrogates instead of throwing, keeping distinct ids distinct', () => {
-    expect(objectNameOf('a\ud800')).toBe('a%uD800');
-    expect(objectNameOf('\udc00b')).toBe('%uDC00b');
-    expect(objectNameOf('a\ud800')).not.toBe(objectNameOf('a\ud801'));
-    expect(objectNameOf('😀')).toBe(encodeURIComponent('😀')); // a proper pair still percent-encodes as UTF-8
-    expect(objectNameOf("it's")).toBe('it%27s');
-    expect(objectNameOf('')).toBe('%'); // non-empty (pptxgenjs ignores an empty name), and no other id encodes to a bare %
+describe('objectNameOf (the XML-safe name an element exports under)', () => {
+  it('disambiguates only duplicate ids and never collides with a real encoded id', () => {
+    const used = new Set();
+    expect(objectNameOf('dup', used)).toBe('dup');
+    expect(objectNameOf('dup', used)).toBe('dup (2)');
+    expect(objectNameOf('dup (2)', used)).toBe('dup%20(2)');
+    expect(objectNameOf('dup', used)).toBe('dup (3)');
+  });
+
+  it('keeps XML-safe one-to-one encoding for unique ids', () => {
+    expect(objectNameOf('a\ud800', new Set())).toBe('a%uD800');
+    expect(objectNameOf('\udc00b', new Set())).toBe('%uDC00b');
+    expect(objectNameOf('a\ud800', new Set())).not.toBe(objectNameOf('a\ud801', new Set()));
+    expect(objectNameOf('😀', new Set())).toBe(encodeURIComponent('😀')); // a proper pair still percent-encodes as UTF-8
+    expect(objectNameOf("it's", new Set())).toBe('it%27s');
+    expect(objectNameOf('', new Set())).toBe('%'); // non-empty (pptxgenjs ignores an empty name), and no other id encodes to a bare %
   });
 });
 
@@ -120,14 +129,6 @@ describe('patchSlideXml — gradients', () => {
     expect(out.startsWith('<p:sld')).toBe(true);
     expect(out).not.toContain('gradFill');
     expect(out).toContain('<a:noFill/>');
-  });
-
-  it('patches nothing under a name that is not unique (a duplicated id, or one clashing with a pptxgenjs default name)', () => {
-    const out = parse(patchSlideXml(slide(sp(2, 'dup') + sp(3, 'dup') + sp(4, 'x')), {
-      gradients: { dup: { from: '000000', to: 'FFFFFF', angle: 0 } }, groups: [['dup', 'x']],
-    }));
-    expect(out.getElementsByTagNameNS(A, 'gradFill')).toHaveLength(0);
-    expect(out.getElementsByTagNameNS(P, 'grpSp')).toHaveLength(0);
   });
 
   it('keeps the XML declaration and ignores names it cannot find', () => {
@@ -236,6 +237,54 @@ describe('postProcess', () => {
     expect(grp).toBeTruthy(); // both members found by name → grouped
     expect(objectNameOf(id)).toMatch(/^[A-Za-z0-9%._~*()!-]+$/); // nothing XML would escape
     expect(objectNameOf('el-1')).toBe('el-1'); // plain ids pass through
+  });
+
+  it('keeps real pptxgenjs gradients and groups when duplicate ids sit beside template text', async () => {
+    const deck = { title: 'Names', sections: [{ id: 's', name: 'S', slides: ['one'] }], slides: [{ id: 'one', layout: 'text', title: 'Template title', body: 'Template body', elements: [
+      { id: 'Text 3', type: 'rect', x: 300, y: 300, w: 100, h: 100, fill: '#112233', gradient: { from: '#112233', to: '#aabbcc', angle: 45 } },
+      { id: 'Text 3', type: 'rect', x: 500, y: 300, w: 100, h: 100, fill: '#112233', groupId: 'G' },
+      { id: 'group-b', type: 'ellipse', x: 650, y: 300, w: 100, h: 100, fill: '#112233', groupId: 'G' },
+      { id: 'unique-id', type: 'rect', x: 800, y: 300, w: 100, h: 100, fill: '#112233' },
+    ] }] };
+    const bytes = await writePptx(deck);
+    const objectNames = slideObjectNames(deck.slides[0]);
+    const plan = planFor(deck.slides[0], objectNames);
+    expect(Object.keys(plan.gradients)).toEqual([objectNames.get(0)]);
+    expect(plan.groups[0]).toEqual([objectNames.get(1), objectNames.get(2)]);
+    const zip = await JSZip.loadAsync(bytes);
+    const doc = parse(await zip.file('ppt/slides/slide1.xml').async('string'));
+    const names = [...doc.getElementsByTagNameNS(P, 'cNvPr')].map(n => n.getAttribute('name'));
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toContain('Text%203');
+    expect(names).toContain('Text%203 (2)');
+    expect(names).toContain('unique-id');
+    expect(names).toEqual(expect.arrayContaining([...objectNames.values()]));
+    expect(doc.getElementsByTagNameNS(A, 'gradFill')).toHaveLength(1);
+    const group = doc.getElementsByTagNameNS(P, 'grpSp')[0];
+    expect(group).toBeTruthy();
+    expect(childNames(group)).toEqual(['Text%203 (2)', 'group-b']);
+    const imported = await importPptx(bytes);
+    expect(imported.deck.slides[0].elements.some(el => el.gradient)).toBe(true);
+    expect(imported.deck.slides[0].elements.filter(el => el.groupId)).toHaveLength(2);
+  });
+
+  it('keeps name indices aligned when the element array contains null entries', async () => {
+    const deck = { title: 'Sparse names', sections: [{ id: 's', name: 'S', slides: ['one'] }], slides: [{ id: 'one', layout: 'blank', elements: [
+      null,
+      { id: 'a', type: 'rect', x: 300, y: 300, w: 100, h: 100, fill: '#112233', gradient: { from: '#112233', to: '#aabbcc', angle: 45 } },
+      { id: 'a', type: 'rect', x: 500, y: 300, w: 100, h: 100, fill: '#112233', groupId: 'G' },
+      { id: 'b', type: 'ellipse', x: 650, y: 300, w: 100, h: 100, fill: '#112233', groupId: 'G' },
+    ] }] };
+    const bytes = await writePptx(deck);
+    const objectNames = slideObjectNames(deck.slides[0]);
+    expect([...objectNames.keys()]).toEqual([1, 2, 3]);
+    const doc = parse(await (await JSZip.loadAsync(bytes)).file('ppt/slides/slide1.xml').async('string'));
+    expect(byName(doc, 'a').closest('sp')).toBe(doc.getElementsByTagNameNS(P, 'sp')[0]);
+    expect(byName(doc, 'a').closest('sp').getElementsByTagNameNS(A, 'gradFill')).toHaveLength(1);
+    expect(byName(doc, 'a (2)').closest('sp').getElementsByTagNameNS(A, 'gradFill')).toHaveLength(0);
+    const group = doc.getElementsByTagNameNS(P, 'grpSp')[0];
+    expect(group).toBeTruthy();
+    expect(childNames(group)).toEqual(['a (2)', 'b']);
   });
 
   it('round-trips through PowerPoint XML: real pptxgenjs output → patched → re-imported with its gradient, group and flip', async () => {
