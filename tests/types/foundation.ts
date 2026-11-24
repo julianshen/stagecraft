@@ -171,6 +171,12 @@ async function retainedSource() {
   const preview = session.getImage(image.assetId);
   if (preview) expectType<Uint8Array>(preview.bytes);
   expectType<readonly string[]>(session.images);
+  await session.export(session.document, { resize: new Map([['box', { height: 1905000 }]]) });
+  await session.export(session.document, { resize: { box: { height: 1905000 } }, fit: { shrink: { fontScale: 85000, lnSpcReduction: 10000 } } });
+  // @ts-expect-error Resize accepts a height-only hint, not arbitrary position changes.
+  await session.export(session.document, { resize: { box: { height: 1905000, y: 0 } } });
+  // @ts-expect-error Resize height is numeric EMU.
+  await session.export(session.document, { resize: { box: { height: '1905000' } } });
   const result = await session.export(session.document, zipOptions);
   expectType<Uint8Array>(result.bytes);
   expectType<string[]>(result.dirtyParts);

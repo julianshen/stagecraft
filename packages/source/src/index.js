@@ -8,6 +8,7 @@ import { readPptx } from './pptx.js';
 import { readOdp, patchOdp } from './odp.js';
 import { authoringDiff, prepareAuthoring, coalesceSplitBreaks } from './authoring.js';
 import { odpFormattingWriter } from './odp-format.js';
+import { applyResize } from './resize.js';
 const clone = value => cloneJson(value);
 // CT_TextCharacterProperties is ordered. Insert edited children without rebuilding retained XML.
 const RUN_CHILD_ORDER = ['ln','noFill','solidFill','gradFill','blipFill','pattFill','grpFill','effectLst','effectDag','highlight','uLnTx','uLn','uFillTx','uFill','latin','ea','cs','sym','hlinkClick','hlinkMouseOver','rtl','extLst'];
@@ -164,6 +165,7 @@ export async function openPresentation(source, options = {}) {
             // Synchronous clone/validation/diff precede the first await.
             validateDocument(document);
             const snapshot = clone(document), changes = [];
+            applyResize(snapshot, baseline, exportOptions.resize, format);
             // FU-AUTOFIT-MEASURE: optional measured shrink values supplied by the host (renderer
             // layer). Map(objectId -> { fontScale, lnSpcReduction }). Validated here; invalid
             // values throw before any write so a bad measurement never lands in the file.

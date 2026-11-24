@@ -37,6 +37,8 @@ function textMetrics(shape, body) {
     let supported = rectangular && ['major', 'minor'].includes(ref) && !all(shape, 'p', 'ph').length
         && !children(child(body, 'a', 'lstStyle')).length
         && !unsupportedAttrs(bodyPr, ['wrap', 'anchor', 'lIns', 'rIns', 'tIns', 'bIns'])
+        && (!bodyPr?.hasAttribute('anchor') || ['t', 'ctr', 'b'].includes(bodyPr.getAttribute('anchor')))
+        && (!bodyPr?.hasAttribute('wrap') || ['square', 'none'].includes(bodyPr.getAttribute('wrap')))
         && children(bodyPr).every(n => is(n, 'a', n.localName) && ['normAutofit', 'noAutofit', 'spAutoFit'].includes(n.localName));
     for (const paragraph of children(body).filter(n => is(n, 'a', 'p'))) {
         const props = child(paragraph, 'a', 'pPr');
