@@ -65,7 +65,7 @@ export default function KonvaSurfaceShell({
           ))}
         </div>
       </div>
-      <div className="stagecraft-presentation-paper stagecraft-konva-paper" style={{ width: `${scene.width * zoom / 100}px` }}>
+      <div className="stagecraft-presentation-paper stagecraft-konva-paper" style={{ width: `${960 * zoom / 100}px` }}>
         <KonvaErrorBoundary resetKey={`${scene.slideId}:${revision}:${fontEpochBump}`} onError={onRenderError}>
           <KonvaStage
             scene={scene}

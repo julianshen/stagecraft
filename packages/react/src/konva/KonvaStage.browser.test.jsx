@@ -207,4 +207,37 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
       );
     });
   });
+
+  it('matches SVG slide CSS box across zoom 50/100/200 while DPR affects backing store only', async () => {
+    const editor = makeEditor([makeRect('r1', 72, 72, 240, 100)]);
+    const { container, rerender } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="svg" />
+      </EditorProvider>,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'View' }));
+    const zoomInput = screen.getByRole('spinbutton', { name: 'Zoom' });
+    for (const zoomPct of ['50', '100', '200']) {
+      fireEvent.change(zoomInput, { target: { value: zoomPct } });
+      fireEvent.blur(zoomInput);
+      const svgBox = container.querySelector('.stagecraft-presentation-canvas svg[aria-label="Slide artwork"]').getBoundingClientRect();
+
+      rerender(
+        <EditorProvider editor={editor}>
+          <PresentationEditor surface="konva" />
+        </EditorProvider>,
+      );
+      const konvaCanvas = await waitForKonvaCanvas(container);
+      const konvaBox = konvaCanvas.getBoundingClientRect();
+      expect(Math.abs(konvaBox.width - svgBox.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(konvaBox.height - svgBox.height)).toBeLessThanOrEqual(1);
+      expect(konvaCanvas.width).toBe(Math.round(konvaBox.width * (window.devicePixelRatio || 1)));
+
+      rerender(
+        <EditorProvider editor={editor}>
+          <PresentationEditor surface="svg" />
+        </EditorProvider>,
+      );
+    }
+  });
 });

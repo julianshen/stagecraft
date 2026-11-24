@@ -47,8 +47,9 @@ export default function KonvaStage({
     }
   }, [fontEpochBump]);
 
-  const scale = zoom / 100;
-  const stageWidth = Math.max(1, Math.round(scene.width * scale));
+  const paperWidth = 960 * zoom / 100;
+  const scale = paperWidth / scene.width;
+  const stageWidth = Math.max(1, Math.round(paperWidth));
   const stageHeight = Math.max(1, Math.round(scene.height * scale));
 
   function cancelGesture() {

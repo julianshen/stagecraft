@@ -186,4 +186,72 @@ describe('KONVA-2b surface decision, fallback wording, and API boundary', () => 
     });
     expect(screen.getByRole('status')).toHaveTextContent('Showing the standard view: canvas view could not start.');
   });
+
+  it('ignores stale waitForCanonicalFonts completion after slide or owner replacement', async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({});
+    let resolveLoad;
+    const pendingLoad = new Promise(resolve => { resolveLoad = resolve; });
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      value: {
+        status: 'loading',
+        check: q => q.includes('Georgia'),
+        load: vi.fn(() => pendingLoad),
+        ready: Promise.resolve(),
+      },
+    });
+    const doc = createDocument({
+      id: 'stale-font-deck',
+      slides: [
+        {
+          id: 's1',
+          extensions: { stagecraftAuthored: true },
+          background: { type: 'solid', color: '#ffffff' },
+          objects: [{
+            id: 't1',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 72 * PT, width: 160 * PT, height: 60 * PT, rotation: 0 },
+            extensions: { stagecraftAuthored: true },
+            text: { paragraphs: [{ id: 'p1', runs: [{ id: 'r1', text: 'Slide 1', editable: true, style: { typeface: 'Arial', sz: '1800' }, extensions: { stagecraftAuthored: true } }] }] },
+          }],
+        },
+        {
+          id: 's2',
+          extensions: { stagecraftAuthored: true },
+          background: { type: 'solid', color: '#ffffff' },
+          objects: [{
+            id: 't2',
+            type: 'text',
+            geometry: { x: 72 * PT, y: 72 * PT, width: 160 * PT, height: 60 * PT, rotation: 0 },
+            extensions: { stagecraftAuthored: true },
+            text: { paragraphs: [{ id: 'p2', runs: [{ id: 'r2', text: 'Slide 2', editable: true, style: { typeface: 'Courier New', sz: '1800' }, extensions: { stagecraftAuthored: true } }] }] },
+          }],
+        },
+      ],
+    });
+    const editor1 = makeEditor(doc);
+    const editor2 = makeEditor(doc);
+    const onSurfaceChange = vi.fn();
+    const { rerender } = render(
+      <EditorProvider editor={editor1}>
+        <PresentationEditor surface="konva" onSurfaceChange={onSurfaceChange} />
+      </EditorProvider>,
+    );
+    expect(onSurfaceChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ requested: 'konva', active: 'svg', status: 'fallback', reason: 'loading', slideId: 's1' }),
+    );
+
+    // Replace owner before s1's font load settles; s2/editor2 also uses a missing font
+    rerender(
+      <EditorProvider editor={editor2}>
+        <PresentationEditor surface="konva" onSurfaceChange={onSurfaceChange} />
+      </EditorProvider>,
+    );
+    await act(async () => {
+      resolveLoad([]);
+      await Promise.resolve();
+    });
+    expect(onSurfaceChange.mock.calls.every(([, ] = []) => true)).toBe(true);
+    expect(onSurfaceChange.mock.calls.at(-1)[0].active).toBe('svg');
+  });
 });
