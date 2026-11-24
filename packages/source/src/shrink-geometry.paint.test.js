@@ -29,8 +29,13 @@ it.each([
   await document.fonts.ready;
   const source = await nativeShape(geometry);
   try {
-    const object = source.document.slides[0].objects[0];
-    expect(measureShrinkFits(source.document, { fonts: document.fonts }).fit.has(object.id)).toBe(supported);
+    const snapshot = structuredClone(source.document);
+    const object = snapshot.slides[0].objects[0];
+    object.text.paragraphs[0].runs[0].text += ' Edited';
+    const result = measureShrinkFits(snapshot, { fonts: document.fonts, baseline: source.document });
+    expect(result.fit.has(object.id)).toBe(supported);
+    expect(result.reason).not.toBe('unchanged-native');
+    if (!supported) expect(result.reason).toBe('unsupported-metrics');
     expect(object.extensions.pptxTextMetrics.supported).toBe(supported);
   } finally { source.dispose(); }
 });
