@@ -32,6 +32,7 @@ export default function KonvaSurfaceShell({
   readOnly = false,
   canMove,
   fontEpochBump = 0,
+  cancelToken = 0,
   onSelect,
   onMove,
   onRequestTextEdit,
@@ -77,6 +78,7 @@ export default function KonvaSurfaceShell({
             readOnly={readOnly}
             canMove={canMove}
             fontEpochBump={fontEpochBump}
+            cancelToken={cancelToken}
             onSelect={onSelect}
             onMove={onMove}
             onRequestTextEdit={onRequestTextEdit}

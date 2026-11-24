@@ -297,4 +297,169 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
     expect(restored.x).toBe(72 * PT);
     expect(restored.y).toBe(72 * PT);
   });
+
+  it('restores Konva node position when commit is denied (returns false) without changing revision', async () => {
+    const baseEditor = makeEditor([makeRect('r1', 72, 72, 240, 100)]);
+    let dispatchCount = 0;
+    const editor = {
+      ...baseEditor,
+      dispatch: (...args) => {
+        dispatchCount += 1;
+        return baseEditor.dispatch(...args);
+      },
+    };
+    const source = {
+      name: 'test.pptx',
+      format: 'pptx',
+      capabilities: { edits: ['object-geometry'] },
+    };
+
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" source={source} />
+      </EditorProvider>,
+    );
+    const konvaCanvas = await waitForKonvaCanvas(container);
+    const box = konvaCanvas.getBoundingClientRect();
+    const startX = box.left + box.width * 0.2;
+    const startY = box.top + box.height * 0.25;
+
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const stage = Konva.stages[Konva.stages.length - 1];
+    const shapeNode = stage.findOne('.r1');
+    const initialX = shapeNode.x();
+    const initialY = shapeNode.y();
+
+    act(() => {
+      konvaCanvas.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: startX, clientY: startY,
+      }));
+    });
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', {
+        bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: startX + 60, clientY: startY + 40,
+      }));
+    });
+
+    // Deny capability before drop so ui.setGeometry returns false with 0 editor dispatches
+    source.capabilities.edits = [];
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: startX + 60, clientY: startY + 40,
+      }));
+    });
+
+    expect(dispatchCount).toBe(0);
+    expect(editor.getSnapshot().revision).toBe(0);
+    expect(shapeNode.x()).toBe(initialX);
+    expect(shapeNode.y()).toBe(initialY);
+  });
+
+  it('cancels an in-progress Konva drag on Escape with 0 dispatches and inert dragend', async () => {
+    const baseEditor = makeEditor([makeRect('r1', 72, 72, 240, 100)]);
+    let dispatchCount = 0;
+    const editor = {
+      ...baseEditor,
+      dispatch: (...args) => {
+        dispatchCount += 1;
+        return baseEditor.dispatch(...args);
+      },
+    };
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    const konvaCanvas = await waitForKonvaCanvas(container);
+    const box = konvaCanvas.getBoundingClientRect();
+    const startX = box.left + box.width * 0.2;
+    const startY = box.top + box.height * 0.25;
+
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const stage = Konva.stages[Konva.stages.length - 1];
+    const shapeNode = stage.findOne('.r1');
+    const initialX = shapeNode.x();
+    const initialY = shapeNode.y();
+
+    act(() => {
+      konvaCanvas.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: startX, clientY: startY,
+      }));
+    });
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', {
+        bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: startX + 60, clientY: startY + 40,
+      }));
+    });
+    expect(shapeNode.x()).toBeGreaterThan(initialX);
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(shapeNode.x()).toBe(initialX);
+    expect(shapeNode.y()).toBe(initialY);
+
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: startX + 60, clientY: startY + 40,
+      }));
+    });
+    expect(dispatchCount).toBe(0);
+    expect(shapeNode.x()).toBe(initialX);
+    expect(shapeNode.y()).toBe(initialY);
+  });
+
+  it('cancels an in-progress Konva drag on pointercancel with 0 dispatches and inert dragend', async () => {
+    const baseEditor = makeEditor([makeRect('r1', 72, 72, 240, 100)]);
+    let dispatchCount = 0;
+    const editor = {
+      ...baseEditor,
+      dispatch: (...args) => {
+        dispatchCount += 1;
+        return baseEditor.dispatch(...args);
+      },
+    };
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    const konvaCanvas = await waitForKonvaCanvas(container);
+    const box = konvaCanvas.getBoundingClientRect();
+    const startX = box.left + box.width * 0.2;
+    const startY = box.top + box.height * 0.25;
+
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const stage = Konva.stages[Konva.stages.length - 1];
+    const shapeNode = stage.findOne('.r1');
+    const initialX = shapeNode.x();
+    const initialY = shapeNode.y();
+
+    act(() => {
+      konvaCanvas.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: startX, clientY: startY,
+      }));
+    });
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', {
+        bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: startX + 60, clientY: startY + 40,
+      }));
+    });
+    expect(shapeNode.x()).toBeGreaterThan(initialX);
+
+    act(() => {
+      konvaCanvas.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true }));
+    });
+    expect(shapeNode.x()).toBe(initialX);
+    expect(shapeNode.y()).toBe(initialY);
+
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: startX + 60, clientY: startY + 40,
+      }));
+    });
+    expect(dispatchCount).toBe(0);
+    expect(shapeNode.x()).toBe(initialX);
+    expect(shapeNode.y()).toBe(initialY);
+  });
 });

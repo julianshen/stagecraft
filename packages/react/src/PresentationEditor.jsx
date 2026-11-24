@@ -1160,10 +1160,12 @@ export function PresentationCanvas({
       ) ? null : prev
     ));
   }, [ui.editor, ui.source, ui.selection.slideId, ui.selection.objectId, ui.readOnly]);
+  const [konvaCancelToken, setKonvaCancelToken] = useState(0);
   function cancel() {
     const active = gesture.current;
     gesture.current = null;
     setPreview(null);
+    setKonvaCancelToken(n => n + 1);
     if (active?.target.hasPointerCapture?.(active.pointerId)) active.target.releasePointerCapture(active.pointerId);
   }
   useEffect(() => {
@@ -1298,6 +1300,7 @@ export function PresentationCanvas({
           return ui.can('object-geometry') && geometryEligible(object);
         }}
         fontEpochBump={fontState.epoch}
+        cancelToken={konvaCancelToken}
         onSelect={ui.selectObject}
         onMove={({ slideId, objectId, geometry, expectedRevision }) => ui.setGeometry(geometry, expectedRevision, objectId, slideId)}
         onRequestTextEdit={handleRequestTextEdit}

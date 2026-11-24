@@ -17,6 +17,7 @@ export default function KonvaStage({
   readOnly = false,
   canMove,
   fontEpochBump = 0,
+  cancelToken = 0,
   onSelect,
   onMove,
   onRequestTextEdit,
@@ -57,18 +58,20 @@ export default function KonvaStage({
     const g = gestureRef.current;
     if (!g) return;
     gestureRef.current = null;
-    try {
-      g.konvaNode?.stopDrag?.();
-      g.konvaNode?.position({ x: g.startCenterX, y: g.startCenterY });
-      g.konvaNode?.scale({ x: 1, y: 1 });
-      g.konvaNode?.getLayer()?.batchDraw?.();
-    } catch { /* node may be unmounted */ }
+    const node = g.konvaNode;
+    if (!node || !node.getStage()) return;
+    if (node.isDragging()) {
+      node.stopDrag();
+    }
+    node.position({ x: g.startCenterX, y: g.startCenterY });
+    node.scale({ x: 1, y: 1 });
+    node.getLayer()?.batchDraw();
   }
 
   useEffect(() => {
     cancelGesture();
     return cancelGesture;
-  }, [ownerKey, policyKey, revision, scene.slideId, readOnly, zoom, stageWidth, stageHeight]);
+  }, [ownerKey, policyKey, revision, scene.slideId, readOnly, zoom, stageWidth, stageHeight, cancelToken]);
 
   useEffect(() => {
     if (gestureRef.current && selectionId !== gestureRef.current.id) {
@@ -78,8 +81,29 @@ export default function KonvaStage({
 
   useEffect(() => {
     const onBlur = () => cancelGesture();
+    const onKeyDown = event => {
+      if (event.key === 'Escape') {
+        cancelGesture();
+      }
+    };
     window.addEventListener('blur', onBlur);
-    return () => window.removeEventListener('blur', onBlur);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    const content = stageRef.current?.content;
+    if (!content) return undefined;
+    const onCancel = () => cancelGesture();
+    content.addEventListener('pointercancel', onCancel);
+    content.addEventListener('lostpointercapture', onCancel);
+    return () => {
+      content.removeEventListener('pointercancel', onCancel);
+      content.removeEventListener('lostpointercapture', onCancel);
+    };
   }, []);
 
   function isMovable(node) {
@@ -202,7 +226,7 @@ export default function KonvaStage({
                       geometry: { ...g.geometry, x: nextX, y: nextY },
                       expectedRevision: g.revision,
                     });
-                    committed = result?.ok !== false;
+                    committed = result === true || (typeof result === 'object' && result !== null && result.ok === true);
                   } catch (err) {
                     onError?.(err);
                   }
