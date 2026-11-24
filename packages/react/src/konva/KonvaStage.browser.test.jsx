@@ -1071,4 +1071,131 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
     });
     await waitFor(() => expect(checkSpy.mock.calls.length).toBeGreaterThan(checks));
   });
+
+  it('matches quoted comma-containing font families without splitting on commas', async () => {
+    const fontListeners = new Map();
+    const checkSpy = vi.fn(() => true);
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      value: {
+        status: 'loaded',
+        check: checkSpy,
+        load: vi.fn(async () => []),
+        addEventListener: (type, fn) => {
+          if (!fontListeners.has(type)) fontListeners.set(type, new Set());
+          fontListeners.get(type).add(fn);
+        },
+        removeEventListener: (type, fn) => {
+          fontListeners.get(type)?.delete(fn);
+        },
+        ready: Promise.resolve(),
+      },
+    });
+
+    const doc = createDocument({
+      id: 'comma-font-deck',
+      slides: [{
+        id: 's1',
+        extensions: { stagecraftAuthored: true },
+        background: { type: 'solid', color: '#ffffff' },
+        objects: [{
+          id: 't1',
+          type: 'text',
+          geometry: { x: 72 * PT, y: 72 * PT, width: 200 * PT, height: 80 * PT, rotation: 0 },
+          extensions: { stagecraftAuthored: true },
+          text: {
+            paragraphs: [{
+              id: 'p1',
+              runs: [{
+                id: 'r1',
+                text: 'Hello',
+                editable: true,
+                style: { typeface: 'Foo, Bar', sz: '1800' },
+                extensions: { stagecraftAuthored: true },
+              }],
+            }],
+          },
+        }],
+      }],
+    });
+    const editor = createEditor({ document: doc, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    await waitForKonvaCanvas(container);
+    const checks = checkSpy.mock.calls.length;
+
+    // Split token 'Foo' must NOT match 'Foo, Bar'
+    await act(async () => {
+      fontListeners.get('loadingdone')?.forEach(fn => fn({ fontfaces: [{ family: 'Foo' }] }));
+      await Promise.resolve();
+    });
+    expect(checkSpy.mock.calls.length).toBe(checks);
+
+    // Exact comma-containing family 'Foo, Bar' -> triggers readiness rerun
+    await act(async () => {
+      fontListeners.get('loadingdone')?.forEach(fn => fn({ fontfaces: [{ family: 'Foo, Bar' }] }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(checkSpy.mock.calls.length).toBeGreaterThan(checks));
+  });
+
+  it('ignores multi-touch gestures on a shape without selecting or dispatching a move', async () => {
+    const baseEditor = makeEditor([makeRect('r1', 72, 72, 240, 100)]);
+    let dispatchCount = 0;
+    const editor = {
+      ...baseEditor,
+      dispatch: (...args) => { dispatchCount += 1; return baseEditor.dispatch(...args); },
+    };
+
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    const konvaCanvas = await waitForKonvaCanvas(container);
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const stage = getStageForContainer(Konva, container);
+    const shapeNode = stage.findOne('.r1');
+
+    let stagePt = { x: 0, y: 0 };
+    await waitFor(() => {
+      stagePt = { x: shapeNode.x() * stage.scaleX(), y: shapeNode.y() * stage.scaleY() };
+      if (stage.getIntersection(stagePt) !== shapeNode) throw new Error('hit not ready');
+    });
+    const box = konvaCanvas.getBoundingClientRect();
+    const x1 = box.left + stagePt.x + 20;
+    const y1 = box.top + stagePt.y + 20;
+    const makeTouch = (id, x, y) => new Touch({
+      identifier: id, target: konvaCanvas, clientX: x, clientY: y, pageX: x, pageY: y, screenX: x, screenY: y,
+    });
+
+    act(() => {
+      const t1 = makeTouch(1, x1, y1);
+      const t2 = makeTouch(2, x1 + 20, y1 + 20);
+      konvaCanvas.dispatchEvent(new TouchEvent('touchstart', {
+        bubbles: true, cancelable: true, touches: [t1, t2], targetTouches: [t1, t2], changedTouches: [t1, t2],
+      }));
+    });
+    act(() => {
+      const t1 = makeTouch(1, x1 + 50, y1 + 30);
+      const t2 = makeTouch(2, x1 + 70, y1 + 50);
+      window.dispatchEvent(new TouchEvent('touchmove', {
+        bubbles: true, cancelable: true, touches: [t1, t2], targetTouches: [t1, t2], changedTouches: [t1, t2],
+      }));
+    });
+    act(() => {
+      const t1 = makeTouch(1, x1 + 50, y1 + 30);
+      const t2 = makeTouch(2, x1 + 70, y1 + 50);
+      window.dispatchEvent(new TouchEvent('touchend', {
+        bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t1, t2],
+      }));
+    });
+
+    expect(dispatchCount).toBe(0);
+    expect(screen.getByRole('button', { name: 'Select object r1' })).toHaveAttribute('aria-pressed', 'false');
+    expect(editor.getSnapshot().document.slides[0].objects[0].geometry.x).toBe(72 * PT);
+  });
 });
