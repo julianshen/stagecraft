@@ -12,10 +12,19 @@ export function applyResize(snapshot, baseline, input, format) {
     const retained = new Map();
     const collect = objects => { for (const object of objects ?? []) { retained.set(object.id, object); collect(object.children); } };
     for (const owner of [...baseline.slides, ...baseline.layouts, ...baseline.masters]) collect(owner.objects);
-    const objects = new Map();
+    const slides = new Map(baseline.slides.map(slide => [slide.id, slide]));
+    const masters = new Map(baseline.masters.map(master => [master.id, master]));
+    const themes = new Map(baseline.themes.map(theme => [theme.id, theme]));
+    const defaultsByLayout = new Map(baseline.layouts.map(layout => [layout.id,
+        themes.get(masters.get(layout.masterId)?.themeId)?.extensions?.pptxObjectDefaults]));
+    const objects = new Map(), defaultsByObject = new Map();
     for (const slide of snapshot.slides) for (const object of slide.objects) {
         if (objects.has(object.id)) invalid();
         objects.set(object.id, object);
+        // New slides use the writer's first retained layout; existing slides keep their own.
+        const retainedSlide = slides.get(slide.id);
+        const layoutId = retainedSlide ? retainedSlide.layoutId : baseline.layouts[0]?.id;
+        defaultsByObject.set(object.id, defaultsByLayout.get(layoutId));
     }
     const patches = [];
     for (const [id, value] of entries) {
@@ -31,7 +40,8 @@ export function applyResize(snapshot, baseline, input, format) {
         if (original) {
             if (original.source?.format !== 'pptx' || original.extensions?.editableGeometry !== true
                 || original.extensions?.pptxTextMetrics?.supported !== true) invalid();
-        } else if (object.source || object.extensions?.stagecraftAuthored !== true) invalid();
+        } else if (object.source || object.extensions?.stagecraftAuthored !== true
+            || defaultsByObject.get(id)?.[object.type === 'text' ? 'txDef' : 'spDef']) invalid();
         const growth = height - g.height;
         const offset = layout.anchor === 'bottom' ? growth : layout.anchor === 'middle' ? Math.floor(growth / 2) : 0;
         const y = g.y - offset;

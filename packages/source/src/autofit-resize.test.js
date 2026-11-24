@@ -176,3 +176,58 @@ it('rounds middle-anchor half-EMU growth correctly near the safe coordinate limi
   expect(reopened.document.slides[0].objects[0].geometry.y).toBe(Number.MAX_SAFE_INTEGER);
   source.dispose(); reopened.dispose();
 });
+it.each([
+  ['txDef', 'anchor', false], ['spDef', 'anchor', false],
+  ['txDef', 'child', false], ['spDef', 'list', false],
+  ['txDef', 'empty', true], ['spDef', 'empty', true],
+  ['txDef', 'empty-definition', true], ['spDef', 'empty-definition', true],
+  ['txDef', 'other-definition', true], ['spDef', 'other-definition', true],
+])('theme %s %s controls native measurement eligibility', async (definition, mode, supported) => {
+  const zip = await JSZip.loadAsync(native), xml = await slide(native);
+  const p = 'http://schemas.openxmlformats.org/presentationml/2006/main';
+  const shape = xml.getElementsByTagNameNS(p, 'sp')[0];
+  shape.getElementsByTagNameNS(p, 'cNvSpPr')[0].setAttribute('txBox', definition === 'txDef' ? '1' : '0');
+  const bp = shape.getElementsByTagNameNS(a, 'bodyPr')[0];
+  for (const name of ['anchor', 'wrap', 'lIns', 'rIns', 'tIns', 'bIns']) bp.removeAttribute(name);
+  zip.file(part, new XMLSerializer().serializeToString(xml));
+  const themePart = 'ppt/theme/theme1.xml';
+  const theme = new DOMParser().parseFromString(await zip.file(themePart).async('string'), 'application/xml');
+  let defaults = theme.getElementsByTagNameNS(a, 'objectDefaults')[0];
+  if (!defaults) { defaults = theme.createElementNS(a, 'a:objectDefaults'); theme.documentElement.appendChild(defaults); }
+  defaults.replaceChildren();
+  if (mode !== 'empty') {
+    const tag = mode === 'other-definition' ? (definition === 'txDef' ? 'spDef' : 'txDef') : definition;
+    const def = theme.createElementNS(a, `a:${tag}`), body = theme.createElementNS(a, 'a:bodyPr');
+    def.appendChild(theme.createElementNS(a, 'a:spPr')); def.appendChild(body);
+    const list = theme.createElementNS(a, 'a:lstStyle'); def.appendChild(list); defaults.appendChild(def);
+    if (mode === 'child') body.appendChild(theme.createElementNS(a, 'a:spAutoFit'));
+    else if (mode === 'list') list.appendChild(theme.createElementNS(a, 'a:lvl1pPr'));
+    else if (mode !== 'empty-definition') body.setAttribute('anchor', 'b');
+  }
+  zip.file(themePart, new XMLSerializer().serializeToString(theme));
+  const bytes = await zip.generateAsync({ type: 'uint8array' });
+  const source = await openPresentation(bytes, { format: 'pptx' });
+  const object = source.document.slides[0].objects[0];
+  expect(object.extensions.pptxTextMetrics.supported).toBe(supported);
+  expect((await source.export(source.document)).bytes).toEqual(bytes);
+  const promise = source.export(source.document, { resize: { [object.id]: { height: 1905000 } } });
+  if (!supported) await expect(promise).rejects.toThrow('Invalid resize measurement');
+  else {
+    const reopened = await openPresentation((await promise).bytes, { format: 'pptx' });
+    expect(reopened.document.slides[0].objects[0].geometry.height).toBe(1905000); reopened.dispose();
+  }
+  for (const newSlide of [false, true]) {
+    const doc = structuredClone(source.document), added = box();
+    delete added.bodyLayout.anchor;
+    if (definition === 'spDef') { added.type = 'shape'; added.shape = 'rect'; added.fill = '#ffffff'; }
+    if (newSlide) doc.slides.push({ id: 'added-slide', extensions: { stagecraftAuthored: true }, objects: [added] });
+    else doc.slides[0].objects.push(added);
+    const exported = source.export(doc, { resize: { [added.id]: { height: 1905000 } } });
+    if (!supported) await expect(exported).rejects.toThrow('Invalid resize measurement');
+    else {
+      const reopened = await openPresentation((await exported).bytes, { format: 'pptx' });
+      expect(reopened.document.slides.at(-1).objects.at(-1).geometry.height).toBe(1905000); reopened.dispose();
+    }
+  }
+  source.dispose();
+}, 30000);
