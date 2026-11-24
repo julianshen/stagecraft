@@ -91,6 +91,19 @@ it('skips authored ellipse text before it has native eligibility metadata', () =
   expect(measureShrinkFits(doc({ ...ellipse, shape: 'rect' }), { fonts: document.fonts }).fit.has('box')).toBe(true);
 });
 
+it('skips untouched native shrink boxes and measures only native text edits', () => {
+  const object = make();
+  object.source = { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [0] };
+  const input = doc(object), baseline = structuredClone(input);
+  const unchanged = measureShrinkFits(input, { fonts: document.fonts, baseline });
+  expect(unchanged).toMatchObject({ status: 'skipped', reason: 'unchanged-native', count: 0, reasons: { 'unchanged-native': 1 } });
+  expect(unchanged.fit.size).toBe(0);
+  object.text.paragraphs[0].runs[0].text += ' Edited';
+  const changed = measureShrinkFits(input, { fonts: document.fonts, baseline });
+  expect(changed.status).toBe('measured');
+  expect(changed.fit.has('box')).toBe(true);
+});
+
 it('reports empty result reasons for valid, absent, empty and unsupported text',()=>{
   expect(measureShrinkFits(doc(make('Short')),{fonts:document.fonts})).toMatchObject({status:'skipped',reason:'already-fits',count:0});
   expect(measureShrinkFits(doc({...make(),bodyLayout:{autofit:'none'}}),{fonts:document.fonts})).toMatchObject({status:'skipped',reason:'no-shrink',count:0});

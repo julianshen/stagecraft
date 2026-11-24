@@ -461,22 +461,22 @@ export function PresentationEditorProvider({
         const fonts = globalThis.document?.fonts;
         let readiness;
         try {
-          readiness = await waitForAutofitFonts(snapshot.document, { fonts, kinds: resizeEnabled ? ['shrink', 'resize'] : ['shrink'] });
+          readiness = await waitForAutofitFonts(snapshot.document, { fonts, kinds: resizeEnabled ? ['shrink', 'resize'] : ['shrink'], baseline: source.document });
         } catch {
           readiness = { shrink: {status:'failed',reason:'error',message:'Font readiness failed.'}, resize: {status:'failed',reason:'error',message:'Font readiness failed.'} };
         }
         if (!current()) return;
         if (!fitAllowed.current) shrinkFit = { status: 'skipped', reason: 'permission-revoked', count: 0 };
-        else if (readiness.shrink.status !== 'ready') shrinkFit = { ...readiness.shrink, count: 0 };
+        else if (readiness.shrink.status !== 'ready') shrinkFit = { ...readiness.shrink, count: readiness.shrink.count ?? 0 };
         else {
-          try { ({ fit, ...shrinkFit } = measureShrinkFits(snapshot.document, { fonts })); }
+          try { ({ fit, ...shrinkFit } = measureShrinkFits(snapshot.document, { fonts, baseline: source.document })); }
           catch { shrinkFit = { status:'failed',reason:'error',message:'Shrink measurement failed.',count:0 }; }
         }
         if (resizeEnabled) {
           if (!resizeAllowed.current) resizeFit = resizeResult('skipped','permission-revoked');
           else if (readiness.resize.status !== 'ready') resizeFit = resizeResult(readiness.resize.status,readiness.resize.reason,readiness.resize.message);
           else {
-            try { ({resize,...resizeFit} = measureResizeFits(snapshot.document,{fonts})); }
+            try { ({resize,...resizeFit} = measureResizeFits(snapshot.document,{fonts,baseline:source.document})); }
             catch { resizeFit = resizeResult('failed','error','Resize measurement failed.'); }
           }
         }

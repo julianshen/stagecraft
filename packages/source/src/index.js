@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { validateDocument, isRunFormatValue } from '@stagecraft/core/document';
 import { cloneJson } from '@stagecraft/core/editor';
+import { autofitHintEligibility } from '@stagecraft/core/lib/resizeGeometry.js';
 import { readBytes, throwIfAborted, DEFAULT_MAX_BYTES, byteLimit } from '@stagecraft/io';
 import { inspectZip } from '@stagecraft/io/zip';
 import { runtime, xmlPart, locate, validText, all, child, children, NS } from './xml.js';
@@ -10,6 +11,15 @@ import { authoringDiff, prepareAuthoring, coalesceSplitBreaks } from './authorin
 import { odpFormattingWriter } from './odp-format.js';
 import { applyResize } from './resize.js';
 const clone = value => cloneJson(value);
+const objectsById = document => {
+    const objects = new Map();
+    const visit = nodes => { for (const object of nodes ?? []) { objects.set(object.id, object); visit(object.children); } };
+    for (const owner of [...document.slides, ...document.layouts, ...document.masters]) visit(owner.objects);
+    return objects;
+};
+const hasHintEntries = input => input instanceof Map ? input.size > 0
+    : input !== null && typeof input === 'object' && Reflect.ownKeys(input).length > 0;
+const invalidAutofit = () => { throw new Error('Invalid autofit measurement'); };
 // CT_TextCharacterProperties is ordered. Insert edited children without rebuilding retained XML.
 const RUN_CHILD_ORDER = ['ln','noFill','solidFill','gradFill','blipFill','pattFill','grpFill','effectLst','effectDag','highlight','uLnTx','uLn','uFillTx','uFill','latin','ea','cs','sym','hlinkClick','hlinkMouseOver','rtl','extLst'];
 const RUN_FILLS = ['noFill','solidFill','gradFill','blipFill','pattFill','grpFill'];
@@ -165,31 +175,37 @@ export async function openPresentation(source, options = {}) {
             // Synchronous clone/validation/diff precede the first await.
             validateDocument(document);
             const snapshot = clone(document), changes = [];
-            applyResize(snapshot, baseline, exportOptions.resize, format);
+            if (readOnly && (hasHintEntries(exportOptions.fit) || hasHintEntries(exportOptions.resize)))
+                throw new Error('Cannot edit signed source package');
+            const snapshotObjects = objectsById(snapshot), baselineObjects = objectsById(baseline);
             // FU-AUTOFIT-MEASURE: optional measured shrink values supplied by the host (renderer
             // layer). Map(objectId -> { fontScale, lnSpcReduction }). Validated here; invalid
             // values throw before any write so a bad measurement never lands in the file.
             let fitMap = exportOptions.fit instanceof Map ? exportOptions.fit
                 : (exportOptions.fit && typeof exportOptions.fit === 'object') ? new Map(Object.entries(exportOptions.fit)) : null;
             if (fitMap) {
+                if (format !== 'pptx') invalidAutofit();
                 // FU-AUTOFIT-MEASURE-PR1 bot1/bot2: read each value ONCE into locals, validate the
                 // locals, then freeze those locals. A getter/Proxy cannot pass validation and then
                 // yield a different value on a later read. Snapshot into a fresh Map keyed by
                 // String(id); do not mutate the caller's exportOptions.fit.
                 const frozen = new Map();
                 for (const [objectId, value] of fitMap) {
-                    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid autofit measurement');
+                    if (!value || typeof value !== 'object' || Array.isArray(value)) invalidAutofit();
                     const keys = Object.keys(value);
-                    if (keys.some(k => k !== 'fontScale' && k !== 'lnSpcReduction')) throw new Error('Invalid autofit measurement');
+                    if (keys.some(k => k !== 'fontScale' && k !== 'lnSpcReduction')) invalidAutofit();
                     // Read once into locals; all subsequent checks and the freeze use these.
                     const fontScale = value.fontScale;
                     const lnSpcReduction = value.lnSpcReduction;
-                    if (!Number.isSafeInteger(fontScale) || fontScale < 1 || fontScale > 100000) throw new Error('Invalid autofit measurement');
-                    if (!Number.isSafeInteger(lnSpcReduction) || lnSpcReduction < 0 || lnSpcReduction > 100000) throw new Error('Invalid autofit measurement');
-                    frozen.set(String(objectId), Object.freeze({ fontScale, lnSpcReduction }));
+                    if (!Number.isSafeInteger(fontScale) || fontScale < 1 || fontScale > 100000) invalidAutofit();
+                    if (!Number.isSafeInteger(lnSpcReduction) || lnSpcReduction < 0 || lnSpcReduction > 100000) invalidAutofit();
+                    const id = String(objectId), object = snapshotObjects.get(id), original = baselineObjects.get(id);
+                    if (!object || object.bodyLayout?.autofit !== 'shrink' || autofitHintEligibility(object, original)) invalidAutofit();
+                    frozen.set(id, Object.freeze({ fontScale, lnSpcReduction }));
                 }
                 fitMap = frozen;
             }
+            applyResize(snapshot, baseline, exportOptions.resize, format);
             // FU-CR: native run-text edits are written one run at a time, so a split CRLF must be
             // coalesced against the paragraph's post-edit runs (the snapshot) — computed from the
             // canonical paragraph, not per change. Empty runs are skipped by the lookahead.

@@ -19,14 +19,14 @@ afterEach(() => { vi.useRealTimers();editors.forEach(e=>e.dispose());if(fontDesc
 function mount({format='pptx',readOnly=false,sourceReadOnly=false,edits=['text-body-layout'],onExport=vi.fn()}={}) {
   const d=createDocument({extensions:{sourceFormat:format},slides:[{id:'s',objects:[{id:'o',type:'text',geometry:{x:0,y:0,width:2667000,height:952500},extensions:{stagecraftAuthored:true},bodyLayout:{autofit:'shrink'},text:{paragraphs:[{id:'p',runs:[{id:'r',text:'Original overflowing content',editable:true,style:{sz:'1800',typeface:'Arial'},extensions:{stagecraftAuthored:true}}]}]}}]}]});
   const editor=createEditor({document:d,plugins:[documentPlugin,presentationPlugin]});editors.push(editor);
-  const source={capabilities:{readOnly:sourceReadOnly,edits},export:vi.fn(async()=>({bytes:new Uint8Array([1])}))};
+  const source={document:d,capabilities:{readOnly:sourceReadOnly,edits},export:vi.fn(async()=>({bytes:new Uint8Array([1])}))};
   const view=render(<EditorProvider editor={editor}><PresentationEditor source={source} readOnly={readOnly} onExport={onExport}/></EditorProvider>);
   return { ...view,editor,source,onExport };
 }
 it('passes a fit Map measured from exactly the exported snapshot', async()=>{
   const {editor,source,onExport}=mount();const captured=editor.getSnapshot().document;
   await act(async()=>fireEvent.click(screen.getByText('Export')));
-  expect(measureShrinkFits).toHaveBeenCalledWith(captured,{fonts});
+  expect(measureShrinkFits).toHaveBeenCalledWith(captured,{fonts,baseline:source.document});
   expect(source.export).toHaveBeenCalledWith(captured,{fit});
   expect(source.export.mock.calls[0][0]).toBe(measureShrinkFits.mock.calls[0][0]);
   expect(onExport).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({revision:0,shrinkFit:{status:'measured',count:1}}));
@@ -46,7 +46,7 @@ it('keeps edits made during font loading out of measurement and export',async()=
   expect(source.export).not.toHaveBeenCalled();
   act(()=>editor.dispatch('document.setRunText',{runId:'r',text:'Later edit'}));
   await act(async()=>{fonts.status='loaded';fonts.check.mockReturnValue(true);pending.resolve([]);});
-  expect(measureShrinkFits).toHaveBeenCalledWith(captured,{fonts});expect(source.export).toHaveBeenCalledWith(captured,{fit});
+  expect(measureShrinkFits).toHaveBeenCalledWith(captured,{fonts,baseline:source.document});expect(source.export).toHaveBeenCalledWith(captured,{fit});
   expect(captured.slides[0].objects[0].text.paragraphs[0].runs[0].text).toBe('Original overflowing content');
   expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].runs[0].text).toBe('Later edit');
 });

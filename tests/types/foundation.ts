@@ -196,13 +196,15 @@ void scriptFonts; void authoredScriptFonts;
 
 // Renderer measurement diagnostics are a discriminated outcome, not a Map.
 import { measureShrinkFits, waitForShrinkFonts, scaledTextBody, type ShrinkMeasurement } from '@stagecraft/renderer/text/measureShrinkFits';
-const shrinkMeasurement: ShrinkMeasurement = measureShrinkFits(createDocument(), { fonts: globalThis.document.fonts });
+const shrinkMeasurement: ShrinkMeasurement = measureShrinkFits(createDocument(), { fonts: globalThis.document.fonts, baseline: createDocument() });
 shrinkMeasurement.fit.get('object')?.fontScale.toFixed();
+shrinkMeasurement.stats.skipped.toFixed();
+shrinkMeasurement.reasons['unchanged-native']?.toFixed();
 if (shrinkMeasurement.status === 'skipped') shrinkMeasurement.reason.toUpperCase();
 if (shrinkMeasurement.status === 'failed') shrinkMeasurement.message.toUpperCase();
 // @ts-expect-error The old bare Map result is no longer supported.
 shrinkMeasurement.get('object');
-void waitForShrinkFonts(createDocument(), { fonts: globalThis.document.fonts }).then(result => {
+void waitForShrinkFonts(createDocument(), { fonts: globalThis.document.fonts, baseline: createDocument() }).then(result => {
   if (result.status === 'skipped') result.reason.toUpperCase();
 });
 
@@ -212,9 +214,9 @@ expectType<number>(scaledBody.paragraphs[0].runs[0].fontSizePt);
 
 import { measureResizeFits, type ResizeMeasurement } from '@stagecraft/renderer/text/measureResizeFits';
 import { waitForAutofitFonts } from '@stagecraft/renderer/text/waitForAutofitFonts';
-const resized: ResizeMeasurement = measureResizeFits(createDocument());
+const resized: ResizeMeasurement = measureResizeFits(createDocument(), { baseline: createDocument() });
 resized.resize.get('box')?.height.toFixed();
 resized.stats.skipped.toFixed();
-waitForAutofitFonts(createDocument(), { kinds: ['resize', 'shrink'], timeoutMs: 2000 });
+waitForAutofitFonts(createDocument(), { kinds: ['resize', 'shrink'], timeoutMs: 2000, baseline: createDocument() });
 // @ts-expect-error Unsupported measurement kind.
 waitForAutofitFonts(createDocument(), { kinds: ['rotate'] });

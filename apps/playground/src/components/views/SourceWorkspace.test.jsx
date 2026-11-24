@@ -107,6 +107,15 @@ it.each([
  const opened={...source('Outcomes'),shrinkFit};render(<SourceWorkspace openSource={async()=>opened} save={vi.fn()}/>);choose('status.pptx');await screen.findByText('Outcomes');
  fireEvent.click(screen.getByText('Export fixture'));expect(await screen.findByRole('status',{name:'Export result'})).toHaveTextContent(text);expect(screen.getByRole('status',{name:'Export result'})).not.toHaveTextContent(/Exported revision/);expect(screen.queryByText(/Private document details/)).toBeNull();expect(screen.queryByRole('alert')).toBeNull();
 });
+it.each([
+ [{shrinkReasons:{'unchanged-native':1},resizeReasons:{}},'1 text box unchanged since import was left as PowerPoint saved it.'],
+ [{shrinkReasons:{'unchanged-native':2},resizeReasons:{'unchanged-native':1}},'3 text boxes unchanged since import were left as PowerPoint saved them.'],
+])('explains untouched native autofit boxes %j',async({shrinkReasons,resizeReasons},text)=>{
+ const opened={...source('Native outcomes'),shrinkFit:{status:'skipped',reason:'unchanged-native',count:0,reasons:shrinkReasons},...(Object.keys(resizeReasons).length?{resizeFit:{status:'skipped',reason:'unchanged-native',count:0,reasons:resizeReasons}}:{})};
+ render(<SourceWorkspace openSource={async()=>opened} save={vi.fn()}/>);choose('native.pptx');await screen.findByText('Native outcomes');
+ fireEvent.click(screen.getByText('Export fixture'));expect(await screen.findByRole('status',{name:'Export result'})).toHaveTextContent(text);
+});
+
 it('suppresses old export feedback after document replacement during save',async()=>{
  const pending=deferred(), a={...source('A'),shrinkFit:{status:'measured',count:1}},b=source('B');
  render(<SourceWorkspace openSource={vi.fn().mockResolvedValueOnce(a).mockResolvedValueOnce(b)} save={()=>pending.promise}/>);choose('a.pptx');await screen.findByText('A');fireEvent.click(screen.getByText('Export fixture'));choose('b.pptx');await screen.findByText('B');await act(async()=>pending.resolve());expect(screen.queryByText(/Shrink-to-fit measured/)).toBeNull();

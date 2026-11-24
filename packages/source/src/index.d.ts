@@ -10,10 +10,11 @@ export interface SourceLimits {
     maxExpandedBytes?: number;
     signal?: AbortSignal;
 }
-/** Transient export measurements in EMU; the canonical document is never changed. */
+/** Transient export measurements; geometry heights are EMU, shrink scales/reductions are hundred-thousandths. The canonical document is never changed. */
 export interface SourceExportOptions extends SourceLimits {
+    /** Shrink hints apply only to authored boxes and native boxes whose text, geometry, or bodyLayout changed since import. Stale native hints throw. */
     fit?: Map<string, { fontScale: number; lnSpcReduction: number }> | Record<string, { fontScale: number; lnSpcReduction: number }>;
-    /** Grow-only, top-level unrotated PPTX text boxes. y follows the text anchor and may become negative. */
+    /** Grow-only, top-level unrotated PPTX text boxes. Untouched native hints throw; y follows the text anchor and may become negative. */
     resize?: Map<string, { height: number }> | Record<string, { height: number }>;
 }
 export interface OpenPresentationOptions extends SourceLimits {

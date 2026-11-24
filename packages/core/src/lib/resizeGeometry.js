@@ -1,3 +1,13 @@
+import { jsonEqual } from './jsonEqual.js';
+
+/** Measured autofit hints may change authored boxes and native boxes with a real content/layout edit. */
+export function autofitHintEligibility(object, original) {
+    if (!object?.source) return null;
+    if (!original) return 'unchanged-native';
+    return ['text', 'geometry', 'bodyLayout'].some(key => !jsonEqual(object[key], original[key]))
+        ? null : 'unchanged-native';
+}
+
 /** Shared structural eligibility; callers supply trusted native metadata or authored theme defaults. */
 export function resizeIneligibility(object, original, defaults) {
  const g=object.geometry, layout=object.bodyLayout;

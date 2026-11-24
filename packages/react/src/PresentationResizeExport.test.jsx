@@ -12,12 +12,12 @@ afterEach(()=>{editors.forEach(e=>e.dispose());vi.useRealTimers();if(descriptor)
 function mount({mixed=false,format='pptx',readOnly=false,edits=['text-body-layout','object-geometry']}={}){
  const d=createDocument({extensions:{sourceFormat:format},slides:[{id:'s',objects:[{id:'o',type:'text',geometry:{x:0,y:0,width:2667000,height:952500},extensions:{stagecraftAuthored:true},bodyLayout:{autofit:'resize'},text:{paragraphs:[{id:'p',runs:[{id:'r',text:'Original text',editable:true,style:{sz:'1800',typeface:'Arial'},extensions:{stagecraftAuthored:true}}]}]}}]}]});
  if(mixed){const o=structuredClone(d.slides[0].objects[0]);o.id='shrink';o.bodyLayout.autofit='shrink';o.text.paragraphs[0].id='sp';o.text.paragraphs[0].runs[0].id='sr';o.text.paragraphs[0].runs[0].style.typeface='Verdana';d.slides[0].objects.push(o);}
- const editor=createEditor({document:d,plugins:[documentPlugin,presentationPlugin]});editors.push(editor);const source={capabilities:{readOnly:false,edits},export:vi.fn(async()=>({bytes:new Uint8Array([1])}))},onExport=vi.fn();
+ const editor=createEditor({document:d,plugins:[documentPlugin,presentationPlugin]});editors.push(editor);const source={document:d,capabilities:{readOnly:false,edits},export:vi.fn(async()=>({bytes:new Uint8Array([1])}))},onExport=vi.fn();
  return{editor,source,onExport,...render(<EditorProvider editor={editor}><PresentationEditor source={source} readOnly={readOnly} onExport={onExport}/></EditorProvider>)};
 }
 it('exports a resize Map from the same snapshot and reports its outcome',async()=>{
  const {editor,source,onExport}=mount();const snapshot=editor.getSnapshot();await act(async()=>fireEvent.click(screen.getByText('Export')));
- expect(measureResizeFits).toHaveBeenCalledWith(snapshot.document,{fonts});expect(source.export).toHaveBeenCalledWith(snapshot.document,{resize:new Map([['o',{height:2000000}]])});expect(editor.getSnapshot()).toBe(snapshot);
+ expect(measureResizeFits).toHaveBeenCalledWith(snapshot.document,{fonts,baseline:source.document});expect(source.export).toHaveBeenCalledWith(snapshot.document,{resize:new Map([['o',{height:2000000}]])});expect(editor.getSnapshot()).toBe(snapshot);
  expect(onExport.mock.calls[0][1].resizeFit).toEqual({status:'measured',count:1,stats:{candidates:1,measured:1,skipped:0,failed:0},reasons:{}});
 });
 it.each([{readOnly:true},{edits:[]},{edits:['text-body-layout']},{edits:['object-geometry']},{format:'odp'}])('omits hints when ineligible %j',async options=>{
@@ -26,7 +26,7 @@ it.each([{readOnly:true},{edits:[]},{edits:['text-body-layout']},{edits:['object
 it('keeps a pending text edit outside the measured snapshot',async()=>{
  let resolve;fonts.check.mockReturnValue(false);fonts.load.mockReturnValue(new Promise(r=>resolve=r));
  const {editor,source}=mount(),captured=editor.getSnapshot().document;await act(async()=>fireEvent.click(screen.getByText('Export')));act(()=>editor.dispatch('document.setRunText',{runId:'r',text:'Later'}));
- await act(async()=>{fonts.check.mockReturnValue(true);resolve([]);});expect(measureResizeFits).toHaveBeenCalledWith(captured,{fonts});expect(source.export.mock.calls[0][0]).toBe(captured);
+ await act(async()=>{fonts.check.mockReturnValue(true);resolve([]);});expect(measureResizeFits).toHaveBeenCalledWith(captured,{fonts,baseline:source.document});expect(source.export.mock.calls[0][0]).toBe(captured);
 });
 it('reports a font timeout and exports without a resize hint',async()=>{
  vi.useFakeTimers();fonts.check.mockReturnValue(false);fonts.load.mockReturnValue(new Promise(()=>{}));const {source,onExport}=mount();await act(async()=>fireEvent.click(screen.getByText('Export')));await act(async()=>vi.advanceTimersByTimeAsync(2000));

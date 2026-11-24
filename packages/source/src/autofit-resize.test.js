@@ -48,8 +48,9 @@ it.each(['top', 'middle', 'bottom'])('grows %s anchored native geometry includin
   if (anchor !== 'top') expect(grown.geometry.y).toBeLessThan(0);
   reopened.dispose(); source.dispose();
 }, 30000);
-it('applies resize alone to a native box and preserves every other ZIP part and text formatting', async () => {
+it('applies resize alone to a text-edited native box and preserves every other ZIP part and text formatting', async () => {
   const { source, doc, object } = await fixture();
+  object.text.paragraphs[0].runs[0].text = 'Edited resize text';
   const result = await source.export(doc, { resize: { [object.id]: { height: 1905000 } } });
   expect(result.dirtyParts).toEqual([part]);
   const before = await JSZip.loadAsync(native), after = await JSZip.loadAsync(result.bytes);
@@ -69,12 +70,21 @@ it('writes an authored box with resized height and merges snapshot geometry chan
   expect(object.geometry.height).toBe(952500);
   source.dispose(); reopened.dispose();
 }, 30000);
-it('keeps missing, empty and same-height options byte-identical', async () => {
+it('keeps missing and empty options byte-identical but rejects a same-height hint for untouched native text', async () => {
   const { source, doc, object } = await fixture();
-  for (const options of [{}, { resize: new Map() }, { resize: {} }, { resize: { [object.id]: { height: object.geometry.height } } }]) {
+  for (const options of [{}, { resize: new Map() }, { resize: {} }]) {
     const result = await source.export(doc, options);
     expect(result.bytes).toEqual(native); expect(result.dirtyParts).toEqual([]);
   }
+  await expect(source.export(doc, { resize: { [object.id]: { height: object.geometry.height } } })).rejects.toThrow('Invalid resize measurement');
+  expect((await source.export(doc)).bytes).toEqual(native);
+  source.dispose();
+}, 30000);
+it('rejects resize hints for untouched native objects and preserves the original bytes without hints', async () => {
+  const { source, doc, object } = await fixture();
+  await expect(source.export(doc, { resize: { [object.id]: { height: 1905000 } } })).rejects.toThrow('Invalid resize measurement');
+  const result = await source.export(doc);
+  expect(result.bytes).toEqual(native); expect(result.dirtyParts).toEqual([]);
   source.dispose();
 }, 30000);
 it.each([0, -1, NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1, 952499])('rejects invalid or shrinking height %s', async height => {
@@ -105,7 +115,9 @@ it.each(['rotation', 'wrap', 'shape', 'group'])('rejects unsupported authored %s
   await expect(source.export(doc, { resize: { [object.id]: { height: 1905000 } } })).rejects.toThrow('Invalid resize measurement'); source.dispose();
 });
 it('snapshots a changing height getter once before the first await', async () => {
-  const { source, doc, object } = await fixture(); let reads = 0;
+  const { source, doc, object } = await fixture();
+  object.text.paragraphs[0].runs[0].text = 'Edited resize text';
+  let reads = 0;
   const value = { get height() { reads++; return reads === 1 ? 1905000 : -1; } };
   const promise = source.export(doc, { resize: new Map([[object.id, value]]) });
   expect(reads).toBe(1); object.geometry.height = 999999;
@@ -149,9 +161,11 @@ it('does not bypass signed-package restrictions with a measurement-only change',
 it('does not create an editor revision or undo entry', async () => {
   const { source } = await fixture();
   const editor = createEditor({ document: source.document, plugins: [documentPlugin, presentationPlugin] });
-  const before = editor.getSnapshot(), object = before.document.slides[0].objects[0];
+  const object = editor.getSnapshot().document.slides[0].objects[0];
+  editor.dispatch('document.setRunText', { runId: object.text.paragraphs[0].runs[0].id, text: 'Edited resize text' });
+  const before = editor.getSnapshot();
   await source.export(before.document, { resize: { [object.id]: { height: 1905000 } } });
-  expect(editor.getSnapshot()).toBe(before); expect(editor.getSnapshot().canUndo).toBe(false);
+  expect(editor.getSnapshot()).toBe(before); expect(editor.getSnapshot().canUndo).toBe(true);
   editor.dispose(); source.dispose();
 });
 it('preserves rotation zero and merges a native width/position edit', async () => {
@@ -210,7 +224,9 @@ it.each([
   const object = source.document.slides[0].objects[0];
   expect(object.extensions.pptxTextMetrics.supported).toBe(supported);
   expect((await source.export(source.document)).bytes).toEqual(bytes);
-  const promise = source.export(source.document, { resize: { [object.id]: { height: 1905000 } } });
+  const changed = structuredClone(source.document);
+  changed.slides[0].objects[0].text.paragraphs[0].runs[0].text = 'Edited native text';
+  const promise = source.export(changed, { resize: { [object.id]: { height: 1905000 } } });
   if (!supported) await expect(promise).rejects.toThrow('Invalid resize measurement');
   else {
     const reopened = await openPresentation((await promise).bytes, { format: 'pptx' });

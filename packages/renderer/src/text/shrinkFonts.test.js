@@ -30,7 +30,7 @@ it('does not wait for unrelated fonts when there is no eligible shrink text',asy
   vi.useFakeTimers();
   try {const fonts={status:'loading',check:vi.fn(),load:vi.fn(),ready:new Promise(()=>{})};
     let done=false;waitForShrinkFonts({slides:[]},{fonts}).then(value=>{done=value;});
-    await vi.advanceTimersByTimeAsync(0);expect(done).toEqual({status:'skipped',reason:'no-shrink'});expect(vi.getTimerCount()).toBe(0);expect(fonts.load).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(0);expect(done).toEqual({status:'skipped',reason:'no-shrink',count:0,reasons:{}});expect(vi.getTimerCount()).toBe(0);expect(fonts.load).not.toHaveBeenCalled();
   } finally {vi.useRealTimers();}
 });
 it('keeps missing-font precedence and converts collection errors into failed readiness',async()=>{

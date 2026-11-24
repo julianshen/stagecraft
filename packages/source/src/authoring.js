@@ -335,28 +335,18 @@ export async function prepareAuthoring(zip,xml,baseline,delta,getDoc,assets={get
             applyPptxParagraphFormat(node, paragraph.style ?? {}, style ?? {});
             mark(paragraph.source.part);
         }
-        // FU-AUTOFIT-MEASURE: native objects that need a stored shrink measurement but did not
-        // have a bodyLayout change get a synthetic patch so their normAutofit is updated.
+        // FU-AUTOFIT-MEASURE: source validation already applied the shared authored/changed-native
+        // predicate. Native shrink objects with a supplied fit need a synthetic body-layout patch.
         if (fitMap) {
-            // Build a Map once: sourceObjects is a generator and .find inside the loop would
-            // consume it, so only the first baseline object could ever map.
-            const snapshotObjects = new Map([...sourceObjects(snapshot)].map(o => [o.id, o]));
-            const changedNative = new Set([...(delta.geometries ?? []).map(g => g.object), ...(delta.fills ?? []).map(f => f.object), ...(delta.bodyLayouts ?? []).map(b => b.object)]);
             for (const baselineObject of sourceObjects(baseline)) {
                 if (!baselineObject.source || baselineObject.extensions?.stagecraftAuthored === true) continue;
-                const snapshotObject = snapshotObjects.get(baselineObject.id);
-                if (!snapshotObject) continue;
-                if (snapshotObject.bodyLayout?.autofit !== 'shrink') continue;
-                const fit = fitMap.get?.(snapshotObject.id) ?? fitMap[snapshotObject.id];
-                if (!fit) continue;
-                // Only apply fit to objects that changed (geometry/fill/bodyLayout/text) vs baseline.
-                const textChanged = !equal(baselineObject.text, snapshotObject.text);
-                if (!changedNative.has(baselineObject) && !textChanged) continue;
+                if (baselineObject.bodyLayout?.autofit !== 'shrink') continue;
+                if (!(fitMap.get?.(baselineObject.id) ?? fitMap[baselineObject.id])) continue;
                 // Only patch if not already covered by a bodyLayout change.
                 if ((delta.bodyLayouts ?? []).some(b => b.object === baselineObject)) continue;
                 delta.bodyLayouts = delta.bodyLayouts ?? [];
                 // Store fit separately from the layout patch so the layout patch logic is untouched.
-                delta.bodyLayouts.push({ object: baselineObject, before: baselineObject.bodyLayout, after: snapshotObject.bodyLayout, fit });
+                delta.bodyLayouts.push({ object: baselineObject, before: baselineObject.bodyLayout, after: baselineObject.bodyLayout, fit: fitMap.get?.(baselineObject.id) ?? fitMap[baselineObject.id] });
             }
         }
         for(const {object,before,after,fit:entryFit} of delta.bodyLayouts ?? []) {

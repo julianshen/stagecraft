@@ -1,17 +1,21 @@
-import { resizeIneligibility, resizedGeometry } from '@stagecraft/core/lib/resizeGeometry.js';
+import { autofitHintEligibility, resizeIneligibility, resizedGeometry } from '@stagecraft/core/lib/resizeGeometry.js';
 import { canvasFont } from '../canvas/paint.js';
 import { canonicalTextBody, themeForSlide } from './canonicalTextBody.js';
 import { layoutTextBody } from '../vendor/officeview/drawing/text-layout.ts';
 import { createTextBodyMeasurer } from '../vendor/officeview/drawing/text-paint.ts';
 import { fontsReady } from './fontReadiness.js';
 export const RESIZE_FIT_POLICY=Object.freeze({heightMargin:0.97});
-export function resizeCandidates(document) {
- const candidates=[];
+export function resizeCandidates(document,{baseline}={}) {
+ const candidates=[],originals=new Map();
+ const collect=objects=>{for(const object of objects??[]){originals.set(object.id,object);collect(object.children);}};
+ for(const owner of [...(baseline?.slides??[]),...(baseline?.layouts??[]),...(baseline?.masters??[])])collect(owner.objects);
  for(const slide of document.slides??[]) {
   const theme=themeForSlide(document,slide);
   const visit=(objects,nested=false)=>{for(const object of objects??[]) {
    if(object.bodyLayout?.autofit==='resize') {
-    let reason=document.extensions?.sourceFormat==='odp'?'not-pptx':nested?'grouped':resizeIneligibility(object,object.source?object:null,theme?.objectDefaults);
+    let reason=document.extensions?.sourceFormat==='odp'?'not-pptx'
+     :autofitHintEligibility(object,originals.get(object.id))
+     ??(nested?'grouped':resizeIneligibility(object,object.source?originals.get(object.id):null,theme?.objectDefaults));
     const adapted=reason?null:canonicalTextBody(object,theme);
     if(!reason&&!adapted)reason='unsupported-metrics';
     if(!reason&&!adapted.body.paragraphs.some(p=>p.runs.some(r=>r.text.trim())))reason='empty-text';
@@ -31,9 +35,9 @@ export function resizeFallback(document,status,reason,message) {
  } catch {status='failed';reason='error';message='Resize measurement failed.';}
  return {resize:new Map(),status,count:0,reason,...(message?{message}:{}),stats:{candidates:count,measured:0,skipped:status==='skipped'?count:0,failed:status==='failed'?count:0},reasons:count?{[reason]:count}:{}};
 }
-export function measureResizeFits(document,{fonts=globalThis.document?.fonts,canvas}={}) {
+export function measureResizeFits(document,{fonts=globalThis.document?.fonts,canvas,baseline}={}) {
  try {
-  const candidates=resizeCandidates(document), resize=new Map(), stats={candidates:candidates.length,measured:0,skipped:0,failed:0},reasons={};
+  const candidates=resizeCandidates(document,{baseline}), resize=new Map(), stats={candidates:candidates.length,measured:0,skipped:0,failed:0},reasons={};
   const record=(bucket,reason)=>{stats[bucket]++;if(reason)reasons[reason]=(reasons[reason]??0)+1;};
   let measure, canvasAttempted=false; const checked=new Set();
   for(const candidate of candidates) {

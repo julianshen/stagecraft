@@ -34,8 +34,16 @@ const SHRINK_SKIP_MESSAGES = {
   'canvas-unavailable': 'Text measurement is unavailable in this browser.',
   'unsupported-metrics': 'Some text layouts cannot be measured yet.',
 };
+const unchangedNativeCount = outcome => outcome?.reasons?.['unchanged-native']
+  ?? (outcome?.reason === 'unchanged-native' ? 1 : 0);
+function unchangedNativeMessage(shrinkFit, resizeFit) {
+  const count = unchangedNativeCount(shrinkFit) + unchangedNativeCount(resizeFit);
+  if (!count) return '';
+  return `${count} text ${count === 1 ? 'box' : 'boxes'} unchanged since import ${count === 1 ? 'was' : 'were'} left as PowerPoint saved ${count === 1 ? 'it' : 'them'}.`;
+}
 function shrinkFitMessage(shrinkFit) {
   if (!shrinkFit) return '';
+  if (shrinkFit.reason === 'unchanged-native') return '';
   if (shrinkFit.status === 'measured') return `Shrink-to-fit measured for ${shrinkFit.count} text ${shrinkFit.count === 1 ? 'box' : 'boxes'}.`;
   if (shrinkFit.status === 'failed') return `Shrink-to-fit measurement failed. Exported without measured fit.`;
   return `Shrink-to-fit skipped: ${SHRINK_SKIP_MESSAGES[shrinkFit.reason] ?? 'No measured fit was available.'}`;
@@ -43,6 +51,7 @@ function shrinkFitMessage(shrinkFit) {
 
 function resizeFitMessage(outcome) {
   if (!outcome) return '';
+  if (outcome.reason === 'unchanged-native') return '';
   const {status,count,reason,stats} = outcome;
   const partial = stats?.skipped ? ` ${stats.skipped} text ${stats.skipped === 1 ? 'box was' : 'boxes were'} skipped.` : '';
   if(status === 'failed') return `Resize measurement failed for ${stats?.failed ?? 0} text ${(stats?.failed ?? 0) === 1 ? 'box' : 'boxes'}. ${count} ${count === 1 ? 'box was' : 'boxes were'} sized for export.${partial}`;
@@ -137,7 +146,7 @@ export default function SourceWorkspace({ openSource = openPresentation, save = 
         <PresentationEditor source={resource.source} onExport={async (result, { revision, shrinkFit, resizeFit }) => {
           const request = generation.current;
           await save(result, { fileName: resource.fileName, format: resource.format, revision, ...(shrinkFit ? { shrinkFit } : {}), ...(resizeFit ? { resizeFit } : {}) });
-          if (mounted.current && !pending.current && active.current === resource && generation.current === request) setExportStatus([shrinkFitMessage(shrinkFit), resizeFitMessage(resizeFit)].filter(Boolean).join(' '));
+          if (mounted.current && !pending.current && active.current === resource && generation.current === request) setExportStatus([unchangedNativeMessage(shrinkFit, resizeFit), shrinkFitMessage(shrinkFit), resizeFitMessage(resizeFit)].filter(Boolean).join(' '));
         }} />
       </EditorProvider>
     </section> : <section className="source-empty">
