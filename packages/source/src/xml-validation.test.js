@@ -3,16 +3,16 @@ import JSZip from 'jszip';
 import { runtime, validText, xmlPart, resolvePptxTarget, path, locate, source, id } from './xml.js';
 
 it('rejects incomplete XML adapters and malformed adapter results',()=>{
-  expect(()=>runtime({parse:42,serialize:()=>''})).toThrow('runtime is required');
-  expect(()=>runtime({parse:()=>null,serialize:42})).toThrow('runtime is required');
+  expect(()=>runtime({parse:42,serialize:()=>''})).toThrow('runtime with parse()');
+  expect(()=>runtime({parse:()=>null,serialize:42})).toThrow('runtime with serialize()');
   const serialize=vi.fn();
   for(const parse of [()=>null,()=>({documentElement:{},doctype:{}}),()=>new DOMParser().parseFromString('<broken>','application/xml')])
-    expect(()=>runtime({parse,serialize}).parse('<root/>')).toThrow('Malformed XML');
+    expect(()=>runtime({parse,serialize}).parse('<root/>')).toThrow('Invalid XML');
   expect(serialize).not.toHaveBeenCalled();
 });
 it('blocks DTDs before invoking a host parser',()=>{
  const parse=vi.fn();const xml=runtime({parse,serialize:()=>''});
- for(const text of ['<!DOCTYPE a><a/>','<!ENTITY name "secret">'])expect(()=>xml.parse(text)).toThrow('DTD/entities unsupported');
+ for(const text of ['<!DOCTYPE a><a/>','<!ENTITY name "secret">'])expect(()=>xml.parse(text)).toThrow('DTD and entity declarations are unsupported');
  expect(parse).not.toHaveBeenCalled();
 });
 it('rejects missing XML parts before parsing',async()=>{

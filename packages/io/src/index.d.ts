@@ -1,4 +1,6 @@
 export type ByteSource = Uint8Array | ArrayBuffer | Blob;
+export interface XmlRuntime { parse(text: string): Document; serialize?(document: Document): string }
+export interface SafeXmlRuntime extends XmlRuntime {}
 export interface Diagnostic { code: string; message: string; severity: 'info' | 'warning' | 'error'; [key: string]: unknown }
 export interface FormatAdapter<Document = unknown, Options extends object = Record<string, unknown>> {
   readonly id: string;
@@ -11,6 +13,8 @@ export interface Metadata { format: string; mimeType: string; byteLength: number
 export interface ExportMetadata extends Metadata { fileName: string }
 export interface ByteOptions { maxBytes?: number; signal?: AbortSignal }
 export const DEFAULT_MAX_BYTES: number;
+export function safeXmlParse(text: string, runtime?: XmlRuntime): Document;
+export function createSafeXmlRuntime(runtime?: XmlRuntime): SafeXmlRuntime;
 export function throwIfAborted(signal?: AbortSignal): void;
 export function byteLimit(value: number, name?: string): number;
 export function readBytes(source: ByteSource, options?: ByteOptions): Promise<Uint8Array>;

@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { byteLimit, readBytes, throwIfAborted } from './index.js';
+import { rejectXmlDeclarations as rejectXmlTextDeclarations } from './xml.js';
 
 export const DEFAULT_ZIP_LIMITS = Object.freeze({ maxEntries: 10000, maxEntryBytes: 32 * 1024 * 1024, maxExpandedBytes: 256 * 1024 * 1024 });
 
@@ -78,10 +79,9 @@ function inspectDirectory(bytes, maxEntries) {
 }
 
 /** Reject declarations before an XML parser sees them, including UTF-16/32 forms. */
-export function rejectXmlDeclarations(bytes, name = 'XML') {
+export function rejectXmlDeclarations(bytes) {
   // ASCII declarations remain detectable after removing interleaved NUL bytes.
-  const text = new TextDecoder().decode(bytes).replace(/\0/g, '');
-  if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(text)) throw new Error(`${name}: DTD and entity declarations are unsupported`);
+  rejectXmlTextDeclarations(new TextDecoder().decode(bytes));
 }
 
 function zipLimits({ maxEntries = DEFAULT_ZIP_LIMITS.maxEntries, maxEntryBytes = DEFAULT_ZIP_LIMITS.maxEntryBytes,
@@ -138,7 +138,7 @@ export async function inspectZip(source, options = {}) {
     expandedBytes += data.byteLength;
     maxActualEntryBytes = Math.max(maxActualEntryBytes, data.byteLength);
     if (data.byteLength > maxEntryBytes || expandedBytes > maxExpandedBytes) throw new RangeError('ZIP inflated size exceeds expanded limits');
-    if (/\.(xml|rels)$/i.test(entry.name)) rejectXmlDeclarations(data, entry.name);
+    if (/\.(xml|rels)$/i.test(entry.name)) rejectXmlDeclarations(data);
   }
   return { zip, entryCount: entries.length, expandedBytes, byteLength: bytes.byteLength,
     checkLimits: cachedLimitCheck(entries.length, declaredBytes, maxDeclaredEntryBytes, expandedBytes, maxActualEntryBytes) };
