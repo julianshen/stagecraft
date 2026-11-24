@@ -1288,6 +1288,8 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
         expect.objectContaining({ requested: 'konva', active: 'svg', status: 'fallback', reason: 'unsupported-embedding' }),
       );
     });
+    expect(shapeNode.isDragging()).toBe(false);
+    expect(shapeNode.x()).toBe(initialX);
 
     // Release pointer after fallback; late mouseup/dragend must be inert
     act(() => {
@@ -1297,5 +1299,41 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
     });
     expect(dispatchCount).toBe(0);
     expect(editor.getSnapshot().document.slides[0].objects[0].geometry.x).toBe(72 * PT);
+  });
+
+  it('N4: disconnects embedding observers on owner change and unmount without leaking', async () => {
+    const mutationDisconnectSpy = vi.spyOn(MutationObserver.prototype, 'disconnect');
+    const resizeDisconnectSpy = vi.spyOn(ResizeObserver.prototype, 'disconnect');
+    try {
+      const editor1 = makeEditor([makeRect('r1')]);
+      const editor2 = makeEditor([makeRect('r2')]);
+      const { container, rerender, unmount } = render(
+        <EditorProvider editor={editor1}>
+          <PresentationEditor surface="konva" />
+        </EditorProvider>,
+      );
+      await waitForKonvaCanvas(container);
+      const mutDisconnectsBeforeSwap = mutationDisconnectSpy.mock.calls.length;
+      const resDisconnectsBeforeSwap = resizeDisconnectSpy.mock.calls.length;
+
+      // Owner change must disconnect previous observers before attaching new ones
+      rerender(
+        <EditorProvider editor={editor2}>
+          <PresentationEditor surface="konva" />
+        </EditorProvider>,
+      );
+      await waitForKonvaCanvas(container);
+      expect(mutationDisconnectSpy.mock.calls.length).toBeGreaterThan(mutDisconnectsBeforeSwap);
+      expect(resizeDisconnectSpy.mock.calls.length).toBeGreaterThan(resDisconnectsBeforeSwap);
+
+      const mutDisconnectsBeforeUnmount = mutationDisconnectSpy.mock.calls.length;
+      const resDisconnectsBeforeUnmount = resizeDisconnectSpy.mock.calls.length;
+      unmount();
+      expect(mutationDisconnectSpy.mock.calls.length).toBeGreaterThan(mutDisconnectsBeforeUnmount);
+      expect(resizeDisconnectSpy.mock.calls.length).toBeGreaterThan(resDisconnectsBeforeUnmount);
+    } finally {
+      mutationDisconnectSpy.mockRestore();
+      resizeDisconnectSpy.mockRestore();
+    }
   });
 });
