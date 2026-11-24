@@ -146,6 +146,18 @@ describe('canonical document', () => {
     changed.slides[0].background = { type: 'solid', color: '#445566' };
     expect(toLegacyDeck(changed).deck.slides[0].bgColor).toBe('#445566');
   });
+  it('preserves valid legacy-only properties from older migrations through unrelated edits', () => {
+    const notes = 'Legacy-only note', bgColor = '#112233';
+    const { document } = migrateLegacyDeck({ slides: [{ id: 's', layout: 'blank', notes, bgColor, elements: [] }] });
+    delete document.slides[0].notes;
+    delete document.slides[0].background;
+    delete document.extensions.legacy.baseline.slides[0].notes;
+    delete document.extensions.legacy.baseline.slides[0].background;
+    document.slides[0].name = 'Unrelated edit';
+    const projected = toLegacyDeck(document).deck.slides[0];
+    expect(projected.notes).toBe(notes);
+    expect(projected.bgColor).toBe(bgColor);
+  });
   it('projects authored canonical notes/background and migrates them back', () => {
     const document = createDocument({ slides: [{ id: 's', objects: [], notes: 'Authored note', background: { type: 'solid', color: '#778899' } }] });
     const legacy = toLegacyDeck(document).deck;

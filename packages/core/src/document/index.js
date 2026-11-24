@@ -325,6 +325,7 @@ export function toLegacyDeck(document) {
   validateDocument(document);
   const d = copy(document), diagnostics = [];
   const original = d.extensions.legacy;
+  const baselineSlides = new Map((Array.isArray(original?.baseline?.slides) ? original.baseline.slides : []).map(slide => [slide.id, slide]));
   if (record(original) && record(original.deck) && jsonEqual(original.baseline, baseView(d)))
     return {
       deck: copy(original.deck),
@@ -383,21 +384,19 @@ export function toLegacyDeck(document) {
     return [el];
   };
   deck.slides = d.slides.map(slide => {
-    const legacy = slide.extensions?.legacy;
+    const legacy = slide.extensions?.legacy, baselineSlide = baselineSlides.get(slide.id);
     const projected = copy(legacy ?? { layout: 'blank' });
     delete projected.title;
     if (slide.name !== undefined)
       projected.title = slide.name;
     projected.id = legacy?.id ?? slide.id;
     projected.elements = slide.objects.flatMap(project);
-    const retainedNotesMappable = !record(legacy) || typeof legacy.notes !== 'string' || xmlValidText(legacy.notes);
     if (slide.notes !== undefined) projected.notes = slide.notes;
-    else if (retainedNotesMappable) delete projected.notes;
-    const retainedBackgroundMappable = !record(legacy) || typeof legacy.bgColor !== 'string' || /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(legacy.bgColor);
+    else if (baselineSlide && Object.hasOwn(baselineSlide, 'notes')) delete projected.notes;
     if (slide.background?.type === 'solid' && /^#[0-9a-f]{6}$/i.test(slide.background.color))
       projected.bgColor = slide.background.color;
     else {
-      if (retainedBackgroundMappable) delete projected.bgColor;
+      if (baselineSlide && Object.hasOwn(baselineSlide, 'background')) delete projected.bgColor;
       if (slide.background !== undefined)
         diagnostics.push(diagnostic('UNSUPPORTED_SLIDE_BACKGROUND', 'Legacy projection omits an unsupported slide background.', slide.id));
     }
@@ -1281,10 +1280,12 @@ export const presentationPlugin = Object.freeze({
         else slide.name = properties.name;
       }
       if (properties.background !== undefined) {
+        if (record(slide.extensions?.legacy)) delete slide.extensions.legacy.bgColor;
         if (properties.background === null) delete slide.background;
         else slide.background = { type: 'solid', color: properties.background.color };
       }
       if (properties.notes !== undefined) {
+        if (record(slide.extensions?.legacy)) delete slide.extensions.legacy.notes;
         if (properties.notes === null || properties.notes === '') delete slide.notes;
         else slide.notes = properties.notes;
       }
