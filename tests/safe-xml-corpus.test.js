@@ -57,3 +57,15 @@ describe.each(cases)('%s', (_label, malicious, message, parses) => {
     else expect(parse).not.toHaveBeenCalled();
   });
 });
+
+class MethodRuntime {
+  constructor() { this.parseCalls = 0; this.serializeCalls = 0; }
+  parse(text) { this.parseCalls++; return new DOMParser().parseFromString(text, 'application/xml'); }
+  serialize(document) { this.serializeCalls++; return new XMLSerializer().serializeToString(document); }
+}
+
+it.each(entrypoints)('preserves a method-based runtime receiver through $name', async entry => {
+  const xml = new MethodRuntime();
+  await entry.run(templates.get(entry.format), xml);
+  expect(xml.parseCalls).toBeGreaterThan(0);
+});

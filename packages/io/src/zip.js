@@ -79,7 +79,7 @@ function inspectDirectory(bytes, maxEntries) {
 }
 
 /** Reject declarations before an XML parser sees them, including UTF-16/32 forms. */
-export function rejectXmlDeclarations(bytes, _name = 'XML') {
+export function rejectXmlDeclarations(bytes) {
   // ASCII declarations remain detectable after removing interleaved NUL bytes.
   rejectXmlTextDeclarations(new TextDecoder().decode(bytes));
 }
@@ -138,7 +138,7 @@ export async function inspectZip(source, options = {}) {
     expandedBytes += data.byteLength;
     maxActualEntryBytes = Math.max(maxActualEntryBytes, data.byteLength);
     if (data.byteLength > maxEntryBytes || expandedBytes > maxExpandedBytes) throw new RangeError('ZIP inflated size exceeds expanded limits');
-    if (/\.(xml|rels)$/i.test(entry.name)) rejectXmlDeclarations(data, entry.name);
+    if (/\.(xml|rels)$/i.test(entry.name)) rejectXmlDeclarations(data);
   }
   return { zip, entryCount: entries.length, expandedBytes, byteLength: bytes.byteLength,
     checkLimits: cachedLimitCheck(entries.length, declaredBytes, maxDeclaredEntryBytes, expandedBytes, maxActualEntryBytes) };

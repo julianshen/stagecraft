@@ -7,8 +7,9 @@ export function rejectXmlDeclarations(text) {
 }
 
 function parseImplementation(runtime) {
-  const parse = runtime?.parse ?? (typeof globalThis.DOMParser === 'function'
-    ? text => new globalThis.DOMParser().parseFromString(text, 'application/xml') : undefined);
+  const parse = runtime?.parse == null ? (typeof globalThis.DOMParser === 'function'
+    ? text => new globalThis.DOMParser().parseFromString(text, 'application/xml') : undefined)
+    : typeof runtime.parse === 'function' ? text => runtime.parse(text) : runtime.parse;
   if (typeof parse !== 'function') throw new Error('An XML runtime with parse() is required outside the browser');
   return parse;
 }
@@ -31,8 +32,9 @@ export function safeXmlParse(text, runtime) {
 /** Resolve an injected or browser DOM once; serialization remains optional for parse-only hosts. */
 export function createSafeXmlRuntime(runtime) {
   const parse = parseImplementation(runtime);
-  const serialize = runtime?.serialize ?? (typeof globalThis.XMLSerializer === 'function'
-    ? document => new globalThis.XMLSerializer().serializeToString(document) : undefined);
+  const serialize = runtime?.serialize == null ? (typeof globalThis.XMLSerializer === 'function'
+    ? document => new globalThis.XMLSerializer().serializeToString(document) : undefined)
+    : typeof runtime.serialize === 'function' ? document => runtime.serialize(document) : runtime.serialize;
   if (serialize !== undefined && typeof serialize !== 'function')
     throw new Error('An XML runtime with serialize() is required outside the browser');
   return { parse: text => safeXmlParse(text, { parse }), ...(serialize ? { serialize } : {}) };

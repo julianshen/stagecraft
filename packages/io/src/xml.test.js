@@ -59,6 +59,19 @@ describe('safe XML gate', () => {
     expect(parse).toHaveBeenCalledWith(text);
   });
 
+  it('preserves the receiver of method-based parse and serialize implementations', () => {
+    class Runtime {
+      constructor() { this.parseCalls = 0; this.serializeCalls = 0; }
+      parse() { this.parseCalls++; return { documentElement: {}, getElementsByTagName: () => [], getElementsByTagNameNS: () => [] }; }
+      serialize() { this.serializeCalls++; return '<root/>'; }
+    }
+    const host = new Runtime(), runtime = createSafeXmlRuntime(host);
+    const document = runtime.parse('<root/>');
+    expect(runtime.serialize(document)).toContain('<root/>');
+    expect(host.parseCalls).toBe(1);
+    expect(host.serializeCalls).toBe(1);
+  });
+
   it('creates a runtime with an optional serializer and fixed missing-runtime errors', () => {
     const parse = vi.fn(() => ({ documentElement: {}, getElementsByTagName: () => [], getElementsByTagNameNS: () => [] }));
     const serialize = vi.fn(() => '<root/>');
