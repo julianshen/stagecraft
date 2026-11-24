@@ -66,6 +66,7 @@ export default function SourceWorkspace({ openSource = openPresentation, save = 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [exportStatus, setExportStatus] = useState('');
+  const [canvasSurface, setCanvasSurface] = useState(false);
   const active = useRef(null);
   const pending = useRef(null);
   const generation = useRef(0);
@@ -108,6 +109,7 @@ export default function SourceWorkspace({ openSource = openPresentation, save = 
       active.current = next;
       setResource(next);
       setExportStatus('');
+      setCanvasSurface(false);
       previous?.source.dispose();
       previous?.editor.dispose();
     } catch (cause) {
@@ -140,10 +142,17 @@ export default function SourceWorkspace({ openSource = openPresentation, save = 
     {loading && <p role="status">Opening presentation…</p>}
     {error && <p role="alert">{error}</p>}
     {resource ? <section aria-label={resource.fileName}>
-      <p className="source-file-name">{resource.fileName} · Local file · Export creates a copy</p>
+      <p className="source-file-name">
+        {resource.fileName} · Local file · Export creates a copy
+        {' · '}
+        <label className="source-surface-toggle">
+          <input type="checkbox" aria-label="Canvas view" checked={canvasSurface} onChange={e => setCanvasSurface(e.target.checked)} />
+          Canvas view
+        </label>
+      </p>
       {exportStatus && <p role="status" aria-label="Export result">{exportStatus}</p>}
       <EditorProvider key={resource.id} editor={resource.editor}>
-        <PresentationEditor source={resource.source} onExport={async (result, { revision, shrinkFit, resizeFit }) => {
+        <PresentationEditor source={resource.source} surface={canvasSurface ? 'konva' : 'svg'} onExport={async (result, { revision, shrinkFit, resizeFit }) => {
           const request = generation.current;
           await save(result, { fileName: resource.fileName, format: resource.format, revision, ...(shrinkFit ? { shrinkFit } : {}), ...(resizeFit ? { resizeFit } : {}) });
           if (mounted.current && !pending.current && active.current === resource && generation.current === request) setExportStatus([unchangedNativeMessage(shrinkFit, resizeFit), shrinkFitMessage(shrinkFit), resizeFitMessage(resizeFit)].filter(Boolean).join(' '));

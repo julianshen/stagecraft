@@ -120,6 +120,12 @@ Canvas keyboard shortcuts are scoped to its focused region:
 
 Inputs, textareas, selects, and editable content do not invoke canvas editing shortcuts. Screen coordinates are converted to canonical EMU; 1pt is 12700 EMU. Zoom changes display scale only. Group-transformed or otherwise ineligible imported geometry is not editable through these controls.
 
+#### Opt-in canvas view (`surface="konva"`)
+
+`PresentationEditor` and `PresentationCanvas` accept optional `surface?: 'svg' | 'konva'` (default `'svg'`) and `onSurfaceChange?: (outcome: PresentationSurfaceOutcome) => void`. `@stagecraft/react/konva` exports `KonvaPresentationCanvas`, which requests `surface="konva"` through the same boundary. Konva/React-Konva modules are loaded lazily only when canvas view is active; SSR and default SVG renders never load Konva.
+
+When a slide cannot be painted in canvas view (ODP, non-canonical decks, active `objectRenderers` plugins, unsupported outer CSS transforms, inherited layout/master backgrounds, native object styling, unsupported content such as images/tables/charts/groups, invalid geometry, or unavailable fonts/canvas), the whole active slide falls back to the standard view with a user-facing banner (`Showing the standard view: ...`). On `inherited-appearance` due to an inherited background, a writable host offers a one-click `Use a white background` button that commits `{ background: { type: 'solid', color: '#ffffff' } }`. While canvas view is active, `Switch to standard view` / `Return to canvas view` provides an instance-local override, and text double-click/Enter focuses the inspector controls.
+
 ### AttributePanel
 
 Requires a presentation provider. The panel is inspectable in read-only mode. With no object selected, it shows a selection prompt and supported slide properties.

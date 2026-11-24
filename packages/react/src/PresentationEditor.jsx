@@ -1,9 +1,16 @@
 import { AUTHORED_TEXT_COLOR } from '@stagecraft/core/lib/authoredText.js';
 import { measureShrinkFits, measureResizeFits, resizeFallback, waitForAutofitFonts } from '@stagecraft/renderer';
-import { createContext, useContext, useEffect, useLayoutEffect, useId, useRef, useState } from 'react';
+import { buildCanonicalScene, waitForCanonicalFonts } from '@stagecraft/renderer/canonical';
+import { createContext, useContext, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { useEditor, useEditorSnapshot } from './EditorProvider.jsx';
 import { runStyle, RunFormatControls, formatFontSlotDisplay } from './CanonicalEditorSurface.jsx';
 import { PresentationChart } from './PresentationChart.jsx';
+import {
+  computeSurfaceDecision,
+  hasNonEmptyObjectRenderers,
+  isUnsupportedCssTransform,
+  surfaceMessageForReason,
+} from './konva/surfaceDecision.js';
 import {
   usePresentationPlugins,
   mergePlugins,
@@ -968,12 +975,153 @@ export function SlideList({
 }
 export function PresentationCanvas({
   className = '',
-  style
+  style,
+  surface = 'svg',
+  onSurfaceChange,
 }) {
   const ui = usePresentationEditor(),
     gesture = useRef(null),
     [preview, setPreview] = useState(null),
-    [inlineEdit, setInlineEdit] = useState(null);
+    [inlineEdit, setInlineEdit] = useState(null),
+    [svgOverride, setSvgOverride] = useState(false),
+    [KonvaShell, setKonvaShell] = useState(null),
+    [konvaLoadError, setKonvaLoadError] = useState(false),
+    [konvaRenderError, setKonvaRenderError] = useState(false),
+    [fontState, setFontState] = useState({ key: null, status: 'loading', epoch: 0 }),
+    [outerTransformUnsupported, setOuterTransformUnsupported] = useState(false),
+    [surfaceNotice, setSurfaceNotice] = useState(''),
+    lastOutcomeRef = useRef(null);
+
+  const canMoveGeometry = ui.can('object-geometry');
+  const ownerKey = useMemo(() => ({}), [ui.editor, ui.source]);
+  const policyKey = useMemo(() => ({}), [ui.readOnly, ui.source, canMoveGeometry]);
+
+  useEffect(() => {
+    setSvgOverride(false);
+    setKonvaLoadError(false);
+    setKonvaRenderError(false);
+    setSurfaceNotice('');
+  }, [surface, ui.editor, ui.source]);
+
+  useEffect(() => {
+    setKonvaRenderError(false);
+    setSurfaceNotice('');
+  }, [ui.activeSlide?.id, ui.snapshot.revision]);
+
+  const wantsKonva = surface === 'konva' && !svgOverride;
+  const isOdpDoc = ui.snapshot.document?.extensions?.sourceFormat === 'odp';
+  const sceneResult = useMemo(() => {
+    if (!wantsKonva || !ui.canonical || isOdpDoc || !ui.activeSlide) return null;
+    return buildCanonicalScene(ui.snapshot.document, ui.activeSlide.id);
+  }, [wantsKonva, ui.canonical, isOdpDoc, ui.snapshot.document, ui.activeSlide]);
+
+  useEffect(() => {
+    if (!wantsKonva || !ui.canvasRef.current || typeof getComputedStyle !== 'function') {
+      setOuterTransformUnsupported(prev => (prev ? false : prev));
+      return;
+    }
+    let unsupported = false;
+    for (let el = ui.canvasRef.current; el && el.nodeType === 1; el = el.parentElement) {
+      if (isUnsupportedCssTransform(getComputedStyle(el).transform)) {
+        unsupported = true;
+        break;
+      }
+    }
+    setOuterTransformUnsupported(prev => (prev === unsupported ? prev : unsupported));
+  });
+
+  const pluginsHaveObjectRenderers = hasNonEmptyObjectRenderers(ui.plugins);
+  const canAttemptKonva = wantsKonva && sceneResult?.status === 'ready' && !pluginsHaveObjectRenderers && !outerTransformUnsupported;
+
+  useEffect(() => {
+    if (!canAttemptKonva || KonvaShell || konvaLoadError) return;
+    let cancelled = false;
+    import('./konva/KonvaSurfaceShell.jsx')
+      .then(mod => {
+        if (!cancelled) setKonvaShell(() => mod.default);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setKonvaLoadError(true);
+          ui.reportError(new Error('Canvas surface failed to load.'));
+        }
+      });
+    return () => { cancelled = true; };
+  }, [canAttemptKonva, KonvaShell, konvaLoadError]);
+
+  const sceneFontKey = canAttemptKonva ? `${ui.activeSlide?.id}:${ui.snapshot.revision}` : null;
+  useEffect(() => {
+    if (!canAttemptKonva || !sceneResult?.scene) return;
+    let cancelled = false;
+    const hasCanvas = typeof document !== 'undefined' && Boolean(document.createElement('canvas')?.getContext?.('2d'));
+    if (!hasCanvas) {
+      setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, status: 'canvas-unavailable', epoch: prev.epoch }));
+      return;
+    }
+    const fonts = globalThis.document?.fonts;
+    waitForCanonicalFonts(sceneResult.scene, { fonts })
+      .then(res => {
+        if (cancelled) return;
+        if (res.status === 'ready') {
+          setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, status: 'ready', epoch: prev.epoch + 1 }));
+        } else if (res.status === 'skipped') {
+          setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, status: res.reason, epoch: prev.epoch }));
+        } else {
+          setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, status: 'canvas-unavailable', epoch: prev.epoch }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, status: 'fonts-unavailable', epoch: prev.epoch }));
+      });
+    return () => { cancelled = true; };
+  }, [canAttemptKonva, sceneResult, sceneFontKey, ownerKey]);
+
+  const sameSlideReady = fontState.status === 'ready' && fontState.slideId === ui.activeSlide?.id && fontState.owner === ownerKey;
+  const currentFontStatus = fontState.key === sceneFontKey ? fontState.status : (sameSlideReady ? 'ready' : 'loading');
+  const decision = computeSurfaceDecision({
+    requested: surface,
+    svgOverride,
+    canonical: ui.canonical,
+    document: ui.snapshot.document,
+    activeSlide: ui.activeSlide,
+    plugins: ui.plugins,
+    outerTransformUnsupported,
+    sceneResult,
+    moduleLoaded: Boolean(KonvaShell),
+    fontStatus: currentFontStatus,
+    loadError: konvaLoadError,
+    renderError: konvaRenderError,
+  });
+
+  const outcome = {
+    requested: surface,
+    active: decision.active,
+    status: decision.status,
+    ...(decision.reason ? { reason: decision.reason } : {}),
+    slideId: ui.activeSlide?.id ?? null,
+    revision: ui.snapshot.revision,
+  };
+
+  useEffect(() => {
+    const prev = lastOutcomeRef.current;
+    if (
+      prev
+      && prev.requested === outcome.requested
+      && prev.active === outcome.active
+      && prev.status === outcome.status
+      && prev.reason === outcome.reason
+      && prev.slideId === outcome.slideId
+      && prev.revision === outcome.revision
+    ) {
+      return;
+    }
+    lastOutcomeRef.current = outcome;
+    try {
+      onSurfaceChange?.(outcome);
+    } catch (err) {
+      ui.reportError(err);
+    }
+  });
   function startInlineEdit(object, run) {
     if (!ui.can('existing-run-text') || !object || !run || run.editable === false) return;
     cancel();
@@ -1119,11 +1267,64 @@ export function PresentationCanvas({
       });
     }
   }
+  const konvaActive = decision.active === 'konva' && KonvaShell && sceneResult?.status === 'ready';
+  const showFallbackNotice = surface === 'konva' && !svgOverride && decision.status === 'fallback' && decision.reason;
+  const canSetWhiteBg = decision.reason === 'inherited-appearance'
+    && sceneResult?.diagnostics?.every(d => d.code === 'inherited-background')
+    && ui.activeSlide && ui.can('slide-properties') && ui.hasCommand('presentation.setSlideProperties');
+
+  function handleRequestTextEdit(objectId) {
+    ui.selectObject(objectId);
+    setSurfaceNotice('Text editing is available in the inspector or via Switch to standard view.');
+    requestAnimationFrame(() => {
+      const panel = ui.canvasRef.current?.closest('.stagecraft-presentation')?.querySelector('.stagecraft-presentation-attributes');
+      const target = panel?.querySelector('input:not([disabled]), textarea:not([disabled]), select:not([disabled])');
+      target?.focus();
+    });
+  }
+
   return <section ref={ui.canvasRef} aria-label="Slide canvas" tabIndex="0" className={`stagecraft-presentation-canvas ${className}`} style={style} onKeyDown={keyboard} onPointerMove={move} onPointerUp={finish} onPointerCancel={cancel} onLostPointerCapture={cancel}>
-    {!ui.canonical ? <p role="alert">PresentationEditor requires a canonical v1 document (schemaVersion 1, emu units).</p> : ui.activeSlide ? <div className="stagecraft-presentation-paper" style={{
+    {!ui.canonical ? <p role="alert">PresentationEditor requires a canonical v1 document (schemaVersion 1, emu units).</p> : !ui.activeSlide ? <p>No slides. Add a slide to begin.</p> : konvaActive ? (
+      <KonvaShell
+        scene={sceneResult.scene}
+        revision={ui.snapshot.revision}
+        ownerKey={ownerKey}
+        policyKey={policyKey}
+        selectionId={ui.selection.objectId}
+        zoom={ui.zoom}
+        readOnly={ui.readOnly}
+        canMove={node => ui.can('object-geometry') && geometryEligible(node)}
+        fontEpochBump={fontState.epoch}
+        onSelect={ui.selectObject}
+        onMove={({ slideId, objectId, geometry, expectedRevision }) => ui.setGeometry(geometry, expectedRevision, objectId, slideId)}
+        onRequestTextEdit={handleRequestTextEdit}
+        onUseSvg={() => setSvgOverride(true)}
+        onRenderError={() => {
+          setKonvaRenderError(true);
+          ui.reportError(new Error('Canvas view failed to render.'));
+        }}
+        onError={ui.reportError}
+      />
+    ) : <div className="stagecraft-presentation-paper" style={{
       width: `${960 * ui.zoom / 100}px`,
       ...(slideBackground(ui.activeSlide) ? { background: slideBackground(ui.activeSlide) } : {})
-    }}><Artwork slide={ui.activeSlide} size={ui.snapshot.document.size} selectedId={ui.selection.objectId} preview={preview} editorCtx={ui} inlineEdit={inlineEdit} onStartInlineEdit={ui.can('existing-run-text') ? startInlineEdit : undefined} onInlineDraftChange={draft => setInlineEdit(prev => (prev ? { ...prev, draft } : prev))} onInlineCommit={commitInlineEdit} onInlineCancel={cancelInlineEdit} onSelect={ui.selectObject} onPointerDown={start} onResize={ui.can('object-geometry') ? (event, object) => start(event, object, true) : undefined} /></div> : <p>No slides. Add a slide to begin.</p>}
+    }}><Artwork slide={ui.activeSlide} size={ui.snapshot.document.size} selectedId={ui.selection.objectId} preview={preview} editorCtx={ui} inlineEdit={inlineEdit} onStartInlineEdit={ui.can('existing-run-text') ? startInlineEdit : undefined} onInlineDraftChange={draft => setInlineEdit(prev => (prev ? { ...prev, draft } : prev))} onInlineCommit={commitInlineEdit} onInlineCancel={cancelInlineEdit} onSelect={ui.selectObject} onPointerDown={start} onResize={ui.can('object-geometry') ? (event, object) => start(event, object, true) : undefined} /></div>}
+    {surface === 'konva' && svgOverride && (
+      <div className="stagecraft-konva-fallback-bar">
+        <button type="button" onClick={() => setSvgOverride(false)}>Return to canvas view</button>
+      </div>
+    )}
+    {showFallbackNotice && (
+      <div className="stagecraft-konva-fallback-bar">
+        <p role="status">{surfaceMessageForReason(decision.reason)}</p>
+        {canSetWhiteBg && (
+          <button type="button" onClick={() => ui.setSlideProperties({ background: { type: 'solid', color: '#ffffff' } }, ui.activeSlide.id)}>
+            Use a white background
+          </button>
+        )}
+      </div>
+    )}
+    {surfaceNotice && <p role="status">{surfaceNotice}</p>}
     {ui.source && <p className="stagecraft-presentation-notice">Simplified preview: native themes, masters, assets and group transforms may not be shown. This is not an Office fidelity preview.</p>}
     {ui.error && <p role="alert">{ui.error}</p>}{ui.exportedRevision !== null && <p role="status">Exported revision {ui.exportedRevision}</p>}
   </section>;
@@ -2310,9 +2511,11 @@ export function PresentationEditor({
   activeDeckId,
   onDeckSelect,
   renderToolbar,
+  surface = 'svg',
+  onSurfaceChange,
   className = '',
   style,
   ...providerProps
 }) {
-  return <PresentationEditorProvider {...providerProps}><section aria-label="Presentation editor" className={`stagecraft-presentation ${className}`} style={style}>{showToolbar && (renderToolbar ? renderToolbar() : <PresentationToolbar />)}<div className="stagecraft-presentation-workspace">{showDeckList && <DeckList items={decks} activeId={activeDeckId} onSelect={onDeckSelect} />} {showSlideList && <SlideList />}<PresentationCanvas />{showAttributePanel && <AttributePanel />}</div>{showNotesPanel && <NotesPanel />}</section></PresentationEditorProvider>;
+  return <PresentationEditorProvider {...providerProps}><section aria-label="Presentation editor" className={`stagecraft-presentation ${className}`} style={style}>{showToolbar && (renderToolbar ? renderToolbar() : <PresentationToolbar />)}<div className="stagecraft-presentation-workspace">{showDeckList && <DeckList items={decks} activeId={activeDeckId} onSelect={onDeckSelect} />} {showSlideList && <SlideList />}<PresentationCanvas surface={surface} onSurfaceChange={onSurfaceChange} />{showAttributePanel && <AttributePanel />}</div>{showNotesPanel && <NotesPanel />}</section></PresentationEditorProvider>;
 }
