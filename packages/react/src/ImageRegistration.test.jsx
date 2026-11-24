@@ -58,6 +58,8 @@ it('never rolls back committed bytes when a post-commit callback throws', async 
   expect(handle.release).not.toHaveBeenCalled();
   expect(editor.getSnapshot().document.slides[0].objects.some(o => o.type === 'image')).toBe(true);
   expect(screen.getByRole('alert')).toHaveTextContent('IMAGE_COMMIT_FAILED');
+  expect(screen.getByRole('alert')).toHaveTextContent('Warning: Image inserted.');
+  expect(editor.getSnapshot().revision).toBe(1);
 });
 
 it('reports the original denial, not a rollback failure, when the source cannot release', async () => {

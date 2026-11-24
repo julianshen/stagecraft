@@ -323,7 +323,7 @@ export function PresentationEditorProvider({
       }, 'object-image');
       if (ok) {
         commandSucceeded = true;
-        try { registration.commit?.(); } catch (cause) { reportSecondaryError('IMAGE_COMMIT_FAILED', cause); }
+        try { registration.commit?.(); } catch (cause) { reportSecondaryError('Warning: Image inserted. IMAGE_COMMIT_FAILED', cause); }
         if (slideId === activeSlide?.id) selectObjectAfterInsert(id);
       }
       return ok;
