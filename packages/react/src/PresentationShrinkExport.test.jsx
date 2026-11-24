@@ -29,7 +29,7 @@ it('passes a fit Map measured from exactly the exported snapshot', async()=>{
   expect(measureShrinkFits).toHaveBeenCalledWith(captured,{fonts});
   expect(source.export).toHaveBeenCalledWith(captured,{fit});
   expect(source.export.mock.calls[0][0]).toBe(measureShrinkFits.mock.calls[0][0]);
-  expect(onExport).toHaveBeenCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'measured',count:1}});
+  expect(onExport).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({revision:0,shrinkFit:{status:'measured',count:1}}));
 });
 it.each([{readOnly:true},{sourceReadOnly:true},{edits:[]},{format:'odp'},{format:'unknown'}])('exports without fit when measurement is not permitted: %j',async options=>{
   const {editor,source,onExport}=mount(options);
@@ -37,7 +37,7 @@ it.each([{readOnly:true},{sourceReadOnly:true},{edits:[]},{format:'odp'},{format
   expect(measureShrinkFits).not.toHaveBeenCalled();expect(fonts.load).not.toHaveBeenCalled();
   expect(source.export).toHaveBeenCalledWith(editor.getSnapshot().document);
   const reason=options.format?'not-pptx':options.edits?'no-capability':'locked';
-  expect(onExport).toHaveBeenCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'skipped',reason,count:0}});
+  expect(onExport).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({revision:0,shrinkFit:{status:'skipped',reason,count:0}}));
 });
 it('keeps edits made during font loading out of measurement and export',async()=>{
   const pending=deferred();fonts.status='loading';fonts.check.mockReturnValue(false);fonts.load.mockReturnValue(pending.promise);
@@ -56,7 +56,7 @@ it('exports without fit after a font-readiness timeout and ignores late completi
   await act(async()=>fireEvent.click(screen.getByText('Export')));
   expect(source.export).not.toHaveBeenCalled();
   await act(async()=>vi.advanceTimersByTimeAsync(2000));
-  expect(onExport).toHaveBeenCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'skipped',reason:'fonts-timeout',count:0}});
+  expect(onExport).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({revision:0,shrinkFit:{status:'skipped',reason:'fonts-timeout',count:0}}));
   expect(source.export).toHaveBeenCalledWith(editor.getSnapshot().document);expect(measureShrinkFits).not.toHaveBeenCalled();
   await act(async()=>{fonts.status='loaded';pending.resolve([]);});
   expect(source.export).toHaveBeenCalledTimes(1);expect(measureShrinkFits).not.toHaveBeenCalled();
@@ -64,7 +64,7 @@ it('exports without fit after a font-readiness timeout and ignores late completi
 it('exports without fit when loading fonts fails',async()=>{
   fonts.check.mockReturnValue(false);fonts.load.mockRejectedValue(Error('font unavailable'));
   const {editor,source,onExport}=mount();await act(async()=>fireEvent.click(screen.getByText('Export')));
-  expect(onExport).toHaveBeenCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'failed',reason:'error',message:'Font readiness failed.',count:0}});
+  expect(onExport).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({revision:0,shrinkFit:{status:'failed',reason:'error',message:'Font readiness failed.',count:0}}));
   expect(source.export).toHaveBeenCalledWith(editor.getSnapshot().document);expect(measureShrinkFits).not.toHaveBeenCalled();
 });
 it('does not start an obsolete export after unmount during font readiness',async()=>{
@@ -87,11 +87,11 @@ it('exports without fit when browser font APIs are unavailable or measurement th
   Object.defineProperty(document,'fonts',{configurable:true,value:undefined});const view=mount();
   await act(async()=>fireEvent.click(screen.getByText('Export')));
   expect(view.source.export).toHaveBeenLastCalledWith(view.editor.getSnapshot().document);
-  expect(view.onExport).toHaveBeenLastCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'skipped',reason:'fonts-unavailable',count:0}});
+  expect(view.onExport).toHaveBeenLastCalledWith(expect.anything(),expect.objectContaining({revision:0,shrinkFit:{status:'skipped',reason:'fonts-unavailable',count:0}}));
   Object.defineProperty(document,'fonts',{configurable:true,value:fonts});measureShrinkFits.mockImplementation(()=>{throw Error('canvas unavailable');});
   await act(async()=>fireEvent.click(screen.getByText('Export')));
   expect(view.source.export).toHaveBeenLastCalledWith(view.editor.getSnapshot().document);expect(view.source.export).toHaveBeenCalledTimes(2);
-  expect(view.onExport).toHaveBeenLastCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'failed',reason:'error',message:'Shrink measurement failed.',count:0}});
+  expect(view.onExport).toHaveBeenLastCalledWith(expect.anything(),expect.objectContaining({revision:0,shrinkFit:{status:'failed',reason:'error',message:'Shrink measurement failed.',count:0}}));
 });
 it.each(['prop','source','capability'])('omits fit when %s permission is revoked during font loading',async kind=>{
   const pending=deferred();fonts.status='loading';fonts.check.mockReturnValue(false);fonts.load.mockReturnValue(pending.promise);
@@ -101,12 +101,12 @@ it.each(['prop','source','capability'])('omits fit when %s permission is revoked
   view.rerender(<EditorProvider editor={view.editor}><PresentationEditor source={view.source} readOnly={kind==='prop'} onExport={view.onExport}/></EditorProvider>);
   await act(async()=>{fonts.status='loaded';fonts.check.mockReturnValue(true);pending.resolve([]);});
   expect(measureShrinkFits).not.toHaveBeenCalled();expect(view.source.export).toHaveBeenCalledWith(view.editor.getSnapshot().document);
-  expect(view.onExport).toHaveBeenCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'skipped',reason:'permission-revoked',count:0}});
+  expect(view.onExport).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({revision:0,shrinkFit:{status:'skipped',reason:'permission-revoked',count:0}}));
 });
 
 it('reports no-fit when measurement produces no adjustment',async()=>{
   measureShrinkFits.mockReturnValue({fit:new Map(),status:'skipped',reason:'already-fits',count:0});const {onExport,source,editor}=mount();
   await act(async()=>fireEvent.click(screen.getByText('Export')));
-  expect(onExport).toHaveBeenCalledWith(expect.anything(),{revision:0,shrinkFit:{status:'skipped',reason:'already-fits',count:0}});
+  expect(onExport).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({revision:0,shrinkFit:{status:'skipped',reason:'already-fits',count:0}}));
   expect(source.export).toHaveBeenCalledWith(editor.getSnapshot().document);
 });

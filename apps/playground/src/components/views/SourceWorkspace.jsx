@@ -41,6 +41,16 @@ function shrinkFitMessage(shrinkFit) {
   return `Shrink-to-fit skipped: ${SHRINK_SKIP_MESSAGES[shrinkFit.reason] ?? 'No measured fit was available.'}`;
 }
 
+function resizeFitMessage(outcome) {
+  if (!outcome) return '';
+  const {status,count,reason,stats} = outcome;
+  const partial = stats?.skipped ? ` ${stats.skipped} text ${stats.skipped === 1 ? 'box was' : 'boxes were'} skipped.` : '';
+  if(status === 'failed') return `Resize measurement failed for ${stats?.failed ?? 0} text ${(stats?.failed ?? 0) === 1 ? 'box' : 'boxes'}. ${count} ${count === 1 ? 'box was' : 'boxes were'} sized for export.${partial}`;
+  if(status === 'measured') return count ? `Sized ${count} text ${count === 1 ? 'box' : 'boxes'} for export; the canvas size is unchanged.${partial}` : `Resize text already fits; no growth was needed.${partial}`;
+  const message = {'no-resize':'No resize text to measure.','empty-text':'Resize text boxes are empty.',grouped:'Grouped text is not supported yet.',rotated:'Rotated text is not supported yet.','wrap-none':'Text without wrapping is not supported yet.','unsupported-geometry':'Some box geometry cannot be resized.'}[reason] ?? SHRINK_SKIP_MESSAGES[reason] ?? 'No measured size was available.';
+  return `Resize skipped: ${message}`;
+}
+
 /** Local-only reference host. These retained source sessions are never sent to a backend. */
 export default function SourceWorkspace({ openSource = openPresentation, save = downloadSource }) {
   const [resource, setResource] = useState(null);
@@ -124,10 +134,10 @@ export default function SourceWorkspace({ openSource = openPresentation, save = 
       <p className="source-file-name">{resource.fileName} · Local file · Export creates a copy</p>
       {exportStatus && <p role="status" aria-label="Export result">{exportStatus}</p>}
       <EditorProvider key={resource.id} editor={resource.editor}>
-        <PresentationEditor source={resource.source} onExport={async (result, { revision, shrinkFit }) => {
+        <PresentationEditor source={resource.source} onExport={async (result, { revision, shrinkFit, resizeFit }) => {
           const request = generation.current;
-          await save(result, { fileName: resource.fileName, format: resource.format, revision, ...(shrinkFit ? { shrinkFit } : {}) });
-          if (mounted.current && !pending.current && active.current === resource && generation.current === request) setExportStatus(shrinkFitMessage(shrinkFit));
+          await save(result, { fileName: resource.fileName, format: resource.format, revision, ...(shrinkFit ? { shrinkFit } : {}), ...(resizeFit ? { resizeFit } : {}) });
+          if (mounted.current && !pending.current && active.current === resource && generation.current === request) setExportStatus([shrinkFitMessage(shrinkFit), resizeFitMessage(resizeFit)].filter(Boolean).join(' '));
         }} />
       </EditorProvider>
     </section> : <section className="source-empty">

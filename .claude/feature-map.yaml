@@ -35,3 +35,25 @@ features:
       - expect_text: { selector: "[aria-label='Export result']", text: "Shrink-to-fit measured for 1 text box." }
       - shot: export-measured
     expect: The inspector edits a text box; exported shrink text has a measured fit and a visible outcome.
+  - id: source.resize-export
+    name: Resize inspector and export outcome
+    aliases: [resize box at export, resize disclosure, export-only height]
+    route: /?mode=source
+    steps:
+      - click: "role=button[name='New PPTX']"
+      - click: "role=tab[name='Insert']"
+      - click: "role=button[name='Text box']"
+      - fill: { selector: "[aria-label='Font family run 1']", value: "Arial" }
+      - press: { selector: "[aria-label='Font family run 1']", key: Tab }
+      - fill: { selector: "[aria-label='Height (pt)']", value: "20" }
+      - press: { selector: "[aria-label='Height (pt)']", key: Tab }
+      - fill: { selector: "[aria-label='Text run 1']", value: "Long text for a small frame. This sentence wraps several times. More words require a taller exported frame. Another sentence ensures the original text does not fit." }
+      - press: { selector: "[aria-label='Text autofit']", key: r }
+      - press: { selector: "[aria-label='Text autofit']", key: Enter }
+      - expect_visible: "text=Exports from this editor size the box to fit, growing from its anchor. The canvas shows the drawn size; files exported elsewhere may overflow until edited in PowerPoint."
+      - shot: resize-disclosure
+      - click: "role=tab[name='Home']"
+      - click: "role=button[name='Export']"
+      - expect_text: { selector: "[aria-label='Export result']", text: "Sized 1 text box for export; the canvas size is unchanged." }
+      - shot: resize-exported
+    expect: The inspector explains export-only growth and the host reports one resized box while the canvas retains its drawn height.

@@ -209,3 +209,12 @@ void waitForShrinkFonts(createDocument(), { fonts: globalThis.document.fonts }).
 const scaledBody = scaledTextBody({paragraphs:[{runs:[{fontSizePt:18}],endProperties:{fontSizePt:18},lineSpacing:{kind:'percent',value:1}}]}, {fontScale:50000,lnSpcReduction:0});
 expectType<'percent'>(scaledBody.paragraphs[0].lineSpacing.kind);
 expectType<number>(scaledBody.paragraphs[0].runs[0].fontSizePt);
+
+import { measureResizeFits, type ResizeMeasurement } from '@stagecraft/renderer/text/measureResizeFits';
+import { waitForAutofitFonts } from '@stagecraft/renderer/text/waitForAutofitFonts';
+const resized: ResizeMeasurement = measureResizeFits(createDocument());
+resized.resize.get('box')?.height.toFixed();
+resized.stats.skipped.toFixed();
+waitForAutofitFonts(createDocument(), { kinds: ['resize', 'shrink'], timeoutMs: 2000 });
+// @ts-expect-error Unsupported measurement kind.
+waitForAutofitFonts(createDocument(), { kinds: ['rotate'] });

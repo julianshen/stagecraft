@@ -1,3 +1,4 @@
+import type { ResizeFitOutcome } from '@stagecraft/renderer/text/measureResizeFits';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
 import type { Editor, EditorSnapshot } from '@stagecraft/core/editor';
 import type {
@@ -21,7 +22,7 @@ export type ShrinkFitOutcome =
   | { status: 'measured'; count: number }
   | { status: 'skipped'; count: 0; reason: 'not-pptx' | 'locked' | 'no-capability' | 'permission-revoked' | 'fonts-timeout' | 'fonts-unavailable' | 'no-shrink' | 'already-fits' | 'empty-text' | 'unsupported-metrics' | 'canvas-unavailable' }
   | { status: 'failed'; count: 0; reason: 'error'; message: string };
-export type ExportContext = { revision: number; shrinkFit: ShrinkFitOutcome };
+export type ExportContext = { revision: number; shrinkFit: ShrinkFitOutcome; resizeFit: ResizeFitOutcome };
 export type DeckListItem = { id: string; title: string; description?: string; disabled?: boolean };
 export interface RegionProps { className?: string; style?: CSSProperties }
 
