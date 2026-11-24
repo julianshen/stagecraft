@@ -315,17 +315,30 @@ describe('KONVA-2b surface decision, fallback wording, and API boundary', () => 
     // Unrelated repaint/selection does not loop retries while load-failed is active
     expect(importAttempts).toBe(attemptsAfterFail);
 
-    // Content change (revision bump) retries and succeeds once import recovers
+    // Slide change resets load-failed and retries
     failImport = false;
     act(() => {
-      editor.dispatch('presentation.setSlideProperties', { slideId: 's1', properties: { name: 'Updated' } });
+      editor.dispatch('document.selectSlide', { slideId: 's2' });
     });
 
     await waitFor(() => {
       expect(onSurfaceChange).toHaveBeenLastCalledWith(
-        expect.objectContaining({ active: 'konva', status: 'ready', revision: 1 }),
+        expect.objectContaining({ active: 'konva', status: 'ready', slideId: 's2' }),
       );
     });
     vi.doUnmock('./KonvaSurfaceShell.jsx');
+  });
+
+  it('N5: displays exact approved user-facing wording for all non-UI-reachable fallback reasons', async () => {
+    const { surfaceMessageForReason } = await import('./surfaceDecision.js');
+    expect(surfaceMessageForReason('no-slide')).toBe('Showing the standard view: there is no slide to show.');
+    expect(surfaceMessageForReason('not-canonical')).toBe('Showing the standard view: this deck format is not supported in canvas view.');
+    expect(surfaceMessageForReason('unsupported-embedding')).toBe('Showing the standard view: the editor is inside a scaled or rotated container.');
+    expect(surfaceMessageForReason('invalid-geometry')).toBe('Showing the standard view: an object on this slide has an invalid size or position.');
+    expect(surfaceMessageForReason('fonts-unavailable')).toBe('Showing the standard view: the slide fonts did not load.');
+    expect(surfaceMessageForReason('fonts-timeout')).toBe('Showing the standard view: the slide fonts did not load.');
+    expect(surfaceMessageForReason('canvas-unavailable')).toBe('Showing the standard view: canvas view could not start.');
+    expect(surfaceMessageForReason('load-failed')).toBe('Showing the standard view: canvas view could not start.');
+    expect(surfaceMessageForReason('render-failed')).toBe('Showing the standard view: canvas view could not start.');
   });
 });

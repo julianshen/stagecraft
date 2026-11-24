@@ -337,26 +337,10 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
       </EditorProvider>,
     );
     const konvaCanvas = await waitForKonvaCanvas(container);
-    const box = konvaCanvas.getBoundingClientRect();
-    const startX = box.left + box.width * 0.2;
-    const startY = box.top + box.height * 0.25;
-
     const { default: Konva } = await import('konva/lib/Core.js');
     const stage = getStageForContainer(Konva, container);
     const shapeNode = stage.findOne('.r1');
-    const initialX = shapeNode.x();
-    const initialY = shapeNode.y();
-
-    act(() => {
-      konvaCanvas.dispatchEvent(new MouseEvent('mousedown', {
-        bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: startX, clientY: startY,
-      }));
-    });
-    act(() => {
-      window.dispatchEvent(new MouseEvent('mousemove', {
-        bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: startX + 60, clientY: startY + 40,
-      }));
-    });
+    const { startX, startY, initialX, initialY } = await startShapeDrag(konvaCanvas, shapeNode);
 
     // Deny capability before drop so ui.setGeometry returns false with 0 editor dispatches
     source.capabilities.edits = [];
@@ -370,6 +354,7 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
     expect(editor.getSnapshot().revision).toBe(0);
     expect(shapeNode.x()).toBe(initialX);
     expect(shapeNode.y()).toBe(initialY);
+    expect(screen.getByRole('alert')).toHaveTextContent('Move could not be applied.');
   });
 
   it('cancels an in-progress Konva drag on Escape with 0 dispatches and inert dragend', async () => {
@@ -742,5 +727,190 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
     await waitFor(() => {
       expect(document.activeElement).not.toBe(document.body);
     });
+  });
+
+  it('D1: rejected stale-revision dragend (before effect cleanup) rolls back and reports Move could not be applied.', async () => {
+    const { default: KonvaStage } = await import('./KonvaStage.jsx');
+    const { buildCanonicalScene } = await import('@stagecraft/renderer/canonical');
+    const doc = makeDoc([makeRect('r1', 72, 72, 240, 100)]);
+    const scene = buildCanonicalScene(doc, 's1').scene;
+    const onMove = vi.fn(() => false);
+    const onError = vi.fn();
+
+    const { container } = render(
+      <KonvaStage
+        scene={scene}
+        revision={0}
+        ownerKey={{}}
+        policyKey={{}}
+        selectionId="r1"
+        zoom={100}
+        canMove={() => true}
+        onMove={onMove}
+        onError={onError}
+      />,
+    );
+    const konvaCanvas = container.querySelector('canvas');
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const shapeNode = getStageForContainer(Konva, container).findOne('.r1');
+    const { startX, startY, initialX, initialY } = await startShapeDrag(konvaCanvas, shapeNode);
+
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: startX + 60, clientY: startY + 40 }));
+    });
+    expect(onMove).toHaveBeenCalledTimes(1);
+    expect(shapeNode.x()).toBe(initialX);
+    expect(shapeNode.y()).toBe(initialY);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0].message).toBe('Move could not be applied.');
+  });
+
+  it('D1: dynamic capability denial at dragend rolls back and emits Move could not be applied.', async () => {
+    const { default: KonvaStage } = await import('./KonvaStage.jsx');
+    const { buildCanonicalScene } = await import('@stagecraft/renderer/canonical');
+    const doc = makeDoc([makeRect('r1', 72, 72, 240, 100)]);
+    const scene = buildCanonicalScene(doc, 's1').scene;
+    const onMove = vi.fn();
+    const onError = vi.fn();
+    let allow = true;
+
+    const { container } = render(
+      <KonvaStage
+        scene={scene}
+        revision={0}
+        ownerKey={{}}
+        policyKey={{}}
+        selectionId="r1"
+        zoom={100}
+        canMove={() => allow}
+        onMove={onMove}
+        onError={onError}
+      />,
+    );
+    const konvaCanvas = container.querySelector('canvas');
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const shapeNode = getStageForContainer(Konva, container).findOne('.r1');
+    const { startX, startY, initialX, initialY } = await startShapeDrag(konvaCanvas, shapeNode);
+
+    allow = false;
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: startX + 60, clientY: startY + 40 }));
+    });
+
+    expect(onMove).not.toHaveBeenCalled();
+    expect(shapeNode.x()).toBe(initialX);
+    expect(shapeNode.y()).toBe(initialY);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0].message).toBe('Move could not be applied.');
+  });
+
+  it('D2: active Konva scene observes loadingdone/loadingerror, bumps epoch on relevant face and ignores unrelated face', async () => {
+    const fontListeners = new Map();
+    const loadSpy = vi.fn(async () => []);
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      value: {
+        status: 'loaded',
+        check: () => true,
+        load: loadSpy,
+        addEventListener: (type, fn) => {
+          if (!fontListeners.has(type)) fontListeners.set(type, new Set());
+          fontListeners.get(type).add(fn);
+        },
+        removeEventListener: (type, fn) => {
+          fontListeners.get(type)?.delete(fn);
+        },
+        ready: Promise.resolve(),
+      },
+    });
+
+    const editor = makeEditor([makeText('t1', 72, 72)]);
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    await waitForKonvaCanvas(container);
+    const initialLoads = loadSpy.mock.calls.length;
+
+    // Unrelated face loads -> ignored, no readiness rerun
+    await act(async () => {
+      fontListeners.get('loadingdone')?.forEach(fn => fn({ fontfaces: [{ family: 'UnrelatedDisplayFont' }] }));
+      await Promise.resolve();
+    });
+    expect(loadSpy.mock.calls.length).toBe(initialLoads);
+
+    // Relevant face ('Arial') loads while scene is ready -> reruns readiness and bumps font epoch
+    await act(async () => {
+      fontListeners.get('loadingdone')?.forEach(fn => fn({ fontfaces: [{ family: 'Arial' }] }));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(loadSpy.mock.calls.length).toBeGreaterThan(initialLoads);
+    });
+  });
+
+  it('residuals: handles raw unmount mid-drag, selection change before pointerup, exact payload, round-zero no-op, blur and lostpointercapture', async () => {
+    // 1. Raw unmount mid-drag -> 0 dispatches
+    const base1 = makeEditor([makeRect('r1', 72, 72, 240, 100)]);
+    let dispatches1 = 0;
+    const editor1 = { ...base1, dispatch: (...a) => { dispatches1 += 1; return base1.dispatch(...a); } };
+    const { container: c1, unmount: unmount1 } = render(
+      <EditorProvider editor={editor1}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    const canvas1 = await waitForKonvaCanvas(c1);
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const shape1 = getStageForContainer(Konva, c1).findOne('.r1');
+    const { startX: sx1, startY: sy1 } = await startShapeDrag(canvas1, shape1);
+    unmount1();
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: sx1 + 60, clientY: sy1 + 40 }));
+    });
+    expect(dispatches1).toBe(0);
+
+    // 2. Blur & lostpointercapture cancel + round-zero no-op + exact single dispatch payload
+    const base2 = makeEditor([makeRect('r1', 72, 72, 240, 100), makeRect('r2', 400, 72, 120, 80)]);
+    const calls2 = [];
+    const editor2 = { ...base2, dispatch: (...a) => { calls2.push(a); return base2.dispatch(...a); } };
+    const { container: c2 } = render(
+      <EditorProvider editor={editor2}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    const canvas2 = await waitForKonvaCanvas(c2);
+    const stage2 = getStageForContainer(Konva, c2);
+    const shape2 = stage2.findOne('.r1');
+
+    // Blur cancel
+    const dBlur = await startShapeDrag(canvas2, shape2);
+    act(() => { window.dispatchEvent(new Event('blur')); });
+    expect(shape2.isDragging()).toBe(false);
+    expect(shape2.x()).toBe(dBlur.initialX);
+    act(() => { window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, buttons: 0, clientX: dBlur.startX + 60, clientY: dBlur.startY + 40 })); });
+    expect(calls2).toHaveLength(0);
+
+    // lostpointercapture cancel
+    const dLost = await startShapeDrag(canvas2, shape2);
+    act(() => { stage2.content.dispatchEvent(new Event('lostpointercapture')); });
+    expect(shape2.isDragging()).toBe(false);
+    expect(shape2.x()).toBe(dLost.initialX);
+    act(() => { window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, buttons: 0, clientX: dLost.startX + 60, clientY: dLost.startY + 40 })); });
+    expect(calls2).toHaveLength(0);
+
+    // Selection change before pointerup
+    const dSel = await startShapeDrag(canvas2, shape2);
+    fireEvent.click(screen.getByRole('button', { name: 'Select object r2' }));
+    act(() => { window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, buttons: 0, clientX: dSel.startX + 60, clientY: dSel.startY + 40 })); });
+    expect(calls2).toHaveLength(0);
+
+    // Exact single dispatch payload on real drag
+    const dOk = await startShapeDrag(canvas2, shape2, 40, 20);
+    act(() => { window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, buttons: 0, clientX: dOk.startX + 40, clientY: dOk.startY + 20 })); });
+    await waitFor(() => expect(calls2).toHaveLength(1));
+    expect(calls2[0][0]).toBe('presentation.setGeometry');
+    expect(calls2[0][1]).toMatchObject({ slideId: 's1', objectId: 'r1' });
+    expect(calls2[0][2]).toEqual({ expectedRevision: 0 });
   });
 });
