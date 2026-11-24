@@ -390,6 +390,7 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
       }));
     });
     expect(dispatchCount).toBe(0);
+    expect(screen.queryByRole('alert')).toBeNull();
     expect(shapeNode.x()).toBe(initialX);
     expect(shapeNode.y()).toBe(initialY);
   });
@@ -427,6 +428,7 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
       }));
     });
     expect(dispatchCount).toBe(0);
+    expect(screen.queryByRole('alert')).toBeNull();
     expect(shapeNode.x()).toBe(initialX);
     expect(shapeNode.y()).toBe(initialY);
   });
@@ -546,6 +548,7 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
       window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: startX + 60, clientY: startY + 40 }));
     });
     expect(dispatchCount).toBe(0);
+    expect(screen.queryByRole('alert')).toBeNull();
     expect(editor.getSnapshot().revision).toBe(0);
   });
 
@@ -585,6 +588,7 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
       window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: startX + 40, clientY: startY }));
     });
     expect(dispatchCount).toBe(0);
+    expect(screen.getAllByRole('alert').map(el => el.textContent)).toEqual(['Move could not be applied.']);
 
     act(() => {
       editor.undo();
@@ -729,7 +733,7 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
     });
   });
 
-  it('D1: rejected stale-revision dragend (before effect cleanup) rolls back and reports Move could not be applied.', async () => {
+  it('D1: onMove returning false rolls back and reports Move could not be applied.', async () => {
     const { default: KonvaStage } = await import('./KonvaStage.jsx');
     const { buildCanonicalScene } = await import('@stagecraft/renderer/canonical');
     const doc = makeDoc([makeRect('r1', 72, 72, 240, 100)]);
@@ -911,6 +915,6 @@ describe('KONVA-2b real Chromium stage, interactions, and fallback', () => {
     await waitFor(() => expect(calls2).toHaveLength(1));
     expect(calls2[0][0]).toBe('presentation.setGeometry');
     expect(calls2[0][1]).toMatchObject({ slideId: 's1', objectId: 'r1' });
-    expect(calls2[0][2]).toMatchObject({ expectedRevision: 0 });
+    expect(calls2[0][2]).toEqual({ expectedRevision: 0, origin: 'react' });
   });
 });
