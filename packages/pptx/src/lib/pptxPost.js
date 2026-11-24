@@ -1,7 +1,9 @@
 // The export post-processor (F-EXP-1). pptxgenjs has no API for some of what
 // the deck can hold, so its output is patched afterwards: the package is
 // unzipped and each slide's XML gets pure DOM patches, keyed by the
-// `p:cNvPr name` the export sets on every element (`objectName = el.id`).
+// `p:cNvPr name` the export sets on every element. Unique ids keep their
+// encoded id; duplicate ids receive a deterministic suffix so every patch target
+// remains distinct without renaming ordinary objects in PowerPoint's Selection Pane.
 //
 //  - gradients: a shape's solid fill → its real two-stop linear `a:gradFill`
 //    (pptxgenjs only writes `a:solidFill`);
@@ -28,15 +30,32 @@ const hasWork = ({ gradients, groups }) => Object.keys(gradients).length > 0 || 
  * The object name an element exports under, which the patches key on: its id,
  * percent-encoded so it holds nothing XML escapes (pptxgenjs escapes a text
  * box's name twice, so `&` or `"` in an id would otherwise never match).
- * One-to-one, so distinct ids stay distinct; plain ids pass through unchanged.
+ * Only duplicate ids are disambiguated, against every name already allocated.
  * A lone UTF-16 surrogate (which encodeURIComponent rejects) becomes `%uXXXX`,
  * a form percent-encoding never produces; the empty id (a valid id, whose
  * empty name pptxgenjs would ignore) becomes a bare `%`, likewise unique.
  */
 const isLoneSurrogate = (c) => c.length === 1 && c >= '\ud800' && c <= '\udfff';
-export const objectNameOf = (id) => (String(id) === '' ? '%' : String(id)
-  .replace(/[\ud800-\udbff][\udc00-\udfff]|[^]/g, (c) => (isLoneSurrogate(c) ? `%u${c.charCodeAt(0).toString(16).toUpperCase()}` : encodeURIComponent(c)))
-  .replace(/'/g, '%27'));
+export const objectNameOf = (id, usedNames = new Set()) => {
+  const base = String(id) === '' ? '%' : String(id)
+    .replace(/[\ud800-\udbff][\udc00-\udfff]|[^]/g, (c) => (isLoneSurrogate(c) ? `%u${c.charCodeAt(0).toString(16).toUpperCase()}` : encodeURIComponent(c)))
+    .replace(/'/g, '%27');
+  let name = base, suffix = 2;
+  while (usedNames.has(name)) name = `${base} (${suffix++})`;
+  usedNames.add(name);
+  return name;
+};
+
+/** Allocate every slide element name once so export and patch planning cannot diverge. */
+export function slideObjectNames(slide) {
+  const names = new Map(), usedNames = new Set();
+  const elements = Array.isArray(slide?.elements) ? slide.elements : [];
+  elements.forEach((element, index) => {
+    if (!element || element.id == null) return;
+    names.set(index, objectNameOf(element.id, usedNames));
+  });
+  return names;
+}
 
 /**
  * A slide's plan, read from its elements (each exported under its id): every
@@ -45,17 +64,19 @@ export const objectNameOf = (id) => (String(id) === '' ? '%' : String(id)
  * special case here — the patcher skips names it can't find and groups under
  * two members.
  */
-export function planFor(slide) {
+export function planFor(slide, objectNames = slideObjectNames(slide)) {
   const gradients = Object.create(null); // keyed by arbitrary ids: no inherited __proto__ setter
   const groups = new Map();
-  for (const el of Array.isArray(slide?.elements) ? slide.elements : []) {
-    if (el?.id == null) continue; // '' is a valid id
+  const elements = Array.isArray(slide?.elements) ? slide.elements : [];
+  for (const [index, el] of elements.entries()) {
+    if (!el || el.id == null) continue; // '' is a valid id
+    const name = objectNames.get(index);
     if (isFillableShape(el.type) && isRenderableGradient(el.gradient)) {
-      gradients[objectNameOf(el.id)] = { from: pptxHex(el.gradient.from), to: pptxHex(el.gradient.to), angle: el.gradient.angle };
+      gradients[name] = { from: pptxHex(el.gradient.from), to: pptxHex(el.gradient.to), angle: el.gradient.angle };
     }
     if (el.groupId) {
       if (!groups.has(el.groupId)) groups.set(el.groupId, []);
-      groups.get(el.groupId).push(objectNameOf(el.id));
+      groups.get(el.groupId).push(name);
     }
   }
   return { gradients, groups: [...groups.values()] };
@@ -82,8 +103,7 @@ export async function postProcess(data, plans, { xml, signal } = {}) {
 export function patchSlideXml(xml, { gradients = {}, groups = [] } = {}, runtime) {
   const doc = parseXml(xml, runtime);
   const cNvPrs = [...doc.getElementsByTagNameNS(P, 'cNvPr')];
-  // Only a unique name is patched: a duplicated element id, or one that
-  // happens to match a pptxgenjs default name ("Text 3"), is ambiguous.
+  // Generated names are unique per slide; keep the guard for malformed external plans.
   const count = new Map();
   for (const n of cNvPrs) count.set(n.getAttribute('name'), (count.get(n.getAttribute('name')) || 0) + 1);
   const named = new Map(cNvPrs.filter((n) => count.get(n.getAttribute('name')) === 1).map((n) => [n.getAttribute('name'), n]));
