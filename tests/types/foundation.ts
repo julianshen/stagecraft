@@ -13,8 +13,8 @@ import {
   type TransactionEvent, type JsonValue,
 } from '@stagecraft/core/editor';
 import {
-  importDocument, exportDocument, readBytes, type FormatAdapter, type ByteSource,
-  type Diagnostic, type ExportMetadata,
+  importDocument, exportDocument, readBytes, safeXmlParse, createSafeXmlRuntime,
+  type FormatAdapter, type ByteSource, type Diagnostic, type ExportMetadata, type XmlRuntime as IoXmlRuntime,
 } from '@stagecraft/io';
 import { inspectZip, type ZipOptions } from '@stagecraft/io/zip';
 import { pptxAdapter, importPptx, writePptx, type Deck, type PptxOptions } from '@stagecraft/pptx';
@@ -109,6 +109,11 @@ const xml: XmlRuntime = {
   parse: text => new DOMParser().parseFromString(text, 'application/xml'),
   serialize: doc => new XMLSerializer().serializeToString(doc),
 };
+const ioXml: IoXmlRuntime = xml;
+const safeXml = createSafeXmlRuntime(ioXml);
+safeXml.parse('<root/>');
+safeXml.serialize?.(safeXml.parse('<root/>'));
+safeXmlParse('<root/>', ioXml);
 const bytes = new Uint8Array();
 const signal = new AbortController().signal;
 const zipOptions: ZipOptions = { maxBytes: 1024, maxEntries: 10, maxEntryBytes: 1024, maxExpandedBytes: 4096, signal };

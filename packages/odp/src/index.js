@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { cloneJson } from '@stagecraft/core';
-import { readBytes, throwIfAborted } from '@stagecraft/io';
+import { readBytes, throwIfAborted, safeXmlParse } from '@stagecraft/io';
 import { inspectZip } from '@stagecraft/io/zip';
 import { lengthEmu } from './vendor/officeview/units.js';
 
@@ -33,11 +33,7 @@ const escape = value => {
 const hex = value => typeof value === 'string' && /^#[\da-f]{6}$/i.test(value);
 
 function parse(text, runtime) {
-  if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(text.replace(/\0/g, ''))) throw new Error('DTD and entity declarations are unsupported');
-  if (!runtime?.parse && typeof DOMParser === 'undefined') throw new Error('An XML runtime { parse } is required outside the browser');
-  const doc = runtime?.parse ? runtime.parse(text) : new DOMParser().parseFromString(text, 'application/xml');
-  if (!doc?.documentElement || doc.getElementsByTagName('parsererror').length) throw new Error('Invalid ODP XML');
-  return doc;
+  return safeXmlParse(text, runtime);
 }
 function plainText(node, budget) {
   const consume = text => {

@@ -1,4 +1,5 @@
 /** Host-neutral document I/O. Sources never trigger ambient filesystem or network access. */
+export { safeXmlParse, createSafeXmlRuntime } from './xml.js';
 export const DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
 
 export function throwIfAborted(signal) {
