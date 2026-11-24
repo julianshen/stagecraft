@@ -2430,7 +2430,7 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
     expect(rangeEa).toHaveValue('');
   });
 
-  it('skips unchanged range Enter, resets drafts on owner change, disables Font details on denied capability, sends only fontFamily from Range font, and renders authored table-cell ea/cs slots', () => {
+  function mountFu142Fixture(edits = ['object-text', 'run-range-format', 'existing-run-format', 'object-table']) {
     const doc = createDocument({
       id: 'fu142-followups',
       slides: [
@@ -2446,6 +2446,18 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
                 paragraphs: [{
                   id: 'p1',
                   runs: [{ id: 'r1', text: 'Alpha', editable: true, style: { typeface: 'Arial', eastAsian: 'Songti TC', complexScript: 'Geeza Pro' }, extensions: { stagecraftAuthored: true } }],
+                }],
+              },
+            },
+            {
+              id: 't2',
+              type: 'text',
+              geometry: { x: 400 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
+              extensions: { stagecraftAuthored: true },
+              text: {
+                paragraphs: [{
+                  id: 'p2',
+                  runs: [{ id: 'r2', text: 'Alpha', editable: true, style: { typeface: 'Arial', eastAsian: 'Yu Mincho', complexScript: 'Tahoma' }, extensions: { stagecraftAuthored: true } }],
                 }],
               },
             },
@@ -2472,53 +2484,46 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
             },
           ],
         },
-        {
-          id: 's2',
-          objects: [{
-            id: 't2',
-            type: 'text',
-            geometry: { x: 72 * PT, y: 72 * PT, width: 300 * PT, height: 100 * PT },
-            extensions: { stagecraftAuthored: true },
-            text: {
-              paragraphs: [{
-                id: 'p2',
-                runs: [{ id: 'r2', text: 'Beta', editable: true, style: { eastAsian: 'Songti TC' }, extensions: { stagecraftAuthored: true } }],
-              }],
-            },
-          }],
-        },
       ],
     });
     const rawEditor = createEditor({ document: doc, plugins: [documentPlugin, presentationPlugin] });
     const dispatchSpy = vi.fn((...args) => rawEditor.dispatch(...args));
     const editor = { ...rawEditor, dispatch: dispatchSpy };
-    const source = { capabilities: { readOnly: false, edits: ['object-text', 'run-range-format', 'existing-run-format', 'object-table'] }, export: vi.fn() };
-    const { rerender } = render(
+    const source = { capabilities: { readOnly: false, edits }, export: vi.fn() };
+    const view = render(
       <EditorProvider editor={editor}>
         <PresentationEditor source={source} />
-      </EditorProvider>
+      </EditorProvider>,
     );
+    return { editor, source, dispatchSpy, ...view };
+  }
 
-    // Select t1 and select range "Alpha"
+  function selectT1Range() {
     fireEvent.click(screen.getAllByLabelText('Select object t1')[0]);
     const rangeArea = screen.getByLabelText('Select text range');
     rangeArea.selectionStart = 0;
     rangeArea.selectionEnd = 5;
     fireEvent.select(rangeArea);
+  }
 
+  it('skips unchanged range Enter on Range East Asian and Complex script font fields', () => {
+    const { dispatchSpy } = mountFu142Fixture();
+    selectT1Range();
     const rangeEa = screen.getByLabelText('Range East Asian text font');
     const rangeCs = screen.getByLabelText('Range Complex script font');
-    const rangeFont = screen.getByLabelText('Range font family');
     expect(rangeEa).toHaveValue('Songti TC');
     expect(rangeCs).toHaveValue('Geeza Pro');
 
-    // 1. Unchanged Enter is a no-op
     dispatchSpy.mockClear();
     fireEvent.keyDown(rangeEa, { key: 'Enter' });
     fireEvent.keyDown(rangeCs, { key: 'Enter' });
     expect(dispatchSpy).not.toHaveBeenCalled();
+  });
 
-    // 2. Range font family sends ONLY fontFamily
+  it('sends only fontFamily from Range font family field', () => {
+    const { dispatchSpy } = mountFu142Fixture();
+    selectT1Range();
+    const rangeFont = screen.getByLabelText('Range font family');
     fireEvent.change(rangeFont, { target: { value: 'Georgia' } });
     fireEvent.keyDown(rangeFont, { key: 'Enter' });
     expect(dispatchSpy).toHaveBeenLastCalledWith(
@@ -2526,42 +2531,37 @@ describe('Text editing tranche (fonts/colors, cross-run codepoint range, paragra
       expect.objectContaining({ format: { fontFamily: 'Georgia' } }),
       expect.any(Object),
     );
+  });
 
-    // 3. Owner change (source swap) resets half-typed drafts
+  it('resets range East Asian and Complex script drafts on owner (object) change without unmounting', () => {
+    mountFu142Fixture();
+    selectT1Range();
+    const rangeEa = screen.getByLabelText('Range East Asian text font');
+    const rangeCs = screen.getByLabelText('Range Complex script font');
     fireEvent.change(rangeEa, { target: { value: 'HalfTypedEA' } });
     fireEvent.change(rangeCs, { target: { value: 'HalfTypedCS' } });
     expect(rangeEa).toHaveValue('HalfTypedEA');
-    const nextSource = { capabilities: { readOnly: false, edits: ['object-text', 'run-range-format', 'existing-run-format', 'object-table'] }, export: vi.fn() };
-    rerender(
-      <EditorProvider editor={editor}>
-        <PresentationEditor source={nextSource} />
-      </EditorProvider>
-    );
-    fireEvent.click(screen.getAllByLabelText('Select object t1')[0]);
-    expect(screen.getByLabelText('Range East Asian text font')).toHaveValue('');
-    expect(screen.getByLabelText('Range Complex script font')).toHaveValue('');
+    expect(rangeCs).toHaveValue('HalfTypedCS');
 
-    // 4. Denied capability disables Font details
-    const deniedSource = { capabilities: { readOnly: false, edits: ['object-text'] }, export: vi.fn() };
-    rerender(
-      <EditorProvider editor={editor}>
-        <PresentationEditor source={deniedSource} />
-      </EditorProvider>
-    );
+    // Switch to another text object on the same slide with identical text ("Alpha");
+    // CrossRunRangeFormatFields stays mounted and must clear drafts + selection via ownerChanged.
+    fireEvent.click(screen.getAllByLabelText('Select object t2')[0]);
+    expect(rangeEa).toHaveValue('');
+    expect(rangeCs).toHaveValue('');
+  });
+
+  it('disables Font details controls when existing-run-format or run-range-format capability is denied', () => {
+    mountFu142Fixture(['object-text']);
     fireEvent.click(screen.getAllByLabelText('Select object t1')[0]);
     expect(screen.getByLabelText('East Asian text font run 1')).toBeDisabled();
     expect(screen.getByLabelText('Complex script font run 1')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Reset east asian text font run 1' })).toBeDisabled();
-    // Range Font details fields are disabled when run-range-format capability is denied
     expect(screen.getByLabelText('Range East Asian text font')).toBeDisabled();
     expect(screen.getByLabelText('Range Complex script font')).toBeDisabled();
+  });
 
-    // 5. Authored table-cell ea/cs slots display and edit
-    rerender(
-      <EditorProvider editor={editor}>
-        <PresentationEditor source={source} />
-      </EditorProvider>
-    );
+  it('displays and edits authored table-cell eastAsian and complexScript font slots', () => {
+    const { dispatchSpy } = mountFu142Fixture();
     fireEvent.click(screen.getAllByLabelText('Select object tbl1')[0]);
     const cellEa = screen.getByLabelText('East Asian text font run 1');
     const cellCs = screen.getByLabelText('Complex script font run 1');
