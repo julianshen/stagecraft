@@ -1,6 +1,7 @@
 import { cloneJson } from '../editor/index.js';
 import { flattenDeck } from '../lib/deckOrder.js';
 import { jsonEqual } from '../lib/jsonEqual.js';
+import { invalidateNativeObjectAppearance, invalidateNativeSlideAppearance } from '../lib/nativeAppearance.js';
 import { validateChart, chartSchema } from './chart.js';
 export { validateChart, chartSchema } from './chart.js';
 export class DocumentError extends Error {
@@ -431,7 +432,7 @@ function updateRun(document, payload, update) {
           if (run.id === payload.runId) {
             if (run.editable === false || unsupported || !['text', 'shape'].includes(object.type))
               fail('UNSUPPORTED_EDIT');
-            update(run);
+            update(run, object);
             found = true;
           }
       visit(object.children ?? [], unsupported);
@@ -598,6 +599,7 @@ function setParagraphFormat(document, payload) {
     const bullet = paragraph.style.bullet;
     if ((paragraph.style.level ?? 0) > 0 && (!bullet || bullet.type === 'none')) fail('UNSUPPORTED_EDIT');
   }
+  invalidateNativeObjectAppearance(object);
   return d;
 }
 function setTextBodyLayout(document, payload) {
@@ -632,6 +634,7 @@ function setTextBodyLayout(document, payload) {
     layout[key] = copy(value);
   }
   if (Object.keys(layout).length) object.bodyLayout = layout; else delete object.bodyLayout;
+  invalidateNativeObjectAppearance(object);
   return d;
 }
 const collectIds = d => {
@@ -777,7 +780,7 @@ function setRunRangeFormat(document, payload) {
 }
 function setRunFormat(document, payload) {
   if (!validRunFormatPayload(payload)) fail('INVALID_PAYLOAD');
-  return updateRun(document, payload, run => {
+  return updateRun(document, payload, (run, object) => {
     if (run.extensions?.stagecraftAuthored !== true && !['pptx', 'odp'].includes(run.source?.format)) fail('UNSUPPORTED_EDIT');
     run.style ??= {};
     if (run.extensions?.stagecraftAuthored !== true && run.source?.format === 'odp') {
@@ -789,6 +792,7 @@ function setRunFormat(document, payload) {
       return;
     }
     applyRunFormat(run, payload.format);
+    invalidateNativeObjectAppearance(object);
   });
 }
 const idSchema = { type: 'string', minLength: 1 };
@@ -1246,6 +1250,7 @@ export const presentationPlugin = Object.freeze({
         && object.type === 'shape' && ['rect', 'ellipse'].includes(object.shape);
       if (!authoredShape && !nativeShape) fail('UNSUPPORTED_EDIT');
       object.fill = p.fill;
+      invalidateNativeObjectAppearance(object);
       if (authoredShape) validateAuthoredObject(object);
     }),
     presentationCommand('setText', { ...targetProperties, text: authoredTextSchema }, ['slideId', 'objectId', 'text'], (d, p) => {
@@ -1283,6 +1288,7 @@ export const presentationPlugin = Object.freeze({
         if (record(slide.extensions?.legacy)) delete slide.extensions.legacy.bgColor;
         if (properties.background === null) delete slide.background;
         else slide.background = { type: 'solid', color: properties.background.color };
+        invalidateNativeSlideAppearance(slide);
       }
       if (properties.notes !== undefined) {
         if (record(slide.extensions?.legacy)) delete slide.extensions.legacy.notes;
