@@ -40,6 +40,7 @@ export default defineConfig({
       include: [
         'packages/core/src/lib/jsonEqual.js',
         'packages/core/src/lib/authoredText.js',
+        'packages/core/src/lib/nativeAppearance.js',
         'packages/core/src/lib/resizeGeometry.js',
         'packages/core/src/editor/**/*.js',
         'packages/core/src/document/**/*.js',
