@@ -1022,28 +1022,33 @@ export function PresentationCanvas({
     return buildCanonicalScene(ui.snapshot.document, ui.activeSlide.id);
   }, [wantsKonva, ui.canonical, isOdpDoc, ui.snapshot.document, ui.activeSlide]);
 
-  useEffect(() => {
-    const rootEl = ui.canvasRef.current;
+  const checkEmbeddingTransform = rootEl => {
     if (!wantsKonva || !rootEl || typeof getComputedStyle !== 'function') {
       setOuterTransformUnsupported(prev => (prev ? false : prev));
       return;
     }
-
-    const checkEmbedding = () => {
-      let unsupported = false;
-      for (let el = rootEl; el && el.nodeType === 1; el = el.parentElement) {
-        if (isUnsupportedCssTransform(getComputedStyle(el).transform)) {
-          unsupported = true;
-          break;
-        }
+    let unsupported = false;
+    for (let el = rootEl; el && el.nodeType === 1; el = el.parentElement) {
+      if (isUnsupportedCssTransform(getComputedStyle(el).transform)) {
+        unsupported = true;
+        break;
       }
-      if (unsupported) {
-        konvaCancelGestureRef.current?.();
-      }
-      setOuterTransformUnsupported(prev => (prev === unsupported ? prev : unsupported));
-    };
+    }
+    if (unsupported) {
+      konvaCancelGestureRef.current?.();
+    }
+    setOuterTransformUnsupported(prev => (prev === unsupported ? prev : unsupported));
+  };
 
-    checkEmbedding();
+  useEffect(() => {
+    checkEmbeddingTransform(ui.canvasRef.current);
+  });
+
+  useEffect(() => {
+    const rootEl = ui.canvasRef.current;
+    if (!wantsKonva || !rootEl || typeof getComputedStyle !== 'function') {
+      return;
+    }
 
     let rafId = 0;
     const scheduleCheck = () => {
@@ -1051,10 +1056,10 @@ export function PresentationCanvas({
       if (typeof requestAnimationFrame === 'function') {
         rafId = requestAnimationFrame(() => {
           rafId = 0;
-          checkEmbedding();
+          checkEmbeddingTransform(rootEl);
         });
       } else {
-        checkEmbedding();
+        checkEmbeddingTransform(rootEl);
       }
     };
 
@@ -1062,6 +1067,7 @@ export function PresentationCanvas({
     for (let el = rootEl; el && el.nodeType === 1; el = el.parentElement) {
       ancestors.push(el);
     }
+    const ancestorSet = new Set(ancestors);
 
     let mutationObserver = null;
     if (typeof MutationObserver === 'function') {
@@ -1084,6 +1090,18 @@ export function PresentationCanvas({
       window.addEventListener('resize', scheduleCheck);
     }
 
+    const MOTION_EVENTS = ['transitionend', 'transitioncancel', 'animationend', 'animationcancel'];
+    const onAncestorMotion = event => {
+      if (ancestorSet.has(event.target)) {
+        scheduleCheck();
+      }
+    };
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      for (const type of MOTION_EVENTS) {
+        document.addEventListener(type, onAncestorMotion, true);
+      }
+    }
+
     return () => {
       if (rafId && typeof cancelAnimationFrame === 'function') {
         cancelAnimationFrame(rafId);
@@ -1092,6 +1110,11 @@ export function PresentationCanvas({
       resizeObserver?.disconnect();
       if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
         window.removeEventListener('resize', scheduleCheck);
+      }
+      if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+        for (const type of MOTION_EVENTS) {
+          document.removeEventListener(type, onAncestorMotion, true);
+        }
       }
     };
   }, [wantsKonva, ui.canvasRef, ui.activeSlide?.id, ownerKey]);
