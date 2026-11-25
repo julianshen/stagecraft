@@ -36,6 +36,7 @@ function colorMapFor(document, entity) {
   const seen = new Set();
   let current = entity;
   while (current && !seen.has(current.id)) {
+    if (current.extensions?.pptxColorMapOverride) return null;
     seen.add(current.id);
     chain.unshift(current);
     if (current.layoutId) {
@@ -71,6 +72,8 @@ function fillFromStyle(styles, index) {
 
 function simpleStroke(node, theme = {}, colorMap = {}) {
   if (!node) return none();
+  if (node.hasAttribute('cmpd') && node.getAttribute('cmpd') !== 'sng') return null;
+  if (node.hasAttribute('algn') && node.getAttribute('algn') !== 'ctr') return null;
   for (const item of children(node)) {
     if (['solidFill', 'noFill', 'prstDash'].includes(item.localName)) continue;
     return null;
@@ -152,6 +155,11 @@ async function projectEntityBackgrounds(document, zip, xml) {
       ...entity.extensions,
       ...(Object.keys(colorMap).length ? { pptxColorMap: colorMap } : {}),
     };
+    if (child(root, 'p', 'clrMapOvr')) {
+      entity.extensions.pptxColorMapOverride = true;
+      own.set(entity.id, UNSUPPORTED_BACKGROUND);
+      continue;
+    }
     if (entity.kind !== 'slides') {
       const theme = themeFor(document, entity);
       entity.extensions.pptxOtherTextStyle = inheritedTextStyle(child(child(root, 'p', 'txStyles'), 'p', 'otherStyle'), theme, colorMapFor(document, entity));
@@ -173,15 +181,19 @@ async function projectEntityBackgrounds(document, zip, xml) {
   return own;
 }
 
-function effectiveBackground(document, entity, own, fallback = null) {
+function effectiveBackground(document, entity, own, fallback = null, seen = new Set()) {
+  if (seen.has(entity.id)) return null;
+  seen.add(entity.id);
   if (own.has(entity.id)) {
     const value = own.get(entity.id);
     if (value === UNSUPPORTED_BACKGROUND) return null;
     if (value !== undefined) return value;
   }
+  const layout = entity.layoutId ? document.layouts.find(item => item.id === entity.layoutId) : null;
+  if (layout) return effectiveBackground(document, layout, own, fallback, seen);
   if (entity.masterId) {
     const master = document.masters.find(item => item.id === entity.masterId);
-    if (master) return effectiveBackground(document, master, own, fallback);
+    if (master) return effectiveBackground(document, master, own, fallback, seen);
   }
   if (fallback) return fallback;
   const theme = themeFor(document, entity);
@@ -249,6 +261,8 @@ function inheritedTextStyle(styleRoot, theme, colorMap) {
   if (!styleRoot) return {};
   const level = child(styleRoot, 'a', 'lvl1pPr');
   if (!level) return {};
+  const defaults = { marL: '0', algn: 'l', defTabSz: '914400', rtl: '0', eaLnBrk: '1', latinLnBrk: '0', hangingPunct: '1' };
+  if (Object.entries(attrs(level)).some(([key, value]) => defaults[key] !== value)) return null;
   if (children(level).some(item => !['defRPr', 'buNone'].includes(item.localName))) return null;
   return projectRunOverrides(child(level, 'a', 'defRPr'), theme, colorMap);
 }
@@ -331,7 +345,7 @@ function supportedTextXml(node, body, theme) {
 
 function projectText(document, object, node, slide, theme, colorMap) {
   const body = child(node, 'p', 'txBody');
-  if (!body) return null;
+  if (!body || !colorMap) return null;
   const layout = slide.layoutId ? document.layouts.find(item => item.id === slide.layoutId) : null;
   const master = layout?.masterId ? document.masters.find(item => item.id === layout.masterId) : null;
   if (document.extensions.pptxDefaultTextStyle === null || layout?.extensions.pptxOtherTextStyle === null || master?.extensions.pptxOtherTextStyle === null) return null;
@@ -346,7 +360,8 @@ function projectText(document, object, node, slide, theme, colorMap) {
   const styleNode = child(node, 'p', 'style');
   const fontRefNode = styleNode ? child(styleNode, 'a', 'fontRef') : null;
   if (fontRefNode) {
-    const index = styleIndex(fontRefNode.getAttribute('idx'));
+    const raw = fontRefNode.getAttribute('idx');
+    const index = raw === 'major' ? 0 : raw === 'minor' ? 1 : styleIndex(raw);
     if (index !== 0 && index !== 1) return null;
     fontRef = index === 0 ? 'major' : 'minor';
   }
@@ -417,25 +432,30 @@ async function projectObject(document, object, slide, zip, xml) {
   const theme = themeFor(document, slide);
   if (!theme || theme.extensions.pptxObjectDefaults?.spDef) return;
   const colorMap = colorMapFor(document, slide);
+  if (!colorMap) return;
   const hasDirectFill = children(props).some(item => FILL_TAGS.includes(item.localName));
   const fillRef = style ? child(style, 'a', 'fillRef') : null;
   const fillOverride = referenceColor(fillRef, theme, colorMap);
   if (fillOverride === null) return;
-  const fill = hasDirectFill ? simpleFill(props, theme, colorMap)
-    : fillRef ? (fillOverride === NO_COLOR_OVERRIDE
-      ? fillFromStyle(theme.extensions.pptxFillStyles, styleIndex(fillRef.getAttribute('idx')))
-      : { kind: 'solid', color: fillOverride }) : none();
+  let fill;
+  if (hasDirectFill) fill = simpleFill(props, theme, colorMap);
+  else if (fillRef) {
+    const base = fillFromStyle(theme.extensions.pptxFillStyles, styleIndex(fillRef.getAttribute('idx')));
+    if (!base || fillOverride !== NO_COLOR_OVERRIDE && base.kind !== 'solid') return;
+    fill = fillOverride === NO_COLOR_OVERRIDE ? base : { ...base, color: fillOverride };
+  } else fill = none();
   if (!fill) return;
   const line = child(props, 'a', 'ln');
   const lineRef = style ? child(style, 'a', 'lnRef') : null;
   const lineOverride = referenceColor(lineRef, theme, colorMap);
   if (lineOverride === null) return;
-  const baseStroke = line ? simpleStroke(line, theme, colorMap)
-    : lineRef ? strokeFromStyle(theme.extensions.pptxLineStyles, styleIndex(lineRef.getAttribute('idx'))) : none();
-  if (!baseStroke) return;
-  const stroke = lineOverride === NO_COLOR_OVERRIDE
-    ? baseStroke
-    : baseStroke.kind === 'solid' ? { ...baseStroke, color: lineOverride } : null;
+  let stroke;
+  if (line) stroke = simpleStroke(line, theme, colorMap);
+  else if (lineRef) {
+    const base = strokeFromStyle(theme.extensions.pptxLineStyles, styleIndex(lineRef.getAttribute('idx')));
+    if (!base || lineOverride !== NO_COLOR_OVERRIDE && base.kind !== 'solid') return;
+    stroke = lineOverride === NO_COLOR_OVERRIDE ? base : { ...base, color: lineOverride };
+  } else stroke = none();
   if (!stroke) return;
   const text = body ? projectText(document, object, node, slide, theme, colorMap) : null;
   if (body && !text) return;

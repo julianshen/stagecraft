@@ -205,6 +205,64 @@ describe('native PPTX appearance projection', () => {
     } finally { session.dispose(); }
   });
 
+  it('refuses colour-map overrides, inherited paragraph attributes and compound strokes', async () => {
+    const overrideSlide = `<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100, '<a:solidFill><a:schemeClr val="tx1"/></a:solidFill>'))}<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
+    const override = await openFixture(overrideSlide);
+    try {
+      expect(proof(override.document.slides[0].objects[0])).toBeUndefined();
+      expect(override.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
+    } finally { override.dispose(); }
+
+    const centeredMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr algn="ctr"><a:defRPr sz="1800"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+    const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const bytes = await sourceReady(await buildPptx({ theme, master: centeredMaster, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(box)}</p:sld>` }] }));
+    const centered = await openPresentation(bytes, { format: 'pptx', xml });
+    try { expect(proof(centered.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { centered.dispose(); }
+
+    for (const attributes of ['cmpd="dbl"', 'algn="in"']) {
+      const line = `<a:ln w="9525" ${attributes}><a:solidFill><a:srgbClr val="112233"/></a:solidFill></a:ln>`;
+      const session = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100, line))}</p:sld>`);
+      try { expect(proof(session.document.slides[0].objects[0])).toBeUndefined(); }
+      finally { session.dispose(); }
+    }
+  });
+
+  it('follows layout backgrounds and refuses unsupported inherited layouts', async () => {
+    const solidLayout = emptyLayout.replace('<p:cSld>', '<p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></p:bgPr></p:bg>');
+    const solid = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { layout: solidLayout });
+    try { expect(solid.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#FF0000' }); }
+    finally { solid.dispose(); }
+
+    const gradientLayout = emptyLayout.replace('<p:cSld>', '<p:cSld><p:bg><p:bgPr><a:gradFill/></p:bgPr></p:bg>');
+    const gradient = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { layout: gradientLayout });
+    try { expect(gradient.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined(); }
+    finally { gradient.dispose(); }
+  });
+
+  it('validates referenced fill models and preserves direct stroke colours', async () => {
+    const gradientTheme = theme.replace(/<a:fillStyleLst>[\s\S]*?<\/a:fillStyleLst>/, '<a:fillStyleLst><a:gradFill/></a:fillStyleLst>');
+    const fillOverride = shape(2, 'rect', 20, 20, 200, 100, '', '<p:style><a:fillRef idx="1001"><a:schemeClr val="accent2"/></a:fillRef></p:style>');
+    const gradient = await openFixture(`<p:sld ${NS}>${tree(fillOverride)}</p:sld>`, { theme: gradientTheme });
+    try { expect(proof(gradient.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { gradient.dispose(); }
+
+    const directLine = shape(2, 'rect', 20, 20, 200, 100, '<a:ln w="9525"><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:ln>', '<p:style><a:lnRef idx="1001"><a:schemeClr val="accent2"/></a:lnRef></p:style>');
+    const stroke = await openFixture(`<p:sld ${NS}>${tree(directLine)}</p:sld>`);
+    try { expect(proof(stroke.document.slides[0].objects[0]).stroke).toEqual({ kind: 'solid', color: '#FF0000', widthEmu: 9525 }); }
+    finally { stroke.dispose(); }
+  });
+
+  it('accepts named major and minor font references', async () => {
+    for (const [idx, expected] of [['major', 'Georgia'], ['minor', 'Arial']]) {
+      const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' })
+        .replace('<p:spPr>', `<p:style><a:fontRef idx="${idx}"/></p:style><p:spPr>`);
+      const session = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`);
+      try { expect(session.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamily).toBe(expected); }
+      finally { session.dispose(); }
+    }
+  });
+
   it('refuses a slide proof when its own background is an unsupported gradient', async () => {
     const gradientBg = '<p:bg><p:bgPr><a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="FF0000"/></a:gs><a:gs pos="100000"><a:srgbClr val="0000FF"/></a:gs></a:gsLst></a:gradFill></p:bgPr></p:bg>';
     const session = await openFixture(`<p:sld ${NS}>${tree('').replace('<p:cSld>', `<p:cSld>${gradientBg}`)}</p:sld>`);
