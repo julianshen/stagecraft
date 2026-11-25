@@ -6,7 +6,7 @@ import { IMAGE_LIMITS, openPresentation } from './index.js';
 import { NS } from './xml.js';
 
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), c => c.charCodeAt(0));
-const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x01, 0xff, 0xd9]);
+const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0xff, 0xd9, 0x00, 0x00]);
 const deck = { sections: [{ id: 'section', slides: ['slide'] }], slides: [{ id: 'slide', layout: 'blank', elements: [] }] };
 const textDeck = { sections: [{ id: 'section', slides: ['slide'] }], slides: [{ id: 'slide', layout: 'blank', elements: [{ id: 'text', type: 'text', x: 0, y: 0, w: 1000, h: 500, content: 'Editable' }] }] };
 const parse = text => new DOMParser().parseFromString(text, 'application/xml');
@@ -210,4 +210,57 @@ it('rejects forged PPTX preview appearance while allowing ignored display-proof 
     const output = await session.export(next);
     expect(output.dirtyParts).toEqual(['ppt/slides/slide1.xml']);
   } finally { session.dispose(); }
+});
+
+it('rejects unsupported table edits after safely traversing rows without cells or cell text', async () => {
+  const session = await openPresentation(await writePptx(textDeck), { format: 'pptx' });
+  try {
+    const next = structuredClone(session.document);
+    next.slides[0].objects[0].table = { rows: [
+      { id: 'row-without-cells' },
+      { id: 'row-with-empty-cell', cells: [{ id: 'cell-without-text' }] },
+    ] };
+    await expect(session.export(next)).rejects.toThrow('Unsupported source document edit');
+  } finally { session.dispose(); }
+});
+
+it('rejects changing a retained native PPTX run attribute instead of silently dropping it', async () => {
+  const zip = await JSZip.loadAsync(await writePptx(textDeck)), part = 'ppt/slides/slide1.xml';
+  const doc = parse(await zip.file(part).async('string'));
+  doc.getElementsByTagNameNS(NS.a, 'rPr')[0].setAttribute('lang', 'en-US');
+  zip.file(part, serialize(doc));
+  const session = await openPresentation(await zip.generateAsync({ type: 'uint8array' }), { format: 'pptx' });
+  try {
+    const next = structuredClone(session.document), run = next.slides[0].objects[0].text.paragraphs[0].runs[0];
+    expect(run.style.lang).toBe('en-US');
+    run.style.lang = 'fr-FR';
+    await expect(session.export(next)).rejects.toThrow('Unsupported source document edit');
+  } finally { session.dispose(); }
+});
+
+it('validates typeface changes with the font-family value contract', async () => {
+  const session = await openPresentation(await writePptx(textDeck), { format: 'pptx' });
+  try {
+    const next = structuredClone(session.document), run = next.slides[0].objects[0].text.paragraphs[0].runs[0];
+    run.style.typeface = '';
+    await expect(session.export(next)).rejects.toThrow('Invalid direct run typography');
+  } finally { session.dispose(); }
+});
+
+it('creates run properties in the DrawingML namespace for unprefixed native text nodes', async () => {
+  const zip = await JSZip.loadAsync(await writePptx(textDeck)), part = 'ppt/slides/slide1.xml';
+  const source = await zip.file(part).async('string');
+  zip.file(part, source
+    .replace(/<a:rPr\b[^>]*\/>|<a:rPr\b[^>]*>[\s\S]*?<\/a:rPr>/g, '')
+    .replaceAll('<a:t>', `<t xmlns="${NS.a}">`)
+    .replaceAll('</a:t>', '</t>'));
+  const session = await openPresentation(await zip.generateAsync({ type: 'uint8array' }), { format: 'pptx' });
+  let reopened;
+  try {
+    const next = structuredClone(session.document), run = next.slides[0].objects[0].text.paragraphs[0].runs[0];
+    run.style.b = '0';
+    const output = await session.export(next);
+    reopened = await openPresentation(output.bytes, { format: 'pptx' });
+    expect(reopened.document.slides[0].objects[0].text.paragraphs[0].runs[0].style.b).toBe('0');
+  } finally { reopened?.dispose(); session.dispose(); }
 });

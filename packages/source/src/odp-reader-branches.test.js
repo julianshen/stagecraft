@@ -310,3 +310,41 @@ it.each(['width', 'height'])('rejects mixed page %s sizes instead of normalizing
   });
   await expect(read(bytes)).rejects.toThrow('Mixed ODP page sizes');
 });
+
+it('ignores unsupported list-level definition kinds without inventing bullets', async () => {
+  const bytes = await fixture((_zip, doc) => {
+    const listStyle = element(doc, 'text', 'list-style', { 'style:name': 'UnsupportedList' });
+    listStyle.appendChild(element(doc, 'text', 'unsupported-level-style', { 'text:level': '1' }));
+    automaticStyles(doc).appendChild(listStyle);
+    const box = doc.getElementsByTagNameNS(NS.draw, 'text-box')[0];
+    box.replaceChildren();
+    appendMarkup(doc, box, '<text:list text:style-name="UnsupportedList"><text:list-item><text:p>Plain</text:p></text:list-item></text:list>');
+  });
+  expect((await read(bytes)).slides[0].objects[0].text.paragraphs[0].style).toEqual({ level: 0 });
+});
+
+it('ignores drawing children mixed into a text box instead of leaking nested paragraphs', async () => {
+  const bytes = await fixture((_zip, doc) => {
+    const box = doc.getElementsByTagNameNS(NS.draw, 'text-box')[0];
+    box.replaceChildren();
+    appendMarkup(doc, box, '<text:p>Visible</text:p><draw:frame><draw:text-box><text:p>Hidden</text:p></draw:text-box></draw:frame>');
+  });
+  const paragraphs = (await read(bytes)).slides[0].objects[0].text.paragraphs;
+  expect(paragraphs).toHaveLength(1);
+  expect(paragraphs[0].runs[0].text).toBe('Visible');
+});
+
+it('leaves shapes without a graphic style unfilled and non-editable', async () => {
+  const bytes = await fixture((_zip, doc) => appendMarkup(doc, page(doc), '<draw:rect/>'));
+  const object = (await read(bytes)).slides[0].objects.at(-1);
+  expect(object).toMatchObject({ type: 'shape', shape: 'rect' });
+  expect(object.fill).toBeUndefined();
+  expect(object.extensions.editableFill).toBeUndefined();
+});
+
+it('keeps inline binary chart objects opaque when no chart href is available', async () => {
+  const bytes = await fixture((_zip, doc) => appendMarkup(doc, page(doc), '<draw:frame><draw:object><office:binary-data>AQID</office:binary-data></draw:object></draw:frame>'));
+  const document = await read(bytes), object = document.slides[0].objects.at(-1);
+  expect(object.type).toBe('opaque');
+  expect(document.relationships.filter(relationship => relationship.type.endsWith('#object'))).toEqual([]);
+});
