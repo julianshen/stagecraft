@@ -1,5 +1,6 @@
-import { build } from 'vite';
+import { build, preview } from 'vite';
 import react from '@vitejs/plugin-react';
+import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
@@ -115,7 +116,10 @@ import { CanonicalEditorSurface } from '@stagecraft/react/canonical';
 import { SAMPLE_DECK, createDocument, createEditor, documentPlugin, presentationPlugin } from '@stagecraft/core';
 import '@stagecraft/react/styles.css';
 
-const editor = createEditor({ document: createDocument(), plugins: [documentPlugin, presentationPlugin] });
+const editor = createEditor({
+  document: createDocument({ slides: [{ id: 's1', objects: [], extensions: { stagecraftAuthored: true } }] }),
+  plugins: [documentPlugin, presentationPlugin],
+});
 createRoot(document.getElementById('root')).render(
   <EditorProvider editor={editor}>
     <DeckList items={[{ id: '1', title: 'Demo' }]} onSelect={() => {}} />
@@ -124,17 +128,80 @@ createRoot(document.getElementById('root')).render(
   </EditorProvider>
 );
 `);
+  const defaultOutDir = path.join(cloneDir, 'dist-default-svg');
   const defaultBuilt = await build({
     configFile: false,
     logLevel: 'silent',
     root: defaultAppDir,
     plugins: [react()],
-    build: { write: false },
+    build: { outDir: defaultOutDir, emptyOutDir: true },
   });
   const defaultChunks = chunkInventory(defaultBuilt.output.filter(c => c.type === 'chunk'));
   const defaultKonvaLeak = defaultChunks.some(c => c.konvaNodeMods > 0 || c.konvaSrcMods > 0);
   if (defaultKonvaLeak) {
     throw new Error(`Default-SVG consumer graph contained konva modules: ${JSON.stringify(defaultChunks)}`);
+  }
+
+  // Runtime check for default-SVG PresentationEditor (surface unset):
+  // confirm no Konva chunk request is made and globalThis.Konva === undefined.
+  const defaultPresDir = path.join(cloneDir, 'tests/consumer-default-presentation');
+  const defaultPresOutDir = path.join(cloneDir, 'dist-default-pres');
+  mkdirSync(defaultPresDir, { recursive: true });
+  writeFileSync(path.join(defaultPresDir, 'index.html'), '<!doctype html><html><body><div id="root"></div><script type="module" src="/main.jsx"></script></body></html>');
+  writeFileSync(path.join(defaultPresDir, 'main.jsx'), `
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { createDocument, createEditor, documentPlugin, presentationPlugin } from '@stagecraft/core';
+import { EditorProvider } from '@stagecraft/react/editor';
+import { PresentationEditor } from '@stagecraft/react/presentation';
+import '@stagecraft/react/styles.css';
+
+const editor = createEditor({
+  document: createDocument({ slides: [{ id: 's1', objects: [], extensions: { stagecraftAuthored: true } }] }),
+  plugins: [documentPlugin, presentationPlugin],
+});
+createRoot(document.getElementById('root')).render(
+  <EditorProvider editor={editor}>
+    <PresentationEditor />
+  </EditorProvider>
+);
+`);
+  await build({
+    configFile: false,
+    logLevel: 'silent',
+    root: defaultPresDir,
+    plugins: [react()],
+    build: { outDir: defaultPresOutDir, emptyOutDir: true },
+  });
+
+  let runtimeCheck;
+  const previewServer = await preview({
+    configFile: false,
+    root: defaultPresDir,
+    preview: { port: 4198, strictPort: true },
+    build: { outDir: defaultPresOutDir },
+  });
+  const launchOpts = process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {};
+  const browser = await chromium.launch(launchOpts);
+  try {
+    const page = await browser.newPage();
+    const requestedUrls = [];
+    page.on('request', req => requestedUrls.push(req.url()));
+    await page.goto(previewServer.resolvedUrls.local[0]);
+    await page.waitForSelector('[aria-label="Slide canvas"] svg');
+    const globalKonva = await page.evaluate(() => globalThis.Konva);
+    const konvaRequests = requestedUrls.filter(u => /konva/i.test(u));
+    if (konvaRequests.length > 0 || globalKonva !== undefined) {
+      throw new Error(`Runtime default-SVG leaked Konva: requests=${JSON.stringify(konvaRequests)}, globalKonva=${String(globalKonva)}`);
+    }
+    runtimeCheck = {
+      totalRequests: requestedUrls.length,
+      konvaRequests: konvaRequests.length,
+      globalKonvaDefined: globalKonva !== undefined,
+    };
+  } finally {
+    await browser.close();
+    previewServer.httpServer.close();
   }
 
   // 3b. Opt-in @stagecraft/react/konva consumer in isolated clone
@@ -150,7 +217,10 @@ import { PresentationEditorProvider } from '@stagecraft/react/presentation';
 import { KonvaPresentationCanvas } from '@stagecraft/react/konva';
 import '@stagecraft/react/styles.css';
 
-const editor = createEditor({ document: createDocument(), plugins: [documentPlugin, presentationPlugin] });
+const editor = createEditor({
+  document: createDocument({ slides: [{ id: 's1', objects: [], extensions: { stagecraftAuthored: true } }] }),
+  plugins: [documentPlugin, presentationPlugin],
+});
 createRoot(document.getElementById('root')).render(
   <EditorProvider editor={editor}>
     <PresentationEditorProvider>
@@ -186,6 +256,7 @@ createRoot(document.getElementById('root')).render(
       budgetBytes: painterGrowthBudgetBytes,
     },
     isolatedDefaultSvgConsumer: { chunks: defaultChunks },
+    isolatedDefaultPresentationRuntime: runtimeCheck,
     isolatedOptInKonvaConsumer: { chunks: optInChunks },
   }, null, 2));
 } finally {
