@@ -115,10 +115,10 @@ function projectedAdjust(geometry) {
   return result;
 }
 
-async function projectTheme(document, zip, xml) {
+async function projectTheme(document, load) {
   for (const theme of document.themes) {
     if (!theme.source?.part) continue;
-    const root = (await xmlPart(zip, theme.source.part, xml)).documentElement;
+    const root = (await load(theme.source.part)).documentElement;
     const palette = readPptxColorScheme(root);
     const format = child(child(root, 'a', 'themeElements'), 'a', 'fmtScheme');
     const projectStyles = (tag, stroke = false) => children(child(format, 'a', tag)).map(node => {
@@ -138,9 +138,9 @@ async function projectTheme(document, zip, xml) {
   }
 }
 
-async function themeStyleVectors(theme, colorMap, zip, xml) {
+async function themeStyleVectors(theme, colorMap, load) {
   if (!theme?.source?.part || !colorMap) return null;
-  const root = (await xmlPart(zip, theme.source.part, xml)).documentElement;
+  const root = (await load(theme.source.part)).documentElement;
   const palette = theme.extensions?.pptxColorScheme;
   const format = child(child(root, 'a', 'themeElements'), 'a', 'fmtScheme');
   const fills = children(child(format, 'a', 'fillStyleLst')).map(node => {
@@ -159,19 +159,19 @@ async function themeStyleVectors(theme, colorMap, zip, xml) {
   return { fills, lines, backgrounds };
 }
 
-async function projectEntityBackgrounds(document, zip, xml) {
+async function projectEntityBackgrounds(document, load) {
   const own = new Map();
   const presentationPart = document.relationships.find(item => item.type.endsWith('/officeDocument'))?.target;
   if (presentationPart) {
     try {
-      const root = (await xmlPart(zip, presentationPart, xml)).documentElement;
+      const root = (await load(presentationPart)).documentElement;
       const theme = document.themes[0] ?? null;
       document.extensions.pptxDefaultTextStyle = inheritedTextStyle(child(root, 'p', 'defaultTextStyle'), theme, colorMapFor(document, null));
     } catch { document.extensions.pptxDefaultTextStyle = null; }
   }
   for (const entity of [...document.masters, ...document.layouts, ...document.slides]) {
     if (!entity.source?.part) continue;
-    const root = (await xmlPart(zip, entity.source.part, xml)).documentElement;
+    const root = (await load(entity.source.part)).documentElement;
     const colorMap = readPptxColorMap(child(root, 'p', 'clrMap'));
     const colorOverride = child(root, 'p', 'clrMapOvr');
     const overrideMapping = colorOverride ? child(colorOverride, 'a', 'overrideClrMapping') : null;
@@ -199,7 +199,7 @@ async function projectEntityBackgrounds(document, zip, xml) {
     if (bg) {
       const ref = child(bg, 'p', 'bgRef');
       if (ref) {
-        const vectors = await themeStyleVectors(theme, entityColorMap, zip, xml);
+        const vectors = await themeStyleVectors(theme, entityColorMap, load);
         value = vectors ? (fillFromStyle(vectors.backgrounds, styleIndex(ref.getAttribute('idx'))) ?? UNSUPPORTED_BACKGROUND) : UNSUPPORTED_BACKGROUND;
       } else {
         const bgPr = child(bg, 'p', 'bgPr');
@@ -457,9 +457,9 @@ function allPlaceholdersOrLists(node) {
     .some(item => item.children.length > 0);
 }
 
-async function projectObject(document, object, slide, zip, xml) {
+async function projectObject(document, object, slide, load) {
   if (!object.source?.part || !['shape', 'text'].includes(object.type)) return;
-  const node = locate(await xmlPart(zip, object.source.part, xml), object.source.path);
+  const node = locate(await load(object.source.part), object.source.path);
   if (!is(node, 'p', 'sp') || allPlaceholdersOrLists(node)) return;
   const props = child(node, 'p', 'spPr');
   const xfrm = child(props, 'a', 'xfrm');
@@ -479,7 +479,7 @@ async function projectObject(document, object, slide, zip, xml) {
   if (!theme || theme.extensions.pptxObjectDefaults?.spDef) return;
   const colorMap = colorMapFor(document, slide);
   if (!colorMap) return;
-  const vectors = await themeStyleVectors(theme, colorMap, zip, xml);
+  const vectors = await themeStyleVectors(theme, colorMap, load);
   if (!vectors) return;
   const hasDirectFill = children(props).some(item => FILL_TAGS.includes(item.localName));
   const fillRef = style ? child(style, 'a', 'fillRef') : null;
@@ -526,10 +526,15 @@ async function projectObject(document, object, slide, zip, xml) {
 
 export async function projectNativeAppearance(document, zip, xml) {
   if (document.extensions?.sourceFormat !== 'pptx') return;
-  try { await projectTheme(document, zip, xml); }
+  const parts = new Map();
+  const load = part => {
+    if (!parts.has(part)) parts.set(part, xmlPart(zip, part, xml));
+    return parts.get(part);
+  };
+  try { await projectTheme(document, load); }
   catch { /* Appearance projection must never prevent opening a valid package. */ }
   let ownBackgrounds = new Map();
-  try { ownBackgrounds = await projectEntityBackgrounds(document, zip, xml); }
+  try { ownBackgrounds = await projectEntityBackgrounds(document, load); }
   catch { ownBackgrounds = new Map(); }
   for (const master of document.masters) {
     try {
@@ -572,7 +577,7 @@ export async function projectNativeAppearance(document, zip, xml) {
       }
     } catch { /* Unresolved slide appearance stays unproved. */ }
     for (const object of slide.objects) {
-      try { await projectObject(document, object, slide, zip, xml); }
+      try { await projectObject(document, object, slide, load); }
       catch { /* Unsupported appearance stays opaque and refuses the scene later. */ }
     }
   }

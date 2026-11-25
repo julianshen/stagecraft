@@ -80,6 +80,20 @@ describe('native PPTX appearance projection', () => {
     } finally { session.dispose(); }
   });
 
+  it('parses each source part once per appearance projection pass', async () => {
+    const objects = shape(2, 'rect', 20, 20, 200, 100) + shape(3, 'ellipse', 40, 40, 200, 100);
+    const bytes = await sourceReady(await buildPptx({ theme, master: emptyMaster, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(objects)}</p:sld>` }] }));
+    const zip = await JSZip.loadAsync(bytes);
+    const session = await openPresentation(bytes, { format: 'pptx', xml });
+    try {
+      for (const object of session.document.slides[0].objects) delete object.extensions.stagecraftNativeAppearance;
+      let slideParses = 0;
+      const countingXml = { ...xml, parse: text => { if (text.includes('<p:sld ')) slideParses++; return xml.parse(text); } };
+      await projectNativeAppearance(session.document, zip, countingXml);
+      expect(slideParses).toBe(1);
+    } finally { session.dispose(); }
+  });
+
   it('keeps appearance projection fail-closed when source parts or relationships are unavailable', async () => {
     await expect(projectNativeAppearance({ extensions: { sourceFormat: 'odp' } }, new JSZip(), xml)).resolves.toBeUndefined();
     const session = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`);
