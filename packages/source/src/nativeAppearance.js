@@ -431,8 +431,7 @@ function projectText(document, object, node, slide, theme, colorMap) {
     }
     const lastRun = paragraph.runs.at(-1);
     const lastXmlRun = children(xmlParagraph).filter(item => is(item, 'a', 'r')).at(-1);
-    const endValue = resolvedRun(end ?? (lastXmlRun ? child(lastXmlRun, 'a', 'rPr') : null), defaults, theme, colorMap, fontRef, baseColor, inherited, lastRun?.text ?? '')
-      ?? lastRun?.extensions?.pptxAppearance?.resolved;
+    const endValue = resolvedRun(end ?? (lastXmlRun ? child(lastXmlRun, 'a', 'rPr') : null), defaults, theme, colorMap, fontRef, baseColor, inherited, lastRun?.text ?? '');
     if (!endValue) return null;
     paragraphs.push({
       id: paragraph.id,

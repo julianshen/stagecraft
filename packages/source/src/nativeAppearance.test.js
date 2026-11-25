@@ -56,13 +56,20 @@ const appearanceContext = (document, slide) => {
 };
 
 describe('native PPTX appearance projection', () => {
-  it('uses the last resolved run when end-run properties are unresolved', async () => {
-    const box = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"><a:latin typeface="Arial"/></a:rPr><a:t>Native</a:t></a:r><a:endParaRPr sz="bad"/></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+  it('uses the last run only when end-run properties are absent', async () => {
+    const box = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"><a:latin typeface="Arial"/></a:rPr><a:t>Native</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const session = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`);
     try {
       const object = session.document.slides[0].objects[0];
       expect(proof(object).text.paragraphs[0].endRun).toEqual(object.text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved);
     } finally { session.dispose(); }
+
+    for (const end of ['<a:endParaRPr sz="bad"/>', '<a:endParaRPr sz="3600"><a:solidFill><a:srgbClr val="112233"><a:alpha val="50000"/></a:srgbClr></a:solidFill></a:endParaRPr>']) {
+      const invalid = textBox(2, 20, 20, 300, 100, `<a:p><a:r><a:rPr sz="1800"><a:latin typeface="Arial"/></a:rPr><a:t>Native</a:t></a:r>${end}</a:p>`, { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+      const refused = await openFixture(`<p:sld ${NS}>${tree(invalid)}</p:sld>`);
+      try { expect(proof(refused.document.slides[0].objects[0])).toBeUndefined(); }
+      finally { refused.dispose(); }
+    }
   });
 
   it('refuses style references when resolved theme style vectors are unavailable', async () => {
