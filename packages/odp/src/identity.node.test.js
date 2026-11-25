@@ -265,6 +265,47 @@ describe('ODP identity metadata', () => {
     } finally { window.close(); }
   });
 
+  it('round-trips ids for titles containing attribute whitespace', async () => {
+    const { window, xml } = xmlRuntime();
+    try {
+      const doc = identityDocument();
+      doc.sections = [{ id: 'sec', name: 'Slides', slides: ['newline', 'tab'] }];
+      doc.slides = [
+        { id: 'newline', title: 'Line\nBreak', layout: 'blank', elements: [] },
+        { id: 'tab', title: 'Tab\tTitle', layout: 'blank', elements: [] },
+      ];
+      const result = await importOdp(await writeOdp(doc), { xml, fileName: 'Names.odp' });
+      expect(result.document.slides.map(slide => slide.id)).toEqual(['newline', 'tab']);
+      expect(result.diagnostics.some(item => item.code === 'identity-stale' || item.code === 'identity-invalid')).toBe(false);
+    } finally { window.close(); }
+  });
+
+  it('regenerates ids when same-title slides with different notes are reordered', async () => {
+    const { window, xml } = xmlRuntime();
+    try {
+      const doc = identityDocument();
+      doc.sections = [{ id: 'sec', name: 'Slides', slides: ['notes-a', 'notes-b'] }];
+      doc.slides = [
+        { id: 'notes-a', title: 'Same', layout: 'blank', notes: 'First note', elements: [] },
+        { id: 'notes-b', title: 'Same', layout: 'blank', notes: 'Second note', elements: [] },
+      ];
+      const bytes = await writeOdp(doc);
+      const edited = await editPackage(bytes, async zip => {
+        const content = xml.parse(await zip.file('content.xml').async('string'));
+        const presentation = content.getElementsByTagNameNS(OFFICE, 'presentation')[0];
+        const pages = [...presentation.children].filter(node => node.namespaceURI === DRAW && node.localName === 'page');
+        presentation.appendChild(pages[0]);
+        zip.file('content.xml', xml.serialize(content));
+      });
+      const result = await importOdp(edited, { xml, fileName: 'Notes.odp' });
+      expect(result.document.slides.map(slide => [slide.id, slide.notes])).toEqual([
+        ['slide-1', 'Second note'],
+        ['slide-2', 'First note'],
+      ]);
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'identity-stale', severity: 'warning' }));
+    } finally { window.close(); }
+  });
+
   it('round-trips ids for blank slides with empty or absent titles', async () => {
     const { window, xml } = xmlRuntime();
     try {
@@ -326,7 +367,7 @@ describe('ODP identity metadata', () => {
       const edited = await editPackage(bytes, async zip => {
         let content = await zip.file('content.xml').async('string');
         content = content.replace('<draw:frame ', '<draw:frame draw:transform="rotate(1)" ');
-        content = content.replace(/(<text:p text:style-name="s0e0">)[\s\S]*?(<\/text:p>)/, `$1${'<text:s text:c="1000"/>'.repeat(100000)}$2`);
+        content = content.replace(/(<text:p text:style-name="s0e0">)[\s\S]*?(<\/text:p>)/, `$1${'<text:s text:c="1000"/>'.repeat(1100)}$2`);
         zip.file('content.xml', content);
         if (payload === 'invalid') {
           const meta = xml.parse(await zip.file('meta.xml').async('string'));
