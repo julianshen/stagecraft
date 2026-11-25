@@ -3,6 +3,7 @@ import {
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
   nativeSlideAppearanceInput,
+  nativeTextScript,
 } from '@stagecraft/core/lib/nativeAppearance.js';
 import { attrs, child, children, is, locate, xmlPart } from './xml.js';
 import { readPptxColorMap, readPptxColorScheme, resolvePptxColor } from './pptxColor.js';
@@ -306,7 +307,7 @@ function resolveRunFont(runProperties, fallbackProperties, theme, fontRef, slot,
   return resolveFont(direct, theme, fontRef, themeSlot, inheritedFont);
 }
 
-function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef, baseColor = null, inherited = {}) {
+function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef, baseColor = null, inherited = {}, text = '') {
   const rawSize = runProperties?.getAttribute('sz') ?? fallbackProperties?.getAttribute('sz');
   const size = rawSize ?? (inherited.fontSizePt === undefined ? null : String(Math.round(inherited.fontSizePt * 100)));
   if (!/^\d+$/.test(size ?? '') || !Number.isInteger(Number(size)) || Number(size) < 100 || Number(size) > 400000) return null;
@@ -334,8 +335,9 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
   const fontFamilyComplexScript = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'cs', inherited.fontFamilyComplexScript);
   const language = runProperties?.getAttribute('lang') ?? fallbackProperties?.getAttribute('lang') ?? inherited.language;
   const primary = language?.toLowerCase().split('-')[0];
-  const supplementalScript = primary ? SUPPLEMENTAL_SCRIPTS[primary] : null;
-  if (primary && !supplementalScript && !NON_SUPPLEMENTAL_LANGUAGES.has(primary)) return null;
+  const detectedScript = nativeTextScript(text);
+  const supplementalScript = SUPPLEMENTAL_SCRIPTS[primary] ?? (detectedScript === 'Latn' ? null : detectedScript);
+  if (primary && !SUPPLEMENTAL_SCRIPTS[primary] && !NON_SUPPLEMENTAL_LANGUAGES.has(primary)) return null;
   const supplementalFont = supplementalScript ? theme.extensions.pptxFontScheme?.[fontRef]?.supplemental?.[supplementalScript] : null;
   const resolvedComplexScript = supplementalFont ? normalizeFont(supplementalFont) : fontFamilyComplexScript;
   if (!color || !fontFamily || !fontFamilyEastAsia || !resolvedComplexScript) return null;
@@ -418,13 +420,14 @@ function projectText(document, object, node, slide, theme, colorMap) {
     for (const [runIndex, run] of paragraph.runs.entries()) {
       const xmlRun = children(xmlParagraph).filter(item => is(item, 'a', 'r'))[runIndex];
       const runProperties = xmlRun ? child(xmlRun, 'a', 'rPr') : null;
-      const value = resolvedRun(runProperties, defaults, theme, colorMap, fontRef, baseColor, inherited);
+      const script = nativeTextScript(run.text);
+      const value = resolvedRun(runProperties, defaults, theme, colorMap, fontRef, baseColor, inherited, run.text);
       if (!value) return null;
-      run.extensions = { ...run.extensions, pptxAppearance: { ...run.extensions?.pptxAppearance, resolved: value } };
+      run.extensions = { ...run.extensions, pptxAppearance: { ...run.extensions?.pptxAppearance, resolved: value, script } };
     }
     const lastRun = paragraph.runs.at(-1);
     const lastXmlRun = children(xmlParagraph).filter(item => is(item, 'a', 'r')).at(-1);
-    const endValue = resolvedRun(end ?? (lastXmlRun ? child(lastXmlRun, 'a', 'rPr') : null), defaults, theme, colorMap, fontRef, baseColor, inherited)
+    const endValue = resolvedRun(end ?? (lastXmlRun ? child(lastXmlRun, 'a', 'rPr') : null), defaults, theme, colorMap, fontRef, baseColor, inherited, lastRun?.text ?? '')
       ?? lastRun?.extensions?.pptxAppearance?.resolved;
     if (!endValue) return null;
     paragraphs.push({

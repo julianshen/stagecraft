@@ -300,10 +300,15 @@ describe('native PPTX appearance projection', () => {
     finally { kernSession.dispose(); }
 
     const supplemental = theme.replace('<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/>', '<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/><a:font script="Arab" typeface="Noto Naskh Arabic"/>');
-    const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const box = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Native</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const fontSession = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`, { theme: supplemental });
     try { expect(proof(fontSession.document.slides[0].objects[0])).toBeDefined(); }
     finally { fontSession.dispose(); }
+
+    const noLangArabic = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>مرحبا</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const noLangArabicSession = await openFixture(`<p:sld ${NS}>${tree(noLangArabic)}</p:sld>`, { theme: supplemental });
+    try { expect(noLangArabicSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Naskh Arabic'); }
+    finally { noLangArabicSession.dispose(); }
 
     const arabic = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="ar-SA"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const arabicSession = await openFixture(`<p:sld ${NS}>${tree(arabic)}</p:sld>`, { theme: supplemental });

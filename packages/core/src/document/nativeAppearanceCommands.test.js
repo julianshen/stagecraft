@@ -122,6 +122,14 @@ describe('native appearance command invalidation', () => {
     expect(editor.getSnapshot().document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
   });
 
+  it('invalidates the proof when a text edit changes the resolved script', () => {
+    const object = textObject();
+    object.text.paragraphs[0].runs[0].extensions.pptxAppearance.script = 'Latn';
+    const editor = makeEditor(object);
+    expect(editor.dispatch('document.setRunText', { runId: 'r1', text: 'مرحبا' }).changed).toBe(true);
+    expect(proof(editor)).toBeUndefined();
+  });
+
   it.each([
     ['document.setRunFormat', { runId: 'r1', format: { color: '#445566' } }],
     ['document.setParagraphFormat', { paragraphId: 'p1', format: { alignment: 'center' } }],
