@@ -2,7 +2,7 @@ import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import { validateDocument } from '@stagecraft/core/document';
 import { writePptx } from '@stagecraft/pptx';
-import { writeOdp, importOdp } from '@stagecraft/odp';
+import { writeOdp } from '@stagecraft/odp';
 import { buildCanonicalScene } from '@stagecraft/renderer/canonical';
 import { createPresentation, openPresentation } from './index.js';
 
@@ -161,12 +161,17 @@ describe('createPresentation', () => {
         expect(manifestXml).toContain('manifest:full-path="meta.xml"');
         const metaXml = await zip.file('meta.xml')?.async('string');
         expect(metaXml).toContain('<dc:title>Quarterly Review &amp; Plan</dc:title>');
-        const imported = await importOdp(exported.bytes);
-        expect(imported.document.title).toBe(title);
       }
       const reopened = await openPresentation(exported.bytes, { format });
       try {
         expect(reopened.document.slides).toHaveLength(1);
+        const reExported = await reopened.export(reopened.document);
+        const reZip = await JSZip.loadAsync(reExported.bytes);
+        if (format === 'pptx') {
+          expect(await reZip.file('docProps/core.xml')?.async('string')).toContain('<dc:title>Quarterly Review &amp; Plan</dc:title>');
+        } else {
+          expect(await reZip.file('meta.xml')?.async('string')).toContain('<dc:title>Quarterly Review &amp; Plan</dc:title>');
+        }
       } finally {
         reopened.dispose();
       }
