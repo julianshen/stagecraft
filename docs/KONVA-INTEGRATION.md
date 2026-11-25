@@ -1,6 +1,6 @@
-# Konva Canvas Integration (KONVA-2)
+# Konva Canvas Integration (KONVA-2 — Experimental Opt-In)
 
-This document describes the production opt-in Konva canvas surface shipped across K2a, K2b, and K2c.
+This document describes the **experimental opt-in** Konva canvas surface (`surface="konva"`, default remains `'svg'`) shipped across K2a, K2b, and K2c.
 
 ## 1. Package Boundaries & Lazy Loading
 
@@ -57,4 +57,6 @@ Measured on a production `vite build` (`minify: 'oxc'`) in headless Chromium `14
 
 - **Backing store breakdown (DPR 2, `1600x900` CSS)**: Layer 0 scene `[3200, 1800]` (`23,040,000 B`) + hit `[1600, 900]` (`5,760,000 B`) + Layer 1 adornment `[3200, 1800]` (`23,040,000 B`, hit `[0, 0]`) + bufferHit `[0, 0]` + `0` cached node canvases = **`51,840,000 B` (`49.44 MB`)**, well within `<= 3 layers` and `<= 90 MB`. (`jsHeapUsedMB`: `9.54 MB`, reported separately.)
 - **rAF timings**: `15.6–16.8 ms` reflects 60 Hz `requestAnimationFrame` scheduling cadence, not GPU presentation latency.
-- **Cold slide budget note**: Warm repaint (`0.3 ms`), drag frame (`0.2 ms p95`), and DPR-2 backing store (`49.44 MB`) pass ADR 0001 budgets with wide margin. Cold mount + first draw on the 16-object scene at DPR 2 measures `18.4 ms median / 20.8 ms p95` (`2.5 ms` scene build + `16.8 ms` React/Konva mount & first draw) vs the `<= 16 ms` ADR 0001 cold target.
+- **Cold slide budget disclosure (DPR 2)**:
+  - **Passed**: Warm repaint (`0.2–0.3 ms med / 0.3–0.4 ms p95 <= 4 ms`), drag handler (`0.1 ms med / 0.2 ms p95 <= 8 ms`), backing store (`2` layers, `49.44 MB <= 90 MB`; hit canvas already `pixelRatio = 1` at `[1600, 900]`), and **cold slide-switch** on a mounted `Stage` (**`0.6 ms med / 1.5 ms p95`** for 16-obj DPR 2; `4.3 ms med / 4.9 ms p95` for 256-obj DPR 2).
+  - **Measured deviation**: Initial one-time `Stage` mount + DPR-2 `3200x1800` backing-store allocation + first draw on the 16-object scene at DPR 2 measures **`18.3 ms med / 20.4 ms p95 / 38.9 ms max`** (`2.5 ms` scene build + `15.1 ms` React mount & Stage/canvas alloc + `0.8 ms` explicit draw) vs the `<= 16 ms` ADR 0001 cold target. Because initial DPR-2 mount p95 exceeds `16 ms`, `surface="konva"` remains **experimental opt-in** (default `'svg'`).

@@ -141,6 +141,8 @@ async function measureWorkload(count) {
   let commitCalls = 0;
 
   const coldSceneBuild = [];
+  const coldReactMountAndStageAlloc = [];
+  const coldExplicitDraw = [];
   const coldMountAndDraw = [];
   const coldTotal = [];
 
@@ -149,7 +151,7 @@ async function measureWorkload(count) {
     if (built.out.status !== 'ready') throw new Error(`Scene failed: ${built.out.reason}`);
     const scene = built.out.scene;
 
-    const mount = timed(() => {
+    const commit = timed(() => {
       root = createRoot(container);
       flushSync(() => {
         root.render(
@@ -167,16 +169,63 @@ async function measureWorkload(count) {
           />,
         );
       });
+    });
+    const draw = timed(() => {
       Konva.stages.at(-1).draw();
     });
 
     coldSceneBuild.push(built.ms);
-    coldMountAndDraw.push(mount.ms);
-    coldTotal.push(built.ms + mount.ms);
+    coldReactMountAndStageAlloc.push(commit.ms);
+    coldExplicitDraw.push(draw.ms);
+    coldMountAndDraw.push(commit.ms + draw.ms);
+    coldTotal.push(built.ms + commit.ms + draw.ms);
 
     if (i < 19) {
       flushSync(() => root.unmount());
       root = null;
+    }
+  }
+
+  // Also measure cold slide-switch on the ALREADY-MOUNTED Stage (16-obj fresh scene)
+  const coldSlideSwitch = [];
+  {
+    const stage = Konva.stages.at(-1);
+    for (let i = 0; i < 20; i++) {
+      const altDoc = createDocument({
+        id: `bench-switch-${count}-${i}`,
+        size: { width: 1600 * PT, height: 900 * PT },
+        layouts: [{ id: 'l1', masterId: 'm1' }],
+        masters: [{ id: 'm1', themeId: 'theme-1' }],
+        themes: [{ id: 'theme-1', extensions: { pptxFontScheme: { minor: { latin: 'Arial', eastAsian: 'Arial', complexScript: 'Arial' }, major: { latin: 'Arial', eastAsian: 'Arial', complexScript: 'Arial' } } } }],
+        slides: [{
+          id: `slide-switch-${i}`,
+          layoutId: 'l1',
+          extensions: { stagecraftAuthored: true },
+          background: { type: 'solid', color: '#ffffff' },
+          objects: makeSceneObjects(count),
+        }],
+      });
+      const built = timed(() => buildCanonicalScene(altDoc, `slide-switch-${i}`));
+      const sw = timed(() => {
+        flushSync(() => {
+          root.render(
+            <KonvaStage
+              scene={built.out.scene}
+              revision={i + 1}
+              ownerKey={ownerKey}
+              policyKey={policyKey}
+              selectionId={objects[0].id}
+              zoom={ZOOM_1600}
+              readOnly={false}
+              canMove={() => true}
+              onSelect={() => {}}
+              onMove={() => { commitCalls += 1; }}
+            />,
+          );
+        });
+        stage.draw();
+      });
+      coldSlideSwitch.push(built.ms + sw.ms);
     }
   }
 
@@ -260,8 +309,11 @@ async function measureWorkload(count) {
       viewportCss: [stage.width(), stage.height()],
       samples: { cold: 20, warmup: 10, warm: 80, drag: 80 },
       coldSceneBuildMs: stats(coldSceneBuild),
+      coldReactMountAndStageAllocMs: stats(coldReactMountAndStageAlloc),
+      coldExplicitDrawMs: stats(coldExplicitDraw),
       coldMountAndDrawMs: stats(coldMountAndDraw),
       coldTotalMs: stats(coldTotal),
+      coldSlideSwitchMs: stats(coldSlideSwitch),
       warmSyncDrawMs: stats(warmSyncDraw),
       warmRafIntervalMs: stats(warmRafInterval),
       dragHandlerMs: stats(dragHandlerMs),
