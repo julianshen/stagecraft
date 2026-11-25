@@ -8,9 +8,21 @@ through `importDocument` / `exportDocument`. No network resources are fetched.
 Supported export: blank slides in section order; plain text frames with font
 size/family, bold/italic, alignment and RGB color; solid RGB rectangles/ellipses;
 notes; one page aspect ratio. Unsupported element/slide properties and semantic
-layouts are rejected. Deck metadata and section names are reported as omitted.
-Geometry uses Stagecraft's 1920-wide authoring coordinates. Export writes native
-ODF 1.3 content/styles/manifest, with an uncompressed mimetype entry first.
+layouts are rejected. Document title is stored as ODF `dc:title`; Stagecraft
+document id/theme, section id/name/order, slide ids and element ids are stored in a
+versioned `meta:user-defined` field named `stagecraft.identity`. Geometry uses
+Stagecraft's 1920-wide authoring coordinates. Export writes native ODF 1.3
+content/styles/meta/manifest, with an uncompressed mimetype entry first.
+
+The identity field is capped at 256 KiB with bounded section/slide/element counts.
+Ids must be valid, unique strings. Import treats the field as untrusted: malformed
+or oversized metadata is ignored with an `identity-invalid` diagnostic. A
+fingerprint of ordered page names and per-object ODF style tokens, geometry/type
+and text digests must still match; otherwise ids are regenerated with `identity-stale` rather than assigned to the
+wrong objects. Foreign/legacy ODP files without the field use deterministic
+regenerated ids and report `identity-regenerated`. ODF 1.3 Part 3 §4.3.3 defines
+`meta:user-defined` for additional document metadata; preservation through a
+desktop LibreOffice save has not been natively verified.
 
 Import reads that subset from native ODP files and reports losses. Named paragraph
 and graphic style inheritance is resolved for supported properties. Rich text is
