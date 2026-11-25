@@ -16,6 +16,8 @@ const paragraphRuns = paragraph => children(paragraph).filter(node => !is(node, 
 const styleIndex = value => /^\d+$/.test(value ?? '') ? Number(value) - 1001 : -1;
 const none = () => ({ kind: 'none' });
 const onOff = value => value === '1' || value === 'true' ? true : value === '0' || value === 'false' ? false : null;
+const SUPPLEMENTAL_SCRIPTS = { ar: 'Arab', fa: 'Arab', ur: 'Arab', he: 'Hebr', th: 'Thai', hi: 'Deva', mr: 'Deva', ne: 'Deva', bn: 'Beng', ta: 'Taml', te: 'Telu', kn: 'Knda', ml: 'Mlym', gu: 'Gujr', pa: 'Guru' };
+const NON_SUPPLEMENTAL_LANGUAGES = new Set(['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'sv', 'da', 'no', 'fi', 'pl', 'cs', 'sk', 'hu', 'ro', 'bg', 'ru', 'uk', 'tr', 'el', 'ja', 'ko', 'zh', 'id', 'ms', 'vi']);
 const schemeHex = (palette, colorMap, slot) => palette?.[colorMap?.[slot] ?? slot] ?? null;
 
 function themeFor(document, entity) {
@@ -44,15 +46,8 @@ function colorMapFor(document, entity) {
       continue;
     }
     chain.unshift(current);
-    if (current.layoutId) {
-      current = document.layouts.find(layout => layout.id === current.layoutId);
-      if (current) {
-        chain.unshift(current);
-        current = current.masterId ? document.masters.find(master => master.id === current.masterId) : null;
-      }
-    } else {
-      current = current.masterId ? document.masters.find(master => master.id === current.masterId) : null;
-    }
+    if (current.layoutId) current = document.layouts.find(layout => layout.id === current.layoutId);
+    else current = current.masterId ? document.masters.find(master => master.id === current.masterId) : null;
   }
   const map = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' };
   for (const item of chain) Object.assign(map, item.extensions?.pptxColorMap);
@@ -142,6 +137,27 @@ async function projectTheme(document, zip, xml) {
   }
 }
 
+async function themeStyleVectors(theme, colorMap, zip, xml) {
+  if (!theme?.source?.part || !colorMap) return null;
+  const root = (await xmlPart(zip, theme.source.part, xml)).documentElement;
+  const palette = theme.extensions?.pptxColorScheme;
+  const format = child(child(root, 'a', 'themeElements'), 'a', 'fmtScheme');
+  const fills = children(child(format, 'a', 'fillStyleLst')).map(node => {
+    if (is(node, 'a', 'noFill')) return none();
+    if (!is(node, 'a', 'solidFill') || children(node).length !== 1) return null;
+    const color = resolvePptxColor(children(node)[0], palette, colorMap);
+    return color ? { kind: 'solid', color } : null;
+  });
+  const lines = children(child(format, 'a', 'lnStyleLst')).map(node => simpleStroke(node, theme, colorMap));
+  const backgrounds = children(child(format, 'a', 'bgFillStyleLst')).map(node => {
+    if (is(node, 'a', 'noFill')) return none();
+    if (!is(node, 'a', 'solidFill') || children(node).length !== 1) return null;
+    const color = resolvePptxColor(children(node)[0], palette, colorMap);
+    return color ? { kind: 'solid', color } : null;
+  });
+  return { fills, lines, backgrounds };
+}
+
 async function projectEntityBackgrounds(document, zip, xml) {
   const own = new Map();
   const presentationPart = document.relationships.find(item => item.type.endsWith('/officeDocument'))?.target;
@@ -171,20 +187,23 @@ async function projectEntityBackgrounds(document, zip, xml) {
       own.set(entity.id, UNSUPPORTED_BACKGROUND);
       continue;
     }
+    const entityColorMap = colorMapFor(document, entity);
     if (entity.kind !== 'slides') {
       const theme = themeFor(document, entity);
-      entity.extensions.pptxOtherTextStyle = inheritedTextStyle(child(child(root, 'p', 'txStyles'), 'p', 'otherStyle'), theme, colorMapFor(document, entity));
+      entity.extensions.pptxOtherTextStyle = inheritedTextStyle(child(child(root, 'p', 'txStyles'), 'p', 'otherStyle'), theme, entityColorMap);
     }
     const theme = themeFor(document, entity);
     const bg = child(child(root, 'p', 'cSld'), 'p', 'bg');
     let value;
     if (bg) {
       const ref = child(bg, 'p', 'bgRef');
-      if (ref) value = fillFromStyle(theme?.extensions?.pptxBackgroundFillStyles, styleIndex(ref.getAttribute('idx'))) ?? UNSUPPORTED_BACKGROUND;
-      else {
+      if (ref) {
+        const vectors = await themeStyleVectors(theme, entityColorMap, zip, xml);
+        value = vectors ? (fillFromStyle(vectors.backgrounds, styleIndex(ref.getAttribute('idx'))) ?? UNSUPPORTED_BACKGROUND) : UNSUPPORTED_BACKGROUND;
+      } else {
         const bgPr = child(bg, 'p', 'bgPr');
         value = bgPr && children(bgPr).every(item => FILL_TAGS.includes(item.localName))
-          ? (simpleFill(bgPr, theme, colorMapFor(document, entity)) ?? UNSUPPORTED_BACKGROUND) : UNSUPPORTED_BACKGROUND;
+          ? (simpleFill(bgPr, theme, entityColorMap) ?? UNSUPPORTED_BACKGROUND) : UNSUPPORTED_BACKGROUND;
       }
     }
     own.set(entity.id, value);
@@ -235,7 +254,9 @@ function projectRunOverrides(properties, theme, colorMap) {
   if (!properties) return {};
   if (Object.keys(attrs(properties)).some(key => !['lang', 'altLang', 'sz', 'b', 'i', 'dirty', 'smtClean', 'u', 'kern'].includes(key))) return null;
   if (properties.hasAttribute('u') && properties.getAttribute('u') !== 'none') return null;
+  if (properties.hasAttribute('kern') && properties.getAttribute('kern') !== '1200') return null;
   const out = {};
+  if (properties.hasAttribute('lang')) out.language = properties.getAttribute('lang');
   const size = properties.getAttribute('sz');
   if (size !== null) {
     if (!/^\d+$/.test(size) || !Number.isInteger(Number(size)) || Number(size) < 100 || Number(size) > 400000) return null;
@@ -296,6 +317,7 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
       if (!['latin', 'ea', 'cs', 'solidFill'].includes(node.localName)) return null;
     }
     if (properties.hasAttribute('u') && properties.getAttribute('u') !== 'none') return null;
+    if (properties.hasAttribute('kern') && properties.getAttribute('kern') !== '1200') return null;
   }
   const directFill = runProperties ? child(runProperties, 'a', 'solidFill') : null;
   const fallbackFill = fallbackProperties ? child(fallbackProperties, 'a', 'solidFill') : null;
@@ -310,12 +332,18 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
   const fontFamily = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'latin', inherited.fontFamily);
   const fontFamilyEastAsia = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'ea', inherited.fontFamilyEastAsia);
   const fontFamilyComplexScript = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'cs', inherited.fontFamilyComplexScript);
-  if (!color || !fontFamily || !fontFamilyEastAsia || !fontFamilyComplexScript) return null;
+  const language = runProperties?.getAttribute('lang') ?? fallbackProperties?.getAttribute('lang') ?? inherited.language;
+  const primary = language?.toLowerCase().split('-')[0];
+  const supplementalScript = primary ? SUPPLEMENTAL_SCRIPTS[primary] : null;
+  if (primary && !supplementalScript && !NON_SUPPLEMENTAL_LANGUAGES.has(primary)) return null;
+  const supplementalFont = supplementalScript ? theme.extensions.pptxFontScheme?.[fontRef]?.supplemental?.[supplementalScript] : null;
+  const resolvedComplexScript = supplementalFont ? normalizeFont(supplementalFont) : fontFamilyComplexScript;
+  if (!color || !fontFamily || !fontFamilyEastAsia || !resolvedComplexScript) return null;
   return {
     color,
     fontFamily,
     fontFamilyEastAsia,
-    fontFamilyComplexScript,
+    fontFamilyComplexScript: resolvedComplexScript,
     fontSizePt: Number(size) / 100,
     bold,
     italic,
@@ -444,6 +472,8 @@ async function projectObject(document, object, slide, zip, xml) {
   if (!theme || theme.extensions.pptxObjectDefaults?.spDef) return;
   const colorMap = colorMapFor(document, slide);
   if (!colorMap) return;
+  const vectors = await themeStyleVectors(theme, colorMap, zip, xml);
+  if (!vectors) return;
   const hasDirectFill = children(props).some(item => FILL_TAGS.includes(item.localName));
   const fillRef = style ? child(style, 'a', 'fillRef') : null;
   const fillOverride = referenceColor(fillRef, theme, colorMap);
@@ -451,7 +481,7 @@ async function projectObject(document, object, slide, zip, xml) {
   let fill;
   if (hasDirectFill) fill = simpleFill(props, theme, colorMap);
   else if (fillRef) {
-    const base = fillFromStyle(theme.extensions.pptxFillStyles, styleIndex(fillRef.getAttribute('idx')));
+    const base = fillFromStyle(vectors.fills, styleIndex(fillRef.getAttribute('idx')));
     if (!base || fillOverride !== NO_COLOR_OVERRIDE && base.kind !== 'solid') return;
     fill = fillOverride === NO_COLOR_OVERRIDE ? base : { ...base, color: fillOverride };
   } else fill = none();
@@ -463,7 +493,7 @@ async function projectObject(document, object, slide, zip, xml) {
   let stroke;
   if (line) stroke = simpleStroke(line, theme, colorMap);
   else if (lineRef) {
-    const base = strokeFromStyle(theme.extensions.pptxLineStyles, styleIndex(lineRef.getAttribute('idx')));
+    const base = strokeFromStyle(vectors.lines, styleIndex(lineRef.getAttribute('idx')));
     if (!base || lineOverride !== NO_COLOR_OVERRIDE && base.kind !== 'solid') return;
     stroke = lineOverride === NO_COLOR_OVERRIDE ? base : { ...base, color: lineOverride };
   } else stroke = none();

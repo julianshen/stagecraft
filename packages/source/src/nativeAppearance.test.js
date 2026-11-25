@@ -269,6 +269,53 @@ describe('native PPTX appearance projection', () => {
     }
   });
 
+  it('resolves theme style vectors with each use-site colour map', async () => {
+    const mappedMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="dk1" tx1="lt1" accent1="accent2"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+    const directTheme = theme.replace('<a:schemeClr val="accent1"><a:lumMod val="50000"/></a:schemeClr>', '<a:schemeClr val="accent1"/>')
+      .replace('<a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="dk1"/></a:solidFill></a:ln></a:lnStyleLst>', '<a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill></a:ln></a:lnStyleLst>')
+      .replace('<a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:bgFillStyleLst>', '<a:bgFillStyleLst><a:solidFill><a:schemeClr val="bg1"/></a:solidFill></a:bgFillStyleLst>');
+    const styled = shape(2, 'rect', 20, 20, 200, 100, '', '<p:style><a:fillRef idx="1001"/><a:lnRef idx="1001"/></p:style>');
+    const session = await openFixture(`<p:sld ${NS}>${tree(styled).replace('<p:cSld>', '<p:cSld><p:bg><p:bgRef idx="1001"/></p:bg>')}</p:sld>`, { master: mappedMaster, theme: directTheme });
+    try {
+      expect(proof(session.document.slides[0].objects[0])).toMatchObject({
+        fill: { color: '#ED7D31' }, stroke: { color: '#FFFFFF' },
+      });
+      expect(session.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#000000' });
+    } finally { session.dispose(); }
+  });
+
+  it('honours layout masterClrMapping for slide descendants', async () => {
+    const mappedMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="lt1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+    const mappedLayout = `${emptyLayout.replace('</p:sldLayout>', '<p:clrMap tx1="dk1"/><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>')}`;
+    const objectXml = shape(2, 'rect', 20, 20, 200, 100, '<a:solidFill><a:schemeClr val="tx1"/></a:solidFill>');
+    const session = await openFixture(`<p:sld ${NS}>${tree(objectXml)}</p:sld>`, { master: mappedMaster, layout: mappedLayout });
+    try { expect(proof(session.document.slides[0].objects[0]).fill).toEqual({ kind: 'solid', color: '#FFFFFF' }); }
+    finally { session.dispose(); }
+  });
+
+  it('refuses non-default kerning and resolves supported supplemental fonts', async () => {
+    const kerned = textBox(2, 20, 20, 300, 100, para('Native', { pPr: '<a:pPr><a:defRPr sz="1800" kern="0"/></a:pPr>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const kernSession = await openFixture(`<p:sld ${NS}>${tree(kerned)}</p:sld>`);
+    try { expect(proof(kernSession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { kernSession.dispose(); }
+
+    const supplemental = theme.replace('<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/>', '<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/><a:font script="Arab" typeface="Noto Naskh Arabic"/>');
+    const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const fontSession = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`, { theme: supplemental });
+    try { expect(proof(fontSession.document.slides[0].objects[0])).toBeDefined(); }
+    finally { fontSession.dispose(); }
+
+    const arabic = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="ar-SA"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const arabicSession = await openFixture(`<p:sld ${NS}>${tree(arabic)}</p:sld>`, { theme: supplemental });
+    try { expect(arabicSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Naskh Arabic'); }
+    finally { arabicSession.dispose(); }
+
+    const unknown = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="xx-XX"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const unknownSession = await openFixture(`<p:sld ${NS}>${tree(unknown)}</p:sld>`, { theme: supplemental });
+    try { expect(proof(unknownSession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { unknownSession.dispose(); }
+  });
+
   it('refuses a slide proof when its own background is an unsupported gradient', async () => {
     const gradientBg = '<p:bg><p:bgPr><a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="FF0000"/></a:gs><a:gs pos="100000"><a:srgbClr val="0000FF"/></a:gs></a:gsLst></a:gradFill></p:bgPr></p:bg>';
     const session = await openFixture(`<p:sld ${NS}>${tree('').replace('<p:cSld>', `<p:cSld>${gradientBg}`)}</p:sld>`);
