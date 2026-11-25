@@ -2,12 +2,12 @@ import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import { validateDocument } from '@stagecraft/core/document';
 import { writePptx } from '@stagecraft/pptx';
-import { writeOdp } from '@stagecraft/odp';
+import { writeOdp, importOdp } from '@stagecraft/odp';
 import { buildCanonicalScene } from '@stagecraft/renderer/canonical';
 import { createPresentation, openPresentation } from './index.js';
 
 const legacyDeck = {
-  title: 'Untitled',
+  title: 'Custom Parity Deck',
   sections: [{ id: 'section', name: 'Slides', slides: ['slide'] }],
   slides: [{ id: 'slide', layout: 'blank', elements: [] }],
 };
@@ -16,7 +16,7 @@ describe('createPresentation', () => {
   it.each(['pptx', 'odp'])('matches legacy New %s parity and round-trips through export and reopen', async format => {
     const legacyBytes = await (format === 'pptx' ? writePptx(legacyDeck) : writeOdp(legacyDeck));
     const legacySession = await openPresentation(legacyBytes, { format });
-    const createdSession = await createPresentation({ format, title: 'Untitled' });
+    const createdSession = await createPresentation({ format, title: 'Custom Parity Deck' });
 
     try {
       const legacyDoc = legacySession.document;
@@ -104,6 +104,12 @@ describe('createPresentation', () => {
     await expect(createPresentation({ format: 'pptx', signal: controller.signal })).rejects.toThrow();
     await expect(createPresentation({ format: 'pdf' })).rejects.toThrow();
 
+    // Deferred abort during async ZIP generation
+    const deferredController = new AbortController();
+    const pending = createPresentation({ format: 'pptx', signal: deferredController.signal });
+    deferredController.abort();
+    await expect(pending).rejects.toThrow();
+
     const session = await createPresentation({ format: 'pptx', title: 'Untitled' });
     try {
       const exported = await session.export(session.document);
@@ -112,6 +118,58 @@ describe('createPresentation', () => {
       expect(coreXml).toBeTruthy();
       expect(coreXml).toContain('<dc:title>Untitled</dc:title>');
       expect(coreXml).toContain('<dc:creator>Stagecraft</dc:creator>');
+    } finally {
+      session.dispose();
+    }
+  });
+
+  it('includes a complete ECMA-376 fmtScheme (>=3 entries per list) matching legacy theme1.xml', async () => {
+    const legacyBytes = await writePptx(legacyDeck);
+    const legacyZip = await JSZip.loadAsync(legacyBytes);
+    const legacyTheme = new DOMParser().parseFromString(await legacyZip.file('ppt/theme/theme1.xml').async('string'), 'application/xml');
+
+    const session = await createPresentation({ format: 'pptx', title: 'Custom Parity Deck' });
+    try {
+      const exported = await session.export(session.document);
+      const createdZip = await JSZip.loadAsync(exported.bytes);
+      const createdTheme = new DOMParser().parseFromString(await createdZip.file('ppt/theme/theme1.xml').async('string'), 'application/xml');
+
+      for (const listTag of ['fillStyleLst', 'lnStyleLst', 'effectStyleLst', 'bgFillStyleLst']) {
+        const listEl = createdTheme.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', listTag)[0];
+        expect(listEl, `${listTag} missing`).toBeTruthy();
+        expect(listEl.children.length).toBeGreaterThanOrEqual(3);
+      }
+
+      const normalize = doc => new XMLSerializer().serializeToString(doc).replace(/>\s+</g, '><').trim();
+      expect(normalize(createdTheme)).toBe(normalize(legacyTheme));
+    } finally {
+      session.dispose();
+    }
+  });
+
+  it.each(['pptx', 'odp'])('preserves a custom title in %s through create -> export -> reopen', async format => {
+    const title = 'Quarterly Review & Plan';
+    const session = await createPresentation({ format, title });
+    try {
+      const exported = await session.export(session.document);
+      const zip = await JSZip.loadAsync(exported.bytes);
+      if (format === 'pptx') {
+        const coreXml = await zip.file('docProps/core.xml')?.async('string');
+        expect(coreXml).toContain('<dc:title>Quarterly Review &amp; Plan</dc:title>');
+      } else {
+        const manifestXml = await zip.file('META-INF/manifest.xml')?.async('string');
+        expect(manifestXml).toContain('manifest:full-path="meta.xml"');
+        const metaXml = await zip.file('meta.xml')?.async('string');
+        expect(metaXml).toContain('<dc:title>Quarterly Review &amp; Plan</dc:title>');
+        const imported = await importOdp(exported.bytes);
+        expect(imported.document.title).toBe(title);
+      }
+      const reopened = await openPresentation(exported.bytes, { format });
+      try {
+        expect(reopened.document.slides).toHaveLength(1);
+      } finally {
+        reopened.dispose();
+      }
     } finally {
       session.dispose();
     }
