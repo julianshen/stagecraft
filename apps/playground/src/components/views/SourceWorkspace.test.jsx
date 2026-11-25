@@ -102,6 +102,26 @@ it.each(['PPTX', 'ODP'])('creates a new local %s without a user file via createP
   expect(screen.getByLabelText(`Untitled.${format.toLowerCase()}`)).toBeInTheDocument();
 });
 
+it('aborts a pending open and bumps generation when an unsupported file is selected', async () => {
+  const slow = deferred();
+  const lateA = source('Late A');
+  const load = vi.fn().mockReturnValueOnce(slow.promise);
+  render(<SourceWorkspace openSource={load} />);
+
+  choose('A.pptx');
+  expect(screen.getByRole('status')).toHaveTextContent('Opening presentation…');
+  expect(load.mock.calls[0][1].signal.aborted).toBe(false);
+
+  choose('bad.txt');
+  expect(load.mock.calls[0][1].signal.aborted).toBe(true);
+  expect(screen.getByRole('alert')).toHaveTextContent('Choose a .pptx or .odp file.');
+  expect(screen.queryByText('Opening presentation…')).toBeNull();
+
+  await act(async () => { slow.resolve(lateA); await slow.promise; });
+  expect(screen.queryByText('Late A')).toBeNull();
+  expect(lateA.dispose).toHaveBeenCalledTimes(1);
+});
+
 it.each([
  [{status:'measured',count:2},'Shrink-to-fit measured for 2 text boxes.'],
  [{status:'skipped',reason:'already-fits',count:0},'Text already fits its frame.'],
