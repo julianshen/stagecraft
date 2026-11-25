@@ -15,14 +15,18 @@ Stagecraft's 1920-wide authoring coordinates. Export writes native ODF 1.3
 content/styles/meta/manifest, with an uncompressed mimetype entry first.
 
 The identity field is capped at 256 KiB with bounded section/slide/element counts.
-Ids must be valid, unique strings. Import treats the field as untrusted: malformed
-or oversized metadata is ignored with an `identity-invalid` diagnostic. A
-fingerprint of ordered page names and per-object ODF style tokens, geometry/type
-and text digests must still match; otherwise ids are regenerated with `identity-stale` rather than assigned to the
-wrong objects. Foreign/legacy ODP files without the field use deterministic
-regenerated ids and report `identity-regenerated`. This tolerance applies only
-inside the global ZIP entry/expanded-size limits; a package exceeding those limits
-is rejected before identity parsing. ODF 1.3 Part 3 §4.3.3 defines
+Ids must be valid, unique strings. To preserve export compatibility, a deck whose
+ids/counts/geometry cannot be represented safely still exports: the identity field
+is omitted, a reason-class marker is written, and `odpAdapter.export` reports
+`identity-omitted`. Direct `writeOdp` callers see the same diagnostic on import.
+Import treats the field as untrusted: malformed or oversized metadata inside the
+ZIP limits is ignored with an `identity-invalid` diagnostic. A fingerprint of
+ordered page names and per-object ODF style tokens, geometry/type and text digests
+must still match; otherwise ids are regenerated with `identity-stale` rather than
+assigned to the wrong objects. Foreign/legacy ODP files without either field use
+deterministic regenerated ids and report `identity-regenerated`. This tolerance
+applies only inside the global ZIP entry/expanded-size limits; a package exceeding
+those limits is rejected before identity parsing. ODF 1.3 Part 3 §4.3.3 defines
 `meta:user-defined` for additional document metadata; preservation through a
 desktop LibreOffice save has not been natively verified.
 

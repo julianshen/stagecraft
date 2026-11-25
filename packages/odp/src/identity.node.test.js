@@ -265,25 +265,44 @@ describe('ODP identity metadata', () => {
     } finally { window.close(); }
   });
 
-  it('rejects geometry that cannot round-trip through ODF length serialization', async () => {
+  it('omits unsafe identity metadata without rejecting a previously exportable deck', async () => {
+    const { window, xml } = xmlRuntime();
+    try {
+      const base = identityDocument();
+      const cases = [
+        ['duplicate element ids', doc => doc.slides[0].elements.push({ ...doc.slides[0].elements[0] })],
+        ['invalid document id', doc => { doc.id = 'bad\u0000id'; }],
+        ['invalid slide id', doc => { doc.slides[0].id = 'bad\u0000id'; doc.sections[1].slides[0] = 'bad\u0000id'; }],
+        ['duplicate section ids', doc => { doc.sections[1].id = doc.sections[0].id; }],
+        ['invalid section name', doc => { doc.sections[0].name = 'bad\u0000name'; }],
+      ];
+      for (const [label, mutate] of cases) {
+        const doc = structuredClone(base);
+        mutate(doc);
+        const bytes = await writeOdp(doc);
+        const zip = await JSZip.loadAsync(bytes);
+        const meta = await zip.file('meta.xml').async('string');
+        expect(meta, label).not.toContain('meta:name="stagecraft.identity"');
+        expect(meta, label).toContain('stagecraft.identity.omitted');
+        const output = await odpAdapter.export(doc);
+        expect(output.diagnostics, label).toContainEqual(expect.objectContaining({ code: 'identity-omitted', severity: 'warning' }));
+        const imported = await importOdp(bytes, { xml, fileName: 'Fallback.odp' });
+        expect(imported.diagnostics, label).toContainEqual(expect.objectContaining({ code: 'identity-omitted', severity: 'warning' }));
+        expect(imported.document.slides.map(slide => slide.id), label).toEqual(['slide-1', 'slide-2']);
+      }
+    } finally { window.close(); }
+  });
+
+  it('omits identity metadata for geometry that cannot round-trip through ODF lengths', async () => {
     const doc = identityDocument();
     doc.sections = [{ id: 'sec', name: 'Slides', slides: ['slide-a'] }];
     doc.slides = [doc.slides[0]];
     doc.slides[0].elements = [{ id: 'rect', type: 'rect', x: 0, y: 0, w: 40, h: 40, fill: '#112233' }];
     doc.slides[0].elements[0].w = 1e-8;
-    await expect(writeOdp(doc)).rejects.toThrow(/invalid.*geometry/i);
-    doc.slides[0].elements[0].w = 40;
-    doc.slides[0].elements[0].x = 1e24;
-    await expect(writeOdp(doc)).rejects.toThrow(/invalid.*geometry/i);
-  });
-
-  it('rejects invalid or duplicate element ids on export instead of writing unusable metadata', async () => {
-    const doc = identityDocument();
-    doc.sections = [{ id: 'sec', name: 'Slides', slides: ['slide-a'] }];
-    doc.slides = [doc.slides[0]];
-    doc.slides[0].elements.push({ ...doc.slides[0].elements[0] });
-    await expect(writeOdp(doc)).rejects.toThrow(/duplicate.*id/i);
-    doc.slides[0].elements[1].id = 'bad\u0000id';
-    await expect(writeOdp(doc)).rejects.toThrow(/invalid.*id/i);
+    const bytes = await writeOdp(doc);
+    const zip = await JSZip.loadAsync(bytes);
+    expect(await zip.file('meta.xml').async('string')).not.toContain('meta:name="stagecraft.identity"');
+    const output = await odpAdapter.export(doc);
+    expect(output.diagnostics).toContainEqual(expect.objectContaining({ code: 'identity-omitted', severity: 'warning' }));
   });
 });

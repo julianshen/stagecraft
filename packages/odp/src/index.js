@@ -34,6 +34,8 @@ const escape = value => {
 };
 const hex = value => typeof value === 'string' && /^#[\da-f]{6}$/i.test(value);
 const IDENTITY_FIELD = 'stagecraft.identity';
+const IDENTITY_OMITTED_FIELD = 'stagecraft.identity.omitted';
+const IDENTITY_OMIT_REASONS = new Set(['duplicate-id', 'invalid-id', 'invalid-section-name', 'invalid-theme', 'invalid-geometry', 'limit-exceeded']);
 const MAX_IDENTITY_BYTES = 256 * 1024;
 const MAX_IDENTITY_SECTIONS = 1024;
 const MAX_IDENTITY_SLIDES = 10000;
@@ -185,15 +187,21 @@ export async function importOdp(source, options = {}) {
   const prop = (nodes, prefix, name) => nodes.reduce((value, n) => attr(n, prefix, name) ?? value, undefined);
   const pages = children(presentation).filter(n => is(n, 'draw', 'page'));
   let documentHeight;
-  let identity = null, identityStatus = 'regenerated', documentTitle;
+  let identity = null, identityStatus = 'regenerated', omittedReason, documentTitle;
   try {
     const metaDoc = await readXml('meta.xml', 4 * 1024 * 1024);
     if (metaDoc) {
       if (!is(metaDoc.documentElement, 'office', 'document-meta')) throw new Error('Invalid metadata document');
       documentTitle = all(metaDoc, 'dc', 'title')[0]?.textContent?.trim() || undefined;
       const fields = all(metaDoc, 'meta', 'user-defined').filter(node => attr(node, 'meta', 'name') === IDENTITY_FIELD);
-      if (fields.length === 0) identityStatus = 'regenerated';
-      else {
+      if (fields.length === 0) {
+        const omitted = all(metaDoc, 'meta', 'user-defined').filter(node => attr(node, 'meta', 'name') === IDENTITY_OMITTED_FIELD);
+        if (omitted.length > 1) throw new Error('Invalid identity omission metadata');
+        if (omitted.length === 1 && IDENTITY_OMIT_REASONS.has(omitted[0].textContent)) {
+          identityStatus = 'omitted';
+          omittedReason = omitted[0].textContent;
+        }
+      } else {
         if (fields.length !== 1 || textBytes(fields[0].textContent) > MAX_IDENTITY_BYTES) throw new Error('Invalid identity metadata');
         const raw = JSON.parse(fields[0].textContent);
         ({ status: identityStatus, identity } = validateIdentity(raw, pageFingerprint(pages)));
@@ -205,6 +213,7 @@ export async function importOdp(source, options = {}) {
   }
   if (identityStatus === 'invalid') diagnostics.push(warning('identity-invalid', 'Stagecraft identity metadata was invalid and ignored; document, section, slide and object ids were regenerated.'));
   else if (identityStatus === 'stale') diagnostics.push(warning('identity-stale', 'Stagecraft identity metadata did not match the current ODP page/object structure; ids were regenerated rather than assigned to the wrong objects.'));
+  else if (identityStatus === 'omitted') diagnostics.push(warning('identity-omitted', `Stagecraft identity metadata was omitted during export (${omittedReason}); document, section, slide and object ids were regenerated.`));
   else if (identityStatus === 'regenerated') diagnostics.push(warning('identity-regenerated', 'This ODP has no usable Stagecraft identity metadata; document, section, slide and object ids were regenerated.'));
   const slides = pages.map((page, index) => {
     const layout = layouts.get(masters.get(attr(page, 'draw', 'master-page-name')));
@@ -289,13 +298,15 @@ const px = n => `${Number((n / 96).toFixed(10))}in`;
 const textXml = text => escape(text).replace(/ {1,1000}/g, spaces => `<text:s text:c="${spaces.length}"/>`).replace(/\t/g, '<text:tab/>').replace(/\n/g, '<text:line-break/>');
 
 function identityMetadata(document, order) {
-  if (document.id !== undefined && !validIdentityId(document.id)) throw new Error('Invalid ODP export document id');
-  if (document.theme !== undefined && !validMetadataText(document.theme, MAX_IDENTITY_ID)) throw new Error('Invalid ODP export theme');
-  if (document.sections.length > MAX_IDENTITY_SECTIONS || order.length > MAX_IDENTITY_SLIDES) throw new Error('ODP export exceeds the identity section or slide limit');
+  const omitted = reason => ({ json: null, reason });
+  if (document.id !== undefined && !validIdentityId(document.id)) return omitted('invalid-id');
+  if (document.theme !== undefined && !validMetadataText(document.theme, MAX_IDENTITY_ID)) return omitted('invalid-theme');
+  if (document.sections.length > MAX_IDENTITY_SECTIONS || order.length > MAX_IDENTITY_SLIDES) return omitted('limit-exceeded');
   const sectionIds = new Set();
   for (const section of document.sections) {
-    if (!validIdentityId(section.id) || sectionIds.has(section.id)) throw new Error(sectionIds.has(section.id) ? 'Duplicate ODP export section id' : 'Invalid ODP export section id');
-    if (section.name !== undefined && !validMetadataText(section.name)) throw new Error('Invalid ODP export section name');
+    if (!validIdentityId(section.id)) return omitted('invalid-id');
+    if (sectionIds.has(section.id)) return omitted('duplicate-id');
+    if (section.name !== undefined && !validMetadataText(section.name)) return omitted('invalid-section-name');
     sectionIds.add(section.id);
   }
   const slideIds = new Set(), orderedSlides = [];
@@ -303,14 +314,18 @@ function identityMetadata(document, order) {
   for (const id of order) {
     const slide = document.slides.find(item => item.id === id);
     if (!slide) throw new Error('ODP export section references missing slide');
-    if (!validIdentityId(slide.id) || slideIds.has(slide.id)) throw new Error(slideIds.has(slide.id) ? 'Duplicate ODP export slide id' : 'Invalid ODP export slide id');
+    if (!validIdentityId(slide.id)) return omitted('invalid-id');
+    if (slideIds.has(slide.id)) return omitted('duplicate-id');
     slideIds.add(slide.id);
     const elementIds = new Set();
     for (const element of slide.elements) {
-      if (!validIdentityId(element.id) || elementIds.has(element.id)) throw new Error(elementIds.has(element.id) ? 'Duplicate ODP export element id' : 'Invalid ODP export element id');
+      if (!validIdentityId(element.id)) return omitted('invalid-id');
+      if (elementIds.has(element.id)) return omitted('duplicate-id');
+      const lengths = ['x', 'y', 'w', 'h'].map(key => px(element[key]));
+      if (!lengths.every(value => Number.isFinite(lengthEmu(value))) || !lengths.slice(2).every(value => lengthEmu(value) > 0)) return omitted('invalid-geometry');
       elementIds.add(element.id);
       elementCount += 1;
-      if (elementCount > MAX_IDENTITY_ELEMENTS) throw new Error('ODP export exceeds the identity element limit');
+      if (elementCount > MAX_IDENTITY_ELEMENTS) return omitted('limit-exceeded');
     }
     orderedSlides.push(slide);
   }
@@ -339,11 +354,11 @@ function identityMetadata(document, order) {
     },
   };
   const json = JSON.stringify(identity);
-  if (textBytes(json) > MAX_IDENTITY_BYTES) throw new Error('ODP identity metadata exceeds the 256 KB limit');
-  return json;
+  if (textBytes(json) > MAX_IDENTITY_BYTES) return omitted('limit-exceeded');
+  return { json, reason: null };
 }
 
-export async function writeOdp(input, options = {}) {
+async function writeOdpPackage(input, options = {}) {
   throwIfAborted(options.signal);
   const document = cloneJson(input);
   allowedKeys(document, ['id', 'title', 'theme', 'size', 'sections', 'slides'], 'document');
@@ -372,9 +387,6 @@ export async function writeOdp(input, options = {}) {
       allowedKeys(el, ['id', 'type', 'x', 'y', 'w', 'h', ...(isText ? ['content', 'color', 'fontSize', 'fontFamily', 'bold', 'italic', 'align'] : ['fill'])], 'element');
       for (const key of ['x', 'y', 'w', 'h']) finite(el[key], key, key === 'w' || key === 'h');
       const lengths = ['x', 'y', 'w', 'h'].map(key => px(el[key]));
-      if (!lengths.every(value => Number.isFinite(lengthEmu(value))) || !lengths.slice(2).every(value => lengthEmu(value) > 0)) {
-        throw new Error('Invalid ODP export geometry');
-      }
       const name = `s${index}e${ei}`;
       const geometry = `svg:x="${lengths[0]}" svg:y="${lengths[1]}" svg:width="${lengths[2]}" svg:height="${lengths[3]}"`;
       if (isText) {
@@ -394,21 +406,33 @@ export async function writeOdp(input, options = {}) {
     const notes = slide.notes ? `<presentation:notes><draw:frame presentation:class="notes" svg:x="0in" svg:y="0in" svg:width="20in" svg:height="1in"><draw:text-box><text:p>${textXml(slide.notes)}</text:p></draw:text-box></draw:frame></presentation:notes>` : '';
     pages += `<draw:page draw:name="${escape(slide.title ?? `Slide ${index + 1}`)}" draw:master-page-name="Default">${shapes}${notes}</draw:page>`;
   }
-  const identityJson = identityMetadata(document, order);
+  const identity = identityMetadata(document, order);
+  const identityDiagnostics = identity.reason
+    ? [warning('identity-omitted', `Stagecraft identity metadata was omitted (${identity.reason}); ids will be regenerated on import.`)]
+    : [];
   const zip = new JSZip();
   zip.file('mimetype', ODP_MIME, { compression: 'STORE' });
   zip.file('content.xml', `<?xml version="1.0" encoding="UTF-8"?><office:document-content ${namespaces} office:version="1.3"><office:automatic-styles>${styles}</office:automatic-styles><office:body><office:presentation>${pages}</office:presentation></office:body></office:document-content>`);
-  zip.file('meta.xml', `<?xml version="1.0" encoding="UTF-8"?><office:document-meta ${namespaces} office:version="1.3"><office:meta>${document.title !== undefined ? `<dc:title>${escape(document.title)}</dc:title>` : ''}<meta:user-defined meta:name="${IDENTITY_FIELD}" meta:value-type="string">${escape(identityJson)}</meta:user-defined></office:meta></office:document-meta>`);
+  const identityMeta = identity.json
+    ? `<meta:user-defined meta:name="${IDENTITY_FIELD}" meta:value-type="string">${escape(identity.json)}</meta:user-defined>`
+    : `<meta:user-defined meta:name="${IDENTITY_OMITTED_FIELD}" meta:value-type="string">${escape(identity.reason)}</meta:user-defined>`;
+  zip.file('meta.xml', `<?xml version="1.0" encoding="UTF-8"?><office:document-meta ${namespaces} office:version="1.3"><office:meta>${document.title !== undefined ? `<dc:title>${escape(document.title)}</dc:title>` : ''}${identityMeta}</office:meta></office:document-meta>`);
   zip.file('styles.xml', `<?xml version="1.0" encoding="UTF-8"?><office:document-styles ${namespaces} office:version="1.3"><office:styles/><office:automatic-styles><style:page-layout style:name="Page"><style:page-layout-properties fo:page-width="20in" fo:page-height="${px(height)}" style:print-orientation="landscape"/></style:page-layout></office:automatic-styles><office:master-styles><style:master-page style:name="Default" style:page-layout-name="Page"/></office:master-styles></office:document-styles>`);
   zip.file('META-INF/manifest.xml', `<?xml version="1.0" encoding="UTF-8"?><manifest:manifest xmlns:manifest="${NS.manifest}" manifest:version="1.3"><manifest:file-entry manifest:full-path="/" manifest:media-type="${ODP_MIME}"/><manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/><manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/><manifest:file-entry manifest:full-path="meta.xml" manifest:media-type="text/xml"/></manifest:manifest>`);
   const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
-  return readBytes(bytes, options);
+  return { bytes: await readBytes(bytes, options), diagnostics: identityDiagnostics };
+}
+
+/** Returns bytes without downloading. Unsafe identities are omitted with a diagnostic available through odpAdapter.export/import. */
+export async function writeOdp(input, options = {}) {
+  return (await writeOdpPackage(input, options)).bytes;
 }
 
 export const odpAdapter = Object.freeze({
   id: 'odp', extensions: ['odp'], mimeType: ODP_MIME,
   import: importOdp,
   async export(document, options) {
-    return { bytes: await writeOdp(document, options), diagnostics: [warning('subset-export', 'Native ODP subset export; Stagecraft identity metadata is preserved when present, but desktop Office/LibreOffice fidelity is not certified.')] };
+    const output = await writeOdpPackage(document, options);
+    return { ...output, diagnostics: [warning('subset-export', 'Native ODP subset export; Stagecraft identity metadata is preserved when safe, but desktop Office/LibreOffice fidelity is not certified.'), ...output.diagnostics] };
   },
 });
