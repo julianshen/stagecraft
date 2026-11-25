@@ -15,6 +15,7 @@ const inputFits = value => new TextEncoder().encode(value).byteLength <= NATIVE_
 const paragraphRuns = paragraph => children(paragraph).filter(node => !is(node, 'a', 'pPr') && !is(node, 'a', 'endParaRPr'));
 const styleIndex = value => /^\d+$/.test(value ?? '') ? Number(value) - 1001 : -1;
 const none = () => ({ kind: 'none' });
+const onOff = value => value === '1' || value === 'true' ? true : value === '0' || value === 'false' ? false : null;
 const schemeHex = (palette, colorMap, slot) => palette?.[colorMap?.[slot] ?? slot] ?? null;
 
 function themeFor(document, entity) {
@@ -217,8 +218,16 @@ function projectRunOverrides(properties, theme, colorMap) {
     if (!/^\d+$/.test(size) || !Number.isInteger(Number(size)) || Number(size) < 100 || Number(size) > 400000) return null;
     out.fontSizePt = Number(size) / 100;
   }
-  if (properties.hasAttribute('b')) out.bold = properties.getAttribute('b') === '1';
-  if (properties.hasAttribute('i')) out.italic = properties.getAttribute('i') === '1';
+  if (properties.hasAttribute('b')) {
+    const bold = onOff(properties.getAttribute('b'));
+    if (bold === null) return null;
+    out.bold = bold;
+  }
+  if (properties.hasAttribute('i')) {
+    const italic = onOff(properties.getAttribute('i'));
+    if (italic === null) return null;
+    out.italic = italic;
+  }
   for (const item of children(properties)) {
     if (is(item, 'a', 'solidFill')) {
       if (children(item).length !== 1) return null;
@@ -268,6 +277,11 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
   const colorNode = directFill ? children(directFill)[0] : fallbackFill ? children(fallbackFill)[0] : null;
   const color = colorNode ? resolvePptxColor(colorNode, theme?.extensions?.pptxColorScheme, colorMap)
     : baseColor ?? inherited.color ?? schemeHex(theme?.extensions?.pptxColorScheme, colorMap, colorMap.tx1);
+  const rawBold = runProperties?.getAttribute('b') ?? fallbackProperties?.getAttribute('b');
+  const rawItalic = runProperties?.getAttribute('i') ?? fallbackProperties?.getAttribute('i');
+  const bold = rawBold == null ? inherited.bold ?? false : onOff(rawBold);
+  const italic = rawItalic == null ? inherited.italic ?? false : onOff(rawItalic);
+  if (bold === null || italic === null) return null;
   const fontFamily = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'latin', inherited.fontFamily);
   const fontFamilyEastAsia = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'ea', inherited.fontFamilyEastAsia);
   const fontFamilyComplexScript = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'cs', inherited.fontFamilyComplexScript);
@@ -278,10 +292,8 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
     fontFamilyEastAsia,
     fontFamilyComplexScript,
     fontSizePt: Number(size) / 100,
-    bold: (runProperties?.getAttribute('b') ?? fallbackProperties?.getAttribute('b')) === '1' ? true
-      : (runProperties?.getAttribute('b') ?? fallbackProperties?.getAttribute('b')) === '0' ? false : inherited.bold ?? false,
-    italic: (runProperties?.getAttribute('i') ?? fallbackProperties?.getAttribute('i')) === '1' ? true
-      : (runProperties?.getAttribute('i') ?? fallbackProperties?.getAttribute('i')) === '0' ? false : inherited.italic ?? false,
+    bold,
+    italic,
   };
 }
 
@@ -390,7 +402,7 @@ async function projectObject(document, object, slide, zip, xml) {
   if (!is(node, 'p', 'sp') || allPlaceholdersOrLists(node)) return;
   const props = child(node, 'p', 'spPr');
   const xfrm = child(props, 'a', 'xfrm');
-  if (!props || !xfrm || xfrm.getAttribute('flipH') === '1' || xfrm.getAttribute('flipV') === '1') return;
+  if (!props || !xfrm || ['flipH', 'flipV'].some(name => xfrm.hasAttribute(name) && onOff(xfrm.getAttribute(name)) !== false)) return;
   if (['effectLst', 'effectDag', 'scene3d', 'sp3d'].some(tag => child(props, 'a', tag))) return;
   const geometries = children(props).filter(item => is(item, 'a', 'prstGeom') || is(item, 'a', 'custGeom'));
   if (geometries.length !== 1 || !is(geometries[0], 'a', 'prstGeom')) return;
@@ -435,7 +447,7 @@ async function projectObject(document, object, slide, zip, xml) {
     version: 1,
     sourceFormat: 'pptx',
     appearanceResolved: true,
-    input: nativeObjectAppearanceInput(object, { theme, colorMap }),
+    input: nativeObjectAppearanceInput(object, { theme, colorMap, document, slide }),
     fill,
     stroke,
     ...(Object.keys(adjust).length ? { adjust } : {}),
@@ -458,7 +470,7 @@ export async function projectNativeAppearance(document, zip, xml) {
       master.extensions = {
         ...master.extensions,
         stagecraftLayoutSummary: {
-          version: 1, appearanceResolved: true, input: nativeLayoutAppearanceInput(master), background, artworkCount: master.objects.length,
+          version: 1, appearanceResolved: true, input: nativeLayoutAppearanceInput(master, document), background, artworkCount: master.objects.length,
         },
       };
     } catch { /* Unresolved inheritance stays unproved. */ }
@@ -470,7 +482,7 @@ export async function projectNativeAppearance(document, zip, xml) {
       layout.extensions = {
         ...layout.extensions,
         stagecraftLayoutSummary: {
-          version: 1, appearanceResolved: true, input: nativeLayoutAppearanceInput(layout), background, artworkCount: layout.objects.length,
+          version: 1, appearanceResolved: true, input: nativeLayoutAppearanceInput(layout, document), background, artworkCount: layout.objects.length,
         },
       };
     } catch { /* Unresolved inheritance stays unproved. */ }

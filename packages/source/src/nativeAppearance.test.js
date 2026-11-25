@@ -7,7 +7,7 @@ import { documentPlugin, presentationPlugin, validateDocument } from '@stagecraf
 import { openPresentation } from './index.js';
 import { projectNativeAppearance } from './nativeAppearance.js';
 import { resolvePptxColor } from './pptxColor.js';
-import { isNativeObjectAppearanceValid, isNativeSlideAppearanceValid, nativeObjectAppearanceInput } from '@stagecraft/core/lib/nativeAppearance.js';
+import { isNativeLayoutAppearanceValid, isNativeObjectAppearanceValid, isNativeSlideAppearanceValid, nativeObjectAppearanceInput } from '@stagecraft/core/lib/nativeAppearance.js';
 import { NS, buildPptx, para, shape, textBox, tree, xfrm } from '../../../tests/helpers/pptxFixture.js';
 
 const xml = {
@@ -48,6 +48,8 @@ const appearanceContext = (document, slide) => {
   const layout = document.layouts.find(item => item.id === slide.layoutId);
   const master = document.masters.find(item => item.id === layout?.masterId);
   return {
+    document,
+    slide,
     theme: document.themes[0],
     colorMap: { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2', ...master?.extensions?.pptxColorMap, ...layout?.extensions?.pptxColorMap, ...slide.extensions?.pptxColorMap },
   };
@@ -160,6 +162,49 @@ describe('native PPTX appearance projection', () => {
     }
   });
 
+  it('resolves XML boolean spellings and rejects mirrored transforms', async () => {
+    for (const [bold, italic] of [['true', 'false'], ['false', 'true']]) {
+      const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ` sz="1800" b="${bold}" i="${italic}"`, rKids: '<a:latin typeface="Arial"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+      const session = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`);
+      try {
+        expect(session.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved)
+          .toMatchObject({ bold: bold === 'true', italic: italic === 'true' });
+      } finally { session.dispose(); }
+    }
+    for (const flip of ['true', '1', 'maybe']) {
+      const mirrored = shape(2, 'rect', 20, 20, 200, 100).replace('<a:xfrm>', `<a:xfrm flipH="${flip}">`);
+      const session = await openFixture(`<p:sld ${NS}>${tree(mirrored)}</p:sld>`);
+      try { expect(proof(session.document.slides[0].objects[0])).toBeUndefined(); }
+      finally { session.dispose(); }
+    }
+  });
+
+  it('proves justified paragraphs and binds object context to inherited styles', async () => {
+    const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>', pPr: '<a:pPr algn="just"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const session = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`);
+    try {
+      const document = session.document;
+      const object = document.slides[0].objects[0];
+      expect(proof(object).text.paragraphs[0].alignment).toBe('justify');
+      expect(isNativeObjectAppearanceValid(object, appearanceContext(document, document.slides[0]))).toBe(true);
+      document.masters[0].extensions.pptxOtherTextStyle = { color: '#FF0000', fontSizePt: 30, fontFamily: 'Courier New' };
+      expect(isNativeObjectAppearanceValid(object, appearanceContext(document, document.slides[0]))).toBe(false);
+      document.masters[0].extensions.pptxOtherTextStyle = { fontSizePt: 18 };
+      document.themes[0].extensions.pptxObjectDefaults = { spDef: true };
+      expect(isNativeObjectAppearanceValid(object, appearanceContext(document, document.slides[0]))).toBe(false);
+    } finally { session.dispose(); }
+  });
+
+  it('invalidates layout summaries when inherited theme background styles change', async () => {
+    const session = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`);
+    try {
+      const document = session.document;
+      expect(isNativeLayoutAppearanceValid(document.layouts[0], document)).toBe(true);
+      document.themes[0].extensions.pptxBackgroundFillStyles[0].color = '#000000';
+      expect(isNativeLayoutAppearanceValid(document.layouts[0], document)).toBe(false);
+    } finally { session.dispose(); }
+  });
+
   it('refuses a slide proof when its own background is an unsupported gradient', async () => {
     const gradientBg = '<p:bg><p:bgPr><a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="FF0000"/></a:gs><a:gs pos="100000"><a:srgbClr val="0000FF"/></a:gs></a:gsLst></a:gradFill></p:bgPr></p:bg>';
     const session = await openFixture(`<p:sld ${NS}>${tree('').replace('<p:cSld>', `<p:cSld>${gradientBg}`)}</p:sld>`);
@@ -254,6 +299,8 @@ describe('native PPTX appearance projection', () => {
     ['underlined paragraph default', textBox(2, 20, 20, 200, 100, para('Native', { pPr: '<a:pPr><a:defRPr u="sng"/></a:pPr>' }))],
     ['oversized font', textBox(2, 20, 20, 200, 100, para('Native', { rPr: ' sz="1800"', rKids: `<a:latin typeface="${'A'.repeat(20000)}"/>` }))],
     ['underlined run', textBox(2, 20, 20, 200, 100, para('Native', { rPr: ' sz="1800" u="sng"', rKids: '<a:latin typeface="Arial"/>' }))],
+    ['invalid bold boolean', textBox(2, 20, 20, 200, 100, para('Native', { rPr: ' sz="1800" b="maybe"', rKids: '<a:latin typeface="Arial"/>' }))],
+    ['invalid italic boolean', textBox(2, 20, 20, 200, 100, para('Native', { rPr: ' sz="1800" i="maybe"', rKids: '<a:latin typeface="Arial"/>' }))],
     ['unsupported run child', textBox(2, 20, 20, 200, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/><a:highlight/>' }))],
     ['non-text run child', textBox(2, 20, 20, 200, 100, para('Native')).replace('<a:t>Native</a:t>', '<a:t>Native</a:t><a:fld id="1"/>')],
     ['invalid font reference', textBox(2, 20, 20, 200, 100, para('Native')).replace('<p:spPr>', '<p:style><a:fontRef idx="9999"/></p:style><p:spPr>')],
@@ -420,6 +467,7 @@ describe('native PPTX appearance projection', () => {
     try {
       expect(session.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved)
         .toMatchObject({ fontFamily: 'Courier New', fontFamilyEastAsia: 'SimSun', fontFamilyComplexScript: 'DejaVu Sans' });
+      expect(new TextEncoder().encode(nativeObjectAppearanceInput(session.document.slides[0].objects[0], appearanceContext(session.document, session.document.slides[0]))).byteLength).toBeLessThanOrEqual(16384);
     } finally { session.dispose(); }
 
     const effectBg = '<p:bg><p:bgPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>';
