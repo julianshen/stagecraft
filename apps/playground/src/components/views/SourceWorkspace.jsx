@@ -3,9 +3,7 @@ import { createEditor } from '@stagecraft/core/editor';
 import { documentPlugin, presentationPlugin, validateDocument } from '@stagecraft/core/document';
 import { EditorProvider } from '@stagecraft/react/editor';
 import { PresentationEditor } from '@stagecraft/react/presentation';
-import { openPresentation } from '@stagecraft/source';
-import { writePptx } from '@stagecraft/pptx';
-import { writeOdp } from '@stagecraft/odp';
+import { createPresentation, openPresentation } from '@stagecraft/source';
 import './SourceWorkspace.css';
 
 export function downloadSource(result, { fileName, format }) {
@@ -61,7 +59,7 @@ function resizeFitMessage(outcome) {
 }
 
 /** Local-only reference host. These retained source sessions are never sent to a backend. */
-export default function SourceWorkspace({ openSource = openPresentation, save = downloadSource }) {
+export default function SourceWorkspace({ openSource = openPresentation, createSource = createPresentation, save = downloadSource }) {
   const [resource, setResource] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -85,26 +83,21 @@ export default function SourceWorkspace({ openSource = openPresentation, save = 
     };
   }, []);
 
-  async function openFile(file, prepare) {
-    if (!file) return;
+  async function loadSession({ fileName, format, load }) {
     const request = ++generation.current;
     setExportStatus('');
     pending.current?.abort();
     pending.current = null;
-    const format = /\.(pptx|odp)$/i.exec(file.name)?.[1].toLowerCase();
-    if (!format) { setError('Choose a .pptx or .odp file.'); setLoading(false); return; }
     const controller = new AbortController();
     pending.current = controller;
     setLoading(true); setError('');
     let source, editor;
     const current = () => mounted.current && request === generation.current;
     try {
-      if (prepare) file = await prepare();
-      if (!current()) return;
-      source = await openSource(file, { format, signal: controller.signal });
+      source = await load(controller.signal);
       if (!current()) { source.dispose(); return; }
       editor = createEditor({ document: source.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
-      const next = { source, editor, fileName: file.name, format, id: request };
+      const next = { source, editor, fileName, format, id: request };
       const previous = active.current;
       active.current = next;
       setResource(next);
@@ -121,10 +114,23 @@ export default function SourceWorkspace({ openSource = openPresentation, save = 
     }
   }
 
+  async function openFile(file) {
+    if (!file) return;
+    const format = /\.(pptx|odp)$/i.exec(file.name)?.[1].toLowerCase();
+    if (!format) { setError('Choose a .pptx or .odp file.'); setLoading(false); return; }
+    await loadSession({
+      fileName: file.name,
+      format,
+      load: signal => openSource(file, { format, signal }),
+    });
+  }
+
   function newFile(format) {
-    const name = `Untitled.${format}`;
-    const deck = { title: 'Untitled', sections: [{ id: 'section', name: 'Slides', slides: ['slide'] }], slides: [{ id: 'slide', layout: 'blank', elements: [] }] };
-    void openFile({ name }, async () => new File([await (format === 'pptx' ? writePptx(deck) : writeOdp(deck))], name));
+    void loadSession({
+      fileName: `Untitled.${format}`,
+      format,
+      load: signal => createSource({ format, title: 'Untitled', signal }),
+    });
   }
 
   return <main className="stagecraft-source-workspace">
