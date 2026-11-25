@@ -41,6 +41,7 @@ const MAX_IDENTITY_SECTIONS = 1024;
 const MAX_IDENTITY_SLIDES = 10000;
 const MAX_IDENTITY_ELEMENTS = 100000;
 const MAX_IDENTITY_ID = 512;
+const IDENTITY_FINGERPRINT_TEXT_BUDGET = 64 * 1024;
 const validXmlScalar = (value, min, max) => {
   if (typeof value !== 'string' || value.length < min || value.length > max || /[\u0000-\u001f\u007f]/.test(value)) return false;
   for (const char of value) {
@@ -88,12 +89,43 @@ const hashText = text => {
   for (let index = 0; index < text.length; index += 1) hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
   return hash >>> 0;
 };
-function pageFingerprint(pages) {
+const slideName = (title, index) => title === undefined || title === null || title === '' ? `Slide ${index + 1}` : String(title);
+function fingerprintText(textBox, budget) {
+  let remaining = budget.remaining, length = 0, hash = 2166136261;
+  const addCode = code => {
+    if (remaining <= 0) throw new Error('Identity fingerprint text exceeds budget');
+    remaining -= 1;
+    length += 1;
+    hash = Math.imul(hash ^ code, 16777619);
+  };
+  const addText = text => {
+    for (let index = 0; index < text.length; index += 1) addCode(text.charCodeAt(index));
+  };
+  const walk = node => {
+    if (node.nodeType === 3 || node.nodeType === 4) { addText(node.nodeValue); return; }
+    if (is(node, 'text', 's')) {
+      const count = Number(attr(node, 'text', 'c') ?? 1);
+      if (!Number.isSafeInteger(count) || count < 1 || count > 1000) throw new Error('Invalid repeated spaces in identity fingerprint');
+      for (let index = 0; index < count; index += 1) addCode(32);
+      return;
+    }
+    if (is(node, 'text', 'line-break')) { addCode(10); return; }
+    if (is(node, 'text', 'tab')) { addCode(9); return; }
+    for (const childNode of node.childNodes ?? []) walk(childNode);
+  };
+  const paragraphs = all(textBox, 'text', 'p');
+  for (let index = 0; index < paragraphs.length; index += 1) {
+    if (index > 0) addCode(10);
+    walk(paragraphs[index]);
+  }
+  budget.remaining = remaining;
+  return [length, hash >>> 0];
+}
+function pageFingerprint(pages, budget = { remaining: IDENTITY_FINGERPRINT_TEXT_BUDGET }) {
   return pages.map((page, index) => ({
-    name: attr(page, 'draw', 'name') ?? `Slide ${index + 1}`,
+    name: slideName(attr(page, 'draw', 'name'), index),
     elements: children(page).filter(node => !is(node, 'presentation', 'notes')).map(node => {
       const textBox = child(node, 'draw', 'text-box');
-      const text = textBox ? paragraphs(textBox, { remaining: Infinity }) : '';
       return [
         node.localName,
         textBox ? attr(all(textBox, 'text', 'p')[0], 'text', 'style-name') : attr(node, 'draw', 'style-name'),
@@ -102,12 +134,12 @@ function pageFingerprint(pages) {
         attr(node, 'svg', 'y'),
         attr(node, 'svg', 'width'),
         attr(node, 'svg', 'height'),
-        textBox ? [text.length, hashText(text)] : null,
+        textBox ? fingerprintText(textBox, budget) : null,
       ];
     }),
   }));
 }
-function validateIdentity(raw, currentPages) {
+function validateIdentity(raw) {
   const invalid = { status: 'invalid', identity: null };
   if (!onlyKeys(raw, ['version', 'document', 'sections', 'slides', 'fingerprint']) || raw.version !== 1) return invalid;
   if (!onlyKeys(raw.document, ['id', 'theme'])) return invalid;
@@ -142,9 +174,6 @@ function validateIdentity(raw, currentPages) {
   if (!Array.isArray(fingerprintPages) || fingerprintPages.length !== raw.slides.length
     || fingerprintPages.some((page, index) => !onlyKeys(page, ['name', 'elements']) || typeof page.name !== 'string'
       || !Array.isArray(page.elements) || page.elements.length !== raw.slides[index].elements.length)) return invalid;
-  if (raw.slides.length !== currentPages.length || JSON.stringify(raw.fingerprint) !== JSON.stringify({ pages: currentPages })) {
-    return { status: 'stale', identity: null };
-  }
   return { status: 'valid', identity: raw };
 }
 
@@ -204,7 +233,22 @@ export async function importOdp(source, options = {}) {
       } else {
         if (fields.length !== 1 || textBytes(fields[0].textContent) > MAX_IDENTITY_BYTES) throw new Error('Invalid identity metadata');
         const raw = JSON.parse(fields[0].textContent);
-        ({ status: identityStatus, identity } = validateIdentity(raw, pageFingerprint(pages)));
+        const validation = validateIdentity(raw);
+        let candidate = validation.identity;
+        identityStatus = validation.status;
+        if (identityStatus === 'valid') {
+          if (candidate.slides.length !== pages.length) {
+            identityStatus = 'stale';
+            candidate = null;
+          } else {
+            const currentFingerprint = pageFingerprint(pages, { remaining: IDENTITY_FINGERPRINT_TEXT_BUDGET });
+            if (JSON.stringify(candidate.fingerprint) !== JSON.stringify({ pages: currentFingerprint })) {
+              identityStatus = 'stale';
+              candidate = null;
+            }
+          }
+        }
+        identity = candidate;
       }
     }
   } catch {
@@ -273,7 +317,7 @@ export async function importOdp(source, options = {}) {
       elements.push(el);
     }
     const notes = child(page, 'presentation', 'notes');
-    return { id: identity?.slides[index]?.id ?? `slide-${index + 1}`, title: attr(page, 'draw', 'name') ?? `Slide ${index + 1}`, layout: 'blank', elements, notes: notes ? paragraphs(notes, textBudget) : '' };
+    return { id: identity?.slides[index]?.id ?? `slide-${index + 1}`, title: slideName(attr(page, 'draw', 'name'), index), layout: 'blank', elements, notes: notes ? paragraphs(notes, textBudget) : '' };
   });
   throwIfAborted(options.signal);
   const sections = identity?.sections ?? [{ id: 'odp-section', name: 'Slides', slides: slides.map(s => s.id) }];
@@ -339,7 +383,7 @@ function identityMetadata(document, order) {
     slides: orderedSlides.map(slide => ({ id: slide.id, elements: slide.elements.map(element => element.id) })),
     fingerprint: {
       pages: orderedSlides.map((slide, slideIndex) => ({
-        name: String(slide.title ?? `Slide ${slideIndex + 1}`),
+        name: slideName(slide.title, slideIndex),
         elements: slide.elements.map((element, elementIndex) => [
           element.type === 'text' ? 'frame' : element.type,
           `s${slideIndex}e${elementIndex}`,
@@ -404,7 +448,7 @@ async function writeOdpPackage(input, options = {}) {
       }
     }
     const notes = slide.notes ? `<presentation:notes><draw:frame presentation:class="notes" svg:x="0in" svg:y="0in" svg:width="20in" svg:height="1in"><draw:text-box><text:p>${textXml(slide.notes)}</text:p></draw:text-box></draw:frame></presentation:notes>` : '';
-    pages += `<draw:page draw:name="${escape(slide.title ?? `Slide ${index + 1}`)}" draw:master-page-name="Default">${shapes}${notes}</draw:page>`;
+    pages += `<draw:page draw:name="${escape(slideName(slide.title, index))}" draw:master-page-name="Default">${shapes}${notes}</draw:page>`;
   }
   const identity = identityMetadata(document, order);
   const identityDiagnostics = identity.reason

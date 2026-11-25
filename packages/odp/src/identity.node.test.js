@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import JSZip from 'jszip';
 import { importOdp, odpAdapter, writeOdp } from './index.js';
@@ -263,6 +263,52 @@ describe('ODP identity metadata', () => {
       expect(result.document.slides[0].elements.map(element => [element.id, element.fill])).toEqual([['odp-1-1', '#445566']]);
       expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'identity-stale', severity: 'warning' }));
     } finally { window.close(); }
+  });
+
+  it('round-trips ids for blank slides with empty or absent titles', async () => {
+    const { window, xml } = xmlRuntime();
+    try {
+      const doc = identityDocument();
+      doc.sections = [{ id: 'blank-section', name: 'Blanks', slides: ['blank-a', 'blank-b'] }];
+      doc.slides = [
+        { id: 'blank-a', title: '', layout: 'blank', elements: [] },
+        { id: 'blank-b', layout: 'blank', elements: [] },
+      ];
+      const result = await importOdp(await writeOdp(doc), { xml, fileName: 'Blanks.odp' });
+      expect(result.document.slides.map(slide => slide.id)).toEqual(['blank-a', 'blank-b']);
+      expect(result.diagnostics.some(item => item.code === 'identity-stale' || item.code === 'identity-invalid')).toBe(false);
+    } finally { window.close(); }
+  });
+
+  it.each(['valid', 'invalid'])('bounds fingerprint text expansion for %s identity payloads', async payload => {
+    const { window, xml } = xmlRuntime();
+    const repeatSpy = vi.spyOn(String.prototype, 'repeat');
+    try {
+      const doc = identityDocument();
+      doc.sections = [{ id: 'sec', name: 'Slides', slides: ['slide-a'] }];
+      doc.slides = [doc.slides[0]];
+      const bytes = await writeOdp(doc);
+      const edited = await editPackage(bytes, async zip => {
+        let content = await zip.file('content.xml').async('string');
+        content = content.replace('<draw:frame ', '<draw:frame draw:transform="rotate(1)" ');
+        content = content.replace(/(<text:p text:style-name="s0e0">)[\s\S]*?(<\/text:p>)/, `$1${'<text:s text:c="1000"/>'.repeat(100000)}$2`);
+        zip.file('content.xml', content);
+        if (payload === 'invalid') {
+          const meta = xml.parse(await zip.file('meta.xml').async('string'));
+          const field = [...meta.getElementsByTagNameNS(META, 'user-defined')]
+            .find(node => node.getAttributeNS(META, 'name') === IDENTITY_FIELD);
+          field.textContent = '{}';
+          zip.file('meta.xml', xml.serialize(meta));
+        }
+      });
+      const result = await importOdp(edited, { xml, fileName: 'Expanded.odp' });
+      expect(repeatSpy.mock.calls.filter(([count]) => count === 1000).length).toBeLessThan(100);
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'identity-invalid', severity: 'warning' }));
+      expect(result.document.slides[0].elements).toEqual([]);
+    } finally {
+      repeatSpy.mockRestore();
+      window.close();
+    }
   });
 
   it('omits unsafe identity metadata without rejecting a previously exportable deck', async () => {
