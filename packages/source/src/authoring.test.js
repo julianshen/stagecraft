@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import { writePptx } from '../../pptx/src/index.js';
 import { writeOdp } from '../../odp/src/index.js';
 import { openPresentation } from './index.js';
+import { withoutDisplayProof } from './authoring.js';
 const object = (id, type = 'text') => ({ id, type, geometry: { x: 12700, y: 25400, width: 1270000, height: 254000 }, extensions: { stagecraftAuthored: true }, ...(type === 'text' ? { text: { paragraphs: [{ id: id+'p', runs: [{ id: id+'r', text: 'Hello world', editable: true, style: { b: '1', i: '0', sz: '2400' }, extensions: { stagecraftAuthored: true } }] }] } } : { shape: 'ellipse', fill: '#123456' }) });
 describe.each(['pptx','odp'])('%s native authoring', format => {
   it('adds native slides/objects, reorders/removes and edits original geometry and text together', async () => {
@@ -27,6 +28,26 @@ describe.each(['pptx','odp'])('%s native authoring', format => {
     expect((await session.export(session.document)).bytes).toEqual(bytes);
     const zip = await JSZip.loadAsync(result.bytes); expect(zip.file(format==='pptx'?'ppt/presentation.xml':'content.xml')).toBeTruthy();
   });
+});
+
+it('strips only display-proof extensions and preserves unrelated metadata', () => {
+  const value = {
+    extensions: {
+      stagecraftNativeAppearance: { input: 'x' },
+      stagecraftSlideAppearance: { input: 'x' },
+      stagecraftLayoutSummary: { input: 'x' },
+      pptxDefaultTextStyle: { fontSizePt: 18 },
+      pptxOtherTextStyle: { color: '#000000' },
+      pptxEndRunAppearance: { color: '#000000' },
+      pptxAppearance: { resolved: { color: '#000000' }, keep: true },
+      keep: { nested: true },
+    },
+  };
+  expect(withoutDisplayProof(value)).toEqual({ extensions: { pptxAppearance: { keep: true }, keep: { nested: true } } });
+  expect(withoutDisplayProof({ extensions: { stagecraftNativeAppearance: {} } })).toEqual({});
+  expect(withoutDisplayProof({ extensions: { pptxAppearance: { resolved: {} } } })).toEqual({});
+  expect(withoutDisplayProof(null)).toBeNull();
+  expect(withoutDisplayProof([])).toEqual([]);
 });
 
 it.each([

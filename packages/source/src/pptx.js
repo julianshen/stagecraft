@@ -164,7 +164,7 @@ export async function readPptx(zip, xml, mapping) {
             // exclude affected text even when a local property might override a default.
             objectDefaults.set(item.id, Object.fromEntries(['txDef', 'spDef'].map(tag => {
                 const def = child(defaults, 'a', tag);
-                return [tag, ['bodyPr', 'lstStyle'].some(name => {
+                return [tag, ['bodyPr', 'lstStyle', 'spPr'].some(name => {
                     const node = child(def, 'a', name);
                     return Object.keys(attrs(node)).length > 0 || children(node).length > 0;
                 })];

@@ -80,6 +80,7 @@ const cleanExtensions = value => {
     delete out.stagecraftLayoutSummary;
     delete out.pptxDefaultTextStyle;
     delete out.pptxOtherTextStyle;
+    delete out.pptxEndRunAppearance;
     if (Object.hasOwn(out, 'pptxAppearance')) {
         const appearance = cleanPptxAppearance(out.pptxAppearance);
         if (appearance && Object.keys(appearance).length) out.pptxAppearance = appearance;
