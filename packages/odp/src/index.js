@@ -32,6 +32,7 @@ const escape = value => {
   }
   return text.replace(/[&<>"'\r]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;', '\r': '&#13;' })[c]);
 };
+const escapeAttr = value => escape(value).replace(/\t/g, '&#9;').replace(/\n/g, '&#10;');
 const hex = value => typeof value === 'string' && /^#[\da-f]{6}$/i.test(value);
 const IDENTITY_FIELD = 'stagecraft.identity';
 const IDENTITY_OMITTED_FIELD = 'stagecraft.identity.omitted';
@@ -89,7 +90,10 @@ const hashText = text => {
   for (let index = 0; index < text.length; index += 1) hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
   return hash >>> 0;
 };
-const slideName = (title, index) => title === undefined || title === null || title === '' ? `Slide ${index + 1}` : String(title);
+const slideName = (title, index) => {
+  const name = title === undefined || title === null || title === '' ? `Slide ${index + 1}` : String(title);
+  return name.replace(/[\t\n\r]/g, ' ');
+};
 class IdentityFingerprintBudgetError extends Error {}
 function fingerprintText(textBox, budget) {
   let remaining = budget.remaining, length = 0, hash = 2166136261;
@@ -125,6 +129,7 @@ function fingerprintText(textBox, budget) {
 function pageFingerprint(pages, budget = { remaining: IDENTITY_FINGERPRINT_TEXT_BUDGET }) {
   return pages.map((page, index) => ({
     name: slideName(attr(page, 'draw', 'name'), index),
+    notes: child(page, 'presentation', 'notes') ? fingerprintText(child(page, 'presentation', 'notes'), budget) : null,
     elements: children(page).filter(node => !is(node, 'presentation', 'notes')).map(node => {
       const textBox = child(node, 'draw', 'text-box');
       return [
@@ -173,7 +178,7 @@ function validateIdentity(raw) {
   if (orderedSlideIds.length !== raw.slides.length || orderedSlideIds.some((id, index) => id !== raw.slides[index].id)) return invalid;
   const fingerprintPages = raw.fingerprint?.pages;
   if (!Array.isArray(fingerprintPages) || fingerprintPages.length !== raw.slides.length
-    || fingerprintPages.some((page, index) => !onlyKeys(page, ['name', 'elements']) || typeof page.name !== 'string'
+    || fingerprintPages.some((page, index) => !onlyKeys(page, ['name', 'elements', 'notes']) || typeof page.name !== 'string'
       || !Array.isArray(page.elements) || page.elements.length !== raw.slides[index].elements.length)) return invalid;
   return { status: 'valid', identity: raw };
 }
@@ -392,6 +397,7 @@ function identityMetadata(document, order) {
     fingerprint: {
       pages: orderedSlides.map((slide, slideIndex) => ({
         name: slideName(slide.title, slideIndex),
+        notes: slide.notes ? [slide.notes.length, hashText(slide.notes)] : null,
         elements: slide.elements.map((element, elementIndex) => [
           element.type === 'text' ? 'frame' : element.type,
           `s${slideIndex}e${elementIndex}`,
@@ -456,7 +462,7 @@ async function writeOdpPackage(input, options = {}) {
       }
     }
     const notes = slide.notes ? `<presentation:notes><draw:frame presentation:class="notes" svg:x="0in" svg:y="0in" svg:width="20in" svg:height="1in"><draw:text-box><text:p>${textXml(slide.notes)}</text:p></draw:text-box></draw:frame></presentation:notes>` : '';
-    pages += `<draw:page draw:name="${escape(slideName(slide.title, index))}" draw:master-page-name="Default">${shapes}${notes}</draw:page>`;
+    pages += `<draw:page draw:name="${escapeAttr(slideName(slide.title, index))}" draw:master-page-name="Default">${shapes}${notes}</draw:page>`;
   }
   const identity = identityMetadata(document, order);
   const identityDiagnostics = identity.reason

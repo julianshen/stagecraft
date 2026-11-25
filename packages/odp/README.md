@@ -21,10 +21,11 @@ is omitted, a reason-class marker is written, and `odpAdapter.export` reports
 `identity-omitted`. Direct `writeOdp` callers see the same diagnostic on import.
 Import treats the field as untrusted: malformed or oversized metadata inside the
 ZIP limits is ignored with an `identity-invalid` diagnostic. A fingerprint of
-ordered page names and per-object ODF style tokens, geometry/type and text digests
-must still match; otherwise ids are regenerated with `identity-stale` rather than
-assigned to the wrong objects. Fingerprint text is hashed incrementally with a
-shared 1 MiB budget and never materializes repeated spaces; exceeding it yields
+ordered page names and per-object ODF style tokens, geometry/type, text and notes
+digests must still match; otherwise ids are regenerated with `identity-stale` rather
+than assigned to the wrong objects. Empty names and attribute whitespace are
+normalized identically on export/import. Fingerprint text is hashed incrementally
+with a shared 1 MiB budget and never materializes repeated spaces; exceeding it yields
 `identity-unverifiable` rather than misreporting malformed metadata. Foreign/legacy ODP files without either field use
 deterministic regenerated ids and report `identity-regenerated`. This tolerance
 applies only inside the global ZIP entry/expanded-size limits; a package exceeding
