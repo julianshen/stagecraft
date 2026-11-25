@@ -335,6 +335,11 @@ describe('native PPTX appearance projection', () => {
     try { expect(proof(mixedCyrillicSession.document.slides[0].objects[0])).toBeUndefined(); }
     finally { mixedCyrillicSession.dispose(); }
 
+    const unknownMixed = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Привет𐍈</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const unknownMixedSession = await openFixture(`<p:sld ${NS}>${tree(unknownMixed)}</p:sld>`, { theme: supplemental });
+    try { expect(proof(unknownMixedSession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { unknownMixedSession.dispose(); }
+
     const unknown = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="xx-XX"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const unknownSession = await openFixture(`<p:sld ${NS}>${tree(unknown)}</p:sld>`, { theme: supplemental });
     try { expect(proof(unknownSession.document.slides[0].objects[0])).toBeUndefined(); }
