@@ -995,6 +995,7 @@ export function PresentationCanvas({
     [outerTransformUnsupported, setOuterTransformUnsupported] = useState(false),
     [surfaceNotice, setSurfaceNotice] = useState(''),
     konvaGestureInvalidateRef = useRef(null),
+    konvaCancelGestureRef = useRef(null),
     lastOutcomeRef = useRef(null);
 
   const canMoveGeometry = ui.can('object-geometry');
@@ -1021,20 +1022,102 @@ export function PresentationCanvas({
     return buildCanonicalScene(ui.snapshot.document, ui.activeSlide.id);
   }, [wantsKonva, ui.canonical, isOdpDoc, ui.snapshot.document, ui.activeSlide]);
 
-  useEffect(() => {
-    if (!wantsKonva || !ui.canvasRef.current || typeof getComputedStyle !== 'function') {
+  const checkEmbeddingTransform = rootEl => {
+    if (!wantsKonva || !rootEl || typeof getComputedStyle !== 'function') {
       setOuterTransformUnsupported(prev => (prev ? false : prev));
       return;
     }
     let unsupported = false;
-    for (let el = ui.canvasRef.current; el && el.nodeType === 1; el = el.parentElement) {
+    for (let el = rootEl; el && el.nodeType === 1; el = el.parentElement) {
       if (isUnsupportedCssTransform(getComputedStyle(el).transform)) {
         unsupported = true;
         break;
       }
     }
+    if (unsupported) {
+      konvaCancelGestureRef.current?.();
+    }
     setOuterTransformUnsupported(prev => (prev === unsupported ? prev : unsupported));
+  };
+
+  useEffect(() => {
+    checkEmbeddingTransform(ui.canvasRef.current);
   });
+
+  useEffect(() => {
+    const rootEl = ui.canvasRef.current;
+    if (!wantsKonva || !rootEl || typeof getComputedStyle !== 'function') {
+      return;
+    }
+
+    let rafId = 0;
+    const scheduleCheck = () => {
+      if (rafId) return;
+      if (typeof requestAnimationFrame === 'function') {
+        rafId = requestAnimationFrame(() => {
+          rafId = 0;
+          checkEmbeddingTransform(rootEl);
+        });
+      } else {
+        checkEmbeddingTransform(rootEl);
+      }
+    };
+
+    const ancestors = [];
+    for (let el = rootEl; el && el.nodeType === 1; el = el.parentElement) {
+      ancestors.push(el);
+    }
+    const ancestorSet = new Set(ancestors);
+
+    let mutationObserver = null;
+    if (typeof MutationObserver === 'function') {
+      mutationObserver = new MutationObserver(scheduleCheck);
+      for (const el of ancestors) {
+        mutationObserver.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+      }
+    }
+
+    let resizeObserver = null;
+    if (typeof ResizeObserver === 'function') {
+      resizeObserver = new ResizeObserver(scheduleCheck);
+      resizeObserver.observe(rootEl);
+      if (typeof document !== 'undefined' && document.documentElement && document.documentElement !== rootEl) {
+        resizeObserver.observe(document.documentElement);
+      }
+    }
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('resize', scheduleCheck);
+    }
+
+    const MOTION_EVENTS = ['transitionend', 'transitioncancel', 'animationend', 'animationcancel'];
+    const onAncestorMotion = event => {
+      if (ancestorSet.has(event.target)) {
+        scheduleCheck();
+      }
+    };
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      for (const type of MOTION_EVENTS) {
+        document.addEventListener(type, onAncestorMotion, true);
+      }
+    }
+
+    return () => {
+      if (rafId && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(rafId);
+      }
+      mutationObserver?.disconnect();
+      resizeObserver?.disconnect();
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('resize', scheduleCheck);
+      }
+      if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+        for (const type of MOTION_EVENTS) {
+          document.removeEventListener(type, onAncestorMotion, true);
+        }
+      }
+    };
+  }, [wantsKonva, ui.canvasRef, ui.activeSlide?.id, ownerKey]);
 
   const pluginsHaveObjectRenderers = hasNonEmptyObjectRenderers(ui.plugins);
   const canAttemptKonva = wantsKonva && sceneResult?.status === 'ready' && !pluginsHaveObjectRenderers && !outerTransformUnsupported;
@@ -1361,6 +1444,7 @@ export function PresentationCanvas({
         fontEpochBump={fontState.epoch}
         cancelToken={konvaCancelToken}
         invalidateGestureRef={konvaGestureInvalidateRef}
+        cancelGestureRef={konvaCancelGestureRef}
         onSelect={ui.selectObject}
         onMove={({ slideId, objectId, geometry, expectedRevision }) => ui.setGeometry(geometry, expectedRevision, objectId, slideId)}
         onRequestTextEdit={handleRequestTextEdit}

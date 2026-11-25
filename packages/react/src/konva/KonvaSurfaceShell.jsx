@@ -34,6 +34,7 @@ export default function KonvaSurfaceShell({
   fontEpochBump = 0,
   cancelToken = 0,
   invalidateGestureRef,
+  cancelGestureRef,
   onSelect,
   onMove,
   onRequestTextEdit,
@@ -81,6 +82,7 @@ export default function KonvaSurfaceShell({
             fontEpochBump={fontEpochBump}
             cancelToken={cancelToken}
             invalidateGestureRef={invalidateGestureRef}
+            cancelGestureRef={cancelGestureRef}
             onSelect={onSelect}
             onMove={onMove}
             onRequestTextEdit={onRequestTextEdit}
