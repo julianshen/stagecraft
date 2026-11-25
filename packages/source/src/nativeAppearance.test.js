@@ -345,6 +345,16 @@ describe('native PPTX appearance projection', () => {
     try { expect(proof(emojiSession.document.slides[0].objects[0])).toBeUndefined(); }
     finally { emojiSession.dispose(); }
 
+    const arabicDigits = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>١٢٣</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const digitsSession = await openFixture(`<p:sld ${NS}>${tree(arabicDigits)}</p:sld>`, { theme: supplemental });
+    try { expect(digitsSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Naskh Arabic'); }
+    finally { digitsSession.dispose(); }
+
+    const mixedDigits = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Native١٢٣</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const mixedDigitsSession = await openFixture(`<p:sld ${NS}>${tree(mixedDigits)}</p:sld>`, { theme: supplemental });
+    try { expect(proof(mixedDigitsSession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { mixedDigitsSession.dispose(); }
+
     const unknown = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="xx-XX"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const unknownSession = await openFixture(`<p:sld ${NS}>${tree(unknown)}</p:sld>`, { theme: supplemental });
     try { expect(proof(unknownSession.document.slides[0].objects[0])).toBeUndefined(); }
