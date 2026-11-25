@@ -135,3 +135,26 @@ it.each([
  const opened={...source('Resize outcomes'),resizeFit};render(<SourceWorkspace openSource={async()=>opened} save={vi.fn()}/>);choose('status.pptx');await screen.findByText('Resize outcomes');
  fireEvent.click(screen.getByText('Export fixture'));expect(await screen.findByLabelText('Export result')).toHaveTextContent(text);expect(screen.queryByText(/SECRET/)).toBeNull();
 });
+
+describe('SourceWorkspace New PPTX / New ODP', () => {
+  it.each(['pptx', 'odp'])('creates a %s session via createPresentation without legacy writers', async format => {
+    const fakeSession = {
+      document: createDocument({ metadata: { title: 'Untitled' } }),
+      dispose: vi.fn(),
+    };
+    const createSource = vi.fn(async () => fakeSession);
+    const openSource = vi.fn();
+
+    render(<SourceWorkspace createSource={createSource} openSource={openSource} />);
+    fireEvent.click(screen.getByRole('button', { name: format === 'pptx' ? 'New PPTX' : 'New ODP' }));
+
+    await waitFor(() => expect(createSource).toHaveBeenCalledTimes(1));
+    expect(createSource).toHaveBeenCalledWith(expect.objectContaining({
+      format,
+      title: 'Untitled',
+      signal: expect.any(AbortSignal),
+    }));
+    expect(openSource).not.toHaveBeenCalled();
+    expect(await screen.findByLabelText(`Untitled.${format}`)).toBeInTheDocument();
+  });
+});
