@@ -18,6 +18,7 @@
     "foundation.ts",
     "canonical-renderer.ts",
     "react-workspace.tsx",
+    "konva-surface.tsx",
     "server.ts"
   ]
 }
