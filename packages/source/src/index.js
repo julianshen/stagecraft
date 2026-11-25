@@ -412,5 +412,6 @@ export async function openPresentation(source, options = {}) {
 export async function createPresentation({ format, title = 'Untitled', xml, signal } = {}) {
     throwIfAborted(signal);
     const bytes = await buildMinimalPresentation({ format, title });
+    throwIfAborted(signal);
     return openPresentation(bytes, { format, xml, signal });
 }
