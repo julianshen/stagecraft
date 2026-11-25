@@ -280,6 +280,41 @@ describe('ODP identity metadata', () => {
     } finally { window.close(); }
   });
 
+  it('round-trips ids for an ordinary 200 KB text-heavy slide', async () => {
+    const { window, xml } = xmlRuntime();
+    try {
+      const doc = identityDocument();
+      doc.sections = [{ id: 'sec', name: 'Slides', slides: ['slide-a'] }];
+      doc.slides = [doc.slides[0]];
+      doc.slides[0].elements[0].content = 'A'.repeat(200 * 1024);
+      const result = await importOdp(await writeOdp(doc), { xml, fileName: 'Text.odp' });
+      expect(result.document.slides[0].id).toBe('slide-a');
+      expect(result.document.slides[0].elements[0].id).toBe('el&1');
+      expect(result.diagnostics.some(item => ['identity-invalid', 'identity-stale', 'identity-unverifiable'].includes(item.code))).toBe(false);
+    } finally { window.close(); }
+  });
+
+  it('reports identity-unverifiable for deck text over the shared 1 MiB fingerprint limit', async () => {
+    const { window, xml } = xmlRuntime();
+    try {
+      const doc = identityDocument();
+      doc.sections = [{ id: 'sec', name: 'Slides', slides: ['slide-a'] }];
+      doc.slides = [doc.slides[0]];
+      doc.slides[0].elements[0].content = 'A'.repeat(1024 * 1024 + 1);
+      const bytes = await writeOdp(doc);
+      const edited = await editPackage(bytes, async zip => {
+        const content = xml.parse(await zip.file('content.xml').async('string'));
+        content.getElementsByTagNameNS(DRAW, 'frame')[0].setAttributeNS(DRAW, 'transform', 'rotate(1)');
+        zip.file('content.xml', xml.serialize(content));
+      });
+      const result = await importOdp(edited, { xml, fileName: 'Large.odp' });
+      expect(result.document.slides[0].id).toBe('slide-1');
+      expect(result.document.slides[0].elements).toEqual([]);
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'identity-unverifiable', severity: 'warning' }));
+      expect(result.diagnostics.some(item => item.code === 'identity-invalid')).toBe(false);
+    } finally { window.close(); }
+  });
+
   it.each(['valid', 'invalid'])('bounds fingerprint text expansion for %s identity payloads', async payload => {
     const { window, xml } = xmlRuntime();
     const repeatSpy = vi.spyOn(String.prototype, 'repeat');
@@ -303,7 +338,10 @@ describe('ODP identity metadata', () => {
       });
       const result = await importOdp(edited, { xml, fileName: 'Expanded.odp' });
       expect(repeatSpy.mock.calls.filter(([count]) => count === 1000).length).toBeLessThan(100);
-      expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'identity-invalid', severity: 'warning' }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        code: payload === 'valid' ? 'identity-unverifiable' : 'identity-invalid',
+        severity: 'warning',
+      }));
       expect(result.document.slides[0].elements).toEqual([]);
     } finally {
       repeatSpy.mockRestore();

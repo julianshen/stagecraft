@@ -41,7 +41,7 @@ const MAX_IDENTITY_SECTIONS = 1024;
 const MAX_IDENTITY_SLIDES = 10000;
 const MAX_IDENTITY_ELEMENTS = 100000;
 const MAX_IDENTITY_ID = 512;
-const IDENTITY_FINGERPRINT_TEXT_BUDGET = 64 * 1024;
+const IDENTITY_FINGERPRINT_TEXT_BUDGET = 1024 * 1024;
 const validXmlScalar = (value, min, max) => {
   if (typeof value !== 'string' || value.length < min || value.length > max || /[\u0000-\u001f\u007f]/.test(value)) return false;
   for (const char of value) {
@@ -90,10 +90,11 @@ const hashText = text => {
   return hash >>> 0;
 };
 const slideName = (title, index) => title === undefined || title === null || title === '' ? `Slide ${index + 1}` : String(title);
+class IdentityFingerprintBudgetError extends Error {}
 function fingerprintText(textBox, budget) {
   let remaining = budget.remaining, length = 0, hash = 2166136261;
   const addCode = code => {
-    if (remaining <= 0) throw new Error('Identity fingerprint text exceeds budget');
+    if (remaining <= 0) throw new IdentityFingerprintBudgetError('Identity fingerprint text exceeds budget');
     remaining -= 1;
     length += 1;
     hash = Math.imul(hash ^ code, 16777619);
@@ -241,9 +242,15 @@ export async function importOdp(source, options = {}) {
             identityStatus = 'stale';
             candidate = null;
           } else {
-            const currentFingerprint = pageFingerprint(pages, { remaining: IDENTITY_FINGERPRINT_TEXT_BUDGET });
-            if (JSON.stringify(candidate.fingerprint) !== JSON.stringify({ pages: currentFingerprint })) {
-              identityStatus = 'stale';
+            try {
+              const currentFingerprint = pageFingerprint(pages, { remaining: IDENTITY_FINGERPRINT_TEXT_BUDGET });
+              if (JSON.stringify(candidate.fingerprint) !== JSON.stringify({ pages: currentFingerprint })) {
+                identityStatus = 'stale';
+                candidate = null;
+              }
+            } catch (error) {
+              if (!(error instanceof IdentityFingerprintBudgetError)) throw error;
+              identityStatus = 'unverifiable';
               candidate = null;
             }
           }
@@ -257,6 +264,7 @@ export async function importOdp(source, options = {}) {
   }
   if (identityStatus === 'invalid') diagnostics.push(warning('identity-invalid', 'Stagecraft identity metadata was invalid and ignored; document, section, slide and object ids were regenerated.'));
   else if (identityStatus === 'stale') diagnostics.push(warning('identity-stale', 'Stagecraft identity metadata did not match the current ODP page/object structure; ids were regenerated rather than assigned to the wrong objects.'));
+  else if (identityStatus === 'unverifiable') diagnostics.push(warning('identity-unverifiable', 'Deck text is too large to verify Stagecraft identity metadata; document, section, slide and object ids were regenerated.'));
   else if (identityStatus === 'omitted') diagnostics.push(warning('identity-omitted', `Stagecraft identity metadata was omitted during export (${omittedReason}); document, section, slide and object ids were regenerated.`));
   else if (identityStatus === 'regenerated') diagnostics.push(warning('identity-regenerated', 'This ODP has no usable Stagecraft identity metadata; document, section, slide and object ids were regenerated.'));
   const slides = pages.map((page, index) => {
