@@ -80,6 +80,15 @@ describe('native PPTX appearance projection', () => {
     } finally { session.dispose(); }
   });
 
+  it.each(['b="maybe"', 'i="maybe"'])('refuses invalid inherited boolean %s', async attribute => {
+    const master = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800" ${attribute}/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+    const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const bytes = await sourceReady(await buildPptx({ theme, master, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(box)}</p:sld>` }] }));
+    const session = await openPresentation(bytes, { format: 'pptx', xml });
+    try { expect(proof(session.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { session.dispose(); }
+  });
+
   it('covers inherited boolean/language defaults and malformed canonical mappings', async () => {
     const inheritedMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800" b="true" i="false" lang="ar-SA"><a:latin typeface="Arial"/></a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
     const supplemental = theme.replace('<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/>', '<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/><a:font script="Arab" typeface="Noto Naskh Arabic"/>');
@@ -119,6 +128,11 @@ describe('native PPTX appearance projection', () => {
     try {
       cyclic.document.layouts[0].masterId = cyclic.document.layouts[0].id;
       delete cyclic.document.slides[0].extensions.stagecraftSlideAppearance;
+      await projectNativeAppearance(cyclic.document, zip, xml);
+      expect(cyclic.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
+      cyclic.document.slides[0].layoutId = undefined;
+      cyclic.document.slides[0].masterId = cyclic.document.masters[0].id;
+      cyclic.document.masters[0].masterId = cyclic.document.masters[0].id;
       await projectNativeAppearance(cyclic.document, zip, xml);
       expect(cyclic.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
     } finally { cyclic.dispose(); }
@@ -419,6 +433,11 @@ describe('native PPTX appearance projection', () => {
     try { expect(proof(unknownMixedSession.document.slides[0].objects[0])).toBeUndefined(); }
     finally { unknownMixedSession.dispose(); }
 
+    const unknownOnly = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>𐍈</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const unknownOnlySession = await openFixture(`<p:sld ${NS}>${tree(unknownOnly)}</p:sld>`, { theme: supplemental });
+    try { expect(proof(unknownOnlySession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { unknownOnlySession.dispose(); }
+
     const emoji = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Native😀</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const emojiSession = await openFixture(`<p:sld ${NS}>${tree(emoji)}</p:sld>`);
     try { expect(proof(emojiSession.document.slides[0].objects[0])).toBeUndefined(); }
@@ -507,6 +526,7 @@ describe('native PPTX appearance projection', () => {
     ['dashed stroke', shape(2, 'rect', 20, 20, 200, 100, '<a:ln w="9525"><a:prstDash val="dash"/></a:ln>')],
     ['stroke without width', shape(2, 'rect', 20, 20, 200, 100, '<a:ln><a:solidFill><a:srgbClr val="112233"/></a:solidFill></a:ln>')],
     ['zero-width stroke', shape(2, 'rect', 20, 20, 200, 100, '<a:ln w="0"><a:solidFill><a:srgbClr val="112233"/></a:solidFill></a:ln>')],
+    ['multiple stroke fills', shape(2, 'rect', 20, 20, 200, 100, '<a:ln w="9525"><a:solidFill><a:srgbClr val="112233"/></a:solidFill><a:noFill/></a:ln>')],
     ['invalid fill reference', shape(2, 'rect', 20, 20, 200, 100, '', '<p:style><a:fillRef idx="nope"/></p:style>')],
     ['missing fill reference index', shape(2, 'rect', 20, 20, 200, 100, '', '<p:style><a:fillRef/></p:style>')],
     ['unknown direct colour', shape(2, 'rect', 20, 20, 200, 100, '<a:solidFill><a:unknownClr/></a:solidFill>')],
