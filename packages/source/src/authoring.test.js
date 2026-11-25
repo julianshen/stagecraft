@@ -51,6 +51,104 @@ it('strips only display-proof extensions and preserves unrelated metadata', () =
 });
 
 it.each([
+  ['invalid paragraph alignment', n => { n.slides[0].objects[0].text.paragraphs[0].style.alignment = 'sideways'; }],
+  ['invalid paragraph spacing', n => { n.slides[0].objects[0].text.paragraphs[0].style.spaceBefore = -1; }],
+  ['invalid text inset', n => { n.slides[0].objects[0].bodyLayout.insets ??= {}; n.slides[0].objects[0].bodyLayout.insets.left = -1; }],
+  ['unknown text inset', n => { n.slides[0].objects[0].bodyLayout.insets ??= {}; n.slides[0].objects[0].bodyLayout.insets.middle = 1; }],
+  ['invalid slide name', n => { n.slides[0].name = 42; }],
+  ['oversized slide name', n => { n.slides[0].name = 'x'.repeat(257); }],
+  ['invalid slide notes', n => { n.slides[0].notes = {}; }],
+  ['oversized slide notes', n => { n.slides[0].notes = 'x'.repeat(20001); }],
+  ['invalid slide background', n => { n.slides[0].background = { type: 'gradient' }; }],
+  ['unsupported slide property', n => { n.slides[0].unexpected = true; }],
+  ['invalid editable fill', n => { n.slides[0].objects[1].fill = 'red'; }],
+  ['changed paragraph count', n => { n.slides[0].objects[0].text.paragraphs.push(structuredClone(n.slides[0].objects[0].text.paragraphs[0])); }],
+  ['changed paragraph identity', n => { n.slides[0].objects[0].text.paragraphs[0].id = 'changed'; }],
+  ['unsupported paragraph property', n => { n.slides[0].objects[0].text.paragraphs[0].unexpected = true; }],
+  ['invalid source slides collection', n => { n.slides = {}; }],
+  ['invalid source assets collection', n => { n.assets = {}; }],
+  ['invalid asset descriptor', n => { n.assets.push(null); }],
+  ['asset identity collision', n => { n.assets.push({ id: n.slides[0].objects[0].id }); }],
+  ['unsupported asset descriptor', n => { n.assets.push({ id: 'asset', extensions: { stagecraftAuthored: true, contentType: 'image/gif' } }); }],
+  ['extra asset extension', n => { n.assets.push({ id: 'asset', extensions: { stagecraftAuthored: true, contentType: 'image/png', extra: true } }); }],
+])('rejects invalid native authoring input: %s', async (_label, mutate) => {
+  const session = await open('pptx');
+  try {
+    const next = structuredClone(session.document);
+    mutate(next);
+    await expect(session.export(next)).rejects.toThrow();
+  } finally { session.dispose(); }
+});
+
+it('strips display proofs without masking unrelated extensions', () => {
+  expect(withoutDisplayProof('value')).toBe('value');
+  expect(withoutDisplayProof({ extensions: null })).toEqual({});
+  expect(withoutDisplayProof({ extensions: { pptxAppearance: null, keep: true } })).toEqual({ extensions: { keep: true } });
+  expect(withoutDisplayProof({ extensions: { stagecraftNativeAppearance: {}, pptxAppearance: { resolved: {} } } })).toEqual({});
+});
+
+describe.each(['pptx', 'odp'])('%s additional native authoring branches', format => {
+  it('writes full authored paragraph/run formatting and text layout', async () => {
+    const s = await open(format), n = structuredClone(s.document);
+    const text = object('formatted-text');
+    text.text.paragraphs[0].style = { alignment: 'right', spaceBefore: 12, spaceAfter: 4, lineSpacing: 120, indentStart: 914400, indentEnd: 457200, firstLineIndent: -228600 };
+    text.text.paragraphs[0].runs[0].style = { b: '1', i: '1', sz: '2800', typeface: 'Courier New', eastAsian: 'SimSun', complexScript: 'Amiri', color: '#223344' };
+    text.bodyLayout = format === 'pptx'
+      ? { autofit: 'resize', wrap: 'square', anchor: 'middle', insets: { left: 12700, top: 25400, right: 38100, bottom: 50800 } }
+      : { autofit: 'resize' };
+    n.slides[0].objects.push(text);
+    const again = await openPresentation((await s.export(n)).bytes, { format });
+    const written = again.document.slides[0].objects.filter(o => o.text).at(-1);
+    expect(written.text.paragraphs[0].style).toMatchObject({ alignment: 'right', spaceBefore: 12, spaceAfter: 4, lineSpacing: 120, indentStart: 914400, indentEnd: 457200, firstLineIndent: -228600 });
+    expect(written.bodyLayout.autofit).toBe('resize');
+  });
+
+  it('writes JPEG images and reuses registered media', async () => {
+    const s = await open(format), n = structuredClone(s.document);
+    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xff, 0xd9]);
+    const image = s.registerImage({ bytes: jpeg, contentType: 'image/jpeg' });
+    n.assets.push({ id: image.assetId, extensions: { stagecraftAuthored: true, contentType: 'image/jpeg' } });
+    const objectImage = id => ({ id, type: 'image', geometry: { x: 0, y: 0, width: 127000, height: 127000 }, extensions: { stagecraftAuthored: true }, image: { assetId: image.assetId, alt: 'JPEG' } });
+    n.slides[0].objects.push(objectImage('jpeg-one'), objectImage('jpeg-two'));
+    const out = await s.export(n);
+    const again = await openPresentation(out.bytes, { format });
+    expect(again.document.slides[0].objects.filter(o => o.type === 'image')).toHaveLength(2);
+  });
+
+  it('edits native fill and removes previously written notes', async () => {
+    const s = await open(format), n = structuredClone(s.document);
+    n.slides[0].objects[1].fill = '#abcdef';
+    n.slides[0].notes = 'Temporary note';
+    const first = await s.export(n);
+    const edited = await openPresentation(first.bytes, { format });
+    const next = structuredClone(edited.document);
+    delete next.slides[0].notes;
+    const out = await edited.export(next);
+    expect((await openPresentation(out.bytes, { format })).document.slides[0].notes).toBeUndefined();
+  });
+});
+
+it('wraps PPTX slide ids after the schema maximum', async () => {
+  const s = await open('pptx');
+  const baseline = await JSZip.loadAsync((await s.export(s.document)).bytes);
+  const part = 'ppt/presentation.xml';
+  const doc = new DOMParser().parseFromString(await baseline.file(part).async('string'), 'application/xml');
+  const refs = Array.from(doc.getElementsByTagNameNS('http://schemas.openxmlformats.org/presentationml/2006/main', 'sldId'));
+  refs[0].setAttribute('id', '2147483646');
+  refs[1].setAttribute('id', '2147483647');
+  baseline.file(part, new XMLSerializer().serializeToString(doc));
+  const session = await openPresentation(await baseline.generateAsync({ type: 'uint8array' }), { format: 'pptx' });
+  try {
+    const next = structuredClone(session.document);
+    next.slides.push({ id: 'wrapped-slide', objects: [], extensions: { stagecraftAuthored: true } });
+    const out = await JSZip.loadAsync((await session.export(next)).bytes);
+    const written = new DOMParser().parseFromString(await out.file(part).async('string'), 'application/xml');
+    const ids = Array.from(written.getElementsByTagNameNS('http://schemas.openxmlformats.org/presentationml/2006/main', 'sldId')).map(node => Number(node.getAttribute('id')));
+    expect(ids.at(-1)).toBe(256);
+  } finally { session.dispose(); }
+});
+
+it.each([
   ['missing', refs => refs.forEach(ref => ref.removeAttribute('id')), 256],
   ['nonnumeric', refs => refs.forEach(ref => ref.setAttribute('id', 'bogus')), 256],
   ['zero', refs => refs.forEach(ref => ref.setAttribute('id', '0')), 256],

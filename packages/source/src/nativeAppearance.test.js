@@ -80,6 +80,71 @@ describe('native PPTX appearance projection', () => {
     } finally { session.dispose(); }
   });
 
+  it('covers inherited boolean/language defaults and malformed canonical mappings', async () => {
+    const inheritedMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800" b="true" i="false" lang="ar-SA"><a:latin typeface="Arial"/></a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+    const supplemental = theme.replace('<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/>', '<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/><a:font script="Arab" typeface="Noto Naskh Arabic"/>');
+    const box = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>مرحبا</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const bytes = await sourceReady(await buildPptx({ theme: supplemental, master: inheritedMaster, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(box)}</p:sld>` }] }));
+    const zip = await JSZip.loadAsync(bytes);
+    const session = await openPresentation(bytes, { format: 'pptx', xml });
+    try {
+      expect(session.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved)
+        .toMatchObject({ bold: true, italic: false, fontFamilyComplexScript: 'Noto Naskh Arabic' });
+      const document = session.document;
+      document.slides[0].objects[0].text.paragraphs.push(structuredClone(document.slides[0].objects[0].text.paragraphs[0]));
+      await projectNativeAppearance(document, zip, xml);
+      expect(proof(document.slides[0].objects[0])).toBeDefined();
+      document.slides[0].objects[0].text.paragraphs[0].runs.push(structuredClone(document.slides[0].objects[0].text.paragraphs[0].runs[0]));
+      await projectNativeAppearance(document, zip, xml);
+      expect(proof(document.slides[0].objects[0])).toBeDefined();
+    } finally { session.dispose(); }
+  });
+
+  it('refuses empty inherited text, unsupported presets and cyclic backgrounds', async () => {
+    const noSizeMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr><a:latin typeface="Arial"/></a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+    const empty = textBox(2, 20, 20, 300, 100, '<a:p/>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const emptyBytes = await sourceReady(await buildPptx({ theme, master: noSizeMaster, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(empty)}</p:sld>` }] }));
+    const emptySession = await openPresentation(emptyBytes, { format: 'pptx', xml });
+    try { expect(proof(emptySession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { emptySession.dispose(); }
+
+    const triangle = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'triangle', 20, 20, 200, 100))}</p:sld>`);
+    try { expect(proof(triangle.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { triangle.dispose(); }
+
+    const objectXml = shape(2, 'rect', 20, 20, 200, 100);
+    const bytes = await sourceReady(await buildPptx({ theme, master: emptyMaster, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(objectXml)}</p:sld>` }] }));
+    const zip = await JSZip.loadAsync(bytes);
+    const cyclic = await openPresentation(bytes, { format: 'pptx', xml });
+    try {
+      cyclic.document.layouts[0].masterId = cyclic.document.layouts[0].id;
+      delete cyclic.document.slides[0].extensions.stagecraftSlideAppearance;
+      await projectNativeAppearance(cyclic.document, zip, xml);
+      expect(cyclic.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
+    } finally { cyclic.dispose(); }
+  });
+
+  it('covers none and unavailable theme style vectors', async () => {
+    const noneTheme = theme.replace(/<a:fillStyleLst>[\s\S]*?<\/a:fillStyleLst>/, '<a:fillStyleLst><a:noFill/></a:fillStyleLst>')
+      .replace(/<a:bgFillStyleLst>[\s\S]*?<\/a:bgFillStyleLst>/, '<a:bgFillStyleLst><a:noFill/></a:bgFillStyleLst>');
+    const styled = shape(2, 'rect', 20, 20, 200, 100, '', '<p:style><a:fillRef idx="1001"/></p:style>');
+    const noneSession = await openFixture(`<p:sld ${NS}>${tree(styled).replace('<p:cSld>', '<p:cSld><p:bg><p:bgRef idx="1001"/></p:bg>')}</p:sld>`, { theme: noneTheme });
+    try {
+      expect(proof(noneSession.document.slides[0].objects[0]).fill).toEqual({ kind: 'none' });
+      expect(noneSession.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'none' });
+    } finally { noneSession.dispose(); }
+
+    const bgBytes = await sourceReady(await buildPptx({ theme, master: emptyMaster, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100)).replace('<p:cSld>', '<p:cSld><p:bg><p:bgRef idx="1001"/></p:bg>')}</p:sld>` }] }));
+    const bgZip = await JSZip.loadAsync(bgBytes);
+    const unavailable = await openPresentation(bgBytes, { format: 'pptx', xml });
+    try {
+      unavailable.document.themes[0].source = null;
+      delete unavailable.document.slides[0].extensions.stagecraftSlideAppearance;
+      await projectNativeAppearance(unavailable.document, bgZip, xml);
+      expect(unavailable.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
+    } finally { unavailable.dispose(); }
+  });
+
   it('parses each source part once per appearance projection pass', async () => {
     const objects = shape(2, 'rect', 20, 20, 200, 100) + shape(3, 'ellipse', 40, 40, 200, 100);
     const bytes = await sourceReady(await buildPptx({ theme, master: emptyMaster, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(objects)}</p:sld>` }] }));
@@ -171,7 +236,7 @@ describe('native PPTX appearance projection', () => {
     expect(resolvePptxColor(node('<a:sysClr val="window" lastClr="#ABCDEF"/>'))).toBe('#ABCDEF');
     expect(resolvePptxColor(node('<a:schemeClr val="tx1"/>'), { dk1: '#112233' }, { tx1: 'dk1' })).toBe('#112233');
     expect(resolvePptxColor(node('<a:schemeClr val="missing"/>'), {}, {})).toBeNull();
-    for (const value of ['FF0000', 'FFFF00', '00FF00', '00FFFF', '0000FF', 'FF00FF', '12FF34', '1234FF', 'FF1234']) {
+    for (const value of ['FF0000', 'FFFF00', '00FF00', '00FFFF', '0000FF', 'FF00FF', '12FF34', '1234FF', 'FF1234', '8000FF']) {
       expect(resolvePptxColor(node(`<a:srgbClr val="${value}"><a:lumMod val="50000"/></a:srgbClr>`))).toMatch(/^#[0-9A-F]{6}$/);
     }
   });

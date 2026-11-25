@@ -81,8 +81,9 @@ describe('PPTX appearance colour resolution', () => {
   it('resolves recursive scheme colours and clamps each luminance transform', () => {
     const recursive = parse('<a:theme xmlns:a="' + A + '"><a:themeElements><a:clrScheme>'
       + '<a:dk1><a:srgbClr val="112233"/></a:dk1><a:accent1><a:schemeClr val="dk1"><a:lumMod val="50000"/></a:schemeClr></a:accent1>'
+      + '<a:bg1><a:schemeClr val="lt1"/></a:bg1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1>'
       + '</a:clrScheme></a:themeElements></a:theme>');
-    expect(readPptxColorScheme(recursive.documentElement)).toEqual({ dk1: '#112233', accent1: '#09111A' });
+    expect(readPptxColorScheme(recursive.documentElement)).toEqual({ dk1: '#112233', accent1: '#09111A', bg1: '#FFFFFF', lt1: '#FFFFFF' });
     expect(resolvePptxColor(color('<x xmlns:a="' + A + '"><a:srgbClr val="FFFFFF"><a:lumOff val="20000"/><a:lumMod val="50000"/></a:srgbClr></x>'), {}, {})).toBe('#808080');
   });
 
