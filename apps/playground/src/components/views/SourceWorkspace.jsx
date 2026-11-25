@@ -88,6 +88,7 @@ export default function SourceWorkspace({ openSource = openPresentation, createS
     setExportStatus('');
     pending.current?.abort();
     pending.current = null;
+    if (!format) { setError('Choose a .pptx or .odp file.'); setLoading(false); return; }
     const controller = new AbortController();
     pending.current = controller;
     setLoading(true); setError('');
@@ -117,7 +118,6 @@ export default function SourceWorkspace({ openSource = openPresentation, createS
   async function openFile(file) {
     if (!file) return;
     const format = /\.(pptx|odp)$/i.exec(file.name)?.[1].toLowerCase();
-    if (!format) { setError('Choose a .pptx or .odp file.'); setLoading(false); return; }
     await loadSession({
       fileName: file.name,
       format,
