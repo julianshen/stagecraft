@@ -205,13 +205,19 @@ describe('native PPTX appearance projection', () => {
     } finally { session.dispose(); }
   });
 
-  it('refuses colour-map overrides, inherited paragraph attributes and compound strokes', async () => {
-    const overrideSlide = `<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100, '<a:solidFill><a:schemeClr val="tx1"/></a:solidFill>'))}<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
+  it('resolves colour-map overrides and refuses inherited attributes and compound strokes', async () => {
+    const overrideSlide = `<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100, '<a:solidFill><a:schemeClr val="tx1"/></a:solidFill>'))}<p:clrMapOvr><a:overrideClrMapping tx1="lt1"/></p:clrMapOvr></p:sld>`;
     const override = await openFixture(overrideSlide);
     try {
-      expect(proof(override.document.slides[0].objects[0])).toBeUndefined();
-      expect(override.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
+      expect(proof(override.document.slides[0].objects[0]).fill).toEqual({ kind: 'solid', color: '#FFFFFF' });
+      expect(override.document.slides[0].extensions.stagecraftSlideAppearance).toBeDefined();
     } finally { override.dispose(); }
+
+    const unsupportedOverride = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}<p:clrMapOvr><a:unknownMapping/></p:clrMapOvr></p:sld>`);
+    try {
+      expect(proof(unsupportedOverride.document.slides[0].objects[0])).toBeUndefined();
+      expect(unsupportedOverride.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
+    } finally { unsupportedOverride.dispose(); }
 
     const centeredMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr algn="ctr"><a:defRPr sz="1800"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
     const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });

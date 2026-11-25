@@ -36,8 +36,13 @@ function colorMapFor(document, entity) {
   const seen = new Set();
   let current = entity;
   while (current && !seen.has(current.id)) {
-    if (current.extensions?.pptxColorMapOverride) return null;
+    if (current.extensions?.pptxColorMapOverride === 'unsupported') return null;
     seen.add(current.id);
+    if (current.extensions?.pptxColorMapOverride === 'master') {
+      const layout = current.layoutId ? document.layouts.find(item => item.id === current.layoutId) : null;
+      current = layout ?? (current.masterId ? document.masters.find(master => master.id === current.masterId) : null);
+      continue;
+    }
     chain.unshift(current);
     if (current.layoutId) {
       current = document.layouts.find(layout => layout.id === current.layoutId);
@@ -151,12 +156,18 @@ async function projectEntityBackgrounds(document, zip, xml) {
     if (!entity.source?.part) continue;
     const root = (await xmlPart(zip, entity.source.part, xml)).documentElement;
     const colorMap = readPptxColorMap(child(root, 'p', 'clrMap'));
+    const colorOverride = child(root, 'p', 'clrMapOvr');
+    const overrideMapping = colorOverride ? child(colorOverride, 'a', 'overrideClrMapping') : null;
+    const masterMapping = colorOverride ? child(colorOverride, 'a', 'masterClrMapping') : null;
+    const unsupportedMapping = colorOverride && !overrideMapping && !masterMapping;
     entity.extensions = {
       ...entity.extensions,
       ...(Object.keys(colorMap).length ? { pptxColorMap: colorMap } : {}),
+      ...(overrideMapping ? { pptxColorMap: readPptxColorMap(overrideMapping) } : {}),
+      ...(masterMapping ? { pptxColorMapOverride: 'master' } : {}),
+      ...(unsupportedMapping ? { pptxColorMapOverride: 'unsupported' } : {}),
     };
-    if (child(root, 'p', 'clrMapOvr')) {
-      entity.extensions.pptxColorMapOverride = true;
+    if (unsupportedMapping) {
       own.set(entity.id, UNSUPPORTED_BACKGROUND);
       continue;
     }
