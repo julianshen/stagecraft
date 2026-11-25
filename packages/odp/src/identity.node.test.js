@@ -217,6 +217,66 @@ describe('ODP identity metadata', () => {
     } finally { window.close(); }
   });
 
+  it('regenerates instead of shifting ids when a native transform makes the first object unsupported', async () => {
+    const { window, xml } = xmlRuntime();
+    try {
+      const doc = identityDocument();
+      doc.sections = [{ id: 'sec', name: 'Slides', slides: ['slide-a'] }];
+      doc.slides = [doc.slides[0]];
+      doc.slides[0].elements = [
+        { id: 'first-id', type: 'rect', x: 10, y: 20, w: 40, h: 40, fill: '#112233' },
+        { id: 'second-id', type: 'rect', x: 80, y: 20, w: 40, h: 40, fill: '#445566' },
+      ];
+      const bytes = await writeOdp(doc);
+      const edited = await editPackage(bytes, async zip => {
+        const content = xml.parse(await zip.file('content.xml').async('string'));
+        const page = content.getElementsByTagNameNS(DRAW, 'page')[0];
+        const objects = [...page.children].filter(node => node.namespaceURI === DRAW);
+        objects[0].setAttributeNS(DRAW, 'transform', 'rotate(1)');
+        zip.file('content.xml', xml.serialize(content));
+      });
+      const result = await importOdp(edited, { xml, fileName: 'Edited.odp' });
+      expect(result.document.slides[0].elements.map(element => [element.id, element.fill])).toEqual([['odp-1-1', '#445566']]);
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'identity-stale', severity: 'warning' }));
+    } finally { window.close(); }
+  });
+
+  it('regenerates instead of shifting ids when native edits make the first object geometry invalid', async () => {
+    const { window, xml } = xmlRuntime();
+    try {
+      const doc = identityDocument();
+      doc.sections = [{ id: 'sec', name: 'Slides', slides: ['slide-a'] }];
+      doc.slides = [doc.slides[0]];
+      doc.slides[0].elements = [
+        { id: 'first-id', type: 'rect', x: 10, y: 20, w: 40, h: 40, fill: '#112233' },
+        { id: 'second-id', type: 'rect', x: 80, y: 20, w: 40, h: 40, fill: '#445566' },
+      ];
+      const bytes = await writeOdp(doc);
+      const edited = await editPackage(bytes, async zip => {
+        const content = xml.parse(await zip.file('content.xml').async('string'));
+        const page = content.getElementsByTagNameNS(DRAW, 'page')[0];
+        const objects = [...page.children].filter(node => node.namespaceURI === DRAW);
+        objects[0].setAttributeNS('urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0', 'width', '0in');
+        zip.file('content.xml', xml.serialize(content));
+      });
+      const result = await importOdp(edited, { xml, fileName: 'Edited.odp' });
+      expect(result.document.slides[0].elements.map(element => [element.id, element.fill])).toEqual([['odp-1-1', '#445566']]);
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'identity-stale', severity: 'warning' }));
+    } finally { window.close(); }
+  });
+
+  it('rejects geometry that cannot round-trip through ODF length serialization', async () => {
+    const doc = identityDocument();
+    doc.sections = [{ id: 'sec', name: 'Slides', slides: ['slide-a'] }];
+    doc.slides = [doc.slides[0]];
+    doc.slides[0].elements = [{ id: 'rect', type: 'rect', x: 0, y: 0, w: 40, h: 40, fill: '#112233' }];
+    doc.slides[0].elements[0].w = 1e-8;
+    await expect(writeOdp(doc)).rejects.toThrow(/invalid.*geometry/i);
+    doc.slides[0].elements[0].w = 40;
+    doc.slides[0].elements[0].x = 1e24;
+    await expect(writeOdp(doc)).rejects.toThrow(/invalid.*geometry/i);
+  });
+
   it('rejects invalid or duplicate element ids on export instead of writing unusable metadata', async () => {
     const doc = identityDocument();
     doc.sections = [{ id: 'sec', name: 'Slides', slides: ['slide-a'] }];

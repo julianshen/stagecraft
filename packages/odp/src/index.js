@@ -95,6 +95,7 @@ function pageFingerprint(pages) {
       return [
         node.localName,
         textBox ? attr(all(textBox, 'text', 'p')[0], 'text', 'style-name') : attr(node, 'draw', 'style-name'),
+        attr(node, 'draw', 'transform'),
         attr(node, 'svg', 'x'),
         attr(node, 'svg', 'y'),
         attr(node, 'svg', 'width'),
@@ -216,8 +217,10 @@ export async function importOdp(source, options = {}) {
     if (documentHeight !== undefined && Math.abs(normalizedHeight - documentHeight) > 0.01) throw new Error('Mixed ODP page sizes are unsupported');
     documentHeight = normalizedHeight;
     const elements = [];
+    let objectIndex = 0;
     for (const node of children(page)) {
       if (is(node, 'presentation', 'notes')) continue;
+      const identityIndex = objectIndex++;
       const textBox = child(node, 'draw', 'text-box');
       const type = is(node, 'draw', 'rect') ? 'rect' : is(node, 'draw', 'ellipse') ? 'ellipse' : is(node, 'draw', 'frame') && textBox ? 'text' : null;
       if (!type || attr(node, 'draw', 'transform')) {
@@ -230,7 +233,7 @@ export async function importOdp(source, options = {}) {
       }
       const [x, y, w, h] = geometry.map(v => v * scale);
       if (![x, y, w, h].every(Number.isFinite)) throw new Error('Invalid ODP scaled geometry');
-      const el = { id: identity?.slides[index]?.elements[elements.length] ?? `odp-${index + 1}-${elements.length + 1}`, type, x, y, w, h };
+      const el = { id: identity?.slides[index]?.elements[identityIndex] ?? `odp-${index + 1}-${elements.length + 1}`, type, x, y, w, h };
       const graphicName = attr(node, 'draw', 'style-name');
       if (type === 'text') {
         const p = all(textBox, 'text', 'p')[0];
@@ -325,6 +328,7 @@ function identityMetadata(document, order) {
         elements: slide.elements.map((element, elementIndex) => [
           element.type === 'text' ? 'frame' : element.type,
           `s${slideIndex}e${elementIndex}`,
+          null,
           px(element.x),
           px(element.y),
           px(element.w),
@@ -367,8 +371,12 @@ export async function writeOdp(input, options = {}) {
       const isText = el.type === 'text';
       allowedKeys(el, ['id', 'type', 'x', 'y', 'w', 'h', ...(isText ? ['content', 'color', 'fontSize', 'fontFamily', 'bold', 'italic', 'align'] : ['fill'])], 'element');
       for (const key of ['x', 'y', 'w', 'h']) finite(el[key], key, key === 'w' || key === 'h');
+      const lengths = ['x', 'y', 'w', 'h'].map(key => px(el[key]));
+      if (!lengths.every(value => Number.isFinite(lengthEmu(value))) || !lengths.slice(2).every(value => lengthEmu(value) > 0)) {
+        throw new Error('Invalid ODP export geometry');
+      }
       const name = `s${index}e${ei}`;
-      const geometry = `svg:x="${px(el.x)}" svg:y="${px(el.y)}" svg:width="${px(el.w)}" svg:height="${px(el.h)}"`;
+      const geometry = `svg:x="${lengths[0]}" svg:y="${lengths[1]}" svg:width="${lengths[2]}" svg:height="${lengths[3]}"`;
       if (isText) {
         if (typeof el.content !== 'string' || (el.fontFamily !== undefined && typeof el.fontFamily !== 'string')) throw new Error('ODP export text must be a string');
         if (!hex(el.color ?? '#15171c')) throw new Error('Invalid ODP text color');
