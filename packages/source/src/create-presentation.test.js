@@ -56,7 +56,6 @@ describe('createPresentation', () => {
         const withBlankSlide = structuredClone(createdDoc);
         withBlankSlide.slides.push({
           id: 'blank-2',
-          layoutId: createdDoc.layouts[0].id,
           extensions: { stagecraftAuthored: true },
           background: { type: 'solid', color: '#ffffff' },
           objects: [],
@@ -82,7 +81,7 @@ describe('createPresentation', () => {
       editedDoc.slides.push({
         id: 'slide-2',
         name: 'Slide 2',
-        ...(format === 'pptx' ? { layoutId: createdDoc.layouts[0].id, background: { type: 'solid', color: '#ffffff' } } : { layoutId: createdDoc.layouts[0].id }),
+        ...(format === 'pptx' ? { background: { type: 'solid', color: '#ffffff' } } : {}),
         extensions: { stagecraftAuthored: true },
         objects: [],
       });

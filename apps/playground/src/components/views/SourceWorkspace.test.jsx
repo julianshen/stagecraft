@@ -86,16 +86,20 @@ describe('local source workspace', () => {
   });
 });
 
-it.each(['PPTX', 'ODP'])('creates a new local %s without a user file', async format => {
+it.each(['PPTX', 'ODP'])('creates a new local %s without a user file via createPresentation', async format => {
   const opened = source('New document');
-  const load = vi.fn().mockResolvedValue(opened);
-  render(<SourceWorkspace openSource={load} />);
+  const create = vi.fn().mockResolvedValue(opened);
+  const load = vi.fn();
+  render(<SourceWorkspace createSource={create} openSource={load} />);
   fireEvent.click(screen.getByRole('button', { name: `New ${format}` }));
   await screen.findByText('New document');
-  const [file, options] = load.mock.calls[0];
-  expect(file.name).toBe(`Untitled.${format.toLowerCase()}`);
-  expect(file.size).toBeGreaterThan(0);
-  expect(options.format).toBe(format.toLowerCase());
+  expect(load).not.toHaveBeenCalled();
+  expect(create).toHaveBeenCalledWith(expect.objectContaining({
+    format: format.toLowerCase(),
+    title: 'Untitled',
+    signal: expect.any(AbortSignal),
+  }));
+  expect(screen.getByLabelText(`Untitled.${format.toLowerCase()}`)).toBeInTheDocument();
 });
 
 it.each([
@@ -134,27 +138,4 @@ it.each([
 ])('shows resize outcome %j',async(resizeFit,text)=>{
  const opened={...source('Resize outcomes'),resizeFit};render(<SourceWorkspace openSource={async()=>opened} save={vi.fn()}/>);choose('status.pptx');await screen.findByText('Resize outcomes');
  fireEvent.click(screen.getByText('Export fixture'));expect(await screen.findByLabelText('Export result')).toHaveTextContent(text);expect(screen.queryByText(/SECRET/)).toBeNull();
-});
-
-describe('SourceWorkspace New PPTX / New ODP', () => {
-  it.each(['pptx', 'odp'])('creates a %s session via createPresentation without legacy writers', async format => {
-    const fakeSession = {
-      document: createDocument({ metadata: { title: 'Untitled' } }),
-      dispose: vi.fn(),
-    };
-    const createSource = vi.fn(async () => fakeSession);
-    const openSource = vi.fn();
-
-    render(<SourceWorkspace createSource={createSource} openSource={openSource} />);
-    fireEvent.click(screen.getByRole('button', { name: format === 'pptx' ? 'New PPTX' : 'New ODP' }));
-
-    await waitFor(() => expect(createSource).toHaveBeenCalledTimes(1));
-    expect(createSource).toHaveBeenCalledWith(expect.objectContaining({
-      format,
-      title: 'Untitled',
-      signal: expect.any(AbortSignal),
-    }));
-    expect(openSource).not.toHaveBeenCalled();
-    expect(await screen.findByLabelText(`Untitled.${format}`)).toBeInTheDocument();
-  });
 });
