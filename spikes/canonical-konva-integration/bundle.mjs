@@ -204,8 +204,9 @@ createRoot(document.getElementById('root')).render(
     previewServer.httpServer.close();
   }
 
-  // 3b. Opt-in @stagecraft/react/konva consumer in isolated clone
+  // 3b. Opt-in @stagecraft/react/konva consumer in isolated clone + runtime smoke
   const optInAppDir = path.join(cloneDir, 'tests/consumer-optin-konva');
+  const optInOutDir = path.join(cloneDir, 'dist-optin-konva');
   mkdirSync(optInAppDir, { recursive: true });
   writeFileSync(path.join(optInAppDir, 'index.html'), '<!doctype html><html><body><div id="root"></div><script type="module" src="/main.jsx"></script></body></html>');
   writeFileSync(path.join(optInAppDir, 'main.jsx'), `
@@ -218,7 +219,21 @@ import { KonvaPresentationCanvas } from '@stagecraft/react/konva';
 import '@stagecraft/react/styles.css';
 
 const editor = createEditor({
-  document: createDocument({ slides: [{ id: 's1', objects: [], extensions: { stagecraftAuthored: true } }] }),
+  document: createDocument({
+    slides: [{
+      id: 's1',
+      background: { type: 'solid', color: '#ffffff' },
+      objects: [{
+        id: 'r1',
+        type: 'shape',
+        shape: 'rect',
+        fill: '#2563eb',
+        geometry: { x: 914400, y: 914400, width: 1828800, height: 914400, rotation: 0 },
+        extensions: { stagecraftAuthored: true },
+      }],
+      extensions: { stagecraftAuthored: true },
+    }],
+  }),
   plugins: [documentPlugin, presentationPlugin],
 });
 createRoot(document.getElementById('root')).render(
@@ -234,7 +249,7 @@ createRoot(document.getElementById('root')).render(
     logLevel: 'silent',
     root: optInAppDir,
     plugins: [react()],
-    build: { write: false },
+    build: { outDir: optInOutDir, emptyOutDir: true },
   });
   const optInChunks = chunkInventory(optInBuilt.output.filter(c => c.type === 'chunk'));
   const optInEntry = optInChunks.find(c => c.isEntry);
@@ -244,6 +259,36 @@ createRoot(document.getElementById('root')).render(
   }
   if (!optInLazyKonva || optInLazyKonva.gzipBytes > konvaBudgetBytes) {
     throw new Error(`Opt-in lazy Konva chunk missing or over budget: ${JSON.stringify(optInLazyKonva)}`);
+  }
+
+  let optInRuntimeCheck;
+  const optInPreview = await preview({
+    configFile: false,
+    root: optInAppDir,
+    preview: { port: 4197, strictPort: true },
+    build: { outDir: optInOutDir },
+  });
+  const optInBrowser = await chromium.launch(launchOpts);
+  try {
+    const page = await optInBrowser.newPage();
+    const pageErrors = [];
+    const requestedUrls = [];
+    page.on('pageerror', err => pageErrors.push(String(err)));
+    page.on('request', req => requestedUrls.push(req.url()));
+    await page.goto(optInPreview.resolvedUrls.local[0]);
+    await page.waitForSelector('.stagecraft-konva-paper canvas');
+    const konvaChunkRequests = requestedUrls.filter(u => /KonvaSurfaceShell/i.test(u));
+    if (konvaChunkRequests.length === 0 || pageErrors.length > 0) {
+      throw new Error(`Opt-in runtime smoke failed: chunkReqs=${JSON.stringify(konvaChunkRequests)}, pageErrors=${JSON.stringify(pageErrors)}`);
+    }
+    optInRuntimeCheck = {
+      konvaChunkRequests: konvaChunkRequests.length,
+      canvasMounted: true,
+      pageErrors: pageErrors.length,
+    };
+  } finally {
+    await optInBrowser.close();
+    optInPreview.httpServer.close();
   }
 
   console.log(JSON.stringify({
@@ -258,6 +303,7 @@ createRoot(document.getElementById('root')).render(
     isolatedDefaultSvgConsumer: { chunks: defaultChunks },
     isolatedDefaultPresentationRuntime: runtimeCheck,
     isolatedOptInKonvaConsumer: { chunks: optInChunks },
+    isolatedOptInKonvaRuntime: optInRuntimeCheck,
   }, null, 2));
 } finally {
   rmSync(tmpBase, { recursive: true, force: true });
