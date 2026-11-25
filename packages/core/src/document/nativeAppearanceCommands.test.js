@@ -43,7 +43,7 @@ function makeEditor(object = textObject(), slide = {}, documentOverrides = {}) {
       },
     }],
   });
-  document.slides[0].extensions.stagecraftSlideAppearance.input = nativeSlideAppearanceInput(document.slides[0]);
+  document.slides[0].extensions.stagecraftSlideAppearance.input = nativeSlideAppearanceInput(document.slides[0], document);
   return createEditor({ document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
 }
 

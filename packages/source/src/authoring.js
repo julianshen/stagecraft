@@ -78,12 +78,18 @@ const cleanExtensions = value => {
     delete out.stagecraftNativeAppearance;
     delete out.stagecraftSlideAppearance;
     delete out.stagecraftLayoutSummary;
+    delete out.pptxDefaultTextStyle;
+    delete out.pptxOtherTextStyle;
     if (Object.hasOwn(out, 'pptxAppearance')) {
         const appearance = cleanPptxAppearance(out.pptxAppearance);
         if (appearance && Object.keys(appearance).length) out.pptxAppearance = appearance;
         else delete out.pptxAppearance;
     }
     return out;
+};
+const proofNeutralExtensions = value => {
+    const clean = cleanExtensions(value);
+    return clean && Object.keys(clean).length ? clean : undefined;
 };
 export const withoutDisplayProof = value => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
@@ -179,7 +185,7 @@ export function authoringDiff(baseline, snapshot, diff) {
             }
             for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
                 if (key === 'objects' || SLIDE_PROPERTIES.includes(key)) continue;
-                if (key === 'extensions' && equal(cleanExtensions(a[key]), cleanExtensions(b[key]))) continue;
+                if (key === 'extensions' && equal(proofNeutralExtensions(a[key]), proofNeutralExtensions(b[key]))) continue;
                 if (!equal(a[key], b[key])) throw new Error('Unsupported slide property');
             }
             if (Object.keys(properties).length) slideProperties.push({slide: a, properties});

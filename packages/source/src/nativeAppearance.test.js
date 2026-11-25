@@ -44,6 +44,61 @@ async function openFixture(slideXml, options = {}) {
 const proof = object => object.extensions.stagecraftNativeAppearance;
 
 describe('native PPTX appearance projection', () => {
+  it('refuses a slide proof when its own background is an unsupported gradient', async () => {
+    const gradientBg = '<p:bg><p:bgPr><a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="FF0000"/></a:gs><a:gs pos="100000"><a:srgbClr val="0000FF"/></a:gs></a:gsLst></a:gradFill></p:bgPr></p:bg>';
+    const session = await openFixture(`<p:sld ${NS}>${tree('').replace('<p:cSld>', `<p:cSld>${gradientBg}`)}</p:sld>`);
+    try { expect(session.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined(); }
+    finally { session.dispose(); }
+  });
+
+  it('honours colour overrides on fillRef, lnRef and fontRef', async () => {
+    const styled = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Styled"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:style><a:fillRef idx="1001"><a:schemeClr val="accent2"/></a:fillRef><a:lnRef idx="1001"><a:schemeClr val="accent2"/></a:lnRef></p:style><p:spPr>${xfrm(20, 20, 200, 100)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:sp>`;
+    const session = await openFixture(`<p:sld ${NS}>${tree(styled)}</p:sld>`);
+    try {
+      expect(proof(session.document.slides[0].objects[0])).toMatchObject({
+        fill: { kind: 'solid', color: '#ED7D31' }, stroke: { kind: 'solid', color: '#ED7D31', widthEmu: 9525 },
+      });
+    } finally { session.dispose(); }
+
+    const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }), {
+      bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>',
+    }).replace('<p:spPr>', '<p:style><a:fontRef idx="1002"><a:schemeClr val="accent2"/></a:fontRef></p:style><p:spPr>');
+    const textSession = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`);
+    try {
+      expect(textSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.color).toBe('#ED7D31');
+    } finally { textSession.dispose(); }
+  });
+
+  it('resolves inherited text colour and refuses unsupported point line spacing', async () => {
+    const inheritedMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800"><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+    const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const bytes = await sourceReady(await buildPptx({ theme, master: inheritedMaster, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(box)}</p:sld>` }] }));
+    const session = await openPresentation(bytes, { format: 'pptx', xml });
+    try {
+      expect(proof(session.document.slides[0].objects[0])).toBeDefined();
+      expect(session.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.color).toBe('#FF0000');
+    } finally { session.dispose(); }
+
+    const pointSpacing = textBox(2, 20, 20, 300, 100, `<a:p><a:pPr><a:lnSpc><a:spcPts val="2400"/></a:lnSpc></a:pPr><a:r><a:rPr sz="1800"><a:latin typeface="Arial"/></a:rPr><a:t>Native</a:t></a:r></a:p>`, { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const spacingSession = await openFixture(`<p:sld ${NS}>${tree(pointSpacing)}</p:sld>`);
+    try { expect(proof(spacingSession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { spacingSession.dispose(); }
+  });
+
+  it('invalidates a slide proof when inherited artwork or theme colours change', async () => {
+    const objectXml = shape(2, 'rect', 20, 20, 200, 100, '<a:solidFill><a:srgbClr val="112233"/></a:solidFill>');
+    const session = await openFixture(`<p:sld ${NS}>${tree(objectXml)}</p:sld>`);
+    try {
+      const document = structuredClone(session.document);
+      expect(isNativeSlideAppearanceValid(document.slides[0], document)).toBe(true);
+      document.layouts[0].objects.push({ id: 'new-art', type: 'shape' });
+      expect(isNativeSlideAppearanceValid(document.slides[0], document)).toBe(false);
+      document.layouts[0].objects = [];
+      document.themes[0].extensions.pptxColorScheme.lt1 = '#000000';
+      expect(isNativeSlideAppearanceValid(document.slides[0], document)).toBe(false);
+    } finally { session.dispose(); }
+  });
+
   it('projects theme colours, empty inherited summaries, slide background, fill and stroke proofs', async () => {
     const styledShape = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Styled"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:style><a:fillRef idx="1001"/><a:lnRef idx="1001"/></p:style><p:spPr>${xfrm(20, 20, 200, 100)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:sp>`;
     const session = await openFixture(`<p:sld ${NS}>${tree(styledShape).replace('<p:cSld>', '<p:cSld><p:bg><p:bgRef idx="1001"/></p:bg>')}</p:sld>`);
@@ -57,7 +112,7 @@ describe('native PPTX appearance projection', () => {
       expect(document.slides[0].extensions.stagecraftSlideAppearance).toMatchObject({
         background: { kind: 'solid', color: '#FFFFFF' }, inheritedArtworkCount: 0,
       });
-      expect(isNativeSlideAppearanceValid(document.slides[0])).toBe(true);
+      expect(isNativeSlideAppearanceValid(document.slides[0], document)).toBe(true);
       const object = document.slides[0].objects[0];
       expect(object.shape).toBe('rect');
       expect(proof(object)).toMatchObject({
@@ -132,6 +187,12 @@ describe('native PPTX appearance projection', () => {
       const unchanged = await session.export(tampered);
       expect(unchanged.dirtyParts).toEqual([]);
       expect(Buffer.from(unchanged.bytes).equals(Buffer.from(bytes))).toBe(true);
+
+      const noExtensions = structuredClone(session.document);
+      delete noExtensions.slides[0].extensions;
+      const proofOnlyDeletion = await session.export(noExtensions);
+      expect(proofOnlyDeletion.dirtyParts).toEqual([]);
+      expect(Buffer.from(proofOnlyDeletion.bytes).equals(Buffer.from(bytes))).toBe(true);
 
       const editor = createEditor({ document: session.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
       try {
