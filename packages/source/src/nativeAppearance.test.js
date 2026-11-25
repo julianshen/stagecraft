@@ -310,10 +310,20 @@ describe('native PPTX appearance projection', () => {
     try { expect(noLangArabicSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Naskh Arabic'); }
     finally { noLangArabicSession.dispose(); }
 
-    const arabic = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="ar-SA"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const arabic = textBox(2, 20, 20, 300, 100, para('مرحبا', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="ar-SA"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const arabicSession = await openFixture(`<p:sld ${NS}>${tree(arabic)}</p:sld>`, { theme: supplemental });
     try { expect(arabicSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Naskh Arabic'); }
     finally { arabicSession.dispose(); }
+
+    const mismatched = textBox(2, 20, 20, 300, 100, para('مرحبا', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="hi-IN"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const mismatchedSession = await openFixture(`<p:sld ${NS}>${tree(mismatched)}</p:sld>`, { theme: supplemental });
+    try { expect(mismatchedSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Naskh Arabic'); }
+    finally { mismatchedSession.dispose(); }
+
+    const mixed = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>مرحبا नमस्ते</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const mixedSession = await openFixture(`<p:sld ${NS}>${tree(mixed)}</p:sld>`, { theme: supplemental });
+    try { expect(proof(mixedSession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { mixedSession.dispose(); }
 
     const unknown = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="xx-XX"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const unknownSession = await openFixture(`<p:sld ${NS}>${tree(unknown)}</p:sld>`, { theme: supplemental });

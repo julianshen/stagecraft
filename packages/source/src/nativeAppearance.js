@@ -3,7 +3,7 @@ import {
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
   nativeSlideAppearanceInput,
-  nativeTextScript,
+  nativeTextScripts,
 } from '@stagecraft/core/lib/nativeAppearance.js';
 import { attrs, child, children, is, locate, xmlPart } from './xml.js';
 import { readPptxColorMap, readPptxColorScheme, resolvePptxColor } from './pptxColor.js';
@@ -335,8 +335,10 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
   const fontFamilyComplexScript = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'cs', inherited.fontFamilyComplexScript);
   const language = runProperties?.getAttribute('lang') ?? fallbackProperties?.getAttribute('lang') ?? inherited.language;
   const primary = language?.toLowerCase().split('-')[0];
-  const detectedScript = nativeTextScript(text);
-  const supplementalScript = SUPPLEMENTAL_SCRIPTS[primary] ?? (detectedScript === 'Latn' ? null : detectedScript);
+  const detectedScripts = nativeTextScripts(text);
+  if (detectedScripts.length !== 1) return null;
+  const detectedScript = detectedScripts[0];
+  const supplementalScript = detectedScript === 'Latn' ? null : detectedScript;
   if (primary && !SUPPLEMENTAL_SCRIPTS[primary] && !NON_SUPPLEMENTAL_LANGUAGES.has(primary)) return null;
   const supplementalFont = supplementalScript ? theme.extensions.pptxFontScheme?.[fontRef]?.supplemental?.[supplementalScript] : null;
   const resolvedComplexScript = supplementalFont ? normalizeFont(supplementalFont) : fontFamilyComplexScript;
@@ -420,7 +422,9 @@ function projectText(document, object, node, slide, theme, colorMap) {
     for (const [runIndex, run] of paragraph.runs.entries()) {
       const xmlRun = children(xmlParagraph).filter(item => is(item, 'a', 'r'))[runIndex];
       const runProperties = xmlRun ? child(xmlRun, 'a', 'rPr') : null;
-      const script = nativeTextScript(run.text);
+      const scripts = nativeTextScripts(run.text);
+      if (scripts.length !== 1) return null;
+      const script = scripts[0];
       const value = resolvedRun(runProperties, defaults, theme, colorMap, fontRef, baseColor, inherited, run.text);
       if (!value) return null;
       run.extensions = { ...run.extensions, pptxAppearance: { ...run.extensions?.pptxAppearance, resolved: value, script } };

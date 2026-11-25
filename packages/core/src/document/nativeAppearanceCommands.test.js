@@ -128,6 +128,13 @@ describe('native appearance command invalidation', () => {
     const editor = makeEditor(object);
     expect(editor.dispatch('document.setRunText', { runId: 'r1', text: 'مرحبا' }).changed).toBe(true);
     expect(proof(editor)).toBeUndefined();
+
+    const mixed = textObject();
+    mixed.text.paragraphs[0].runs[0].text = 'مرحبا Native';
+    mixed.text.paragraphs[0].runs[0].extensions.pptxAppearance.script = 'Arab';
+    const mixedEditor = makeEditor(mixed);
+    expect(mixedEditor.dispatch('document.setRunText', { runId: 'r1', text: 'مرحبا नमस्ते' }).changed).toBe(true);
+    expect(proof(mixedEditor)).toBeUndefined();
   });
 
   it.each([
