@@ -2,6 +2,7 @@ import { createDocument } from '@stagecraft/core/document';
 import { is, all, child, children, attr, attrs, source, id, xmlPart, locate, resolvePptxTarget } from './xml.js';
 import { readPptxChartData } from './chart-authoring.js';
 import { readPptxParagraphStyle, readPptxBodyLayout } from './authoring.js';
+import { projectNativeAppearance } from './nativeAppearance.js';
 const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/';
 const paragraphRuns = p => children(p).filter(n => !is(n, 'a', 'pPr') && !is(n, 'a', 'endParaRPr'));
 const runText = r => child(r, 'a', 't')?.textContent ?? (is(r, 'a', 'br') ? '\n' : r.textContent ?? '');
@@ -333,5 +334,6 @@ export async function readPptx(zip, xml, mapping) {
             } catch { /* Unsupported chart stays opaque and is never rewritten. */ }
         }
     }
+    await projectNativeAppearance(d, zip, xml);
     return d;
 }

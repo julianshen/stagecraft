@@ -66,6 +66,36 @@ function* sourceObjects(document) {
     for (const owner of [...document.slides, ...document.layouts, ...document.masters]) yield* descend(owner.objects);
 }
 
+export const cleanPptxAppearance = value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const out = { ...value };
+    delete out.resolved;
+    return out;
+};
+const cleanExtensions = value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const out = { ...value };
+    delete out.stagecraftNativeAppearance;
+    delete out.stagecraftSlideAppearance;
+    delete out.stagecraftLayoutSummary;
+    if (Object.hasOwn(out, 'pptxAppearance')) {
+        const appearance = cleanPptxAppearance(out.pptxAppearance);
+        if (appearance && Object.keys(appearance).length) out.pptxAppearance = appearance;
+        else delete out.pptxAppearance;
+    }
+    return out;
+};
+export const withoutDisplayProof = value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const out = cleanExtensions({ ...value });
+    if (Object.hasOwn(out, 'extensions')) {
+        const extensions = cleanExtensions(out.extensions);
+        if (extensions && Object.keys(extensions).length) out.extensions = extensions;
+        else delete out.extensions;
+    }
+    return out;
+};
+
 /** Structural authorization is based exclusively on the retained private baseline. */
 export function authoringDiff(baseline, snapshot, diff) {
     if (!snapshot.slides.length && !equal(baseline, snapshot)) throw new Error('Native export requires at least one slide');
@@ -149,6 +179,7 @@ export function authoringDiff(baseline, snapshot, diff) {
             }
             for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
                 if (key === 'objects' || SLIDE_PROPERTIES.includes(key)) continue;
+                if (key === 'extensions' && equal(cleanExtensions(a[key]), cleanExtensions(b[key]))) continue;
                 if (!equal(a[key], b[key])) throw new Error('Unsupported slide property');
             }
             if (Object.keys(properties).length) slideProperties.push({slide: a, properties});

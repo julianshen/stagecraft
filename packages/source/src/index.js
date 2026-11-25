@@ -2,12 +2,13 @@ import JSZip from 'jszip';
 import { validateDocument, isRunFormatValue } from '@stagecraft/core/document';
 import { cloneJson } from '@stagecraft/core/editor';
 import { autofitHintEligibility } from '@stagecraft/core/lib/resizeGeometry.js';
+import { jsonEqual as equal } from '@stagecraft/core/lib/jsonEqual.js';
 import { readBytes, throwIfAborted, DEFAULT_MAX_BYTES, byteLimit } from '@stagecraft/io';
 import { inspectZip } from '@stagecraft/io/zip';
 import { runtime, xmlPart, locate, validText, all, child, children, NS } from './xml.js';
 import { readPptx } from './pptx.js';
 import { readOdp, patchOdp } from './odp.js';
-import { authoringDiff, prepareAuthoring, coalesceSplitBreaks } from './authoring.js';
+import { authoringDiff, prepareAuthoring, coalesceSplitBreaks, cleanPptxAppearance, withoutDisplayProof } from './authoring.js';
 import { odpFormattingWriter } from './odp-format.js';
 import { applyResize } from './resize.js';
 import { buildMinimalPresentation } from './create.js';
@@ -236,6 +237,8 @@ export async function openPresentation(source, options = {}) {
                 if (delta.hook(a,b)) return;
                 if (a === b)
                     return;
+                if (equal(withoutDisplayProof(a), withoutDisplayProof(b)))
+                    return;
                 if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b))
                     throw new Error('Unsupported source document edit');
                 const ak = Object.keys(a).sort(), bk = Object.keys(b).sort();
@@ -295,8 +298,9 @@ export async function openPresentation(source, options = {}) {
                         textChangedRuns.add(b);
                         changedParagraphs.add(runContexts.get(b)?.runs);
                     }
-                    else
-                        diff(a[key], b[key]);
+                    else if (key === 'pptxAppearance') diff(cleanPptxAppearance(a[key]), cleanPptxAppearance(b[key]));
+                    else if (['stagecraftNativeAppearance', 'stagecraftSlideAppearance', 'stagecraftLayoutSummary'].includes(key)) continue;
+                    else diff(a[key], b[key]);
                 }
             }
             diff(baseline, snapshot);
