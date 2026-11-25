@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { readPptxColorMap, readPptxColorScheme, resolvePptxColor } from './pptxColor.js';
@@ -55,6 +54,36 @@ describe('PPTX appearance colour resolution', () => {
       + '<a:dk1><a:schemeClr val="lt1"/></a:dk1><a:lt1><a:schemeClr val="dk1"/></a:lt1>'
       + '</a:clrScheme></a:themeElements></a:theme>');
     expect(readPptxColorScheme(cyclic.documentElement)).toEqual({});
+  });
+
+  it('covers direct, mapped, invalid and transformed colour boundaries', () => {
+    const xml = value => color('<x xmlns:a="' + A + '">' + value + '</x>');
+    expect(resolvePptxColor(xml('<a:srgbClr val="#112233"/>'), {}, {})).toBe('#112233');
+    expect(resolvePptxColor(xml('<a:schemeClr val="accent1"/>'), { accent1: '#445566' }, {})).toBe('#445566');
+    expect(resolvePptxColor(xml('<a:sysClr val="window"/>'), {}, {})).toBeNull();
+    expect(resolvePptxColor(xml('<a:unknownClr/>'), {}, {})).toBeNull();
+    expect(resolvePptxColor(null, {}, {})).toBeNull();
+    expect(resolvePptxColor(xml('<a:srgbClr val="112233"><a:lumMod val="9007199254740992"/></a:srgbClr>'), {}, {})).toBeNull();
+  });
+
+  it('ignores malformed palette entries and missing scheme containers', () => {
+    expect(readPptxColorMap(null)).toEqual({});
+    expect(readPptxColorMap(parse('<p:clrMap xmlns:p="' + P + '" tx1="unknown"/>').documentElement)).toEqual({});
+    expect(readPptxColorScheme(null)).toEqual({});
+    const empty = parse('<a:theme xmlns:a="' + A + '"><a:themeElements><a:clrScheme/></a:themeElements></a:theme>');
+    expect(readPptxColorScheme(empty.documentElement)).toEqual({});
+    const unsupported = parse('<a:theme xmlns:a="' + A + '"><a:themeElements><a:clrScheme><a:accent1><a:scrgbClr/></a:accent1>'
+      + '<a:accent2/><a:accent3><a:schemeClr val="missing"/></a:accent3><a:accent4><a:srgbClr val="112233"><a:tint val="1"/></a:srgbClr></a:accent4>'
+      + '</a:clrScheme></a:themeElements></a:theme>');
+    expect(readPptxColorScheme(unsupported.documentElement)).toEqual({});
+  });
+
+  it('resolves recursive scheme colours and clamps each luminance transform', () => {
+    const recursive = parse('<a:theme xmlns:a="' + A + '"><a:themeElements><a:clrScheme>'
+      + '<a:dk1><a:srgbClr val="112233"/></a:dk1><a:accent1><a:schemeClr val="dk1"><a:lumMod val="50000"/></a:schemeClr></a:accent1>'
+      + '</a:clrScheme></a:themeElements></a:theme>');
+    expect(readPptxColorScheme(recursive.documentElement)).toEqual({ dk1: '#112233', accent1: '#09111A' });
+    expect(resolvePptxColor(color('<x xmlns:a="' + A + '"><a:srgbClr val="FFFFFF"><a:lumOff val="20000"/><a:lumMod val="50000"/></a:srgbClr></x>'), {}, {})).toBe('#808080');
   });
 
   it('reads only known clrMap slots', () => {

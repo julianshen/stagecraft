@@ -40,6 +40,7 @@ const applyTransforms = (node, rgb) => {
     if (!Number.isSafeInteger(value)) return null;
     hsl ??= toHsl(rgb);
     hsl[2] = name === 'lumMod' ? hsl[2] * value / 100000 : hsl[2] + value / 100000;
+    hsl[2] = clamp(hsl[2]);
     rgb = fromHsl(hsl);
   }
   return rgb;
@@ -82,7 +83,7 @@ export function readPptxColorScheme(themeRoot) {
       raw.set(node.localName, definition);
     }
   }
-  const resolve = (node, visiting = new Set()) => {
+  const resolveRgb = (node, visiting = new Set()) => {
     if (!node) return null;
     let rgb = null;
     if (is(node, 'a', 'srgbClr')) rgb = hexRgb(node.getAttribute('val'));
@@ -92,9 +93,13 @@ export function readPptxColorScheme(themeRoot) {
       const mapped = DEFAULT_COLOR_MAP[slot] ?? slot;
       if (visiting.has(mapped)) return null;
       visiting.add(mapped);
-      rgb = resolve(raw.get(mapped), visiting);
+      rgb = resolveRgb(raw.get(mapped), visiting);
       visiting.delete(mapped);
     }
+    return rgb;
+  };
+  const resolve = node => {
+    const rgb = resolveRgb(node);
     if (!rgb) return null;
     const transformed = applyTransforms(node, rgb);
     return transformed ? rgbHex(transformed) : null;
