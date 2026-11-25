@@ -336,7 +336,7 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
   const language = runProperties?.getAttribute('lang') ?? fallbackProperties?.getAttribute('lang') ?? inherited.language;
   const primary = language?.toLowerCase().split('-')[0];
   const detectedScripts = nativeTextScripts(text);
-  if (detectedScripts.length !== 1) return null;
+  if (detectedScripts.length !== 1 || detectedScripts[0] === 'Other') return null;
   const detectedScript = detectedScripts[0];
   const supplementalScript = detectedScript === 'Latn' ? null : detectedScript;
   if (primary && !SUPPLEMENTAL_SCRIPTS[primary] && !NON_SUPPLEMENTAL_LANGUAGES.has(primary)) return null;
@@ -423,7 +423,7 @@ function projectText(document, object, node, slide, theme, colorMap) {
       const xmlRun = children(xmlParagraph).filter(item => is(item, 'a', 'r'))[runIndex];
       const runProperties = xmlRun ? child(xmlRun, 'a', 'rPr') : null;
       const scripts = nativeTextScripts(run.text);
-      if (scripts.length !== 1) return null;
+      if (scripts.length !== 1 || scripts[0] === 'Other') return null;
       const script = scripts[0];
       const value = resolvedRun(runProperties, defaults, theme, colorMap, fontRef, baseColor, inherited, run.text);
       if (!value) return null;

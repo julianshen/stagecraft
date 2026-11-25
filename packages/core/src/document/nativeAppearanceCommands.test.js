@@ -135,6 +135,12 @@ describe('native appearance command invalidation', () => {
     const mixedEditor = makeEditor(mixed);
     expect(mixedEditor.dispatch('document.setRunText', { runId: 'r1', text: 'مرحبا नमस्ते' }).changed).toBe(true);
     expect(proof(mixedEditor)).toBeUndefined();
+
+    const cyrillic = textObject();
+    cyrillic.text.paragraphs[0].runs[0].extensions.pptxAppearance.script = 'Latn';
+    const cyrillicEditor = makeEditor(cyrillic);
+    expect(cyrillicEditor.dispatch('document.setRunText', { runId: 'r1', text: 'Привет' }).changed).toBe(true);
+    expect(proof(cyrillicEditor)).toBeUndefined();
   });
 
   it.each([

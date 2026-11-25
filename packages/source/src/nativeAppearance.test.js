@@ -299,7 +299,7 @@ describe('native PPTX appearance projection', () => {
     try { expect(proof(kernSession.document.slides[0].objects[0])).toBeUndefined(); }
     finally { kernSession.dispose(); }
 
-    const supplemental = theme.replace('<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/>', '<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/><a:font script="Arab" typeface="Noto Naskh Arabic"/>');
+    const supplemental = theme.replace('<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/>', '<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/><a:font script="Arab" typeface="Noto Naskh Arabic"/><a:font script="Cyrl" typeface="Noto Sans Cyrillic"/>');
     const box = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Native</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const fontSession = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`, { theme: supplemental });
     try { expect(proof(fontSession.document.slides[0].objects[0])).toBeDefined(); }
@@ -324,6 +324,16 @@ describe('native PPTX appearance projection', () => {
     const mixedSession = await openFixture(`<p:sld ${NS}>${tree(mixed)}</p:sld>`, { theme: supplemental });
     try { expect(proof(mixedSession.document.slides[0].objects[0])).toBeUndefined(); }
     finally { mixedSession.dispose(); }
+
+    const cyrillic = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Привет</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const cyrillicSession = await openFixture(`<p:sld ${NS}>${tree(cyrillic)}</p:sld>`, { theme: supplemental });
+    try { expect(cyrillicSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Sans Cyrillic'); }
+    finally { cyrillicSession.dispose(); }
+
+    const mixedCyrillic = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>مرحبا Привет</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const mixedCyrillicSession = await openFixture(`<p:sld ${NS}>${tree(mixedCyrillic)}</p:sld>`, { theme: supplemental });
+    try { expect(proof(mixedCyrillicSession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { mixedCyrillicSession.dispose(); }
 
     const unknown = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="xx-XX"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const unknownSession = await openFixture(`<p:sld ${NS}>${tree(unknown)}</p:sld>`, { theme: supplemental });
