@@ -1,7 +1,7 @@
 import { cloneJson } from '../editor/index.js';
 import { flattenDeck } from '../lib/deckOrder.js';
 import { jsonEqual } from '../lib/jsonEqual.js';
-import { invalidateNativeObjectAppearance, invalidateNativeSlideAppearance } from '../lib/nativeAppearance.js';
+import { invalidateNativeObjectAppearance, invalidateNativeSlideAppearance, nativeTextScript } from '../lib/nativeAppearance.js';
 import { validateChart, chartSchema } from './chart.js';
 export { validateChart, chartSchema } from './chart.js';
 export class DocumentError extends Error {
@@ -479,9 +479,11 @@ const validRunFormatPayload = payload => record(payload) && nonempty(payload.run
   && Object.entries(payload.format).every(([key, value]) => value === null ? RUN_FORMAT_KEYS.includes(key) : isRunFormatValue(key, value));
 function setRunText(document, payload) {
   if (!validRunTextPayload(payload)) fail('INVALID_PAYLOAD');
-  return updateRun(document, payload, run => {
+  return updateRun(document, payload, (run, object) => {
     if (run.extensions?.stagecraftAuthored === true && payload.text.length > MAX_AUTHORED_RUN_LENGTH) fail('INVALID_AUTHORED_SCHEMA');
+    const previousScript = run.extensions?.pptxAppearance?.script;
     run.text = payload.text;
+    if (previousScript && previousScript !== nativeTextScript(payload.text)) invalidateNativeObjectAppearance(object);
   });
 }
 const PARAGRAPH_FORMAT_KEYS = ['alignment', 'spaceBefore', 'spaceAfter', 'lineSpacing', 'level', 'indentStart', 'indentEnd', 'firstLineIndent', 'bullet'];
