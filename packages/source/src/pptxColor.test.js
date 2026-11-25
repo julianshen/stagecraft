@@ -86,6 +86,16 @@ describe('PPTX appearance colour resolution', () => {
     expect(resolvePptxColor(color('<x xmlns:a="' + A + '"><a:srgbClr val="FFFFFF"><a:lumOff val="20000"/><a:lumMod val="50000"/></a:srgbClr></x>'), {}, {})).toBe('#808080');
   });
 
+  it('applies transforms at every recursive theme-colour level', () => {
+    const theme = parse('<a:theme xmlns:a="' + A + '"><a:themeElements><a:clrScheme>'
+      + '<a:dk1><a:srgbClr val="FFFFFF"><a:lumMod val="50000"/></a:srgbClr></a:dk1>'
+      + '<a:accent1><a:schemeClr val="dk1"/></a:accent1>'
+      + '<a:dk2><a:srgbClr val="FFFFFF"><a:alpha val="50000"/></a:srgbClr></a:dk2>'
+      + '<a:accent2><a:schemeClr val="dk2"/></a:accent2>'
+      + '</a:clrScheme></a:themeElements></a:theme>');
+    expect(readPptxColorScheme(theme.documentElement)).toEqual({ dk1: '#808080', accent1: '#808080' });
+  });
+
   it('reads only known clrMap slots', () => {
     const map = readPptxColorMap(parse('<p:clrMap xmlns:p="' + P + '" tx1="dk1" bg1="lt1" unknown="dk2"/>').documentElement);
     expect(map).toEqual({ tx1: 'dk1', bg1: 'lt1' });

@@ -96,13 +96,11 @@ export function readPptxColorScheme(themeRoot) {
       rgb = resolveRgb(raw.get(mapped), visiting);
       visiting.delete(mapped);
     }
-    return rgb;
+    return rgb ? applyTransforms(node, rgb) : null;
   };
   const resolve = node => {
     const rgb = resolveRgb(node);
-    if (!rgb) return null;
-    const transformed = applyTransforms(node, rgb);
-    return transformed ? rgbHex(transformed) : null;
+    return rgb ? rgbHex(rgb) : null;
   };
   const palette = {};
   for (const [slot, node] of raw) {
