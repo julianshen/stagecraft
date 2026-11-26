@@ -29,11 +29,11 @@ function proveObject(object) {
   };
 }
 
-function makeEditor(object = textObject()) {
+function makeEditor(object = textObject(), slide = {}) {
   proveObject(object);
   const document = createDocument({
     slides: [{
-      id: 's1', source, objects: [object],
+      id: 's1', source, objects: [object], ...slide,
       extensions: {
         stagecraftSlideAppearance: {
           version: 1, appearanceResolved: true, input: '', background: { kind: 'solid', color: '#FFFFFF' }, inheritedArtworkCount: 0,
@@ -55,6 +55,40 @@ describe('native appearance command invalidation', () => {
     }).changed).toBe(true);
     expect(proof(editor)).toBeTruthy();
     expect(editor.dispatch('document.setRunText', { runId: 'r1', text: 'Edited native text' }).changed).toBe(true);
+    expect(proof(editor)).toBeTruthy();
+  });
+
+  it('does not invalidate proofs or create history for no-op formatting', () => {
+    const runObject = textObject();
+    runObject.text.paragraphs[0].runs[0].style.b = '1';
+    runObject.text.paragraphs[0].style = { alignment: 'center' };
+    runObject.bodyLayout = { insets: { left: 91440 } };
+    const editor = makeEditor(runObject, { background: { type: 'solid', color: '#FFFFFF' } });
+    const revision = editor.getSnapshot().revision;
+    for (const [command, payload] of [
+      ['document.setRunFormat', { runId: 'r1', format: { bold: true } }],
+      ['document.setParagraphFormat', { paragraphId: 'p1', format: { alignment: 'center' } }],
+      ['document.setTextBodyLayout', { objectId: 'o1', layout: { insets: { left: 91440 } } }],
+      ['presentation.setSlideProperties', { slideId: 's1', properties: { background: { type: 'solid', color: '#ffffff' } } }],
+    ]) {
+      expect(editor.dispatch(command, payload).changed).toBe(false);
+      expect(editor.getSnapshot().revision).toBe(revision);
+      expect(editor.getSnapshot().canUndo).toBe(false);
+      expect(proof(editor)).toBeTruthy();
+      expect(editor.getSnapshot().document.slides[0].extensions.stagecraftSlideAppearance).toBeTruthy();
+    }
+  });
+
+  it('does not create history for a no-op native paint command', () => {
+    const object = { id: 'o1', type: 'shape', shape: 'rect', fill: '#112233', source, geometry: { x: 0, y: 0, width: 100, height: 100 }, extensions: { editableFill: true } };
+    proveObject(object);
+    delete object.text;
+    object.extensions.stagecraftNativeAppearance.text = undefined;
+    object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object);
+    const editor = makeEditor(object);
+    expect(editor.dispatch('presentation.setPaint', { slideId: 's1', objectId: 'o1', fill: '#112233' }).changed).toBe(false);
+    expect(editor.getSnapshot().revision).toBe(0);
+    expect(editor.getSnapshot().canUndo).toBe(false);
     expect(proof(editor)).toBeTruthy();
   });
 
