@@ -278,6 +278,30 @@ describe('native appearance proof helpers', () => {
     }
   });
 
+  it('binds layout and slide proofs to inherited background changes', () => {
+    const layout = { id: 'l1', source: { format: 'pptx' }, background: { type: 'solid', color: '#FFFFFF' }, objects: [], extensions: {} };
+    const slide = { id: 's1', source: { format: 'pptx' }, layoutId: 'l1', background: { type: 'solid', color: '#FFFFFF' }, extensions: {} };
+    const document = { layouts: [layout], masters: [{ id: 'm1', background: { type: 'solid', color: '#FFFFFF' }, objects: [] }], themes: [] };
+    layout.masterId = 'm1';
+    layout.extensions.stagecraftLayoutSummary = {
+      version: 1, appearanceResolved: true, input: nativeLayoutAppearanceInput(layout, document),
+      background: { kind: 'solid', color: '#FFFFFF' }, artworkCount: 0,
+    };
+    slide.extensions.stagecraftSlideAppearance = {
+      version: 1, appearanceResolved: true, input: nativeSlideAppearanceInput(slide, document),
+      background: { kind: 'solid', color: '#FFFFFF' }, inheritedArtworkCount: 0,
+    };
+    expect(isNativeLayoutAppearanceValid(layout, document)).toBe(true);
+    expect(isNativeSlideAppearanceValid(slide, document)).toBe(true);
+    layout.background.color = '#000000';
+    expect(isNativeLayoutAppearanceValid(layout, document)).toBe(false);
+    expect(isNativeSlideAppearanceValid(slide, document)).toBe(false);
+    layout.background.color = '#FFFFFF';
+    document.masters[0].background.color = '#000000';
+    expect(isNativeLayoutAppearanceValid(layout, document)).toBe(false);
+    expect(isNativeSlideAppearanceValid(slide, document)).toBe(false);
+  });
+
   it('binds slide proof inputs to background style vectors', () => {
     const slide = { id: 's1', source: { format: 'pptx' }, extensions: {} };
     const document = { themes: [{ id: 't1', extensions: { pptxBackgroundFillStyles: [{ kind: 'solid', color: '#FFFFFF' }] } }] };
