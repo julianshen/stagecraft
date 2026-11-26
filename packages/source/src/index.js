@@ -10,6 +10,7 @@ import { readOdp, patchOdp } from './odp.js';
 import { authoringDiff, prepareAuthoring, coalesceSplitBreaks } from './authoring.js';
 import { odpFormattingWriter } from './odp-format.js';
 import { applyResize } from './resize.js';
+import { buildMinimalPresentation } from './create.js';
 const clone = value => cloneJson(value);
 const objectsById = document => {
     const objects = new Map();
@@ -406,4 +407,11 @@ export async function openPresentation(source, options = {}) {
         },
         dispose() { disposed = true; original = null; baseline = null; mapping?.clear(); mapping = null; editableSlots = null; images.clear(); previews.clear(); registeredBytes = 0; previewBytes = 0; }
     };
+}
+
+export async function createPresentation({ format, title = 'Untitled', xml, signal } = {}) {
+    throwIfAborted(signal);
+    const bytes = await buildMinimalPresentation({ format, title });
+    throwIfAborted(signal);
+    return openPresentation(bytes, { format, xml, signal });
 }

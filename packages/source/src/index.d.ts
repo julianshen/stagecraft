@@ -23,6 +23,12 @@ export interface OpenPresentationOptions extends SourceLimits {
     format: 'pptx' | 'odp';
     xml?: XmlRuntime;
 }
+export interface CreatePresentationOptions {
+    format: 'pptx' | 'odp';
+    title?: string;
+    xml?: XmlRuntime;
+    signal?: AbortSignal;
+}
 export interface SourceExport {
     bytes: Uint8Array;
     dirtyParts: string[];
@@ -71,3 +77,4 @@ export interface SourceSession {
     dispose(): void;
 }
 export function openPresentation(source: Uint8Array | ArrayBuffer | Blob, options: OpenPresentationOptions): Promise<SourceSession>;
+export function createPresentation(options: CreatePresentationOptions): Promise<SourceSession>;

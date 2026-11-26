@@ -86,16 +86,40 @@ describe('local source workspace', () => {
   });
 });
 
-it.each(['PPTX', 'ODP'])('creates a new local %s without a user file', async format => {
+it.each(['PPTX', 'ODP'])('creates a new local %s without a user file via createPresentation', async format => {
   const opened = source('New document');
-  const load = vi.fn().mockResolvedValue(opened);
-  render(<SourceWorkspace openSource={load} />);
+  const create = vi.fn().mockResolvedValue(opened);
+  const load = vi.fn();
+  render(<SourceWorkspace createSource={create} openSource={load} />);
   fireEvent.click(screen.getByRole('button', { name: `New ${format}` }));
   await screen.findByText('New document');
-  const [file, options] = load.mock.calls[0];
-  expect(file.name).toBe(`Untitled.${format.toLowerCase()}`);
-  expect(file.size).toBeGreaterThan(0);
-  expect(options.format).toBe(format.toLowerCase());
+  expect(load).not.toHaveBeenCalled();
+  expect(create).toHaveBeenCalledWith(expect.objectContaining({
+    format: format.toLowerCase(),
+    title: 'Untitled',
+    signal: expect.any(AbortSignal),
+  }));
+  expect(screen.getByLabelText(`Untitled.${format.toLowerCase()}`)).toBeInTheDocument();
+});
+
+it('aborts a pending open and bumps generation when an unsupported file is selected', async () => {
+  const slow = deferred();
+  const lateA = source('Late A');
+  const load = vi.fn().mockReturnValueOnce(slow.promise);
+  render(<SourceWorkspace openSource={load} />);
+
+  choose('A.pptx');
+  expect(screen.getByRole('status')).toHaveTextContent('Opening presentation…');
+  expect(load.mock.calls[0][1].signal.aborted).toBe(false);
+
+  choose('bad.txt');
+  expect(load.mock.calls[0][1].signal.aborted).toBe(true);
+  expect(screen.getByRole('alert')).toHaveTextContent('Choose a .pptx or .odp file.');
+  expect(screen.queryByText('Opening presentation…')).toBeNull();
+
+  await act(async () => { slow.resolve(lateA); await slow.promise; });
+  expect(screen.queryByText('Late A')).toBeNull();
+  expect(lateA.dispose).toHaveBeenCalledTimes(1);
 });
 
 it.each([

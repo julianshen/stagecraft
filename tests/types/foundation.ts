@@ -19,7 +19,7 @@ import {
 import { inspectZip, type ZipOptions } from '@stagecraft/io/zip';
 import { pptxAdapter, importPptx, writePptx, exportToPPTX, type Deck, type PptxImportOptions, type PptxWriteOptions } from '@stagecraft/pptx';
 import { odpAdapter, importOdp, writeOdp, type OdpDocument, type OdpOptions } from '@stagecraft/odp';
-import { IMAGE_LIMITS, openPresentation, type SourceSession, type SourceCapability, type SourceExportOptions, type XmlRuntime } from '@stagecraft/source';
+import { IMAGE_LIMITS, createPresentation, openPresentation, type CreatePresentationOptions, type SourceSession, type SourceCapability, type SourceExportOptions, type XmlRuntime } from '@stagecraft/source';
 
 function expectType<T>(_value: T): void {}
 function assertJsonPayloads<T extends Record<keyof T, JsonValue>>(): void {}
@@ -174,6 +174,8 @@ async function localAndHostIO() {
 }
 
 async function retainedSource() {
+  const createOpts: CreatePresentationOptions = { format: 'pptx', title: 'Untitled', xml, signal };
+  expectType<SourceSession>(await createPresentation(createOpts));
   const session = await openPresentation(bytes, { format: 'pptx', xml, ...zipOptions });
   expectType<SourceSession>(session);
   expectType<CanonicalDocument>(session.document);
