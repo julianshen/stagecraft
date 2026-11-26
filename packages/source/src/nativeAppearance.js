@@ -238,17 +238,22 @@ const normalizeFont = value => {
   return font && font.length <= 64 && !font.startsWith('+') && !/[\u0000-\u001f\u007f]/.test(font) ? font : null;
 };
 
+const resolveFontAlias = (value, theme) => {
+  const font = typeof value === 'string' ? value.trim() : '';
+  const alias = /^\+(mj|mn)-(lt|ea|cs)$/.exec(font);
+  if (!alias) return normalizeFont(font);
+  const fonts = theme?.extensions?.pptxFontScheme;
+  const group = alias[1] === 'mj' ? 'major' : 'minor';
+  const target = alias[2] === 'lt' ? 'latin' : alias[2] === 'ea' ? 'eastAsian' : 'complexScript';
+  return normalizeFont(fonts?.[group]?.[target] || fonts?.[group]?.latin);
+};
+
 function resolveFont(direct, theme, fontRef, slot, inheritedFont = null) {
   const fonts = theme?.extensions?.pptxFontScheme;
   const value = direct?.getAttribute('typeface');
-  if (value) {
-    const alias = /^\+(mj|mn)-(lt|ea|cs)$/.exec(value);
-    if (!alias) return normalizeFont(value);
-    const group = alias[1] === 'mj' ? 'major' : 'minor';
-    const target = alias[2] === 'lt' ? 'latin' : alias[2] === 'ea' ? 'eastAsian' : 'complexScript';
-    return normalizeFont(fonts?.[group]?.[target] || fonts?.[group]?.latin);
-  }
-  return normalizeFont(inheritedFont || fonts?.[fontRef]?.[slot] || fonts?.[fontRef]?.latin);
+  if (value) return resolveFontAlias(value, theme);
+  if (inheritedFont) return resolveFontAlias(inheritedFont, theme);
+  return normalizeFont(fonts?.[fontRef]?.[slot] || fonts?.[fontRef]?.latin);
 }
 
 function projectRunOverrides(properties, theme, colorMap) {
@@ -282,7 +287,9 @@ function projectRunOverrides(properties, theme, colorMap) {
     } else if (['latin', 'ea', 'cs'].includes(item.localName)) {
       const slot = item.localName === 'latin' ? 'latin' : item.localName === 'ea' ? 'eastAsian' : 'complexScript';
       const key = slot === 'latin' ? 'fontFamily' : slot === 'eastAsian' ? 'fontFamilyEastAsia' : 'fontFamilyComplexScript';
-      const font = resolveFont(item, theme, 'minor', slot);
+      const rawFont = item.getAttribute('typeface')?.trim();
+      if (rawFont?.startsWith('+') && !/^\+(mj|mn)-(lt|ea|cs)$/.test(rawFont)) return null;
+      const font = rawFont?.startsWith('+') ? rawFont : normalizeFont(rawFont);
       if (!font) return null;
       out[key] = font;
     } else return null;
@@ -358,13 +365,18 @@ function supportedTextXml(node, body, theme) {
   const txBox = ['1', 'true'].includes(child(child(node, 'p', 'nvSpPr'), 'p', 'cNvSpPr')?.getAttribute('txBox'));
   if (theme?.extensions?.pptxObjectDefaults?.[txBox ? 'txDef' : 'spDef']) return false;
   const bodyPr = child(body, 'a', 'bodyPr');
-  if (!bodyPr || Object.keys(attrs(bodyPr)).some(attribute => !['wrap', 'anchor', 'lIns', 'rIns', 'tIns', 'bIns'].includes(attribute))
+  const anchor = bodyPr?.getAttribute('anchor');
+  const insetAttributes = ['lIns', 'rIns', 'tIns', 'bIns'];
+  if (!bodyPr || anchor !== null && !['t', 'ctr', 'b'].includes(anchor)
+    || insetAttributes.some(name => bodyPr?.hasAttribute(name) && !/^\d+$/.test(bodyPr.getAttribute(name)))
+    || Object.keys(attrs(bodyPr)).some(attribute => !['wrap', 'anchor', ...insetAttributes].includes(attribute))
     || children(bodyPr).some(item => !is(item, 'a', 'noAutofit'))) return false;
   for (const paragraph of children(body).filter(item => is(item, 'a', 'p'))) {
     if (children(paragraph).some(item => !is(item, 'a', 'pPr') && !is(item, 'a', 'r') && !is(item, 'a', 'endParaRPr'))) return false;
     const properties = child(paragraph, 'a', 'pPr');
     if (properties) {
       if (Object.keys(attrs(properties)).some(attribute => !['algn', 'lvl', 'marL', 'marR', 'indent'].includes(attribute))) return false;
+      if (properties.hasAttribute('algn') && !['l', 'ctr', 'r', 'just'].includes(properties.getAttribute('algn'))) return false;
       if (properties.hasAttribute('lvl') && properties.getAttribute('lvl') !== '0') return false;
       for (const item of children(properties)) {
         if (['lnSpc', 'spcBef', 'spcAft'].includes(item.localName)) {

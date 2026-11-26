@@ -56,6 +56,45 @@ const appearanceContext = (document, slide) => {
 };
 
 describe('native PPTX appearance projection', () => {
+  it('refuses unprojected paragraph alignment, signed insets and body anchors', async () => {
+    const variants = [
+      textBox(2, 20, 20, 300, 100, para('Native', { pPr: '<a:pPr algn="dist"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' }),
+      textBox(2, 20, 20, 300, 100, para('Native'), { bodyPr: '<a:bodyPr lIns="-91440"><a:noAutofit/></a:bodyPr>' }),
+      textBox(2, 20, 20, 300, 100, para('Native'), { bodyPr: '<a:bodyPr anchor="just"><a:noAutofit/></a:bodyPr>' }),
+      textBox(2, 20, 20, 300, 100, para('Native'), { bodyPr: '<a:bodyPr anchor="dist"><a:noAutofit/></a:bodyPr>' }),
+    ];
+    for (const objectXml of variants) {
+      const session = await openFixture(`<p:sld ${NS}>${tree(objectXml)}</p:sld>`);
+      try { expect(proof(session.document.slides[0].objects[0])).toBeUndefined(); }
+      finally { session.dispose(); }
+    }
+  });
+
+  it('resolves presentation default font aliases with the consuming slide theme', async () => {
+    const box = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Native</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const bytes = await sourceReady(await buildPptx({ theme, master: emptyMaster, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(box)}</p:sld>` }] }));
+    const zip = await JSZip.loadAsync(bytes);
+    const secondTheme = theme.replace('<a:latin typeface="Arial"/>', '<a:latin typeface="Georgia"/>');
+    zip.file('ppt/theme/theme2.xml', secondTheme);
+    const presentation = await zip.file('ppt/presentation.xml').async('string');
+    zip.file('ppt/presentation.xml', presentation.replace('</p:presentation>', '<p:defaultTextStyle><a:lvl1pPr><a:defRPr sz="1800"><a:latin typeface="+mn-lt"/></a:defRPr></a:lvl1pPr></p:defaultTextStyle></p:presentation>'));
+    const session = await openPresentation(await zip.generateAsync({ type: 'uint8array' }), { format: 'pptx', xml });
+    try {
+      const document = session.document;
+      const second = structuredClone(document.themes[0]);
+      second.id = 'themes:ppt/theme/theme2.xml';
+      second.source.part = 'ppt/theme/theme2.xml';
+      second.extensions.pptxFontScheme.minor.latin = 'Georgia';
+      document.themes.push(second);
+      expect(document.themes[1].source.part).toBe('ppt/theme/theme2.xml');
+      document.slides[0].themeId = second.id;
+      expect(document.extensions.pptxDefaultTextStyle.fontFamily).toBe('+mn-lt');
+      delete document.slides[0].objects[0].extensions.stagecraftNativeAppearance;
+      await projectNativeAppearance(document, zip, xml);
+      expect(document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamily).toBe('Georgia');
+    } finally { session.dispose(); }
+  });
+
   it('uses the last run only when end-run properties are absent', async () => {
     const box = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"><a:latin typeface="Arial"/></a:rPr><a:t>Native</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const session = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`);
