@@ -158,7 +158,8 @@ const validBackground = value => record(value) && (value.kind === 'none'
   ? Object.keys(value).length === 1
   : value.kind === 'solid' && exactKeys(value, ['kind', 'color']) && solidColor(value.color));
 const validFill = value => validBackground(value);
-const validStroke = value => validBackground(value) || exactKeys(value, ['kind', 'color', 'widthEmu'])
+const validStroke = value => value?.kind === 'none' && validBackground(value)
+  || exactKeys(value, ['kind', 'color', 'widthEmu'])
   && value.kind === 'solid' && solidColor(value.color)
   && Number.isSafeInteger(value.widthEmu) && value.widthEmu > 0;
 const validResolvedRun = value => exactKeys(value, [

@@ -402,6 +402,14 @@ describe('native appearance proof helpers', () => {
     expect(() => invalidateNativeSlideAppearance({})).not.toThrow();
   });
 
+  it('requires a positive safe width for every solid stroke proof', () => {
+    for (const stroke of [{ kind: 'solid', color: '#112233' }, { kind: 'solid', color: '#112233', widthEmu: 0 }, { kind: 'solid', color: '#112233', widthEmu: 1.5 }]) {
+      const object = proveObject(nativeObject());
+      object.extensions.stagecraftNativeAppearance.stroke = stroke;
+      expect(isNativeObjectAppearanceValid(object)).toBe(false);
+    }
+  });
+
   it('validates slide and layout summaries and invalidates them without touching other extensions', () => {
     const slide = {
       id: 's1',
