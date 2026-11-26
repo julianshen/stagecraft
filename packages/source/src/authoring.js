@@ -70,6 +70,7 @@ export const cleanPptxAppearance = value => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
     const out = { ...value };
     delete out.resolved;
+    delete out.script;
     return out;
 };
 const cleanExtensions = value => {
@@ -120,8 +121,10 @@ export function authoringDiff(baseline, snapshot, diff) {
     for (const slide of baseline.slides) owners.set(slide.objects, slide);
     /** Per-baseline-object edit rules: which keys this writer can rewrite in place. */
     const objectRules = new Map();
+    const nativeRuns = new Set();
     const slideObjects = new Set(baseline.slides.flatMap(s => s.objects));
     for (const object of sourceObjects(baseline)) {
+        for (const paragraph of object.text?.paragraphs ?? []) for (const run of paragraph.runs) nativeRuns.add(run);
         objectRules.set(object, {
             geometry: slideObjects.has(object) && object.extensions?.editableGeometry === true,
             fill: slideObjects.has(object) && object.extensions?.editableFill === true && ['rect', 'ellipse'].includes(object.shape),
@@ -151,6 +154,11 @@ export function authoringDiff(baseline, snapshot, diff) {
             }
             for (const asset of a) if (!b.some(item => item?.id === asset.id)) throw new Error('Source assets cannot be removed');
             return true;
+        }
+        if (nativeRuns.has(a)) {
+            const changed = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(key => !equal(a[key], b[key]));
+            return changed.length > 0 && changed.every(key => key === 'extensions'
+                && equal(proofNeutralExtensions(a[key]), proofNeutralExtensions(b[key])));
         }
         if (owners.has(a)) {
             if (!Array.isArray(b)) throw new Error('Invalid source structure');
@@ -221,7 +229,9 @@ export function authoringDiff(baseline, snapshot, diff) {
                     if (!equal(before.style, after.style)) { validateParagraphChange(before.style, after.style); paragraphFormats.push({ object, paragraph: before, style: after.style }); }
                     diff(before.runs, after.runs);
                     for (const key of new Set([...Object.keys(before), ...Object.keys(after)]))
-                        if (key !== 'runs' && key !== 'style' && !equal(before[key], after[key])) throw new Error('Unsupported paragraph structure');
+                        if (key !== 'runs' && key !== 'style'
+                            && !equal(key === 'extensions' ? proofNeutralExtensions(before[key]) : before[key],
+                                key === 'extensions' ? proofNeutralExtensions(after[key]) : after[key])) throw new Error('Unsupported paragraph structure');
                 }
             }
             if (changed.includes('bodyLayout') && rule.bodyLayout) { validateLayoutChange(a.bodyLayout, b.bodyLayout); bodyLayouts.push({ object, before: a.bodyLayout ?? null, after: b.bodyLayout ?? null }); }
