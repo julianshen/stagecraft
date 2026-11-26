@@ -340,6 +340,30 @@ it('refuses removing retained assets through the direct authoring diff', async (
   } finally { session.dispose(); }
 });
 
+it('ignores paragraph and run display sidecars in native authoring hooks', async () => {
+  const session = await open('pptx');
+  try {
+    const baseline = session.document;
+    const bytes = (await session.export(baseline)).bytes;
+    const next = structuredClone(baseline);
+    for (const slide of next.slides) for (const object of slide.objects) for (const paragraph of object.text?.paragraphs ?? []) {
+      paragraph.extensions = { ...paragraph.extensions, pptxEndRunAppearance: { color: '#000000' } };
+      for (const run of paragraph.runs) run.extensions = { ...run.extensions, pptxAppearance: { ...run.extensions?.pptxAppearance, resolved: { color: '#000000' }, script: 'Latn' } };
+    }
+    const added = await session.export(next);
+    expect(added.dirtyParts).toEqual([]);
+    expect(Buffer.from(added.bytes).equals(Buffer.from(bytes))).toBe(true);
+    const removed = structuredClone(next);
+    for (const slide of removed.slides) for (const object of slide.objects) for (const paragraph of object.text?.paragraphs ?? []) {
+      delete paragraph.extensions.pptxEndRunAppearance;
+      for (const run of paragraph.runs) { delete run.extensions.pptxAppearance.resolved; delete run.extensions.pptxAppearance.script; }
+    }
+    const stripped = await session.export(removed);
+    expect(stripped.dirtyParts).toEqual([]);
+    expect(Buffer.from(stripped.bytes).equals(Buffer.from(bytes))).toBe(true);
+  } finally { session.dispose(); }
+});
+
 it.each([
   ['missing', refs => refs.forEach(ref => ref.removeAttribute('id')), 256],
   ['nonnumeric', refs => refs.forEach(ref => ref.setAttribute('id', 'bogus')), 256],
