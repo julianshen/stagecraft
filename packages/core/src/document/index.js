@@ -583,16 +583,24 @@ function setParagraphFormat(document, payload) {
     // Table-cell paragraphs are only representable when the table itself is authored.
     if (object.extensions?.stagecraftAuthored !== true) fail('UNSUPPORTED_EDIT');
   } else paragraphEditable(paragraph, object);
-  paragraph.style ??= {};
+  const beforeStyle = paragraph.style;
+  let nextStyle = beforeStyle ? copy(beforeStyle) : null;
   for (const [key, value] of Object.entries(payload.format)) {
+    const current = nextStyle?.[key];
+    const raw = PARAGRAPH_RAW_KEYS[key];
     if (value === null) {
-      delete paragraph.style[key];
-      if (PARAGRAPH_RAW_KEYS[key]) delete paragraph.style[PARAGRAPH_RAW_KEYS[key]];
+      if (current === undefined && (!raw || nextStyle?.[raw] === undefined)) continue;
+      nextStyle ??= {};
+      delete nextStyle[key];
+      if (raw) delete nextStyle[raw];
       continue;
     }
-    paragraph.style[key] = copy(value);
-    if (PARAGRAPH_RAW_KEYS[key]) delete paragraph.style[PARAGRAPH_RAW_KEYS[key]];
+    if (jsonEqual(current, value) && (!raw || nextStyle?.[raw] === undefined)) continue;
+    nextStyle ??= {};
+    nextStyle[key] = copy(value);
+    if (raw) delete nextStyle[raw];
   }
+  if (!jsonEqual(beforeStyle, nextStyle)) paragraph.style = nextStyle;
   // A level-1+ ODP paragraph without a bullet cannot be represented outside a text:list, so bullet
   // removal must clear the level in the same command; the state is rejected atomically instead of
   // breaking export later ('Non-list ODP paragraph levels are unsupported').
@@ -601,7 +609,8 @@ function setParagraphFormat(document, payload) {
     const bullet = paragraph.style.bullet;
     if ((paragraph.style.level ?? 0) > 0 && (!bullet || bullet.type === 'none')) fail('UNSUPPORTED_EDIT');
   }
-  invalidateNativeObjectAppearance(object);
+  const styleChanged = !jsonEqual(beforeStyle, paragraph.style);
+  if (styleChanged) invalidateNativeObjectAppearance(object);
   return d;
 }
 function setTextBodyLayout(document, payload) {
@@ -621,7 +630,8 @@ function setTextBodyLayout(document, payload) {
       fail('UNSUPPORTED_EDIT');
     }
   } else if (format !== 'pptx' && format !== undefined) fail('UNSUPPORTED_EDIT');
-  const layout = { ...(object.bodyLayout ?? {}) };
+  const beforeLayout = object.bodyLayout;
+  const layout = beforeLayout ? copy(beforeLayout) : {};
   for (const [key, value] of Object.entries(payload.layout)) {
     if (value === null) { delete layout[key]; continue; }
     if (key === 'insets') {
@@ -635,8 +645,10 @@ function setTextBodyLayout(document, payload) {
     }
     layout[key] = copy(value);
   }
-  if (Object.keys(layout).length) object.bodyLayout = layout; else delete object.bodyLayout;
-  invalidateNativeObjectAppearance(object);
+  if (!jsonEqual(beforeLayout, layout)) {
+    if (Object.keys(layout).length) object.bodyLayout = layout; else delete object.bodyLayout;
+    invalidateNativeObjectAppearance(object);
+  }
   return d;
 }
 const collectIds = d => {
@@ -704,13 +716,18 @@ function splitParagraphAt(paragraph, offset, ids) {
   }
 }
 function applyRunFormat(run, format) {
-  run.style ??= {};
+  let changed = false;
   for (const [key, value] of Object.entries(format)) {
-    if (value === null) delete run.style[formatKeys[key]];
-    else if (['fontFamily', 'eastAsian', 'complexScript'].includes(key)) run.style[formatKeys[key]] = value;
-    else if (key === 'color') run.style.color = value.toLowerCase();
-    else run.style[formatKeys[key]] = key === 'fontSize' ? String(Math.round(value * 100)) : value ? '1' : '0';
+    const attribute = formatKeys[key];
+    const current = run.style?.[attribute] ?? null;
+    const next = value === null ? null : ['fontFamily', 'eastAsian', 'complexScript'].includes(key) ? value : key === 'color' ? value.toLowerCase() : key === 'fontSize' ? String(Math.round(value * 100)) : value ? '1' : '0';
+    if ((current ?? null) === (next ?? null)) continue;
+    run.style ??= {};
+    if (next === null) delete run.style[attribute];
+    else run.style[attribute] = next;
+    changed = true;
   }
+  return changed;
 }
 function setRunRangeFormat(document, payload) {
   if (!validRangePayload(payload)) fail('INVALID_PAYLOAD');
@@ -784,17 +801,22 @@ function setRunFormat(document, payload) {
   if (!validRunFormatPayload(payload)) fail('INVALID_PAYLOAD');
   return updateRun(document, payload, (run, object) => {
     if (run.extensions?.stagecraftAuthored !== true && !['pptx', 'odp'].includes(run.source?.format)) fail('UNSUPPORTED_EDIT');
-    run.style ??= {};
     if (run.extensions?.stagecraftAuthored !== true && run.source?.format === 'odp') {
-      run.style.overrides ??= {};
+      let changed = false;
       for (const [key, value] of Object.entries(payload.format)) {
-        if (value === null) delete run.style.overrides[key];
-        else run.style.overrides[key] = value;
+        const current = run.style?.overrides?.[key] ?? null;
+        const next = value === null ? null : copy(value);
+        if (jsonEqual(current, next)) continue;
+        run.style ??= {};
+        run.style.overrides ??= {};
+        if (next === null) delete run.style.overrides[key];
+        else run.style.overrides[key] = next;
+        changed = true;
       }
+      if (changed) invalidateNativeObjectAppearance(object);
       return;
     }
-    applyRunFormat(run, payload.format);
-    invalidateNativeObjectAppearance(object);
+    if (applyRunFormat(run, payload.format)) invalidateNativeObjectAppearance(object);
   });
 }
 const idSchema = { type: 'string', minLength: 1 };
@@ -1251,8 +1273,10 @@ export const presentationPlugin = Object.freeze({
       const nativeShape = object.extensions?.stagecraftAuthored !== true && object.extensions?.editableFill === true
         && object.type === 'shape' && ['rect', 'ellipse'].includes(object.shape);
       if (!authoredShape && !nativeShape) fail('UNSUPPORTED_EDIT');
-      object.fill = p.fill;
-      invalidateNativeObjectAppearance(object);
+      if (object.fill?.toLowerCase() !== p.fill.toLowerCase()) {
+        object.fill = p.fill;
+        invalidateNativeObjectAppearance(object);
+      }
       if (authoredShape) validateAuthoredObject(object);
     }),
     presentationCommand('setText', { ...targetProperties, text: authoredTextSchema }, ['slideId', 'objectId', 'text'], (d, p) => {
@@ -1287,10 +1311,15 @@ export const presentationPlugin = Object.freeze({
         else slide.name = properties.name;
       }
       if (properties.background !== undefined) {
-        if (record(slide.extensions?.legacy)) delete slide.extensions.legacy.bgColor;
-        if (properties.background === null) delete slide.background;
-        else slide.background = { type: 'solid', color: properties.background.color };
-        invalidateNativeSlideAppearance(slide);
+        const previous = slide.background;
+        const next = properties.background;
+        const unchanged = next === null ? previous === undefined : previous?.type === next.type && previous?.color?.toLowerCase() === next.color;
+        if (!unchanged) {
+          if (record(slide.extensions?.legacy)) delete slide.extensions.legacy.bgColor;
+          if (next === null) delete slide.background;
+          else slide.background = { type: 'solid', color: next.color };
+          invalidateNativeSlideAppearance(slide);
+        }
       }
       if (properties.notes !== undefined) {
         if (record(slide.extensions?.legacy)) delete slide.extensions.legacy.notes;
