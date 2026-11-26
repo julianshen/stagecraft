@@ -128,8 +128,8 @@ export function nativeSlideAppearanceInput(slide, document) {
     colorMap: slide.extensions?.pptxColorMap,
     colorMapOverride: slide.extensions?.pptxColorMapOverride,
     inherited: document ? {
-      layout: layout ? { id: layout.id, objects: (layout.objects ?? []).map(object => ({ id: object.id, type: object.type })), colorMap: layout.extensions?.pptxColorMap, colorMapOverride: layout.extensions?.pptxColorMapOverride } : null,
-      master: master ? { id: master.id, objects: (master.objects ?? []).map(object => ({ id: object.id, type: object.type })), colorMap: master.extensions?.pptxColorMap, colorMapOverride: master.extensions?.pptxColorMapOverride } : null,
+      layout: layout ? { id: layout.id, background: layout.background, objects: (layout.objects ?? []).map(object => ({ id: object.id, type: object.type })), colorMap: layout.extensions?.pptxColorMap, colorMapOverride: layout.extensions?.pptxColorMapOverride } : null,
+      master: master ? { id: master.id, background: master.background, objects: (master.objects ?? []).map(object => ({ id: object.id, type: object.type })), colorMap: master.extensions?.pptxColorMap, colorMapOverride: master.extensions?.pptxColorMapOverride } : null,
       theme: themeAppearanceInput(theme),
     } : undefined,
   });
@@ -140,11 +140,13 @@ export function nativeLayoutAppearanceInput(entity, document) {
   const theme = document?.themes?.find(item => item.id === (entity.themeId ?? master?.themeId)) ?? document?.themes?.[0];
   return stableJson({
     source: sourceInput(entity.source),
+    background: entity.background,
     masterId: entity.masterId,
     themeId: entity.themeId,
     colorMap: entity.extensions?.pptxColorMap,
     colorMapOverride: entity.extensions?.pptxColorMapOverride,
     inheritedColorMap: master ? { ...(entity.extensions?.pptxColorMapOverride === 'master' ? {} : entity.extensions?.pptxColorMap), ...master.extensions?.pptxColorMap } : entity.extensions?.pptxColorMap,
+    inheritedBackground: master?.background,
     theme: document ? themeAppearanceInput(theme, entity.extensions?.pptxColorMap) : undefined,
     objects: (entity.objects ?? []).map(object => ({
       id: object.id,
