@@ -6,7 +6,7 @@ import {
   nativeTextScripts,
 } from '@stagecraft/core/lib/nativeAppearance.js';
 import { attrs, child, children, is, locate, xmlPart } from './xml.js';
-import { readPptxColorMap, readPptxColorScheme, resolvePptxColor } from './pptxColor.js';
+import { readPptxColorMap, readPptxColorScheme, resolvePptxColor, resolvePptxSchemeColor } from './pptxColor.js';
 
 const FILL_TAGS = ['noFill', 'solidFill', 'gradFill', 'blipFill', 'pattFill', 'grpFill'];
 const DEFAULT_COLOR_MAP = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' };
@@ -55,23 +55,25 @@ function colorMapFor(document, entity) {
   return map;
 }
 
-function simpleFill(parent, theme, colorMap) {
-  const fills = children(parent).filter(node => FILL_TAGS.includes(node.localName));
+function simpleFill(parent, theme, colorMap, allowPlaceholder = false) {
+  const fills = FILL_TAGS.includes(parent.localName) ? [parent] : children(parent).filter(node => FILL_TAGS.includes(node.localName));
   if (fills.length > 1) return null;
   if (!fills.length) return none();
   if (is(fills[0], 'a', 'noFill')) return none();
   if (!is(fills[0], 'a', 'solidFill') || children(fills[0]).length !== 1) return null;
-  const color = resolvePptxColor(children(fills[0])[0], theme?.extensions?.pptxColorScheme, colorMap);
+  const colorNode = children(fills[0])[0];
+  if (allowPlaceholder && is(colorNode, 'a', 'phClr')) return { kind: 'placeholder' };
+  const color = resolvePptxColor(colorNode, theme?.extensions?.pptxColorScheme, colorMap);
   return color ? { kind: 'solid', color } : null;
 }
 
 function fillFromStyle(styles, index) {
   if (index < 0 || index >= (styles?.length ?? 0)) return null;
   const value = styles[index];
-  return value && value.kind === 'none' ? none() : value && value.kind === 'solid' ? { ...value } : null;
+  return value && ['none', 'solid', 'placeholder'].includes(value.kind) ? { ...value } : null;
 }
 
-function simpleStroke(node, theme = {}, colorMap = {}) {
+function simpleStroke(node, theme = {}, colorMap = {}, allowPlaceholder = false) {
   if (!node) return none();
   if (node.hasAttribute('cmpd') && node.getAttribute('cmpd') !== 'sng') return null;
   if (node.hasAttribute('algn') && node.getAttribute('algn') !== 'ctr') return null;
@@ -81,18 +83,19 @@ function simpleStroke(node, theme = {}, colorMap = {}) {
   }
   const dash = child(node, 'a', 'prstDash');
   if (dash && dash.getAttribute('val') !== 'solid') return null;
-  const fill = simpleFill(node, theme, colorMap);
+  const fill = simpleFill(node, theme, colorMap, allowPlaceholder);
   if (!fill) return null;
   if (fill.kind === 'none') return none();
   const width = node.getAttribute('w');
   if (!/^\d+$/.test(width ?? '') || !Number.isSafeInteger(Number(width)) || Number(width) <= 0) return null;
+  if (fill.kind === 'placeholder') return { kind: 'placeholder', widthEmu: Number(width) };
   return { kind: 'solid', color: fill.color, widthEmu: Number(width) };
 }
 
 function strokeFromStyle(styles, index) {
   if (index < 0 || index >= (styles?.length ?? 0)) return null;
   const value = styles[index];
-  return value && value.kind === 'none' ? none() : value && value.kind === 'solid' ? { ...value } : null;
+  return value && ['none', 'solid', 'placeholder'].includes(value.kind) ? { ...value } : null;
 }
 
 function referenceColor(node, theme, colorMap) {
@@ -122,7 +125,7 @@ async function projectTheme(document, load) {
     const palette = readPptxColorScheme(root);
     const format = child(child(root, 'a', 'themeElements'), 'a', 'fmtScheme');
     const projectStyles = (tag, stroke = false) => children(child(format, 'a', tag)).map(node => {
-      if (stroke) return simpleStroke(node, { extensions: { pptxColorScheme: palette } }, DEFAULT_COLOR_MAP);
+      if (stroke) return simpleStroke(node, { extensions: { pptxColorScheme: palette } }, DEFAULT_COLOR_MAP, true);
       if (is(node, 'a', 'noFill')) return none();
       if (!is(node, 'a', 'solidFill') || children(node).length !== 1) return null;
       const color = resolvePptxColor(children(node)[0], palette, DEFAULT_COLOR_MAP);
@@ -141,21 +144,10 @@ async function projectTheme(document, load) {
 async function themeStyleVectors(theme, colorMap, load) {
   if (!theme?.source?.part || !colorMap) return null;
   const root = (await load(theme.source.part)).documentElement;
-  const palette = theme.extensions?.pptxColorScheme;
   const format = child(child(root, 'a', 'themeElements'), 'a', 'fmtScheme');
-  const fills = children(child(format, 'a', 'fillStyleLst')).map(node => {
-    if (is(node, 'a', 'noFill')) return none();
-    if (!is(node, 'a', 'solidFill') || children(node).length !== 1) return null;
-    const color = resolvePptxColor(children(node)[0], palette, colorMap);
-    return color ? { kind: 'solid', color } : null;
-  });
-  const lines = children(child(format, 'a', 'lnStyleLst')).map(node => simpleStroke(node, theme, colorMap));
-  const backgrounds = children(child(format, 'a', 'bgFillStyleLst')).map(node => {
-    if (is(node, 'a', 'noFill')) return none();
-    if (!is(node, 'a', 'solidFill') || children(node).length !== 1) return null;
-    const color = resolvePptxColor(children(node)[0], palette, colorMap);
-    return color ? { kind: 'solid', color } : null;
-  });
+  const fills = children(child(format, 'a', 'fillStyleLst')).map(node => simpleFill(node, theme, colorMap, true));
+  const lines = children(child(format, 'a', 'lnStyleLst')).map(node => simpleStroke(node, theme, colorMap, true));
+  const backgrounds = children(child(format, 'a', 'bgFillStyleLst')).map(node => simpleFill(node, theme, colorMap, true));
   return { fills, lines, backgrounds };
 }
 
@@ -180,7 +172,7 @@ async function projectEntityBackgrounds(document, load) {
     entity.extensions = {
       ...entity.extensions,
       ...(Object.keys(colorMap).length ? { pptxColorMap: colorMap } : {}),
-      ...(overrideMapping ? { pptxColorMap: readPptxColorMap(overrideMapping) } : {}),
+      ...(overrideMapping ? { pptxColorMap: readPptxColorMap(overrideMapping), pptxColorMapOverride: 'mapping' } : {}),
       ...(masterMapping ? { pptxColorMapOverride: 'master' } : {}),
       ...(unsupportedMapping ? { pptxColorMapOverride: 'unsupported' } : {}),
     };
@@ -220,6 +212,7 @@ function effectiveBackground(document, entity, own, fallback = null, seen = new 
     if (value === UNSUPPORTED_BACKGROUND) return null;
     if (value !== undefined) return value;
   }
+  if (entity.extensions?.pptxColorMapOverride) return null;
   const layout = entity.layoutId ? document.layouts.find(item => item.id === entity.layoutId) : null;
   if (layout) return effectiveBackground(document, layout, own, fallback, seen);
   if (entity.masterId) {
@@ -229,7 +222,7 @@ function effectiveBackground(document, entity, own, fallback = null, seen = new 
   if (fallback) return fallback;
   const theme = themeFor(document, entity);
   const colorMap = colorMapFor(document, entity);
-  const color = schemeHex(theme?.extensions?.pptxColorScheme, colorMap, colorMap.bg1);
+  const color = schemeHex(theme?.extensions?.pptxColorScheme, colorMap, 'bg1');
   return color ? { kind: 'solid', color } : null;
 }
 
@@ -245,7 +238,12 @@ const resolveFontAlias = (value, theme) => {
   const fonts = theme?.extensions?.pptxFontScheme;
   const group = alias[1] === 'mj' ? 'major' : 'minor';
   const target = alias[2] === 'lt' ? 'latin' : alias[2] === 'ea' ? 'eastAsian' : 'complexScript';
-  return normalizeFont(fonts?.[group]?.[target] || fonts?.[group]?.latin);
+  const selected = fonts?.[group]?.[target];
+  if (target === 'eastAsian' && !selected) {
+    const supplemental = fonts?.[group]?.supplemental ?? {};
+    if (['Jpan', 'Hang', 'Hani'].some(script => supplemental[script])) return null;
+  }
+  return normalizeFont(selected || fonts?.[group]?.latin);
 };
 
 function resolveFont(direct, theme, fontRef, slot, inheritedFont = null) {
@@ -253,6 +251,10 @@ function resolveFont(direct, theme, fontRef, slot, inheritedFont = null) {
   const value = direct?.getAttribute('typeface');
   if (value) return resolveFontAlias(value, theme);
   if (inheritedFont) return resolveFontAlias(inheritedFont, theme);
+  if (slot === 'eastAsian' && !fonts?.[fontRef]?.eastAsian) {
+    const supplemental = fonts?.[fontRef]?.supplemental ?? {};
+    if (['Jpan', 'Hang', 'Hani'].some(script => supplemental[script])) return null;
+  }
   return normalizeFont(fonts?.[fontRef]?.[slot] || fonts?.[fontRef]?.latin);
 }
 
@@ -281,9 +283,17 @@ function projectRunOverrides(properties, theme, colorMap) {
   for (const item of children(properties)) {
     if (is(item, 'a', 'solidFill')) {
       if (children(item).length !== 1) return null;
-      const color = resolvePptxColor(children(item)[0], theme?.extensions?.pptxColorScheme, colorMap);
-      if (!color) return null;
-      out.color = color;
+      const colorNode = children(item)[0];
+      if (is(colorNode, 'a', 'schemeClr')) {
+        const transforms = children(colorNode).map(transform => ({ name: transform.localName, raw: transform.getAttribute('val') }));
+        if (transforms.some(transform => !['lumMod', 'lumOff'].includes(transform.name)
+          || !/^\d+$/.test(transform.raw ?? '') || !Number.isSafeInteger(Number(transform.raw)))) return null;
+        out.colorDefinition = { scheme: colorNode.getAttribute('val'), transforms };
+      } else {
+        const color = resolvePptxColor(colorNode, theme?.extensions?.pptxColorScheme, colorMap);
+        if (!color) return null;
+        out.color = color;
+      }
     } else if (['latin', 'ea', 'cs'].includes(item.localName)) {
       const slot = item.localName === 'latin' ? 'latin' : item.localName === 'ea' ? 'eastAsian' : 'complexScript';
       const key = slot === 'latin' ? 'fontFamily' : slot === 'eastAsian' ? 'fontFamilyEastAsia' : 'fontFamilyComplexScript';
@@ -299,12 +309,18 @@ function projectRunOverrides(properties, theme, colorMap) {
 
 function inheritedTextStyle(styleRoot, theme, colorMap) {
   if (!styleRoot) return {};
-  const level = child(styleRoot, 'a', 'lvl1pPr');
-  if (!level) return {};
   const defaults = { marL: '0', algn: 'l', defTabSz: '914400', rtl: '0', eaLnBrk: '1', latinLnBrk: '0', hangingPunct: '1' };
-  if (Object.entries(attrs(level)).some(([key, value]) => defaults[key] !== value)) return null;
-  if (children(level).some(item => !['defRPr', 'buNone'].includes(item.localName))) return null;
-  return projectRunOverrides(child(level, 'a', 'defRPr'), theme, colorMap);
+  const base = child(styleRoot, 'a', 'defPPr');
+  const level = child(styleRoot, 'a', 'lvl1pPr');
+  for (const properties of [base, level]) {
+    if (!properties) continue;
+    if (Object.entries(attrs(properties)).some(([key, value]) => defaults[key] !== value)) return null;
+    if (children(properties).some(item => !['defRPr', 'buNone'].includes(item.localName))) return null;
+  }
+  const baseStyle = projectRunOverrides(base ? child(base, 'a', 'defRPr') : null, theme, colorMap);
+  const levelStyle = projectRunOverrides(level ? child(level, 'a', 'defRPr') : null, theme, colorMap);
+  if (baseStyle === null || levelStyle === null) return null;
+  return { ...baseStyle, ...levelStyle };
 }
 
 function resolveRunFont(runProperties, fallbackProperties, theme, fontRef, slot, inheritedFont) {
@@ -330,8 +346,11 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
   const directFill = runProperties ? child(runProperties, 'a', 'solidFill') : null;
   const fallbackFill = fallbackProperties ? child(fallbackProperties, 'a', 'solidFill') : null;
   const colorNode = directFill ? children(directFill)[0] : fallbackFill ? children(fallbackFill)[0] : null;
+  const inheritedColor = inherited.colorDefinition
+    ? resolvePptxSchemeColor(inherited.colorDefinition.scheme, inherited.colorDefinition.transforms, theme?.extensions?.pptxColorScheme, colorMap)
+    : inherited.color;
   const color = colorNode ? resolvePptxColor(colorNode, theme?.extensions?.pptxColorScheme, colorMap)
-    : baseColor ?? inherited.color ?? schemeHex(theme?.extensions?.pptxColorScheme, colorMap, colorMap.tx1);
+    : baseColor ?? inheritedColor ?? schemeHex(theme?.extensions?.pptxColorScheme, colorMap, 'tx1');
   const rawBold = runProperties?.getAttribute('b') ?? fallbackProperties?.getAttribute('b');
   const rawItalic = runProperties?.getAttribute('i') ?? fallbackProperties?.getAttribute('i');
   const bold = rawBold == null ? inherited.bold ?? false : onOff(rawBold);
@@ -348,7 +367,8 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
   const supplementalScript = detectedScript === 'Latn' ? null : detectedScript;
   if (primary && !SUPPLEMENTAL_SCRIPTS[primary] && !NON_SUPPLEMENTAL_LANGUAGES.has(primary)) return null;
   const supplementalFont = supplementalScript ? theme.extensions.pptxFontScheme?.[fontRef]?.supplemental?.[supplementalScript] : null;
-  const resolvedComplexScript = supplementalFont ? normalizeFont(supplementalFont) : fontFamilyComplexScript;
+  const explicitComplexScript = child(runProperties, 'a', 'cs') || child(fallbackProperties, 'a', 'cs') || inherited.fontFamilyComplexScript;
+  const resolvedComplexScript = !explicitComplexScript && supplementalFont ? normalizeFont(supplementalFont) : fontFamilyComplexScript;
   if (!color || !fontFamily || !fontFamilyEastAsia || !resolvedComplexScript) return null;
   return {
     color,
@@ -500,8 +520,9 @@ async function projectObject(document, object, slide, load) {
   if (hasDirectFill) fill = simpleFill(props, theme, colorMap);
   else if (fillRef) {
     const base = fillFromStyle(vectors.fills, styleIndex(fillRef.getAttribute('idx')));
-    if (!base || fillOverride !== NO_COLOR_OVERRIDE && base.kind !== 'solid') return;
-    fill = fillOverride === NO_COLOR_OVERRIDE ? base : { ...base, color: fillOverride };
+    if (!base || base.kind === 'placeholder' && fillOverride === NO_COLOR_OVERRIDE) return;
+    if (fillOverride !== NO_COLOR_OVERRIDE && base.kind !== 'placeholder') return;
+    fill = fillOverride === NO_COLOR_OVERRIDE ? base : { kind: 'solid', color: fillOverride };
   } else fill = none();
   if (!fill) return;
   const line = child(props, 'a', 'ln');
@@ -509,11 +530,14 @@ async function projectObject(document, object, slide, load) {
   const lineOverride = referenceColor(lineRef, theme, colorMap);
   if (lineOverride === null) return;
   let stroke;
-  if (line) stroke = simpleStroke(line, theme, colorMap);
-  else if (lineRef) {
+  if (line) {
+    if (lineRef && !children(line).some(item => FILL_TAGS.includes(item.localName))) return;
+    stroke = simpleStroke(line, theme, colorMap);
+  } else if (lineRef) {
     const base = strokeFromStyle(vectors.lines, styleIndex(lineRef.getAttribute('idx')));
-    if (!base || lineOverride !== NO_COLOR_OVERRIDE && base.kind !== 'solid') return;
-    stroke = lineOverride === NO_COLOR_OVERRIDE ? base : { ...base, color: lineOverride };
+    if (!base || base.kind === 'placeholder' && lineOverride === NO_COLOR_OVERRIDE) return;
+    if (lineOverride !== NO_COLOR_OVERRIDE && base.kind !== 'placeholder') return;
+    stroke = lineOverride === NO_COLOR_OVERRIDE ? base : { kind: 'solid', color: lineOverride, widthEmu: base.widthEmu };
   } else stroke = none();
   if (!stroke) return;
   const text = body ? projectText(document, object, node, slide, theme, colorMap) : null;

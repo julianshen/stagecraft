@@ -73,6 +73,16 @@ export function resolvePptxColor(node, palette = {}, colorMap = {}) {
   return transformed ? rgbHex(transformed) : null;
 }
 
+/** Resolve a deferred scheme colour using the consuming slide's map and ordered transforms. */
+export function resolvePptxSchemeColor(slot, transforms = [], palette = {}, colorMap = {}) {
+  const mapped = colorMap[slot] ?? slot;
+  const rgb = hexRgb(palette[mapped]);
+  if (!rgb) return null;
+  const node = { children: transforms.map(transform => ({ localName: transform.name, getAttribute: () => transform.raw })) };
+  const transformed = applyTransforms(node, rgb);
+  return transformed ? rgbHex(transformed) : null;
+}
+
 /** Project only colours that can be proved complete; unsupported slots are omitted. */
 export function readPptxColorScheme(themeRoot) {
   const scheme = child(child(themeRoot, 'a', 'themeElements'), 'a', 'clrScheme');
