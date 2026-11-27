@@ -2,8 +2,31 @@ import { it, expect, describe } from 'vitest';
 import JSZip from 'jszip';
 import { writePptx } from '../../pptx/src/index.js';
 import { writeOdp } from '../../odp/src/index.js';
+import { createEditor } from '@stagecraft/core/editor';
+import { documentPlugin, presentationPlugin, validateDocument } from '@stagecraft/core/document';
 import { openPresentation } from './index.js';
+import { authoringDiff, withoutDisplayProof } from './authoring.js';
 const object = (id, type = 'text') => ({ id, type, geometry: { x: 12700, y: 25400, width: 1270000, height: 254000 }, extensions: { stagecraftAuthored: true }, ...(type === 'text' ? { text: { paragraphs: [{ id: id+'p', runs: [{ id: id+'r', text: 'Hello world', editable: true, style: { b: '1', i: '0', sz: '2400' }, extensions: { stagecraftAuthored: true } }] }] } } : { shape: 'ellipse', fill: '#123456' }) });
+const applyAuthoringDiff = (baseline, snapshot) => {
+  let delta;
+  const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const diff = (a, b) => {
+    if (equal(a, b)) return false;
+    if (delta.hook(a, b)) return true;
+    if (Array.isArray(a) && Array.isArray(b)) {
+      for (let index = 0; index < Math.max(a.length, b.length); index++) diff(a[index], b[index]);
+      return true;
+    }
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) diff(a[key], b[key]);
+      return true;
+    }
+    throw new Error('Unsupported direct authoring change');
+  };
+  delta = authoringDiff(baseline, snapshot, diff);
+  diff(baseline, snapshot);
+  return delta;
+};
 describe.each(['pptx','odp'])('%s native authoring', format => {
   it('adds native slides/objects, reorders/removes and edits original geometry and text together', async () => {
     const bytes = await (format === 'pptx' ? writePptx : writeOdp)({ title:'Deck', sections:[{id:'section',name:'Section',slides:['a']}], slides:[{id:'a',layout:'blank',elements:[{id:'t',type:'text',x:10,y:10,w:100,h:100,content:'Original'}]}] });
@@ -27,6 +50,318 @@ describe.each(['pptx','odp'])('%s native authoring', format => {
     expect((await session.export(session.document)).bytes).toEqual(bytes);
     const zip = await JSZip.loadAsync(result.bytes); expect(zip.file(format==='pptx'?'ppt/presentation.xml':'content.xml')).toBeTruthy();
   });
+});
+
+it('strips only display-proof extensions and preserves unrelated metadata', () => {
+  const value = {
+    extensions: {
+      stagecraftNativeAppearance: { input: 'x' },
+      stagecraftSlideAppearance: { input: 'x' },
+      stagecraftLayoutSummary: { input: 'x' },
+      pptxDefaultTextStyle: { fontSizePt: 18 },
+      pptxOtherTextStyle: { color: '#000000' },
+      pptxEndRunAppearance: { color: '#000000' },
+      pptxAppearance: { resolved: { color: '#000000' }, keep: true },
+      keep: { nested: true },
+    },
+  };
+  expect(withoutDisplayProof(value)).toEqual({ extensions: { pptxAppearance: { keep: true }, keep: { nested: true } } });
+  expect(withoutDisplayProof({ extensions: { stagecraftNativeAppearance: {} } })).toEqual({});
+  expect(withoutDisplayProof({ extensions: { pptxAppearance: { resolved: {} } } })).toEqual({});
+  expect(withoutDisplayProof(null)).toBeNull();
+  expect(withoutDisplayProof([])).toEqual([]);
+});
+
+it.each([
+  ['invalid paragraph alignment', n => { n.slides[0].objects[0].text.paragraphs[0].style.alignment = 'sideways'; }],
+  ['invalid paragraph spacing', n => { n.slides[0].objects[0].text.paragraphs[0].style.spaceBefore = -1; }],
+  ['invalid text inset', n => { n.slides[0].objects[0].bodyLayout.insets ??= {}; n.slides[0].objects[0].bodyLayout.insets.left = -1; }],
+  ['unknown text inset', n => { n.slides[0].objects[0].bodyLayout.insets ??= {}; n.slides[0].objects[0].bodyLayout.insets.middle = 1; }],
+  ['invalid slide name', n => { n.slides[0].name = 42; }],
+  ['oversized slide name', n => { n.slides[0].name = 'x'.repeat(257); }],
+  ['invalid slide notes', n => { n.slides[0].notes = {}; }],
+  ['oversized slide notes', n => { n.slides[0].notes = 'x'.repeat(20001); }],
+  ['invalid slide background', n => { n.slides[0].background = { type: 'gradient' }; }],
+  ['unsupported slide property', n => { n.slides[0].unexpected = true; }],
+  ['invalid editable fill', n => { n.slides[0].objects[1].fill = 'red'; }],
+  ['changed paragraph count', n => { n.slides[0].objects[0].text.paragraphs.push(structuredClone(n.slides[0].objects[0].text.paragraphs[0])); }],
+  ['changed paragraph identity', n => { n.slides[0].objects[0].text.paragraphs[0].id = 'changed'; }],
+  ['unsupported paragraph property', n => { n.slides[0].objects[0].text.paragraphs[0].unexpected = true; }],
+  ['invalid source slides collection', n => { n.slides = {}; }],
+  ['invalid source assets collection', n => { n.assets = {}; }],
+  ['invalid asset descriptor', n => { n.assets.push(null); }],
+  ['asset identity collision', n => { n.assets.push({ id: n.slides[0].objects[0].id }); }],
+  ['unsupported asset descriptor', n => { n.assets.push({ id: 'asset', extensions: { stagecraftAuthored: true, contentType: 'image/gif' } }); }],
+  ['extra asset extension', n => { n.assets.push({ id: 'asset', extensions: { stagecraftAuthored: true, contentType: 'image/png', extra: true } }); }],
+])('rejects invalid native authoring input: %s', async (_label, mutate) => {
+  const session = await open('pptx');
+  try {
+    const next = structuredClone(session.document);
+    mutate(next);
+    await expect(session.export(next)).rejects.toThrow();
+  } finally { session.dispose(); }
+});
+
+it('strips display proofs without masking unrelated extensions', () => {
+  expect(withoutDisplayProof('value')).toBe('value');
+  expect(withoutDisplayProof({ extensions: null })).toEqual({});
+  expect(withoutDisplayProof({ extensions: { pptxAppearance: null, keep: true } })).toEqual({ extensions: { keep: true } });
+  expect(withoutDisplayProof({ extensions: { stagecraftNativeAppearance: {}, pptxAppearance: { resolved: {} } } })).toEqual({});
+});
+
+describe.each(['pptx', 'odp'])('%s additional native authoring branches', format => {
+  it('writes full authored paragraph/run formatting and text layout', async () => {
+    const s = await open(format), n = structuredClone(s.document);
+    const text = object('formatted-text');
+    text.text.paragraphs[0].style = { alignment: 'right', spaceBefore: 12, spaceAfter: 4, lineSpacing: 120, indentStart: 914400, indentEnd: 457200, firstLineIndent: -228600, bullet: { type: 'char', char: '•' } };
+    text.text.paragraphs[0].runs[0].style = { b: '1', i: '1', sz: '2800', typeface: 'Courier New', eastAsian: 'SimSun', complexScript: 'Amiri', color: '#223344' };
+    text.bodyLayout = format === 'pptx'
+      ? { autofit: 'resize', wrap: 'square', anchor: 'middle', insets: { left: 12700, top: 25400, right: 38100, bottom: 50800 } }
+      : { autofit: 'resize' };
+    n.slides[0].objects.push(text);
+    const again = await openPresentation((await s.export(n)).bytes, { format });
+    const written = again.document.slides[0].objects.filter(o => o.text).at(-1);
+    expect(written.text.paragraphs[0].style).toMatchObject({ alignment: 'right', spaceBefore: 12, spaceAfter: 4, lineSpacing: 120, indentStart: 914400, indentEnd: 457200, firstLineIndent: -228600, bullet: { type: 'char', char: '•' } });
+    expect(written.bodyLayout.autofit).toBe('resize');
+  });
+
+  it('writes JPEG images and reuses registered media', async () => {
+    const s = await open(format), n = structuredClone(s.document);
+    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xff, 0xd9]);
+    const image = s.registerImage({ bytes: jpeg, contentType: 'image/jpeg' });
+    n.assets.push({ id: image.assetId, extensions: { stagecraftAuthored: true, contentType: 'image/jpeg' } });
+    const objectImage = id => ({ id, type: 'image', geometry: { x: 0, y: 0, width: 127000, height: 127000 }, extensions: { stagecraftAuthored: true }, image: { assetId: image.assetId, alt: 'JPEG' } });
+    n.slides[0].objects.push(objectImage('jpeg-one'), objectImage('jpeg-two'));
+    const out = await s.export(n);
+    const again = await openPresentation(out.bytes, { format });
+    expect(again.document.slides[0].objects.filter(o => o.type === 'image')).toHaveLength(2);
+  });
+
+  it('edits native fill and removes previously written notes', async () => {
+    const s = await open(format), n = structuredClone(s.document);
+    n.slides[0].objects[1].fill = '#abcdef';
+    n.slides[0].notes = 'Temporary note';
+    const first = await s.export(n);
+    const edited = await openPresentation(first.bytes, { format });
+    const next = structuredClone(edited.document);
+    delete next.slides[0].notes;
+    const out = await edited.export(next);
+    expect((await openPresentation(out.bytes, { format })).document.slides[0].notes).toBeUndefined();
+  });
+});
+
+it.each([
+  ['unsupported ODP layout key', n => { n.slides[0].objects[0].bodyLayout ??= {}; n.slides[0].objects[0].bodyLayout.wrap = 'none'; }],
+  ['ODP shrink autofit', n => { n.slides[0].objects[0].bodyLayout ??= {}; n.slides[0].objects[0].bodyLayout.autofit = 'shrink'; }],
+  ['non-list paragraph level', n => { n.slides[0].objects[0].text.paragraphs[0].style.level = 1; }],
+])('rejects unsupported ODP authoring: %s', async (_label, mutate) => {
+  const s = await open('odp');
+  try {
+    const n = structuredClone(s.document);
+    mutate(n);
+    await expect(s.export(n)).rejects.toThrow();
+  } finally { s.dispose(); }
+});
+
+it.each(['pptx', 'odp'])('rejects dangling authored image references in %s', async format => {
+  const s = await open(format);
+  try {
+    const n = structuredClone(s.document);
+    n.assets.push({ id: 'missing-image', extensions: { stagecraftAuthored: true, contentType: 'image/png' } });
+    n.slides[0].objects.push({ id: 'dangling-image', type: 'image', geometry: { x: 0, y: 0, width: 100, height: 100 }, extensions: { stagecraftAuthored: true }, image: { assetId: 'missing-image' } });
+    await expect(s.export(n)).rejects.toThrow(/Missing image bytes/);
+  } finally { s.dispose(); }
+});
+
+it('writes and clears native PPTX paragraph and body-layout properties', async () => {
+  const s = await open('pptx');
+  try {
+    const editor = createEditor({ document: s.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+    const paragraph = editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0];
+    const format = { alignment: 'center', spaceBefore: 12, spaceAfter: 4, lineSpacing: 120, level: 0, indentStart: 914400, indentEnd: 457200, firstLineIndent: -228600, bullet: { type: 'number', format: 'lowerAlphaPeriod' } };
+    expect(editor.dispatch('document.setParagraphFormat', { paragraphId: paragraph.id, format }).changed).toBe(true);
+    const written = await s.export(editor.getSnapshot().document);
+    const reopened = await openPresentation(written.bytes, { format: 'pptx' });
+    expect(reopened.document.slides[0].objects[0].text.paragraphs[0].style).toMatchObject(format);
+
+    const clear = Object.fromEntries(Object.keys(format).map(key => [key, null]));
+    expect(editor.dispatch('document.setParagraphFormat', { paragraphId: paragraph.id, format: clear }).changed).toBe(true);
+    const objectId = editor.getSnapshot().document.slides[0].objects[0].id;
+    const layout = { autofit: 'none', wrap: 'none', anchor: 'middle', insets: { left: 12700, top: 25400, right: 38100, bottom: 50800 } };
+    expect(editor.dispatch('document.setTextBodyLayout', { objectId, layout }).changed).toBe(true);
+    expect(editor.dispatch('document.setTextBodyLayout', { objectId, layout: { autofit: null, wrap: null, anchor: null, insets: { left: null, top: null, right: null, bottom: null } } }).changed).toBe(true);
+    const cleared = await s.export(editor.getSnapshot().document);
+    expect(cleared.dirtyParts.length).toBeGreaterThan(0);
+  } finally { s.dispose(); }
+});
+
+it('writes and clears native ODP autofit and rejects non-list authored levels', async () => {
+  const s = await open('odp');
+  try {
+    const editor = createEditor({ document: s.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+    const objectId = editor.getSnapshot().document.slides[0].objects[0].id;
+    expect(editor.dispatch('document.setTextBodyLayout', { objectId, layout: { autofit: 'none' } }).changed).toBe(true);
+    const written = await s.export(editor.getSnapshot().document);
+    expect((await openPresentation(written.bytes, { format: 'odp' })).document.slides[0].objects[0].bodyLayout.autofit).toBe('none');
+    expect(editor.dispatch('document.setTextBodyLayout', { objectId, layout: { autofit: null } }).changed).toBe(true);
+    expect((await s.export(editor.getSnapshot().document)).bytes).toEqual((await s.export(s.document)).bytes);
+
+    const n = structuredClone(s.document);
+    const text = object('odp-level');
+    text.text.paragraphs[0].style ??= {};
+    text.text.paragraphs[0].style.level = 1;
+    n.slides[0].objects.push(text);
+    await expect(s.export(n)).rejects.toThrow(/Non-list ODP paragraph levels/);
+  } finally { s.dispose(); }
+});
+
+it('recreates ODP automatic styles and missing manifest entries for authored images', async () => {
+  const s = await open('odp');
+  try {
+    const baseline = await JSZip.loadAsync((await s.export(s.document)).bytes);
+    const content = await baseline.file('content.xml').async('string');
+    baseline.file('content.xml', content.replace(/<office:automatic-styles>[\s\S]*?<\/office:automatic-styles>/, ''));
+    const session = await openPresentation(await baseline.generateAsync({ type: 'uint8array' }), { format: 'odp' });
+    try {
+      const image = session.registerImage({ bytes: PNG_1PX, contentType: 'image/png' });
+      const n = structuredClone(session.document);
+      n.assets.push({ id: image.assetId, extensions: { stagecraftAuthored: true, contentType: 'image/png' } });
+      n.slides[0].objects.push({ id: 'odp-auto-style', type: 'image', geometry: { x: 0, y: 0, width: 100, height: 100 }, extensions: { stagecraftAuthored: true }, image: { assetId: image.assetId } });
+      const out = await session.export(n);
+      expect((await openPresentation(out.bytes, { format: 'odp' })).document.slides[0].objects.some(object => object.type === 'image')).toBe(true);
+
+      const zip = await JSZip.loadAsync(out.bytes);
+      const manifest = await zip.file('META-INF/manifest.xml').async('string');
+      zip.file('META-INF/manifest.xml', manifest.replace(/<manifest:file-entry manifest:full-path="Pictures\/[^"]+"[^>]*\/>/, ''));
+      const reopened = await openPresentation(await zip.generateAsync({ type: 'uint8array' }), { format: 'odp' });
+      const next = structuredClone(reopened.document);
+      const second = reopened.registerImage({ bytes: PNG_1PX, contentType: 'image/png' });
+      next.assets.push({ id: second.assetId, extensions: { stagecraftAuthored: true, contentType: 'image/png' } });
+      next.slides[0].objects.push({ id: 'odp-second-image', type: 'image', geometry: { x: 0, y: 0, width: 100, height: 100 }, extensions: { stagecraftAuthored: true }, image: { assetId: second.assetId } });
+      expect((await reopened.export(next)).dirtyParts.length).toBeGreaterThan(0);
+    } finally { session.dispose(); }
+  } finally { s.dispose(); }
+});
+
+it('adds missing JPEG content types and notes relationships', async () => {
+  const s = await open('pptx');
+  try {
+    const baseline = await JSZip.loadAsync((await s.export(s.document)).bytes);
+    const types = await baseline.file('[Content_Types].xml').async('string');
+    baseline.file('[Content_Types].xml', types.replace(/<Default Extension="jpeg"[^>]*\/>/, ''));
+    const session = await openPresentation(await baseline.generateAsync({ type: 'uint8array' }), { format: 'pptx' });
+    try {
+      const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xff, 0xd9]);
+      const image = session.registerImage({ bytes: jpeg, contentType: 'image/jpeg' });
+      const n = structuredClone(session.document);
+      n.assets.push({ id: image.assetId, extensions: { stagecraftAuthored: true, contentType: 'image/jpeg' } });
+      n.slides[0].objects.push({ id: 'jpeg-missing-type', type: 'image', geometry: { x: 0, y: 0, width: 100, height: 100 }, extensions: { stagecraftAuthored: true }, image: { assetId: image.assetId } });
+      n.slides[0].notes = 'Notes without a retained relationship';
+      const out = await session.export(n);
+      expect((await openPresentation(out.bytes, { format: 'pptx' })).document.slides[0].notes).toBe('Notes without a retained relationship');
+    } finally { session.dispose(); }
+  } finally { s.dispose(); }
+});
+
+it('wraps PPTX slide ids after the schema maximum', async () => {
+  const s = await open('pptx');
+  const baseline = await JSZip.loadAsync((await s.export(s.document)).bytes);
+  const part = 'ppt/presentation.xml';
+  const doc = new DOMParser().parseFromString(await baseline.file(part).async('string'), 'application/xml');
+  const refs = Array.from(doc.getElementsByTagNameNS('http://schemas.openxmlformats.org/presentationml/2006/main', 'sldId'));
+  refs[0].setAttribute('id', '2147483646');
+  refs[1].setAttribute('id', '2147483647');
+  baseline.file(part, new XMLSerializer().serializeToString(doc));
+  const session = await openPresentation(await baseline.generateAsync({ type: 'uint8array' }), { format: 'pptx' });
+  try {
+    const next = structuredClone(session.document);
+    next.slides.push({ id: 'wrapped-slide', objects: [], extensions: { stagecraftAuthored: true } });
+    const out = await JSZip.loadAsync((await session.export(next)).bytes);
+    const written = new DOMParser().parseFromString(await out.file(part).async('string'), 'application/xml');
+    const ids = Array.from(written.getElementsByTagNameNS('http://schemas.openxmlformats.org/presentationml/2006/main', 'sldId')).map(node => Number(node.getAttribute('id')));
+    expect(ids.at(-1)).toBe(256);
+  } finally { session.dispose(); }
+});
+
+it.each([
+  ['non-object paragraph style', n => { n.slides[0].objects[0].text.paragraphs[0].style = 'bad'; }],
+  ['invalid paragraph style value', n => { n.slides[0].objects[0].text.paragraphs[0].style = { alignment: 'bad' }; }],
+  ['conflicting paragraph alias', n => { n.slides[0].objects[0].text.paragraphs[0].style = { alignment: 'left', algn: 'left' }; }],
+  ['non-object body layout', n => { n.slides[0].objects[0].bodyLayout = 'bad'; }],
+  ['non-object insets', n => { n.slides[0].objects[0].bodyLayout = { insets: 'bad' }; }],
+  ['invalid inset side', n => { n.slides[0].objects[0].bodyLayout = { insets: { middle: 1 } }; }],
+  ['oversized inset', n => { n.slides[0].objects[0].bodyLayout = { insets: { left: 10000001 } }; }],
+  ['invalid asset collection', n => { n.assets = {}; }],
+  ['asset with extra keys', n => { n.assets.push({ id: 'asset', extensions: { stagecraftAuthored: true, contentType: 'image/png' }, extra: true }); }],
+  ['empty asset id', n => { n.assets.push({ id: '', extensions: { stagecraftAuthored: true, contentType: 'image/png' } }); }],
+  ['duplicate source identity', n => { n.slides[0].objects[1].id = n.slides[0].objects[0].id; }],
+  ['invalid object collection', n => { n.slides[0].objects = {}; }],
+  ['invalid slide name', n => { n.slides[0].name = 1; }],
+  ['invalid notes', n => { n.slides[0].notes = 1; }],
+  ['invalid background', n => { n.slides[0].background = { type: 'solid', color: 'bad' }; }],
+  ['invalid fill', n => { n.slides[0].objects[1].fill = 'bad'; }],
+  ['changed paragraph count', n => { n.slides[0].objects[0].text.paragraphs.push({ id: 'extra', runs: [] }); }],
+  ['changed paragraph id', n => { n.slides[0].objects[0].text.paragraphs[0].id = 'extra'; }],
+  ['unsupported paragraph key', n => { n.slides[0].objects[0].text.paragraphs[0].extra = true; }],
+])('rejects invalid direct authoring diffs: %s', async (_label, mutate) => {
+  const session = await open('pptx');
+  try {
+    const baseline = session.document, next = structuredClone(baseline);
+    mutate(next);
+    expect(() => applyAuthoringDiff(baseline, next)).toThrow();
+  } finally { session.dispose(); }
+});
+
+it('reaches paragraph and layout validators through direct diffs', async () => {
+  const session = await open('pptx');
+  try {
+    for (const [mutate, message] of [
+      [n => { n.slides[0].objects[0].text.paragraphs[0].style = 'bad'; }, 'Invalid paragraph style'],
+      [n => { n.slides[0].objects[0].text.paragraphs[0].style = { alignment: 'bad' }; }, 'Invalid paragraph formatting'],
+      [n => { n.slides[0].objects[0].bodyLayout = 'bad'; }, 'Invalid text layout'],
+      [n => { n.slides[0].objects[0].bodyLayout = { insets: 'bad' }; }, 'Invalid text insets'],
+    ]) {
+      const baseline = session.document, next = structuredClone(baseline);
+      mutate(next);
+      expect(() => applyAuthoringDiff(baseline, next)).toThrow(message);
+    }
+  } finally { session.dispose(); }
+});
+
+it('refuses removing retained assets through the direct authoring diff', async () => {
+  const session = await open('pptx');
+  try {
+    const image = session.registerImage({ bytes: PNG_1PX, contentType: 'image/png' });
+    const baseline = structuredClone(session.document);
+    baseline.assets.push({ id: image.assetId, extensions: { stagecraftAuthored: true, contentType: 'image/png' } });
+    const next = structuredClone(baseline);
+    next.assets = [];
+    expect(() => applyAuthoringDiff(baseline, next)).toThrow(/cannot be removed/);
+  } finally { session.dispose(); }
+});
+
+it('ignores paragraph and run display sidecars in native authoring hooks', async () => {
+  const session = await open('pptx');
+  try {
+    const baseline = session.document;
+    const bytes = (await session.export(baseline)).bytes;
+    const next = structuredClone(baseline);
+    for (const slide of next.slides) for (const object of slide.objects) for (const paragraph of object.text?.paragraphs ?? []) {
+      paragraph.extensions = { ...paragraph.extensions, pptxEndRunAppearance: { color: '#000000' } };
+      for (const run of paragraph.runs) run.extensions = { ...run.extensions, pptxAppearance: { ...run.extensions?.pptxAppearance, resolved: { color: '#000000' }, script: 'Latn' } };
+    }
+    const added = await session.export(next);
+    expect(added.dirtyParts).toEqual([]);
+    expect(Buffer.from(added.bytes).equals(Buffer.from(bytes))).toBe(true);
+    const removed = structuredClone(next);
+    for (const slide of removed.slides) for (const object of slide.objects) for (const paragraph of object.text?.paragraphs ?? []) {
+      delete paragraph.extensions.pptxEndRunAppearance;
+      for (const run of paragraph.runs) { delete run.extensions.pptxAppearance.resolved; delete run.extensions.pptxAppearance.script; }
+    }
+    const stripped = await session.export(removed);
+    expect(stripped.dirtyParts).toEqual([]);
+    expect(Buffer.from(stripped.bytes).equals(Buffer.from(bytes))).toBe(true);
+  } finally { session.dispose(); }
 });
 
 it.each([

@@ -427,7 +427,7 @@ describe('native appearance proof helpers', () => {
   });
 
   it('requires a positive safe width for every solid stroke proof', () => {
-    for (const stroke of [{ kind: 'solid', color: '#112233' }, { kind: 'solid', color: '#112233', widthEmu: 0 }, { kind: 'solid', color: '#112233', widthEmu: 1.5 }]) {
+    for (const stroke of [{ kind: 'solid', color: '#112233' }, { kind: 'solid', color: '#112233', widthEmu: 0 }, { kind: 'solid', color: '#112233', widthEmu: 1.5 }, { kind: 'none', extra: true }, { kind: 'solid', color: '#112233', widthEmu: 1, extra: true }]) {
       const object = proveObject(nativeObject());
       object.extensions.stagecraftNativeAppearance.stroke = stroke;
       expect(isNativeObjectAppearanceValid(object)).toBe(false);

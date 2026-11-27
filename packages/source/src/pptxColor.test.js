@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
-import { readPptxColorMap, readPptxColorScheme, resolvePptxColor } from './pptxColor.js';
+import { readPptxColorMap, readPptxColorScheme, resolvePptxColor, resolvePptxSchemeColor } from './pptxColor.js';
 
 const A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
 const P = 'http://schemas.openxmlformats.org/presentationml/2006/main';
@@ -81,8 +81,9 @@ describe('PPTX appearance colour resolution', () => {
   it('resolves recursive scheme colours and clamps each luminance transform', () => {
     const recursive = parse('<a:theme xmlns:a="' + A + '"><a:themeElements><a:clrScheme>'
       + '<a:dk1><a:srgbClr val="112233"/></a:dk1><a:accent1><a:schemeClr val="dk1"><a:lumMod val="50000"/></a:schemeClr></a:accent1>'
+      + '<a:bg1><a:schemeClr val="lt1"/></a:bg1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1>'
       + '</a:clrScheme></a:themeElements></a:theme>');
-    expect(readPptxColorScheme(recursive.documentElement)).toEqual({ dk1: '#112233', accent1: '#09111A' });
+    expect(readPptxColorScheme(recursive.documentElement)).toEqual({ dk1: '#112233', accent1: '#09111A', bg1: '#FFFFFF', lt1: '#FFFFFF' });
     expect(resolvePptxColor(color('<x xmlns:a="' + A + '"><a:srgbClr val="FFFFFF"><a:lumOff val="20000"/><a:lumMod val="50000"/></a:srgbClr></x>'), {}, {})).toBe('#808080');
   });
 
@@ -94,6 +95,17 @@ describe('PPTX appearance colour resolution', () => {
       + '<a:accent2><a:schemeClr val="dk2"/></a:accent2>'
       + '</a:clrScheme></a:themeElements></a:theme>');
     expect(readPptxColorScheme(theme.documentElement)).toEqual({ dk1: '#808080', accent1: '#808080' });
+  });
+
+  it('resolves deferred scheme colours with ordered transforms and fails closed', () => {
+    const palette = { dk1: '#112233', lt1: '#FFFFFF' };
+    expect(resolvePptxSchemeColor('tx1', [], palette, { tx1: 'dk1' })).toBe('#112233');
+    expect(resolvePptxSchemeColor('tx1', [{ name: 'lumMod', raw: '50000' }], palette, { tx1: 'dk1' })).toBe('#09111A');
+    expect(resolvePptxSchemeColor('bg1', [{ name: 'lumOff', raw: '20000' }], palette, { bg1: 'lt1' })).toBe('#FFFFFF');
+    expect(resolvePptxSchemeColor('missing', [], palette, {})).toBeNull();
+    expect(resolvePptxSchemeColor('tx1', [{ name: 'alpha', raw: '50000' }], palette, { tx1: 'dk1' })).toBeNull();
+    expect(resolvePptxSchemeColor('tx1', [{ name: 'lumMod', raw: 'bad' }], palette, { tx1: 'dk1' })).toBeNull();
+    expect(resolvePptxSchemeColor('tx1', [{ name: 'lumOff', raw: '9007199254740992' }], palette, { tx1: 'dk1' })).toBeNull();
   });
 
   it('reads only known clrMap slots', () => {

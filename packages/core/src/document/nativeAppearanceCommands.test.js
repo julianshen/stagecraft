@@ -43,7 +43,7 @@ function makeEditor(object = textObject(), slide = {}, documentOverrides = {}) {
       },
     }],
   });
-  document.slides[0].extensions.stagecraftSlideAppearance.input = nativeSlideAppearanceInput(document.slides[0]);
+  document.slides[0].extensions.stagecraftSlideAppearance.input = nativeSlideAppearanceInput(document.slides[0], document);
   return createEditor({ document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
 }
 
@@ -120,6 +120,27 @@ describe('native appearance command invalidation', () => {
     expect(editor.dispatch('presentation.setSlideProperties', { slideId: 's1', properties: { background: null } }).changed).toBe(true);
     expect(editor.getSnapshot().document.slides[0].extensions.legacy.bgColor).toBeUndefined();
     expect(editor.getSnapshot().document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
+  });
+
+  it('invalidates the proof when a text edit changes the resolved script', () => {
+    const object = textObject();
+    object.text.paragraphs[0].runs[0].extensions.pptxAppearance.script = 'Latn';
+    const editor = makeEditor(object);
+    expect(editor.dispatch('document.setRunText', { runId: 'r1', text: 'مرحبا' }).changed).toBe(true);
+    expect(proof(editor)).toBeUndefined();
+
+    const mixed = textObject();
+    mixed.text.paragraphs[0].runs[0].text = 'مرحبا Native';
+    mixed.text.paragraphs[0].runs[0].extensions.pptxAppearance.script = 'Arab';
+    const mixedEditor = makeEditor(mixed);
+    expect(mixedEditor.dispatch('document.setRunText', { runId: 'r1', text: 'مرحبا नमस्ते' }).changed).toBe(true);
+    expect(proof(mixedEditor)).toBeUndefined();
+
+    const cyrillic = textObject();
+    cyrillic.text.paragraphs[0].runs[0].extensions.pptxAppearance.script = 'Latn';
+    const cyrillicEditor = makeEditor(cyrillic);
+    expect(cyrillicEditor.dispatch('document.setRunText', { runId: 'r1', text: 'Привет' }).changed).toBe(true);
+    expect(proof(cyrillicEditor)).toBeUndefined();
   });
 
   it.each([

@@ -66,6 +66,45 @@ function* sourceObjects(document) {
     for (const owner of [...document.slides, ...document.layouts, ...document.masters]) yield* descend(owner.objects);
 }
 
+export const cleanPptxAppearance = value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const out = { ...value };
+    delete out.resolved;
+    delete out.script;
+    return out;
+};
+const cleanExtensions = value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const out = { ...value };
+    delete out.stagecraftNativeAppearance;
+    delete out.stagecraftSlideAppearance;
+    delete out.stagecraftLayoutSummary;
+    delete out.pptxDefaultTextStyle;
+    delete out.pptxOtherTextStyle;
+    delete out.pptxEndRunAppearance;
+    delete out.pptxColorMapOverride;
+    if (Object.hasOwn(out, 'pptxAppearance')) {
+        const appearance = cleanPptxAppearance(out.pptxAppearance);
+        if (appearance && Object.keys(appearance).length) out.pptxAppearance = appearance;
+        else delete out.pptxAppearance;
+    }
+    return out;
+};
+const proofNeutralExtensions = value => {
+    const clean = cleanExtensions(value);
+    return clean && Object.keys(clean).length ? clean : undefined;
+};
+export const withoutDisplayProof = value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const out = cleanExtensions({ ...value });
+    if (Object.hasOwn(out, 'extensions')) {
+        const extensions = cleanExtensions(out.extensions);
+        if (extensions && Object.keys(extensions).length) out.extensions = extensions;
+        else delete out.extensions;
+    }
+    return out;
+};
+
 /** Structural authorization is based exclusively on the retained private baseline. */
 export function authoringDiff(baseline, snapshot, diff) {
     if (!snapshot.slides.length && !equal(baseline, snapshot)) throw new Error('Native export requires at least one slide');
@@ -82,8 +121,10 @@ export function authoringDiff(baseline, snapshot, diff) {
     for (const slide of baseline.slides) owners.set(slide.objects, slide);
     /** Per-baseline-object edit rules: which keys this writer can rewrite in place. */
     const objectRules = new Map();
+    const nativeRuns = new Set();
     const slideObjects = new Set(baseline.slides.flatMap(s => s.objects));
     for (const object of sourceObjects(baseline)) {
+        for (const paragraph of object.text?.paragraphs ?? []) for (const run of paragraph.runs) nativeRuns.add(run);
         objectRules.set(object, {
             geometry: slideObjects.has(object) && object.extensions?.editableGeometry === true,
             fill: slideObjects.has(object) && object.extensions?.editableFill === true && ['rect', 'ellipse'].includes(object.shape),
@@ -113,6 +154,11 @@ export function authoringDiff(baseline, snapshot, diff) {
             }
             for (const asset of a) if (!b.some(item => item?.id === asset.id)) throw new Error('Source assets cannot be removed');
             return true;
+        }
+        if (nativeRuns.has(a)) {
+            const changed = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(key => !equal(a[key], b[key]));
+            return changed.length > 0 && changed.every(key => key === 'extensions'
+                && equal(proofNeutralExtensions(a[key]), proofNeutralExtensions(b[key])));
         }
         if (owners.has(a)) {
             if (!Array.isArray(b)) throw new Error('Invalid source structure');
@@ -149,6 +195,7 @@ export function authoringDiff(baseline, snapshot, diff) {
             }
             for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
                 if (key === 'objects' || SLIDE_PROPERTIES.includes(key)) continue;
+                if (key === 'extensions' && equal(proofNeutralExtensions(a[key]), proofNeutralExtensions(b[key]))) continue;
                 if (!equal(a[key], b[key])) throw new Error('Unsupported slide property');
             }
             if (Object.keys(properties).length) slideProperties.push({slide: a, properties});
@@ -182,7 +229,9 @@ export function authoringDiff(baseline, snapshot, diff) {
                     if (!equal(before.style, after.style)) { validateParagraphChange(before.style, after.style); paragraphFormats.push({ object, paragraph: before, style: after.style }); }
                     diff(before.runs, after.runs);
                     for (const key of new Set([...Object.keys(before), ...Object.keys(after)]))
-                        if (key !== 'runs' && key !== 'style' && !equal(before[key], after[key])) throw new Error('Unsupported paragraph structure');
+                        if (key !== 'runs' && key !== 'style'
+                            && !equal(key === 'extensions' ? proofNeutralExtensions(before[key]) : before[key],
+                                key === 'extensions' ? proofNeutralExtensions(after[key]) : after[key])) throw new Error('Unsupported paragraph structure');
                 }
             }
             if (changed.includes('bodyLayout') && rule.bodyLayout) { validateLayoutChange(a.bodyLayout, b.bodyLayout); bodyLayouts.push({ object, before: a.bodyLayout ?? null, after: b.bodyLayout ?? null }); }
