@@ -289,6 +289,7 @@ function projectRunOverrides(properties, theme, colorMap) {
       if (children(item).length !== 1) return null;
       const colorNode = children(item)[0];
       if (is(colorNode, 'a', 'schemeClr')) {
+        if (colorNode.getAttribute('val') === 'phClr') return null;
         const transforms = children(colorNode).map(transform => ({ name: transform.localName, raw: transform.getAttribute('val') }));
         if (transforms.some(transform => !['lumMod', 'lumOff'].includes(transform.name)
           || !/^\d+$/.test(transform.raw ?? '') || !Number.isSafeInteger(Number(transform.raw)))) return null;
@@ -367,7 +368,7 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
     ? resolvePptxSchemeColor(inherited.colorDefinition.scheme, inherited.colorDefinition.transforms, theme?.extensions?.pptxColorScheme, colorMap)
     : inherited.color;
   const color = colorNode ? resolvePptxColor(colorNode, theme?.extensions?.pptxColorScheme, colorMap)
-    : baseColor ?? inheritedColor ?? schemeHex(theme?.extensions?.pptxColorScheme, colorMap, 'tx1');
+    : baseColor ?? (Object.hasOwn(inherited, 'colorDefinition') ? inheritedColor : inherited.color ?? schemeHex(theme?.extensions?.pptxColorScheme, colorMap, 'tx1'));
   const rawBold = runProperties?.getAttribute('b') ?? fallbackProperties?.getAttribute('b');
   const rawItalic = runProperties?.getAttribute('i') ?? fallbackProperties?.getAttribute('i');
   const bold = rawBold == null ? inherited.bold ?? false : onOff(rawBold);
