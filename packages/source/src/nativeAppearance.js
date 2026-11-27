@@ -243,6 +243,10 @@ const resolveFontAlias = (value, theme) => {
     const supplemental = fonts?.[group]?.supplemental ?? {};
     if (['Jpan', 'Hang', 'Hani'].some(script => supplemental[script])) return null;
   }
+  if (target === 'complexScript' && !selected) {
+    const supplemental = fonts?.[group]?.supplemental ?? {};
+    if (['Arab', 'Syrc', 'Thaa', 'Nkoo'].some(script => supplemental[script])) return null;
+  }
   return normalizeFont(selected || fonts?.[group]?.latin);
 };
 
@@ -307,6 +311,19 @@ function projectRunOverrides(properties, theme, colorMap) {
   return out;
 }
 
+function mergeInheritedStyles(...styles) {
+  const merged = {};
+  for (const style of styles) {
+    if (!style) continue;
+    if (Object.hasOwn(style, 'color') || Object.hasOwn(style, 'colorDefinition')) {
+      delete merged.color;
+      delete merged.colorDefinition;
+    }
+    Object.assign(merged, style);
+  }
+  return merged;
+}
+
 function inheritedTextStyle(styleRoot, theme, colorMap) {
   if (!styleRoot) return {};
   const defaults = { marL: '0', algn: 'l', defTabSz: '914400', rtl: '0', eaLnBrk: '1', latinLnBrk: '0', hangingPunct: '1' };
@@ -320,7 +337,7 @@ function inheritedTextStyle(styleRoot, theme, colorMap) {
   const baseStyle = projectRunOverrides(base ? child(base, 'a', 'defRPr') : null, theme, colorMap);
   const levelStyle = projectRunOverrides(level ? child(level, 'a', 'defRPr') : null, theme, colorMap);
   if (baseStyle === null || levelStyle === null) return null;
-  return { ...baseStyle, ...levelStyle };
+  return mergeInheritedStyles(baseStyle, levelStyle);
 }
 
 function resolveRunFont(runProperties, fallbackProperties, theme, fontRef, slot, inheritedFont) {
@@ -424,11 +441,11 @@ function projectText(document, object, node, slide, theme, colorMap) {
   const layout = slide.layoutId ? document.layouts.find(item => item.id === slide.layoutId) : null;
   const master = layout?.masterId ? document.masters.find(item => item.id === layout.masterId) : null;
   if (document.extensions.pptxDefaultTextStyle === null || layout?.extensions.pptxOtherTextStyle === null || master?.extensions.pptxOtherTextStyle === null) return null;
-  const inherited = {
-    ...document.extensions.pptxDefaultTextStyle,
-    ...master?.extensions.pptxOtherTextStyle,
-    ...layout?.extensions.pptxOtherTextStyle,
-  };
+  const inherited = mergeInheritedStyles(
+    document.extensions.pptxDefaultTextStyle,
+    master?.extensions.pptxOtherTextStyle,
+    layout?.extensions.pptxOtherTextStyle,
+  );
   if (object.bodyLayout?.autofit === 'shrink' || object.bodyLayout?.autofit === 'resize') return null;
   if (!supportedTextXml(node, body, theme) || allPlaceholdersOrLists(node)) return null;
   let fontRef = object.extensions.pptxTextMetrics.fontRef;
