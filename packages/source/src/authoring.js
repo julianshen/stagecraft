@@ -838,8 +838,19 @@ export function readPptxBodyLayout(bodyPr) {
         if (/^\d+$/.test(raw ?? '')) insets[side] = Number(raw);
     }
     if (Object.keys(insets).length) layout.insets = insets;
+    const normAutofit = child(bodyPr, 'a', 'normAutofit');
     if (child(bodyPr, 'a', 'spAutoFit')) layout.autofit = 'resize';
-    else if (child(bodyPr, 'a', 'normAutofit')) layout.autofit = 'shrink';
+    else if (normAutofit) {
+        layout.autofit = 'shrink';
+        const fit = {};
+        for (const [key, minimum] of [['fontScale', 1], ['lnSpcReduction', 0]]) {
+            const raw = normAutofit.getAttribute(key);
+            if (!/^\d+$/.test(raw ?? '')) continue;
+            const value = Number(raw);
+            if (Number.isSafeInteger(value) && value >= minimum && value <= 100000) fit[key] = value;
+        }
+        layout.fit = fit;
+    }
     else if (child(bodyPr, 'a', 'noAutofit')) layout.autofit = 'none';
     return layout;
 }
