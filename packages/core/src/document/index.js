@@ -600,7 +600,9 @@ function setParagraphFormat(document, payload) {
     nextStyle[key] = copy(value);
     if (raw) delete nextStyle[raw];
   }
-  if (!jsonEqual(beforeStyle, nextStyle)) paragraph.style = nextStyle;
+  if (nextStyle === null) {
+    if (beforeStyle !== undefined) delete paragraph.style;
+  } else if (!jsonEqual(beforeStyle, nextStyle)) paragraph.style = nextStyle;
   // A level-1+ ODP paragraph without a bullet cannot be represented outside a text:list, so bullet
   // removal must clear the level in the same command; the state is rejected atomically instead of
   // breaking export later ('Non-list ODP paragraph levels are unsupported').
@@ -1313,7 +1315,8 @@ export const presentationPlugin = Object.freeze({
       if (properties.background !== undefined) {
         const previous = slide.background;
         const next = properties.background;
-        const unchanged = next === null ? previous === undefined : previous?.type === next.type && previous?.color?.toLowerCase() === next.color;
+        const legacyBackground = record(slide.extensions?.legacy) && Object.hasOwn(slide.extensions.legacy, 'bgColor');
+        const unchanged = next === null ? previous === undefined && !legacyBackground : previous?.type === next.type && previous?.color?.toLowerCase() === next.color;
         if (!unchanged) {
           if (record(slide.extensions?.legacy)) delete slide.extensions.legacy.bgColor;
           if (next === null) delete slide.background;
