@@ -472,6 +472,7 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
 
 function supportedAutofitXml(bodyPr) {
   const nodes = children(bodyPr);
+  if (nodes.length === 0) return true;
   if (nodes.length !== 1) return false;
   const autofit = nodes[0];
   if (is(autofit, 'a', 'noAutofit') || is(autofit, 'a', 'spAutoFit')) {
