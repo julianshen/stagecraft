@@ -1,5 +1,6 @@
 import {
   NATIVE_APPEARANCE_INPUT_MAX_BYTES,
+  isNativeAppearanceBackgroundValid,
   nativeAppearanceContext,
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
@@ -222,8 +223,9 @@ async function projectEntityBackgrounds(document, load) {
               ? { kind: 'scheme', scheme: colorNode.getAttribute('val'), transforms: [] }
               : resolvePptxColor(colorNode, {}, {});
             const color = resolved && typeof resolved === 'string' ? { kind: 'solid', color: resolved } : resolved;
-            value = color && (color.kind !== 'solid' || definition.transforms.length === 0)
-              ? { ...color, transforms: [...(color.transforms ?? []), ...definition.transforms] } : UNSUPPORTED_BACKGROUND;
+            if (!color || (color.kind === 'solid' && definition.transforms.length)) value = UNSUPPORTED_BACKGROUND;
+            else value = color.kind === 'scheme'
+              ? { kind: 'scheme', scheme: color.scheme, transforms: [...(color.transforms ?? []), ...definition.transforms] } : color;
           }
         }
       } else {
@@ -259,14 +261,16 @@ function effectiveBackground(document, entity, own, fallback = null) {
   const definition = inheritedBackgroundDefinition(document, entity, own);
   if (definition === UNSUPPORTED_BACKGROUND) return null;
   const { theme, colorMap } = nativeAppearanceContext(document, entity);
+  let background = fallback;
   if (definition !== undefined) {
     if (definition.kind === 'scheme' && !theme?.source?.part) return null;
-    return resolveBackgroundDefinition(definition, theme, colorMap);
+    background = resolveBackgroundDefinition(definition, theme, colorMap);
+  } else if (!background) {
+    if (!theme?.source?.part || !colorMap) return null;
+    const color = schemeHex(theme.extensions?.pptxColorScheme, colorMap, 'bg1');
+    background = color ? { kind: 'solid', color } : null;
   }
-  if (fallback) return fallback;
-  if (!theme?.source?.part || !colorMap) return null;
-  const color = schemeHex(theme.extensions?.pptxColorScheme, colorMap, 'bg1');
-  return color ? { kind: 'solid', color } : null;
+  return isNativeAppearanceBackgroundValid(background) ? background : null;
 }
 
 const normalizeFont = value => {

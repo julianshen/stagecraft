@@ -195,11 +195,11 @@ export function nativeLayoutAppearanceInput(entity, document) {
   });
 }
 
-const validBackground = value => record(value) && (value.kind === 'none'
+export const isNativeAppearanceBackgroundValid = value => record(value) && (value.kind === 'none'
   ? Object.keys(value).length === 1
   : value.kind === 'solid' && exactKeys(value, ['kind', 'color']) && solidColor(value.color));
-const validFill = value => validBackground(value);
-const validStroke = value => value?.kind === 'none' && validBackground(value)
+const validFill = value => isNativeAppearanceBackgroundValid(value);
+const validStroke = value => value?.kind === 'none' && isNativeAppearanceBackgroundValid(value)
   || exactKeys(value, ['kind', 'color', 'widthEmu'])
   && value.kind === 'solid' && solidColor(value.color)
   && Number.isSafeInteger(value.widthEmu) && value.widthEmu > 0;
@@ -268,7 +268,7 @@ export function isNativeSlideAppearanceValid(slide, document) {
     && typeof proof.input === 'string'
     && inputBytes(proof.input) <= NATIVE_APPEARANCE_INPUT_MAX_BYTES
     && proof.input === nativeSlideAppearanceInput(slide, document)
-    && validBackground(proof.background)
+    && isNativeAppearanceBackgroundValid(proof.background)
     && proof.inheritedArtworkCount === 0;
 }
 
@@ -281,7 +281,7 @@ export function isNativeLayoutAppearanceValid(entity, document) {
     && typeof proof.input === 'string'
     && inputBytes(proof.input) <= NATIVE_APPEARANCE_INPUT_MAX_BYTES
     && proof.input === nativeLayoutAppearanceInput(entity, document)
-    && validBackground(proof.background)
+    && isNativeAppearanceBackgroundValid(proof.background)
     && Number.isSafeInteger(proof.artworkCount)
     && proof.artworkCount >= 0
     && proof.artworkCount === (entity.objects?.length ?? 0);

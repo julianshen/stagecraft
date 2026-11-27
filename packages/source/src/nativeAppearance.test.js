@@ -7,7 +7,7 @@ import { documentPlugin, presentationPlugin, validateDocument } from '@stagecraf
 import { openPresentation } from './index.js';
 import { projectNativeAppearance } from './nativeAppearance.js';
 import { resolvePptxColor } from './pptxColor.js';
-import { isNativeLayoutAppearanceValid, isNativeObjectAppearanceValid, isNativeSlideAppearanceValid, nativeObjectAppearanceInput } from '@stagecraft/core/lib/nativeAppearance.js';
+import { isNativeAppearanceBackgroundValid, isNativeLayoutAppearanceValid, isNativeObjectAppearanceValid, isNativeSlideAppearanceValid, nativeObjectAppearanceInput } from '@stagecraft/core/lib/nativeAppearance.js';
 import { NS, buildPptx, para, shape, textBox, tree, xfrm } from '../../../tests/helpers/pptxFixture.js';
 import { resolveTextFamily } from '../../renderer/src/vendor/officeview/drawing/text-layout.ts';
 
@@ -322,6 +322,16 @@ describe('native PPTX appearance projection', () => {
     try { expect(mapped.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#FFFFFF' }); }
     finally { mapped.dispose(); }
 
+    const srgbMaster = `<p:sldMaster ${NS}>${tree('').replace('<p:cSld>', '<p:cSld><p:bg><p:bgRef idx="1001"><a:srgbClr val="ABCDEF"/></p:bgRef></p:bg>')}<p:clrMap bg1="dk1"/></p:sldMaster>`;
+    const srgb = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { theme: placeholderTheme, master: srgbMaster, layout: emptyLayout });
+    try {
+      const { masters, slides } = srgb.document;
+      expect(masters[0].extensions.stagecraftLayoutSummary.background).toEqual({ kind: 'solid', color: '#ABCDEF' });
+      expect(slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#ABCDEF' });
+      expect(isNativeLayoutAppearanceValid(masters[0], srgb.document)).toBe(true);
+      expect(isNativeSlideAppearanceValid(slides[0], srgb.document)).toBe(true);
+    } finally { srgb.dispose(); }
+
     const transformedTheme = placeholderTheme.replace('<a:schemeClr val="phClr"/>', '<a:schemeClr val="phClr"><a:lumMod val="50000"/></a:schemeClr>');
     const whiteMaster = master.replace('bg1="dk1"', 'bg1="lt1"');
     const transformed = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { theme: transformedTheme, master: whiteMaster, layout: emptyLayout });
@@ -337,6 +347,53 @@ describe('native PPTX appearance projection', () => {
     const unresolved = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { theme: placeholderTheme, master: noColourRef, layout: emptyLayout });
     try { expect(unresolved.document.masters[0].extensions.stagecraftLayoutSummary).toBeUndefined(); }
     finally { unresolved.dispose(); }
+  });
+
+  const placeholderTheme = theme.replace(/<a:bgFillStyleLst>[\s\S]*?<\/a:bgFillStyleLst>/, '<a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst>');
+  const fixedTheme = theme.replace(/<a:bgFillStyleLst>[\s\S]*?<\/a:bgFillStyleLst>/, '<a:bgFillStyleLst><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></a:bgFillStyleLst>');
+  const noneTheme = theme.replace(/<a:bgFillStyleLst>[\s\S]*?<\/a:bgFillStyleLst>/, '<a:bgFillStyleLst><a:noFill/></a:bgFillStyleLst>');
+  it.each([
+    ['direct sRGB bgPr', theme, '<p:bg><p:bgPr><a:solidFill><a:srgbClr val="ABCDEF"/></a:solidFill></p:bgPr></p:bg>'],
+    ['direct scheme bgPr', theme, '<p:bg><p:bgPr><a:solidFill><a:schemeClr val="tx1"/></a:solidFill></p:bgPr></p:bg>'],
+    ['direct noFill bgPr', theme, '<p:bg><p:bgPr><a:noFill/></p:bgPr></p:bg>'],
+    ['placeholder sRGB bgRef', placeholderTheme, '<p:bg><p:bgRef idx="1001"><a:srgbClr val="ABCDEF"/></p:bgRef></p:bg>'],
+    ['placeholder scheme bgRef', placeholderTheme, '<p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg>'],
+    ['placeholder system bgRef', placeholderTheme, '<p:bg><p:bgRef idx="1001"><a:sysClr val="windowText" lastClr="123456"/></p:bgRef></p:bg>'],
+    ['fixed scheme bgRef', fixedTheme, '<p:bg><p:bgRef idx="1001"><a:srgbClr val="ABCDEF"/></p:bgRef></p:bg>'],
+    ['noFill theme bgRef', noneTheme, '<p:bg><p:bgRef idx="1001"><a:srgbClr val="ABCDEF"/></p:bgRef></p:bg>'],
+    ['theme bg1 fallback', theme, null],
+  ])('keeps %s backgrounds valid across projected summaries', async (_name, fixtureTheme, background) => {
+    const master = background ? emptyMaster.replace('<p:cSld>', `<p:cSld>${background}`) : emptyMaster;
+    const session = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { theme: fixtureTheme, master, layout: emptyLayout });
+    try {
+      const [projectedMaster] = session.document.masters;
+      const [layout] = session.document.layouts;
+      const [slide] = session.document.slides;
+      for (const [entity, proof] of [[projectedMaster, projectedMaster.extensions.stagecraftLayoutSummary], [layout, layout.extensions.stagecraftLayoutSummary], [slide, slide.extensions.stagecraftSlideAppearance]]) {
+        expect(proof).toBeDefined();
+        expect(isNativeAppearanceBackgroundValid(proof.background)).toBe(true);
+        expect(entity === slide ? isNativeSlideAppearanceValid(entity, session.document) : isNativeLayoutAppearanceValid(entity, session.document)).toBe(true);
+      }
+    } finally { session.dispose(); }
+  });
+
+  it.each([
+    ['transformed sRGB child', '<p:bg><p:bgRef idx="1001"><a:srgbClr val="ABCDEF"><a:alpha val="50000"/></a:srgbClr></p:bgRef></p:bg>', false],
+    ['sRGB child with placeholder transform', '<p:bg><p:bgRef idx="1001"><a:srgbClr val="ABCDEF"/></p:bgRef></p:bg>', true],
+    ['missing child', '<p:bg><p:bgRef idx="1001"/></p:bg>', false],
+  ])('refuses unsupported bgRef substitution: %s', async (_name, background, transformed) => {
+    const placeholderTheme = theme.replace(/<a:bgFillStyleLst>[\s\S]*?<\/a:bgFillStyleLst>/, '<a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst>');
+    const fixtureTheme = transformed ? placeholderTheme.replace('<a:schemeClr val="phClr"/>', '<a:schemeClr val="phClr"><a:lumMod val="50000"/></a:schemeClr>') : placeholderTheme;
+    const master = emptyMaster.replace('<p:cSld>', `<p:cSld>${background}`);
+    const session = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { theme: fixtureTheme, master, layout: emptyLayout });
+    try {
+      const [projectedMaster] = session.document.masters;
+      const [layout] = session.document.layouts;
+      const [slide] = session.document.slides;
+      expect(projectedMaster.extensions.stagecraftLayoutSummary).toBeUndefined();
+      expect(layout.extensions.stagecraftLayoutSummary).toBeUndefined();
+      expect(slide.extensions.stagecraftSlideAppearance).toBeUndefined();
+    } finally { session.dispose(); }
   });
 
   it('re-resolves overridden inherited backgrounds and maps default colours once', async () => {
