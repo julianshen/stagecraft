@@ -723,7 +723,8 @@ function applyRunFormat(run, format) {
     const attribute = formatKeys[key];
     const current = run.style?.[attribute] ?? null;
     const next = value === null ? null : ['fontFamily', 'eastAsian', 'complexScript'].includes(key) ? value : key === 'color' ? value.toLowerCase() : key === 'fontSize' ? String(Math.round(value * 100)) : value ? '1' : '0';
-    if ((current ?? null) === (next ?? null)) continue;
+    const present = Object.hasOwn(run.style ?? {}, attribute);
+    if (present ? next !== null && current === next : next === null) continue;
     run.style ??= {};
     if (next === null) delete run.style[attribute];
     else run.style[attribute] = next;
