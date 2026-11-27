@@ -510,6 +510,8 @@ async function projectObject(document, object, slide, load) {
   if (!object.source?.part || !['shape', 'text'].includes(object.type)) return;
   const node = locate(await load(object.source.part), object.source.path);
   if (!is(node, 'p', 'sp') || allPlaceholdersOrLists(node)) return;
+  const hidden = child(child(node, 'p', 'nvSpPr'), 'p', 'cNvPr')?.getAttribute('hidden');
+  if (hidden !== null && hidden !== undefined && onOff(hidden) !== false) return;
   const props = child(node, 'p', 'spPr');
   const xfrm = child(props, 'a', 'xfrm');
   if (!props || !xfrm || ['flipH', 'flipV'].some(name => xfrm.hasAttribute(name) && onOff(xfrm.getAttribute(name)) !== false)) return;
