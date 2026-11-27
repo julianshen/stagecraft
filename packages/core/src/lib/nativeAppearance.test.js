@@ -137,6 +137,11 @@ describe('native autofit appearance proofs', () => {
     expect(nativeObjectAppearanceInput(absent)).not.toBe(nativeObjectAppearanceInput(explicitDefaults));
   });
 
+  it('does not let callers override the internal schema-default policy', () => {
+    const object = autofitObject('shrink');
+    expect(nativeAutofitEffectiveFit(object, true)).toBeNull();
+  });
+
   it.each([
     ['absent fit', undefined, { fontScale: 100000, lnSpcReduction: 0 }],
     ['empty fit', {}, { fontScale: 100000, lnSpcReduction: 0 }],
