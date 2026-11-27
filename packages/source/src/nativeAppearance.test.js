@@ -1283,8 +1283,14 @@ describe('native PPTX appearance projection', () => {
     } finally { session.dispose(); }
   });
 
-  it('preserves a valid native object proof without an explicit autofit child', async () => {
-    const { session } = await openAutofitFixture('');
+  it.each([
+    ['empty bodyPr', ''],
+    ['whitespace-only bodyPr', ' \n\t '],
+    ['whitespace around autofit', ' \n<a:normAutofit fontScale="85000" lnSpcReduction="10000"/>\t '],
+    ['whitespace-only normAutofit', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"> \n\t </a:normAutofit>'],
+    ['whitespace-only CDATA', '<![CDATA[ \n\t ]]>'],
+  ])('preserves a valid native object proof for %s', async (_label, autofit) => {
+    const { session } = await openAutofitFixture(autofit);
     try {
       const object = session.document.slides[0].objects[0];
       const context = appearanceContext(session.document, session.document.slides[0]);
@@ -1347,6 +1353,11 @@ describe('native PPTX appearance projection', () => {
     ['spAutoFit attribute', '<a:spAutoFit unknown="1"/>'],
     ['spAutoFit child', '<a:spAutoFit><a:extLst/></a:spAutoFit>'],
     ['unknown autofit child', '<a:unknownAutofit/>'],
+    ['bodyPr character data', 'garbage<a:noAutofit/>'],
+    ['bodyPr CDATA', '<![CDATA[garbage]]><a:noAutofit/>'],
+    ['text-only bodyPr', 'garbage'],
+    ['normAutofit character data', '<a:normAutofit fontScale="85000" lnSpcReduction="10000">garbage</a:normAutofit>'],
+    ['normAutofit CDATA', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"><![CDATA[garbage]]></a:normAutofit>'],
     ['multiple autofit children', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"/><a:spAutoFit/>'],
     ['repeated normAutofit child', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"/><a:normAutofit/>'],
   ])('opens malformed or unknown raw autofit without a proof: %s', async (_label, autofit) => {
