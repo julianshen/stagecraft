@@ -135,12 +135,17 @@ describe('native PPTX appearance projection', () => {
     finally { merged.dispose(); }
   });
 
-  it('refuses empty complex-script aliases with supplemental faces', async () => {
+  it('resolves empty complex-script aliases with the detected supplemental script', async () => {
     const supplemental = theme.replace('<a:cs typeface="Amiri"/>', '<a:cs typeface=""/><a:font script="Arab" typeface="Noto Naskh Arabic"/>');
     const arabic = textBox(2, 20, 20, 300, 100, para('مرحبا', { rPr: ' sz="1800"', rKids: '<a:cs typeface="+mn-cs"/>' }).replace('lang="en-US"', 'lang="ar-SA"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const session = await openFixture(`<p:sld ${NS}>${tree(arabic)}</p:sld>`, { theme: supplemental });
-    try { expect(proof(session.document.slides[0].objects[0])).toBeUndefined(); }
+    try { expect(session.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Naskh Arabic'); }
     finally { session.dispose(); }
+
+    const latin = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:cs typeface="+mn-cs"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const latinSession = await openFixture(`<p:sld ${NS}>${tree(latin)}</p:sld>`, { theme: supplemental });
+    try { expect(proof(latinSession.document.slides[0].objects[0])).toBeDefined(); }
+    finally { latinSession.dispose(); }
   });
 
   it.each(['<a:alpha val="50000"/>', '<a:lumMod val="bad"/>', '<a:lumOff val="9007199254740992"/>'])('refuses unsupported inherited colour transforms: %s', async transform => {
