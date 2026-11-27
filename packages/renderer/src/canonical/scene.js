@@ -3,7 +3,7 @@ import { AUTHORED_TEXT_COLOR } from '@stagecraft/core/lib/authoredText.js';
 import {
  isNativeLayoutAppearanceValid, isNativeObjectAppearanceValid, isNativeSlideAppearanceValid,
  nativeLayoutAppearanceInput, nativeObjectAppearanceInput, nativeSlideAppearanceInput,
-  nativeTextScripts,
+  nativeAppearanceContext, nativeTextScripts,
 } from '@stagecraft/core/lib/nativeAppearance.js';
 import { canonicalTextBody, themeForSlide, layoutForSlide } from '../text/canonicalTextBody.js';
 import { resolveTextFamily } from '../vendor/officeview/drawing/text-layout.ts';
@@ -18,34 +18,8 @@ const freeze = value => {
 const unsupported = (reason, code, objectId) => ({status:'unsupported',reason,diagnostics:[{code,...(objectId?{objectId}:{})}]});
 const validGeometry = g => g && ['x','y','width','height'].every(k=>Number.isSafeInteger(g[k])) && g.width>0 && g.height>0
  && Number.isSafeInteger(g.x+g.width) && Number.isSafeInteger(g.y+g.height) && (g.rotation===undefined||Number.isFinite(g.rotation));
-const DEFAULT_COLOR_MAP = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' };
-function sourceTheme(document, slide) {
- let current=slide;const seen=new Set();
- while(current&&!seen.has(current.id)){
-  seen.add(current.id);
-  if(current.extensions?.pptxThemeOverride)return null;
-  if(current.themeId)return document.themes?.find(theme=>theme.id===current.themeId)??null;
-  current=current.layoutId?document.layouts?.find(item=>item.id===current.layoutId)
-   :current.masterId?document.masters?.find(item=>item.id===current.masterId):null;
- }
- return document.themes?.[0]??null;
-}
-function sourceColorMap(document, slide) {
- const chain=[];const seen=new Set();let current=slide;
- while(current&&!seen.has(current.id)){
-  if(current.extensions?.pptxColorMapOverride==='unsupported')return null;
-  seen.add(current.id);
-  if(current.extensions?.pptxColorMapOverride==='master'){
-   current=current.layoutId?document.layouts?.find(item=>item.id===current.layoutId)
-    :current.masterId?document.masters?.find(item=>item.id===current.masterId):null;
-   continue;
-  }
-  chain.unshift(current);
-  current=current.layoutId?document.layouts?.find(item=>item.id===current.layoutId)
-   :current.masterId?document.masters?.find(item=>item.id===current.masterId):null;
- }
- const map={...DEFAULT_COLOR_MAP};for(const entity of chain)Object.assign(map,entity.extensions?.pptxColorMap);
- return map;
+export function rendererNativeAppearanceContext(document, slide) {
+ return nativeAppearanceContext(document, slide);
 }
 function proofCheck(entity, expectedInput, validate, missingCode='native-appearance-proof-missing') {
  const proof=entity?.extensions?.stagecraftNativeAppearance
@@ -140,7 +114,8 @@ export function buildCanonicalScene(document,slideId) {
  const layout=nativeSlide?document.layouts?.find(item=>item.id===slide.layoutId):layoutForSlide(document,slide);
  const master=document.masters?.find(item=>item.id===(slide.masterId??layout?.masterId));
  if(!nativeSlide&&[layout,master].some(value=>value?.objects?.length))return unsupported('inherited-appearance','inherited-artwork');
- const theme=themeForSlide(document,slide),rawTheme=nativeSlide?sourceTheme(document,slide):null,colorMap=nativeSlide?sourceColorMap(document,slide):null;
+ const theme=themeForSlide(document,slide),nativeContext=nativeSlide?rendererNativeAppearanceContext(document,slide):null;
+ const rawTheme=nativeContext?.theme??null,colorMap=nativeContext?.colorMap??null;
  if(nativeSlide){
   let input=null;try{input=nativeSlideAppearanceInput(slide,document);}catch{}
   const check=proofCheck(slide,input,()=>isNativeSlideAppearanceValid(slide,document));
