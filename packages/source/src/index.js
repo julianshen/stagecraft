@@ -241,7 +241,7 @@ export async function openPresentation(source, options = {}) {
                     return;
                 if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b))
                     throw new Error('Unsupported source document edit');
-                const ak = Object.keys(a).sort(), bk = Object.keys(b).sort();
+                const ak = Object.keys(withoutDisplayProof(a)).sort(), bk = Object.keys(withoutDisplayProof(b)).sort();
                 if (ak.length !== bk.length || ak.some((k, i) => k !== bk[i]))
                     throw new Error('Unsupported source document structure');
                 const slot = editableSlots.get(a);
