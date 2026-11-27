@@ -1,6 +1,12 @@
 import { validateAuthoredObject } from '@stagecraft/core/document';
 import { AUTHORED_TEXT_COLOR } from '@stagecraft/core/lib/authoredText.js';
+import {
+ isNativeLayoutAppearanceValid, isNativeObjectAppearanceValid, isNativeSlideAppearanceValid,
+ nativeLayoutAppearanceInput, nativeObjectAppearanceInput, nativeSlideAppearanceInput,
+  nativeTextScripts,
+} from '@stagecraft/core/lib/nativeAppearance.js';
 import { canonicalTextBody, themeForSlide, layoutForSlide } from '../text/canonicalTextBody.js';
+import { resolveTextFamily } from '../vendor/officeview/drawing/text-layout.ts';
 const PX = 9525;
 const color = value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
 const authored = item => item?.extensions?.stagecraftAuthored === true && !item.source;
@@ -12,12 +18,111 @@ const freeze = value => {
 const unsupported = (reason, code, objectId) => ({status:'unsupported',reason,diagnostics:[{code,...(objectId?{objectId}:{})}]});
 const validGeometry = g => g && ['x','y','width','height'].every(k=>Number.isSafeInteger(g[k])) && g.width>0 && g.height>0
  && Number.isSafeInteger(g.x+g.width) && Number.isSafeInteger(g.y+g.height) && (g.rotation===undefined||Number.isFinite(g.rotation));
-function displayText(object, theme) {
- const adapted=canonicalTextBody(object,theme);
+const DEFAULT_COLOR_MAP = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' };
+function sourceTheme(document, slide) {
+ let current=slide;const seen=new Set();
+ while(current&&!seen.has(current.id)){
+  seen.add(current.id);
+  if(current.extensions?.pptxThemeOverride)return null;
+  if(current.themeId)return document.themes?.find(theme=>theme.id===current.themeId)??null;
+  current=current.layoutId?document.layouts?.find(item=>item.id===current.layoutId)
+   :current.masterId?document.masters?.find(item=>item.id===current.masterId):null;
+ }
+ return document.themes?.[0]??null;
+}
+function sourceColorMap(document, slide) {
+ const chain=[];const seen=new Set();let current=slide;
+ while(current&&!seen.has(current.id)){
+  if(current.extensions?.pptxColorMapOverride==='unsupported')return null;
+  seen.add(current.id);
+  if(current.extensions?.pptxColorMapOverride==='master'){
+   current=current.layoutId?document.layouts?.find(item=>item.id===current.layoutId)
+    :current.masterId?document.masters?.find(item=>item.id===current.masterId):null;
+   continue;
+  }
+  chain.unshift(current);
+  current=current.layoutId?document.layouts?.find(item=>item.id===current.layoutId)
+   :current.masterId?document.masters?.find(item=>item.id===current.masterId):null;
+ }
+ const map={...DEFAULT_COLOR_MAP};for(const entity of chain)Object.assign(map,entity.extensions?.pptxColorMap);
+ return map;
+}
+function proofCheck(entity, expectedInput, validate, missingCode='native-appearance-proof-missing') {
+ const proof=entity?.extensions?.stagecraftNativeAppearance
+  ??entity?.extensions?.stagecraftSlideAppearance
+  ??entity?.extensions?.stagecraftLayoutSummary;
+ if(!proof)return { valid:false, code:missingCode };
+ if(typeof proof.input==='string'&&expectedInput!==null&&proof.input!==expectedInput)
+  return { valid:false, code:'native-appearance-stale' };
+ try { if(validate())return {valid:true,proof}; }
+ catch { /* A malformed proof is a fixed refusal, not a scene-build exception. */ }
+ return { valid:false, code:'native-appearance-proof-invalid' };
+}
+function appearanceBackground(value) {
+ if(value?.kind==='solid'&&color(value.color))return value.color;
+ if(value?.kind==='none')return '#FFFFFF';
+ return null;
+}
+function proofResult(reason, code, objectId) { return unsupported(reason,code,objectId); }
+const runScriptSlot = scripts => {
+ if(scripts.length!==1||scripts[0]==='Other')return null;
+ const script=scripts[0];
+ if(['Hani','Hira','Kana','Hang'].includes(script))return 'eastAsian';
+ if(['Latn','Cyrl','Grek','Armn','Geor','Cher','Cans','Yiii'].includes(script))return 'latin';
+ return 'complexScript';
+};
+const familyField = {latin:'fontFamily',eastAsian:'fontFamilyEastAsia',complexScript:'fontFamilyComplexScript'};
+const sampleText = {latin:'A',eastAsian:'漢',complexScript:'م'};
+function nativeRunFonts(run, theme, resolved) {
+ const style=run.style??{},language=style.lang??style.language;
+ const input={language,fontFamily:style.typeface,fontFamilyEastAsia:style.eastAsian,fontFamilyComplexScript:style.complexScript};
+ const fontTheme=theme?.fonts?theme:undefined;
+ const families={
+  latin:resolveTextFamily({...input,text:sampleText.latin},fontTheme),
+  eastAsian:resolveTextFamily({...input,text:sampleText.eastAsian},fontTheme),
+  complexScript:resolveTextFamily({...input,text:sampleText.complexScript},fontTheme),
+ };
+ const currentSlot=runScriptSlot(nativeTextScripts(run.text));
+ const sourceScript=run.extensions?.pptxAppearance?.script;
+ if(currentSlot&&sourceScript&&runScriptSlot([sourceScript])===currentSlot&&resolved?.[familyField[currentSlot]])
+  families[currentSlot]=resolved[familyField[currentSlot]];
+ return families;
+}
+function nativeDisplayObject(object, appearance, theme) {
+ const display=structuredClone(object),paragraphProof=appearance.text?.paragraphs??[];
+ for(const [pi,paragraph] of display.text.paragraphs.entries()){
+  const proof=paragraphProof[pi];
+  for(const run of paragraph.runs){
+   const resolved=run.extensions?.pptxAppearance?.resolved;
+   if(!resolved)return null;
+   const families=nativeRunFonts(run,theme,resolved),style=run.style??{};
+   run.style={...style,typeface:families.latin,eastAsian:families.eastAsian,complexScript:families.complexScript,
+    sz:style.sz??String(Math.round(resolved.fontSizePt*100)),b:style.b??(resolved.bold?'1':'0'),i:style.i??(resolved.italic?'1':'0'),
+    color:style.color??resolved.color};
+   // The source proof establishes complete appearance; editability remains a separate capability.
+   run.editable=true;
+  }
+  if(proof?.endRun){
+   const last=paragraph.runs.at(-1),end=proof.endRun;
+   const fonts=last?nativeRunFonts(last,theme,end):null;
+   paragraph.extensions={...paragraph.extensions,pptxEndRunAppearance:{...end,
+    ...(fonts?{fontFamily:fonts.latin,fontFamilyEastAsia:fonts.eastAsian,fontFamilyComplexScript:fonts.complexScript}:{})}};
+  }
+ }
+ return display;
+}
+function displayText(object, theme, appearance=null) {
+ const source=appearance?nativeDisplayObject(object,appearance,theme):object;
+ if(!source)return null;
+ // Native proof fonts are resolved before paint; the painter receives literal faces only.
+ const adapted=canonicalTextBody(source,appearance?undefined:theme);
  if(!adapted)return null;
  for(const [pi,p] of adapted.body.paragraphs.entries()) {
-  for(const [ri,r] of p.runs.entries())r.color=object.text.paragraphs[pi].runs[ri].style?.color??AUTHORED_TEXT_COLOR;
-  p.endProperties.color=p.runs.at(-1).color;
+  for(const [ri,r] of p.runs.entries())r.color=source.text.paragraphs[pi].runs[ri].style?.color??AUTHORED_TEXT_COLOR;
+  const end=source.text.paragraphs[pi].extensions?.pptxEndRunAppearance;
+  if(appearance&&end)p.endProperties={...p.endProperties,fontSizePt:end.fontSizePt,fontFamily:end.fontFamily,
+   fontFamilyEastAsia:end.fontFamilyEastAsia,fontFamilyComplexScript:end.fontFamilyComplexScript,bold:end.bold,italic:end.italic,color:end.color};
+  else p.endProperties.color=end?.color??p.runs.at(-1).color;
  }
  return {body:adapted.body,theme:adapted.theme};
 }
@@ -28,26 +133,60 @@ export function buildCanonicalScene(document,slideId) {
  if(!slide)return unsupported('no-slide','slide-missing');
  const size=document.size;
  if(!size||![size.width,size.height].every(n=>Number.isSafeInteger(n)&&n>0))return unsupported('invalid-geometry','slide-size');
- if(!authored(slide))return unsupported('unresolved-appearance','native-slide-appearance');
- if(slide.layoutId!=null&&slide.layoutId!==document.layouts?.[0]?.id)return unsupported('inherited-appearance','authored-layout-mismatch');
- const layout=layoutForSlide(document,slide),master=document.masters?.find(m=>m.id===layout?.masterId);
- if([layout,master].some(v=>v?.objects?.length))return unsupported('inherited-appearance','inherited-artwork');
- if([layout,master].some(v=>v?.source||v?.background)&&!slide.background)return unsupported('inherited-appearance','inherited-background');
+ const nativeSlide=slide.source?.format==='pptx';
+ const authoredSlide=authored(slide);
+ if(!nativeSlide&&!authoredSlide)return unsupported('unresolved-appearance','native-appearance-proof-missing');
+ if(authoredSlide&&slide.layoutId!=null&&slide.layoutId!==document.layouts?.[0]?.id)return unsupported('inherited-appearance','authored-layout-mismatch');
+ const layout=nativeSlide?document.layouts?.find(item=>item.id===slide.layoutId):layoutForSlide(document,slide);
+ const master=document.masters?.find(item=>item.id===(slide.masterId??layout?.masterId));
+ if(!nativeSlide&&[layout,master].some(value=>value?.objects?.length))return unsupported('inherited-appearance','inherited-artwork');
+ const theme=themeForSlide(document,slide),rawTheme=nativeSlide?sourceTheme(document,slide):null,colorMap=nativeSlide?sourceColorMap(document,slide):null;
+ if(nativeSlide){
+  let input=null;try{input=nativeSlideAppearanceInput(slide,document);}catch{}
+  const check=proofCheck(slide,input,()=>isNativeSlideAppearanceValid(slide,document));
+  if(!check.valid)return proofResult('unresolved-appearance',check.code);
+ }
+ if(authoredSlide&&document.extensions?.sourceFormat==='pptx'){
+  for(const entity of [layout,master]){
+   if(!entity||entity.source?.format!=='pptx')continue;
+   let summaryInput=null;try{summaryInput=nativeLayoutAppearanceInput(entity,document);}catch{}
+   const summary=proofCheck(entity,summaryInput,()=>isNativeLayoutAppearanceValid(entity,document),'native-layout-summary-missing');
+   if(!summary.valid)return proofResult('inherited-appearance',summary.code);
+   if(summary.proof.artworkCount!==0)return unsupported('inherited-appearance','inherited-artwork');
+  }
+ }
+ if(!nativeSlide&&[layout,master].some(value=>value?.objects?.length))return unsupported('inherited-appearance','inherited-artwork');
+ if(!nativeSlide&&[layout,master].some(value=>value?.source||value?.background)&&!slide.background&&!layout?.extensions?.stagecraftLayoutSummary&&!master?.extensions?.stagecraftLayoutSummary)return unsupported('inherited-appearance','inherited-background');
  if(slide.background && (slide.background.type!=='solid'||!color(slide.background.color)||extraKeys(slide.background,['type','color'])))return unsupported('unsupported-content','slide-background');
- const nodes=[],theme=themeForSlide(document,slide),seen=new Set();
+ const inheritedBackground=nativeSlide?appearanceBackground(slide.extensions?.stagecraftSlideAppearance?.background)
+  :slide.background?.color??appearanceBackground(layout?.extensions?.stagecraftLayoutSummary?.background)
+   ??appearanceBackground(master?.extensions?.stagecraftLayoutSummary?.background);
+ if(nativeSlide&&!inheritedBackground)return unsupported('inherited-appearance','theme-background-unresolved');
+ const nodes=[],seen=new Set();
  for(const object of slide.objects) {
   if(!object.id||seen.has(object.id))return unsupported('unsupported-content','object-identity',object.id);
   seen.add(object.id);
   if(!['text','shape'].includes(object.type))return unsupported('unsupported-content','object-type',object.id);
-  if(!authored(object))return unsupported('unresolved-appearance','native-object-appearance',object.id);
   if(!validGeometry(object.geometry))return unsupported('invalid-geometry','object-geometry',object.id);
-  try { validateAuthoredObject(object); }
-  catch { return unsupported('unsupported-content','authored-object-schema',object.id); }
-  if(theme?.objectDefaults?.[object.type==='text'?'txDef':'spDef'])return unsupported('inherited-appearance','theme-object-defaults',object.id);
-  const text=object.text?displayText(object,theme):null;
+  const nativeObject=object.source?.format==='pptx';
+  let appearance=null;
+  if(nativeObject){
+   if(theme?.objectDefaults?.[object.type==='text'?'txDef':'spDef'])return unsupported('inherited-appearance','theme-object-defaults',object.id);
+   let input=null;try{input=nativeObjectAppearanceInput(object,{theme:rawTheme,colorMap,document,slide});}catch{}
+   const check=proofCheck(object,input,()=>isNativeObjectAppearanceValid(object,{theme:rawTheme,colorMap,document,slide}));
+   if(!check.valid)return proofResult('unresolved-appearance',check.code,object.id);
+   appearance=check.proof;
+  }else {
+   if(!authored(object))return unsupported('unresolved-appearance','native-appearance-proof-missing',object.id);
+   try { validateAuthoredObject(object); }
+   catch { return unsupported('unsupported-content','authored-object-schema',object.id); }
+   if(theme?.objectDefaults?.[object.type==='text'?'txDef':'spDef'])return unsupported('inherited-appearance','theme-object-defaults',object.id);
+  }
+  const text=object.text?displayText(object,theme,appearance):null;
   if(object.text&&!text)return unsupported('unsupported-content','text-format',object.id);
   const g=object.geometry;
-  nodes.push({id:object.id,type:object.type,geometry:{...g},frame:{x:g.x/PX,y:g.y/PX,width:g.width/PX,height:g.height/PX,rotation:g.rotation??0},hitShape:object.shape??'rect',textIds:object.text?.paragraphs.map(p=>({paragraphId:p.id,runIds:p.runs.map(r=>r.id)}))??[],paint:{shape:object.shape??'rect',fill:object.fill??null,text,layoutKey:text?JSON.stringify([g.width/PX,g.height/PX,text]):null}});
+  const fill=object.fill??(appearance?.fill?.kind==='solid'?appearance.fill.color:null);
+  nodes.push({id:object.id,type:object.type,geometry:{...g},frame:{x:g.x/PX,y:g.y/PX,width:g.width/PX,height:g.height/PX,rotation:g.rotation??0},hitShape:object.shape??'rect',textIds:object.text?.paragraphs.map(p=>({paragraphId:p.id,runIds:p.runs.map(r=>r.id)}))??[],paint:{shape:object.shape??'rect',fill,stroke:appearance?.stroke??null,adjust:appearance?.adjust,text,layoutKey:text?JSON.stringify([g.width/PX,g.height/PX,text]):null}});
  }
- return {status:'ready',scene:freeze(structuredClone({slideId:slide.id,width:size.width/PX,height:size.height/PX,background:slide.background?.color??'#ffffff',nodes}))};
+ return {status:'ready',scene:freeze(structuredClone({slideId:slide.id,width:size.width/PX,height:size.height/PX,background:nativeSlide?inheritedBackground:slide.background?.color??inheritedBackground??'#ffffff',nodes}))};
 }

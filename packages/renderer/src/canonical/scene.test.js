@@ -11,7 +11,7 @@ it.each(['image','chart','table','group','opaque'])('refuses a whole slide conta
 });
 it('does not mistake supported native metrics for a full appearance model',()=>{
  const r=buildCanonicalScene(deck([box({source:{format:'pptx'},extensions:{pptxTextMetrics:{supported:true},editableGeometry:true}})]),'s');
- expect(r.reason).toBe('unresolved-appearance');expect(r.diagnostics).toContainEqual({code:'native-object-appearance',objectId:'box'});
+ expect(r.reason).toBe('unresolved-appearance');expect(r.diagnostics).toContainEqual({code:'native-appearance-proof-missing',objectId:'box'});
 });
 it.each(['bullet','decoration','flip','paint','geometry','theme','native-slide','odp','missing'])('reports explicit unsupported %s',kind=>{
  const d=deck(),o=d.slides[0].objects[0];
@@ -66,6 +66,10 @@ it('refuses a conflicting authored layout reference rather than hiding its artwo
  expect(buildCanonicalScene(d,'s')).toMatchObject({status:'unsupported',reason:'inherited-appearance',diagnostics:[{code:'authored-layout-mismatch'}]});
  d.slides[0].layoutId='first';expect(buildCanonicalScene(d,'s').status).toBe('ready');
  delete d.slides[0].layoutId;expect(buildCanonicalScene(d,'s').status).toBe('ready');
+});
+it('reports a missing native layout summary separately from a missing slide proof',()=>{
+ const d=deck();d.extensions.sourceFormat='pptx';d.layouts=[{id:'layout',source:{format:'pptx'},objects:[]}];d.slides[0].layoutId='layout';
+ expect(buildCanonicalScene(d,'s')).toMatchObject({status:'unsupported',reason:'inherited-appearance',diagnostics:[{code:'native-layout-summary-missing'}]});
 });
 it('uses the SVG default color for ordinary authored sz-only runs',()=>{
  const d=deck();d.slides[0].objects[0].text.paragraphs[0].runs[0].style={sz:'2400'};
