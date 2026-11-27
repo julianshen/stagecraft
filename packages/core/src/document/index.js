@@ -1268,9 +1268,9 @@ export const presentationPlugin = Object.freeze({
       // faithful ODP write needs placement compensation that is not proved native-correct yet.
       // Reject before any mutation rather than emit a wrong transform.
       if (p.geometry.rotation !== undefined && p.geometry.rotation !== 0 && (object.source?.format === 'odp' || d.extensions?.sourceFormat === 'odp')) fail('UNSUPPORTED_ROTATION');
-      const fitChanged = nativeAutofit(object) && (object.geometry?.width !== p.geometry.width || object.geometry?.height !== p.geometry.height);
+      const autofitSizeChanged = nativeAutofit(object) && (object.geometry?.width !== p.geometry.width || object.geometry?.height !== p.geometry.height);
       object.geometry = { ...object.geometry, ...p.geometry };
-      if (fitChanged) invalidateNativeObjectAppearance(object);
+      if (autofitSizeChanged) invalidateNativeObjectAppearance(object);
       if (object.type === 'chart') chartGeometry(object.geometry);
       if (object.extensions?.stagecraftAuthored === true) validateAuthoredObject(object);
     }),

@@ -213,8 +213,9 @@ const inheritedAppearanceInput = context => {
 
 /** Appearance-determining canonical inputs only; autofit adds a fixed-size text/frame-size binding. */
 export function nativeObjectAppearanceInput(object, context) {
-  const effectiveFit = object.bodyLayout?.autofit === 'shrink' ? nativeAutofitEffectiveFit(object) : null;
-  const hasFitBinding = ['shrink', 'resize'].includes(object.bodyLayout?.autofit);
+  const autofit = object.bodyLayout?.autofit;
+  const effectiveFit = autofit === 'shrink' ? nativeAutofitEffectiveFit(object) : null;
+  const hasFitBinding = ['shrink', 'resize'].includes(autofit);
   return stableJson({
     type: object.type,
     shape: object.shape,
