@@ -1,6 +1,7 @@
 import { expect,it,vi } from 'vitest';
 import { buildCanonicalScene,createCanonicalPaintEnvironment,paintCanonicalScene,paintCanonicalNode,waitForCanonicalFonts } from './index.js';
 import { box,deck } from '../../../../tests/helpers/canonicalScene.js';
+import { nativeShapeFixture } from './nativeShapeFixture.js';
 const scene=objects=>{const r=buildCanonicalScene(deck(objects),'s');expect(r.status).toBe('ready');return r.scene;};
 const canvas=()=>{const c=document.createElement('canvas');c.width=960;c.height=540;return c.getContext('2d');};
 const pixel=(ctx,x,y)=>[...ctx.getImageData(x,y,1,1).data];
@@ -62,4 +63,21 @@ it('evicts filled-shape geometry at the configured cache limit',()=>{
  const env=createCanonicalPaintEnvironment({cacheLimit:1}),ctx=canvas();
  for(const [shape,fill] of [['rect','#ff0000'],['ellipse','#00ff00']]) {paintCanonicalScene(ctx,scene([box({type:'shape',shape,fill,text:undefined})]),env);expect(env.getStats().geometryEntries).toBe(1);}
  expect(pixel(ctx,160,120)).toEqual([0,255,0,255]);env.dispose();expect(env.getStats().geometryEntries).toBe(0);
+});
+it('matches native projected EMU fill and centred outline pixels',()=>{
+ const result=buildCanonicalScene(nativeShapeFixture({stroke:{kind:'solid',color:'#654321',widthEmu:19050}}),'native-slide');
+ expect(result.status).toBe('ready');const ctx=canvas();paintCanonicalScene(ctx,result.scene,createCanonicalPaintEnvironment());
+ // The fixture is 95250,95250 EMU with a 952500x476250 EMU frame: 10,10,100x50 CSS px.
+ expect(pixel(ctx,50,30)).toEqual([18,52,86,255]);expect(pixel(ctx,10,30)).toEqual([101,67,33,255]);
+});
+it('paints native no-fill as transparent and honours the projected roundRect adjustment',()=>{
+ const outline=buildCanonicalScene(nativeShapeFixture({fill:{kind:'none'},stroke:{kind:'solid',color:'#654321',widthEmu:19050}}),'native-slide');
+ expect(outline.status).toBe('ready');const outlineContext=canvas();paintCanonicalScene(outlineContext,outline.scene,createCanonicalPaintEnvironment());
+ expect(pixel(outlineContext,50,30)).toEqual([255,255,255,255]);expect(pixel(outlineContext,10,30)).toEqual([101,67,33,255]);
+ // 19050 EMU is 2 CSS px; the outline occupies its fixture-derived boundary only.
+ expect(pixel(outlineContext,9,30)).toEqual([101,67,33,255]);expect(pixel(outlineContext,11,30)).toEqual([255,255,255,255]);
+ const rounded=buildCanonicalScene(nativeShapeFixture({shape:'roundRect',adjust:{adj:10000}}),'native-slide');
+ expect(rounded.status).toBe('ready');const roundContext=canvas();paintCanonicalScene(roundContext,rounded.scene,createCanonicalPaintEnvironment());
+ // Pixel expectations derive from the fixture's white background, solid fill, and roundRect EMU geometry.
+ expect(pixel(roundContext,10,10)).toEqual([255,255,255,255]);expect(pixel(roundContext,50,30)).toEqual([18,52,86,255]);
 });

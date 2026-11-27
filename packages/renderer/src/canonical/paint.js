@@ -27,9 +27,14 @@ export function paintCanonicalNode(ctx,node,environment) {
  const s=state(environment),{width,height}=node.frame,{shape,fill,text}=node.paint;
  ctx.save();
  try {
-  if(shape&&fill) {
-   const geometry=cached(s.geometries,JSON.stringify([shape,width,height]),s.limit,()=>resolvePreset(shape,width,height));
-   paintGeometry(ctx,geometry,{fill:{kind:'solid',color:{...hexToRgb(fill),a:1}},issues:[]},width,height);
+  const stroke=node.paint.stroke;
+  if(shape&&(fill||stroke?.kind==='solid')) {
+   const adjust=node.paint.adjust;
+   const geometry=cached(s.geometries,JSON.stringify([shape,width,height,adjust??null]),s.limit,()=>resolvePreset(shape,width,height,adjust));
+   const style={issues:[]};
+   if(fill)style.fill={kind:'solid',color:{...hexToRgb(fill),a:1}};
+   if(stroke?.kind==='solid')style.line={width:stroke.widthEmu/9525,fill:{kind:'solid',color:{...hexToRgb(stroke.color),a:1}}};
+   paintGeometry(ctx,geometry,style,width,height);
   }
   if(text) {
    const key=node.paint.layoutKey;
