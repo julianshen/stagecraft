@@ -64,10 +64,11 @@ function backgroundDefinition(parent) {
   const colorNode = children(fills[0])[0];
   if (is(colorNode, 'a', 'schemeClr')) {
     const scheme = colorNode.getAttribute('val');
-    if (!scheme || scheme === 'phClr') return null;
+    if (!scheme) return null;
     const transforms = children(colorNode).map(transform => ({ name: transform.localName, raw: transform.getAttribute('val') }));
     if (transforms.some(transform => !['lumMod', 'lumOff'].includes(transform.name)
       || !/^\d+$/.test(transform.raw ?? '') || !Number.isSafeInteger(Number(transform.raw)))) return null;
+    if (scheme === 'phClr') return { kind: 'placeholder', transforms };
     return { kind: 'scheme', scheme, transforms };
   }
   const color = resolvePptxColor(colorNode, {}, {});
@@ -76,6 +77,7 @@ function backgroundDefinition(parent) {
 
 function resolveBackgroundDefinition(definition, theme, colorMap) {
   if (!definition) return null;
+  if (definition.kind === 'placeholder') return null;
   if (definition.kind !== 'scheme') return definition;
   if (!theme || !colorMap) return null;
   const color = resolvePptxSchemeColor(definition.scheme, definition.transforms, theme.extensions?.pptxColorScheme, colorMap);
@@ -208,7 +210,22 @@ async function projectEntityBackgrounds(document, load) {
       const ref = child(bg, 'p', 'bgRef');
       if (ref) {
         const definitions = theme?.extensions?.pptxBackgroundFillDefinitions;
-        value = definitions ? (definitions[styleIndex(ref.getAttribute('idx'))] ?? UNSUPPORTED_BACKGROUND) : UNSUPPORTED_BACKGROUND;
+        const definition = definitions?.[styleIndex(ref.getAttribute('idx'))];
+        if (!definition) value = UNSUPPORTED_BACKGROUND;
+        else if (definition.kind !== 'placeholder') value = definition;
+        else {
+          const colors = children(ref);
+          if (colors.length !== 1 || children(colors[0]).length) value = UNSUPPORTED_BACKGROUND;
+          else {
+            const colorNode = colors[0];
+            const resolved = is(colorNode, 'a', 'schemeClr') && colorNode.getAttribute('val')
+              ? { kind: 'scheme', scheme: colorNode.getAttribute('val'), transforms: [] }
+              : resolvePptxColor(colorNode, {}, {});
+            const color = resolved && typeof resolved === 'string' ? { kind: 'solid', color: resolved } : resolved;
+            value = color && (color.kind !== 'solid' || definition.transforms.length === 0)
+              ? { ...color, transforms: [...(color.transforms ?? []), ...definition.transforms] } : UNSUPPORTED_BACKGROUND;
+          }
+        }
       } else {
         const bgPr = child(bg, 'p', 'bgPr');
         value = bgPr && children(bgPr).every(item => FILL_TAGS.includes(item.localName))
