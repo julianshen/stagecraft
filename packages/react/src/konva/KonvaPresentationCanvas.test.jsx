@@ -339,4 +339,108 @@ describe('KONVA-2b surface decision, fallback wording, and API boundary', () => 
     expect(surfaceMessageForReason('load-failed')).toBe('Showing the standard view: canvas view could not start.');
     expect(surfaceMessageForReason('render-failed')).toBe('Showing the standard view: canvas view could not start.');
   });
+
+  it('K3b: uses plain-language diagnostic wording for native appearance, inherited and unsupported content diagnostics', async () => {
+    const { surfaceMessageForReason } = await import('./surfaceDecision.js');
+
+    const cases = [
+      ['inherited-appearance', 'theme-background-unresolved', 'theme background'],
+      ['inherited-appearance', 'native-layout-summary-missing', "layout background could not be resolved"],
+      ['unresolved-appearance', 'native-appearance-proof-missing', 'cannot confirm this slide matches PowerPoint yet'],
+      ['unresolved-appearance', 'native-appearance-proof-invalid', 'cannot confirm this slide matches PowerPoint yet'],
+      ['unresolved-appearance', 'native-appearance-stale', 'was edited, so canvas view cannot confirm it matches PowerPoint yet'],
+      ['unresolved-appearance', 'theme-color-unresolved', 'theme colour variation'],
+      ['unresolved-appearance', 'text-appearance-unresolved', 'text styling'],
+      ['unresolved-appearance', 'placeholder-style-unresolved', 'placeholder styling'],
+      ['unsupported-content', 'gradient-fill', 'a gradient fill'],
+      ['unsupported-content', 'picture-fill', 'a picture fill'],
+      ['unsupported-content', 'outline-unsupported', 'outline'],
+      ['unsupported-content', 'custom-geometry', 'custom shape geometry'],
+      ['unsupported-content', 'flip-unsupported', 'flipped shape'],
+      ['unsupported-content', 'list-style-unsupported', 'bulleted list'],
+      ['unsupported-content', 'native-autofit-unsupported', 'autofit'],
+      ['unsupported-content', 'placeholder-style-unresolved', 'placeholder styling'],
+    ];
+
+    for (const [reason, code, expectedSubstring] of cases) {
+      const message = surfaceMessageForReason(reason, [{ code, objectId: 'obj-1' }]);
+      expect(message).toContain(expectedSubstring);
+      expect(message).not.toContain(code);
+    }
+
+    expect(surfaceMessageForReason('unresolved-appearance', [{ code: 'placeholder-style-unresolved' }]))
+      .toBe(surfaceMessageForReason('unsupported-content', [{ code: 'placeholder-style-unresolved' }]));
+  });
+
+  it('K3b: selects the first known diagnostic code for both message and data-diagnostic-code', async () => {
+    const { surfaceDiagnosticForReason } = await import('./surfaceDecision.js');
+    const selected = surfaceDiagnosticForReason('unsupported-content', [
+      { code: 'future-x', objectId: 'o1' },
+      { code: 'gradient-fill', objectId: 'o2' },
+    ]);
+    expect(selected.code).toBe('gradient-fill');
+    expect(selected.message).toContain('a gradient fill');
+    expect(selected.message).toContain('and 1 other item');
+    expect(selected.message).not.toContain('future-x');
+  });
+
+  it('K3b: summarizes multiple diagnostics by counting all diagnostics including unknown codes and other reasons', async () => {
+    const { surfaceMessageForReason } = await import('./surfaceDecision.js');
+    const two = surfaceMessageForReason('unsupported-content', [
+      { code: 'gradient-fill', objectId: 'o1' },
+      { code: 'picture-fill', objectId: 'o2' },
+    ]);
+    expect(two).toContain('a gradient fill');
+    expect(two).toContain('and 1 other item');
+    expect(two).not.toContain('gradient-fill');
+    expect(two).not.toContain('picture-fill');
+
+    const three = surfaceMessageForReason('unsupported-content', [
+      { code: 'gradient-fill', objectId: 'o1' },
+      { code: 'future-unknown', objectId: 'o2' },
+      { code: 'inherited-background', objectId: 'o3' },
+    ]);
+    expect(three).toContain('a gradient fill');
+    expect(three).toContain('and 2 other items');
+  });
+
+  it('K3b: falls back to non-empty reason default wording for unknown or future diagnostic codes', async () => {
+    const { surfaceMessageForReason, SURFACE_REASON_MESSAGES } = await import('./surfaceDecision.js');
+    for (const reason of ['inherited-appearance', 'unresolved-appearance', 'unsupported-content']) {
+      const message = surfaceMessageForReason(reason, [{ code: 'future-diagnostic-code', objectId: 'o1' }]);
+      expect(message).toBeTruthy();
+      expect(message).toMatch(/^Showing the standard view:/);
+      expect(message).not.toContain('future-diagnostic-code');
+      if (reason !== 'inherited-appearance') {
+        expect(message).toBe(SURFACE_REASON_MESSAGES[reason]);
+      }
+    }
+  });
+
+  it('K3b: ignores prototype property names in reason and diagnostic codes', async () => {
+    const {
+      surfaceDiagnosticForReason,
+      surfaceMessageForReason,
+      SURFACE_REASON_MESSAGES,
+    } = await import('./surfaceDecision.js');
+    const protoNames = ['toString', 'constructor', '__proto__', 'hasOwnProperty'];
+
+    for (const proto of protoNames) {
+      expect(SURFACE_REASON_MESSAGES[proto]).toBeUndefined();
+
+      const reasonResult = surfaceDiagnosticForReason(proto, [{ code: proto, objectId: 'o1' }]);
+      expect(typeof reasonResult.message).toBe('string');
+      expect(reasonResult.message).toBe('Showing the standard view.');
+      expect(protoNames).not.toContain(reasonResult.code);
+
+      for (const reason of ['inherited-appearance', 'unresolved-appearance', 'unsupported-content']) {
+        const diagResult = surfaceDiagnosticForReason(reason, [{ code: proto, objectId: 'o1' }]);
+        expect(typeof diagResult.message).toBe('string');
+        expect(diagResult.message).toBeTruthy();
+        expect(diagResult.message).not.toContain(proto);
+        expect(protoNames).not.toContain(diagResult.code);
+        expect(surfaceMessageForReason(reason, [{ code: proto }])).toBe(diagResult.message);
+      }
+    }
+  });
 });
