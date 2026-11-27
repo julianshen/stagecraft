@@ -231,7 +231,7 @@ const normalizeFont = value => {
   return font && font.length <= 64 && !font.startsWith('+') && !/[\u0000-\u001f\u007f]/.test(font) ? font : null;
 };
 
-const resolveFontAlias = (value, theme) => {
+const resolveFontAlias = (value, theme, script = null) => {
   const font = typeof value === 'string' ? value.trim() : '';
   const alias = /^\+(mj|mn)-(lt|ea|cs)$/.exec(font);
   if (!alias) return normalizeFont(font);
@@ -243,18 +243,18 @@ const resolveFontAlias = (value, theme) => {
     const supplemental = fonts?.[group]?.supplemental ?? {};
     if (['Jpan', 'Hang', 'Hani'].some(script => supplemental[script])) return null;
   }
-  if (target === 'complexScript' && !selected) {
-    const supplemental = fonts?.[group]?.supplemental ?? {};
-    if (['Arab', 'Syrc', 'Thaa', 'Nkoo'].some(script => supplemental[script])) return null;
+  if (target === 'complexScript' && !selected && script) {
+    const supplemental = fonts?.[group]?.supplemental?.[script];
+    if (supplemental) return normalizeFont(supplemental);
   }
   return normalizeFont(selected || fonts?.[group]?.latin);
 };
 
-function resolveFont(direct, theme, fontRef, slot, inheritedFont = null) {
+function resolveFont(direct, theme, fontRef, slot, inheritedFont = null, script = null) {
   const fonts = theme?.extensions?.pptxFontScheme;
   const value = direct?.getAttribute('typeface');
-  if (value) return resolveFontAlias(value, theme);
-  if (inheritedFont) return resolveFontAlias(inheritedFont, theme);
+  if (value) return resolveFontAlias(value, theme, script);
+  if (inheritedFont) return resolveFontAlias(inheritedFont, theme, script);
   if (slot === 'eastAsian' && !fonts?.[fontRef]?.eastAsian) {
     const supplemental = fonts?.[fontRef]?.supplemental ?? {};
     if (['Jpan', 'Hang', 'Hani'].some(script => supplemental[script])) return null;
@@ -340,11 +340,11 @@ function inheritedTextStyle(styleRoot, theme, colorMap) {
   return mergeInheritedStyles(baseStyle, levelStyle);
 }
 
-function resolveRunFont(runProperties, fallbackProperties, theme, fontRef, slot, inheritedFont) {
+function resolveRunFont(runProperties, fallbackProperties, theme, fontRef, slot, inheritedFont, script = null) {
   const direct = (runProperties ? child(runProperties, 'a', slot) : null)
     ?? (fallbackProperties ? child(fallbackProperties, 'a', slot) : null);
   const themeSlot = slot === 'ea' ? 'eastAsian' : slot === 'cs' ? 'complexScript' : slot;
-  return resolveFont(direct, theme, fontRef, themeSlot, inheritedFont);
+  return resolveFont(direct, theme, fontRef, themeSlot, inheritedFont, script);
 }
 
 function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef, baseColor = null, inherited = {}, text = '') {
@@ -373,9 +373,6 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
   const bold = rawBold == null ? inherited.bold ?? false : onOff(rawBold);
   const italic = rawItalic == null ? inherited.italic ?? false : onOff(rawItalic);
   if (bold === null || italic === null) return null;
-  const fontFamily = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'latin', inherited.fontFamily);
-  const fontFamilyEastAsia = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'ea', inherited.fontFamilyEastAsia);
-  const fontFamilyComplexScript = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'cs', inherited.fontFamilyComplexScript);
   const language = runProperties?.getAttribute('lang') ?? fallbackProperties?.getAttribute('lang') ?? inherited.language;
   const primary = language?.toLowerCase().split('-')[0];
   const detectedScripts = nativeTextScripts(text);
@@ -383,6 +380,9 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
   const detectedScript = detectedScripts[0];
   const supplementalScript = detectedScript === 'Latn' ? null : detectedScript;
   if (primary && !SUPPLEMENTAL_SCRIPTS[primary] && !NON_SUPPLEMENTAL_LANGUAGES.has(primary)) return null;
+  const fontFamily = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'latin', inherited.fontFamily, detectedScript);
+  const fontFamilyEastAsia = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'ea', inherited.fontFamilyEastAsia, detectedScript);
+  const fontFamilyComplexScript = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'cs', inherited.fontFamilyComplexScript, detectedScript);
   const supplementalFont = supplementalScript ? theme.extensions.pptxFontScheme?.[fontRef]?.supplemental?.[supplementalScript] : null;
   const explicitComplexScript = child(runProperties, 'a', 'cs') || child(fallbackProperties, 'a', 'cs') || inherited.fontFamilyComplexScript;
   const resolvedComplexScript = !explicitComplexScript && supplementalFont ? normalizeFont(supplementalFont) : fontFamilyComplexScript;
