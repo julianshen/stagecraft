@@ -18,7 +18,9 @@ if (!Array.isArray(manifest.rows) || manifest.rows.length !== 65) throw new Erro
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const server = await createServer({ configFile: path.join(root, 'vite.config.js'), logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
 await server.listen();
-const browser = await chromium.launch({ headless: true });
+let browser;
+try {
+browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 await page.goto(server.resolvedUrls.local[0]);
 const modules = {
@@ -162,5 +164,10 @@ summary.readyPptxPackages = summary.readyPptxPackages.size;
 const output = { manifest: path.basename(manifestPath), fixturePackages: rows.length, verifiedUniqueHashes: verified.size, ...summary, rows };
 if (outputArg) await fs.writeFile(path.resolve(outputArg), `${JSON.stringify(output, null, 2)}\n`);
 console.log(JSON.stringify({ ...output, rows: undefined }, null, 2));
-await browser.close();
-await server.close();
+} finally {
+  try {
+    if (browser) await browser.close();
+  } finally {
+    await server.close();
+  }
+}

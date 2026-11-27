@@ -9,7 +9,7 @@ const EDGE_CHANNEL_TOLERANCE=18;
 const scene=objects=>{const r=buildCanonicalScene(deck(objects),'s');expect(r.status).toBe('ready');return r.scene;};
 const canvas=(dpr=1)=>{const c=document.createElement('canvas');c.width=960*dpr;c.height=540*dpr;const ctx=c.getContext('2d');if(dpr!==1)ctx.scale(dpr,dpr);return ctx;};
 const pixel=(ctx,x,y)=>[...ctx.getImageData(x,y,1,1).data];
-const devicePixel=(ctx,x,y,dpr)=>pixel(ctx,Math.round(x*dpr),Math.round(y*dpr));
+const devicePixel=(ctx,x,y,dpr,zoom=1)=>pixel(ctx,Math.round(x*dpr*zoom),Math.round(y*dpr*zoom));
 const withinPixel=(actual,expected,tolerance)=>actual.every((channel,index)=>Math.abs(channel-expected[index])<=tolerance);
 const EMPTY_MASTER=`<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
 const EMPTY_LAYOUT=`<p:sldLayout ${NS}>${tree('')}</p:sldLayout>`;
@@ -21,9 +21,9 @@ async function openNativeFixture(inner){
  const zip=await JSZip.loadAsync(bytes);zip.file('_rels/.rels',PACKAGE_RELS);zip.file('[Content_Types].xml',CONTENT_TYPES);bytes=await zip.generateAsync({type:'uint8array'});
  return openPresentation(bytes,{format:'pptx'});
 }
-async function paintNativeFixture(inner,dpr=1){
+async function paintNativeFixture(inner,dpr=1,zoom=1){
  const source=await openNativeFixture(inner);
- try {const result=buildCanonicalScene(source.document,source.document.slides[0].id);if(result.status!=='ready')throw new Error(JSON.stringify({result,objects:source.document.slides[0].objects}));const ctx=canvas(dpr);paintCanonicalScene(ctx,result.scene,createCanonicalPaintEnvironment());return {ctx,result};}
+ try {const result=buildCanonicalScene(source.document,source.document.slides[0].id);if(result.status!=='ready')throw new Error(JSON.stringify({result,objects:source.document.slides[0].objects}));const ctx=canvas(dpr);ctx.scale(zoom,zoom);paintCanonicalScene(ctx,result.scene,createCanonicalPaintEnvironment());return {ctx,result};}
  finally {source.dispose();}
 }
 it('paints solid rect/ellipse in canonical z order and local versus scene placement',()=>{
@@ -106,6 +106,21 @@ it.each([1,2])('paints fill from a real PPTX part after source projection at DPR
  const inner=shape(2,'rect',15,15,150,75,'<a:solidFill><a:srgbClr val="123456"/></a:solidFill><a:ln><a:noFill/></a:ln>');
  const {ctx,result}=await paintNativeFixture(inner,dpr);expect(result.scene.nodes[0].paint.fill).toBe('#123456');
  expect(devicePixel(ctx,50,30,dpr)).toEqual([18,52,86,255]);
+});
+it.each([[1,0.5],[1,1.5],[2,0.5],[2,1.5]])('keeps native EMU geometry stable at DPR %s and stage zoom %s',async(dpr,zoom)=>{
+ const inner=shape(2,'rect',15,15,150,75,'<a:solidFill><a:srgbClr val="123456"/></a:solidFill><a:ln><a:noFill/></a:ln>');
+ const {ctx,result}=await paintNativeFixture(inner,dpr,zoom);
+ expect(result.scene.nodes[0].frame).toMatchObject({x:10,y:10,width:100,height:50,rotation:0});
+ expect(devicePixel(ctx,60,30,dpr,zoom)).toEqual([18,52,86,255]);
+ expect(devicePixel(ctx,0,30,dpr,zoom)).toEqual([255,255,255,255]);
+});
+it.each([1,2])('paints native OOXML rotation around the frame center at DPR %s',async dpr=>{
+ const inner=shape(2,'rect',15,15,150,75,'<a:solidFill><a:srgbClr val="123456"/></a:solidFill><a:ln><a:noFill/></a:ln>').replace('<a:xfrm>','<a:xfrm rot="5400000">');
+ const {ctx,result}=await paintNativeFixture(inner,dpr);
+ expect(result.scene.nodes[0].frame.rotation).toBe(90);
+ // Fixture EMU frame: x=10,y=10,w=100,h=50; a 90-degree turn about (60,35) covers x=35..85.
+ expect(devicePixel(ctx,60,20,dpr)).toEqual([18,52,86,255]);
+ expect(devicePixel(ctx,20,35,dpr)).toEqual([255,255,255,255]);
 });
 it.each([1,2])('paints an XML-projected outline with the OOXML EMU width at DPR %s',async dpr=>{
  const inner=shape(2,'rect',15,15,150,75,'<a:noFill/><a:ln w="19050"><a:solidFill><a:srgbClr val="654321"/></a:solidFill></a:ln>');
