@@ -5,6 +5,7 @@ import { writePptx } from '@stagecraft/pptx';
 import { writeOdp } from '@stagecraft/odp';
 import { buildCanonicalScene } from '@stagecraft/renderer/canonical';
 import { createPresentation, openPresentation } from './index.js';
+import { withoutDisplayProof } from './authoring.js';
 
 const legacyDeck = {
   title: 'Custom Parity Deck',
@@ -28,10 +29,10 @@ describe('createPresentation', () => {
       expect(createdDoc.slides[0].name).toBe(legacyDoc.slides[0].name);
       expect(createdDoc.slides[0].objects).toEqual([]);
       expect(createdDoc.slides[0].notes).toBeUndefined();
-      expect(createdDoc.masters.map(m => ({ objs: m.objects?.length ?? 0, bg: m.background, ext: m.extensions })))
-        .toEqual(legacyDoc.masters.map(m => ({ objs: m.objects?.length ?? 0, bg: m.background, ext: m.extensions })));
-      expect(createdDoc.layouts.map(l => ({ objs: l.objects?.length ?? 0, bg: l.background, ext: l.extensions })))
-        .toEqual(legacyDoc.layouts.map(l => ({ objs: l.objects?.length ?? 0, bg: l.background, ext: l.extensions })));
+      expect(createdDoc.masters.map(m => ({ objs: m.objects?.length ?? 0, bg: m.background, ext: withoutDisplayProof(m.extensions) })))
+        .toEqual(legacyDoc.masters.map(m => ({ objs: m.objects?.length ?? 0, bg: m.background, ext: withoutDisplayProof(m.extensions) })));
+      expect(createdDoc.layouts.map(l => ({ objs: l.objects?.length ?? 0, bg: l.background, ext: withoutDisplayProof(l.extensions) })))
+        .toEqual(legacyDoc.layouts.map(l => ({ objs: l.objects?.length ?? 0, bg: l.background, ext: withoutDisplayProof(l.extensions) })));
       expect(createdDoc.themes.map(t => ({
         major: t.extensions?.pptxFontScheme?.major,
         minor: t.extensions?.pptxFontScheme?.minor,
@@ -41,7 +42,7 @@ describe('createPresentation', () => {
         minor: t.extensions?.pptxFontScheme?.minor,
         objDefaults: t.extensions?.pptxObjectDefaults,
       })));
-      expect(createdDoc.extensions).toEqual(legacyDoc.extensions);
+      expect(withoutDisplayProof(createdDoc.extensions)).toEqual(withoutDisplayProof(legacyDoc.extensions));
       expect(createdSession.capabilities).toEqual(legacySession.capabilities);
       expect(createdSession.diagnostics).toEqual(legacySession.diagnostics);
 

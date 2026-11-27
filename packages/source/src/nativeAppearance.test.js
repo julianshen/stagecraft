@@ -118,6 +118,31 @@ describe('native PPTX appearance projection', () => {
     finally { placeholderSession.dispose(); }
   });
 
+  it('lets higher-precedence inherited colours replace either representation', async () => {
+    const master = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:defPPr><a:defRPr sz="1800"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="Arial"/></a:defRPr></a:defPPr><a:lvl1pPr><a:defRPr><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+    const box = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Native</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const bytes = await sourceReady(await buildPptx({ theme, master, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(box)}</p:sld>` }] }));
+    const session = await openPresentation(bytes, { format: 'pptx', xml });
+    try { expect(session.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.color).toBe('#FF0000'); }
+    finally { session.dispose(); }
+
+    const zip = await JSZip.loadAsync(bytes);
+    const presentation = await zip.file('ppt/presentation.xml').async('string');
+    zip.file('ppt/presentation.xml', presentation.replace('</p:presentation>', '<p:defaultTextStyle><a:lvl1pPr><a:defRPr><a:solidFill><a:schemeClr val="tx1"/></a:solidFill></a:defRPr></a:lvl1pPr></p:defaultTextStyle></p:presentation>'));
+    zip.file('ppt/slideMasters/slideMaster1.xml', master.replace('<a:defPPr><a:defRPr sz="1800"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="Arial"/></a:defRPr></a:defPPr><a:lvl1pPr><a:defRPr><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:defRPr></a:lvl1pPr>', '<a:lvl1pPr><a:defRPr sz="1800"><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill><a:latin typeface="Arial"/></a:defRPr></a:lvl1pPr>'));
+    const merged = await openPresentation(await zip.generateAsync({ type: 'uint8array' }), { format: 'pptx', xml });
+    try { expect(merged.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.color).toBe('#FF0000'); }
+    finally { merged.dispose(); }
+  });
+
+  it('refuses empty complex-script aliases with supplemental faces', async () => {
+    const supplemental = theme.replace('<a:cs typeface="Amiri"/>', '<a:cs typeface=""/><a:font script="Arab" typeface="Noto Naskh Arabic"/>');
+    const arabic = textBox(2, 20, 20, 300, 100, para('مرحبا', { rPr: ' sz="1800"', rKids: '<a:cs typeface="+mn-cs"/>' }).replace('lang="en-US"', 'lang="ar-SA"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const session = await openFixture(`<p:sld ${NS}>${tree(arabic)}</p:sld>`, { theme: supplemental });
+    try { expect(proof(session.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { session.dispose(); }
+  });
+
   it.each(['<a:alpha val="50000"/>', '<a:lumMod val="bad"/>', '<a:lumOff val="9007199254740992"/>'])('refuses unsupported inherited colour transforms: %s', async transform => {
     const master = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800"><a:solidFill><a:schemeClr val="tx1">${transform}</a:schemeClr></a:solidFill><a:latin typeface="Arial"/></a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
     const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
