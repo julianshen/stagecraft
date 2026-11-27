@@ -47,7 +47,19 @@ const FONT_PARITY_CASES = FONT_SLOTS.flatMap(slot => {
   return sources.flatMap(source => [false, true].flatMap(populated => [false, true].map(supplemental => ({
     slot, source, populated, supplemental, themeLatin: 'Theme Latin',
   })))).concat([{ slot, source: 'none', populated: false, supplemental: false, themeLatin: '' }]);
-});
+}).concat([
+  { id: 'ea', tag: 'ea', field: 'fontFamilyEastAsia', text: '漢字', language: 'ja-JP', script: 'Jpan' },
+  { id: 'ea', tag: 'ea', field: 'fontFamilyEastAsia', text: '漢字', language: 'ko-KR', script: 'Hang' },
+  { id: 'ea', tag: 'ea', field: 'fontFamilyEastAsia', text: '漢字', language: 'zh-TW', script: 'Hant' },
+  { id: 'ea', tag: 'ea', field: 'fontFamilyEastAsia', text: '漢字', language: 'zh-HK', script: 'Hant' },
+  { id: 'ea', tag: 'ea', field: 'fontFamilyEastAsia', text: '漢字', language: 'zh-MO', script: 'Hant' },
+  { id: 'ea', tag: 'ea', field: 'fontFamilyEastAsia', text: '漢字', language: 'zh-Hant', script: 'Hant' },
+  { id: 'ea', tag: 'ea', field: 'fontFamilyEastAsia', text: '漢字', language: 'zh-CN', script: 'Hans' },
+  { id: 'ea', tag: 'ea', field: 'fontFamilyEastAsia', text: '漢字', language: undefined, script: 'Hans' },
+  { id: 'lt', tag: 'latin', field: 'fontFamily', text: 'Ελληνικά', language: 'el-GR', script: 'Grek' },
+].flatMap(slot => [false, true].flatMap(populated => [false, true].map(supplemental => ({
+  slot, source: 'none', populated, supplemental, themeLatin: 'Theme Latin',
+})))));
 
 async function openFixture(slideXml, options = {}) {
   const bytes = await sourceReady(await buildPptx({
@@ -132,7 +144,7 @@ describe('native PPTX appearance projection', () => {
     finally { placeholderSession.dispose(); }
   });
 
-  it.each(FONT_PARITY_CASES)('matches renderer fonts: $slot.id/$source/component=$populated/supplemental=$supplemental', async ({ slot, source, populated, supplemental, themeLatin }) => {
+  it.each(FONT_PARITY_CASES)('matches renderer fonts: $slot.id/$slot.language/$slot.script/$source/component=$populated/supplemental=$supplemental', async ({ slot, source, populated, supplemental, themeLatin }) => {
     const component = populated ? `Theme ${slot.id.toUpperCase()}` : '';
     const supplementalFace = supplemental ? 'Supplemental Face' : null;
     const group = name => `<a:${name}><a:latin typeface="${themeLatin}"/><a:ea typeface="${slot.id === 'ea' ? component : 'Theme EA'}"/><a:cs typeface="${slot.id === 'cs' ? component : 'Theme CS'}"/>${supplementalFace ? `<a:font script="${slot.script}" typeface="${supplementalFace}"/>` : ''}</a:${name}>`;
@@ -147,7 +159,7 @@ describe('native PPTX appearance projection', () => {
     const master = inherited
       ? `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800">${fontNode}</a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`
       : emptyMaster;
-    const runXml = `<a:p><a:r><a:rPr sz="1800">${direct ? fontNode : ''}</a:rPr><a:t>${slot.text}</a:t></a:r></a:p>`;
+    const runXml = `<a:p><a:r><a:rPr sz="1800"${slot.language ? ` lang="${slot.language}"` : ''}>${direct ? fontNode : ''}</a:rPr><a:t>${slot.text}</a:t></a:r></a:p>`;
     const box = textBox(2, 20, 20, 300, 100, runXml, { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const bytes = await sourceReady(await buildPptx({ theme: customTheme, master, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(box)}</p:sld>` }] }));
     const session = await openPresentation(bytes, { format: 'pptx', xml });
@@ -159,8 +171,22 @@ describe('native PPTX appearance projection', () => {
       const expected = resolveTextFamily(expectedRun, { fonts: { major: fonts, minor: fonts } });
       const object = session.document.slides[0].objects[0];
       expect(proof(object), JSON.stringify({ slot, source, populated, supplemental, expected })).toBeDefined();
-      expect(object.text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved[slot.field]).toBe(expected);
+      expect(object.text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved[slot.field], JSON.stringify({ slot, source, populated, supplemental, expected })).toBe(expected);
     } finally { session.dispose(); }
+  });
+
+  it.each([
+    ['Arabic + Cyrillic', 'مرحبا Привет', ['مرحبا', 'Привет']],
+    ['Han + Arabic', '漢字 مرحبا', ['漢字', 'مرحبا']],
+  ])('refuses mixed scripts while checking renderer resolution per script: %s', async (_label, text, pieces) => {
+    const supplemental = theme.replace('<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/>', '<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/><a:font script="Arab" typeface="Noto Naskh Arabic"/><a:font script="Cyrl" typeface="Noto Sans Cyrillic"/><a:font script="Hans" typeface="Noto Sans CJK"/>');
+    const fonts = { latin: 'Arial', eastAsian: 'Noto Sans JP', complexScript: 'Amiri', supplemental: { Arab: 'Noto Naskh Arabic', Cyrl: 'Noto Sans Cyrillic', Hans: 'Noto Sans CJK' } };
+    const expected = { 'مرحبا': 'Amiri', 'Привет': 'Arial', '漢字': 'Noto Sans JP' };
+    for (const piece of pieces) expect(resolveTextFamily({ text: piece }, { fonts: { minor: fonts } })).toBe(expected[piece]);
+    const box = textBox(2, 20, 20, 300, 100, `<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>${text}</a:t></a:r></a:p>`, { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const session = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`, { theme: supplemental });
+    try { expect(proof(session.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { session.dispose(); }
   });
 
   it('refuses hidden native shapes before issuing appearance proofs', async () => {
