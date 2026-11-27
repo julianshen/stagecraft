@@ -415,4 +415,31 @@ describe('KONVA-2b surface decision, fallback wording, and API boundary', () => 
       }
     }
   });
+
+  it('K3b: ignores prototype property names in reason and diagnostic codes', async () => {
+    const {
+      surfaceDiagnosticForReason,
+      surfaceMessageForReason,
+      SURFACE_REASON_MESSAGES,
+    } = await import('./surfaceDecision.js');
+    const protoNames = ['toString', 'constructor', '__proto__', 'hasOwnProperty'];
+
+    for (const proto of protoNames) {
+      expect(SURFACE_REASON_MESSAGES[proto]).toBeUndefined();
+
+      const reasonResult = surfaceDiagnosticForReason(proto, [{ code: proto, objectId: 'o1' }]);
+      expect(typeof reasonResult.message).toBe('string');
+      expect(reasonResult.message).toBe('Showing the standard view.');
+      expect(protoNames).not.toContain(reasonResult.code);
+
+      for (const reason of ['inherited-appearance', 'unresolved-appearance', 'unsupported-content']) {
+        const diagResult = surfaceDiagnosticForReason(reason, [{ code: proto, objectId: 'o1' }]);
+        expect(typeof diagResult.message).toBe('string');
+        expect(diagResult.message).toBeTruthy();
+        expect(diagResult.message).not.toContain(proto);
+        expect(protoNames).not.toContain(diagResult.code);
+        expect(surfaceMessageForReason(reason, [{ code: proto }])).toBe(diagResult.message);
+      }
+    }
+  });
 });

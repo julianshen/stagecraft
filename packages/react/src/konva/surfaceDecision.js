@@ -1,6 +1,11 @@
 import { fontFamiliesFor } from '@stagecraft/renderer';
 
-export const SURFACE_REASON_MESSAGES = Object.freeze({
+const frozenMap = entries => Object.freeze(Object.assign(Object.create(null), entries));
+const ownValue = (table, key) => (typeof key === 'string' && Object.hasOwn(table, key) ? table[key] : undefined);
+const isSafeDiagnosticCode = code =>
+  typeof code === 'string' && code.length > 0 && code !== '__proto__' && !Object.hasOwn(Object.prototype, code);
+
+export const SURFACE_REASON_MESSAGES = frozenMap({
   loading: 'Loading canvas view...',
   'no-slide': 'Showing the standard view: there is no slide to show.',
   'not-canonical': 'Showing the standard view: this deck format is not supported in canvas view.',
@@ -23,7 +28,7 @@ const PLACEHOLDER_STYLE_MESSAGE =
 const UNCONFIRMED_APPEARANCE_MESSAGE =
   'Showing the standard view: canvas view cannot confirm this slide matches PowerPoint yet.';
 
-export const INHERITED_APPEARANCE_MESSAGES = Object.freeze({
+export const INHERITED_APPEARANCE_MESSAGES = frozenMap({
   'inherited-background': 'Showing the standard view: this slide uses its layout background. Set a slide background to use canvas view.',
   'inherited-artwork': 'Showing the standard view: this slide inherits layout or master artwork.',
   'theme-background-unresolved': 'Showing the standard view: this slide uses a theme background that could not be resolved.',
@@ -31,7 +36,7 @@ export const INHERITED_APPEARANCE_MESSAGES = Object.freeze({
   'theme-object-defaults': 'Showing the standard view: this slide uses theme default styling not supported in canvas view yet.',
 });
 
-export const UNRESOLVED_APPEARANCE_MESSAGES = Object.freeze({
+export const UNRESOLVED_APPEARANCE_MESSAGES = frozenMap({
   'native-appearance-proof-missing': UNCONFIRMED_APPEARANCE_MESSAGE,
   'native-appearance-proof-invalid': UNCONFIRMED_APPEARANCE_MESSAGE,
   'native-appearance-stale': 'Showing the standard view: this slide was edited and needs to be reopened to use canvas view.',
@@ -40,7 +45,7 @@ export const UNRESOLVED_APPEARANCE_MESSAGES = Object.freeze({
   'placeholder-style-unresolved': PLACEHOLDER_STYLE_MESSAGE,
 });
 
-export const UNSUPPORTED_CONTENT_MESSAGES = Object.freeze({
+export const UNSUPPORTED_CONTENT_MESSAGES = frozenMap({
   'gradient-fill': 'Showing the standard view: this slide has a gradient fill that canvas view cannot show yet.',
   'picture-fill': 'Showing the standard view: this slide has a picture fill that canvas view cannot show yet.',
   'outline-unsupported': 'Showing the standard view: this slide has a shape outline style that canvas view cannot show yet.',
@@ -51,7 +56,7 @@ export const UNSUPPORTED_CONTENT_MESSAGES = Object.freeze({
   'placeholder-style-unresolved': PLACEHOLDER_STYLE_MESSAGE,
 });
 
-const DIAGNOSTIC_MESSAGES_BY_REASON = Object.freeze({
+const DIAGNOSTIC_MESSAGES_BY_REASON = frozenMap({
   'inherited-appearance': INHERITED_APPEARANCE_MESSAGES,
   'unresolved-appearance': UNRESOLVED_APPEARANCE_MESSAGES,
   'unsupported-content': UNSUPPORTED_CONTENT_MESSAGES,
@@ -65,16 +70,17 @@ function formatAdditionalDiagnostics(message, totalCount) {
 }
 
 export function surfaceDiagnosticForReason(reason, diagnostics = []) {
-  const table = DIAGNOSTIC_MESSAGES_BY_REASON[reason];
+  const table = ownValue(DIAGNOSTIC_MESSAGES_BY_REASON, reason);
   const fallbackCode = Array.isArray(diagnostics)
-    ? diagnostics.find(d => typeof d?.code === 'string' && d.code)?.code
+    ? diagnostics.find(d => isSafeDiagnosticCode(d?.code))?.code
     : undefined;
   if (table && Array.isArray(diagnostics)) {
     for (const d of diagnostics) {
-      if (d?.code && table[d.code]) {
+      const text = ownValue(table, d?.code);
+      if (typeof text === 'string') {
         return {
           code: d.code,
-          message: formatAdditionalDiagnostics(table[d.code], diagnostics.length),
+          message: formatAdditionalDiagnostics(text, diagnostics.length),
         };
       }
     }
@@ -85,9 +91,10 @@ export function surfaceDiagnosticForReason(reason, diagnostics = []) {
       };
     }
   }
+  const defaultMessage = ownValue(SURFACE_REASON_MESSAGES, reason);
   return {
     code: fallbackCode,
-    message: SURFACE_REASON_MESSAGES[reason] ?? 'Showing the standard view.',
+    message: typeof defaultMessage === 'string' ? defaultMessage : 'Showing the standard view.',
   };
 }
 
