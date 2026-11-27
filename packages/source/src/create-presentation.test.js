@@ -48,10 +48,9 @@ describe('createPresentation', () => {
 
       if (format === 'pptx') {
         expect(createdDoc.slides[0].background).toBeUndefined();
-        expect(buildCanonicalScene(createdDoc, createdDoc.slides[0].id)).toMatchObject({
-          status: 'unsupported',
-          reason: 'unresolved-appearance',
-        });
+        const nativeBlankScene = buildCanonicalScene(createdDoc, createdDoc.slides[0].id);
+        expect(nativeBlankScene.status).toBe('ready');
+        expect(nativeBlankScene.scene.background).toBe('#FFFFFF');
 
         // Blank slide + Use a white background becomes eligible for K2b canvas view
         const withBlankSlide = structuredClone(createdDoc);
