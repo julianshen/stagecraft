@@ -55,8 +55,8 @@ it('keeps CRLF across runs and empty runs equivalent to a single display break',
 it('honors a rectangular text-bearing shape fill behind its text',()=>{
  const s=scene([box({type:'shape',shape:'rect',fill:'#ffff00'})]),ctx=canvas();paintCanonicalScene(ctx,s,createCanonicalPaintEnvironment());expect(pixel(ctx,295,195)).toEqual([255,255,0,255]);
 });
-it('honors anchor and inset placement without applying export autofit',()=>{
- const bounds=o=>{const ctx=canvas();paintCanonicalScene(ctx,scene([o]),createCanonicalPaintEnvironment());const data=ctx.getImageData(0,0,400,300).data;let top=300,left=400,bottom=0;for(let y=0;y<300;y++)for(let x=0;x<400;x++){const i=(y*400+x)*4;if(data[i]>150&&data[i+1]<80&&data[i+2]<80){top=Math.min(top,y);left=Math.min(left,x);bottom=Math.max(bottom,y);}}return {top,left,bottom};};
+it.each([1,2])('honors anchor and inset placement without applying export autofit at DPR %s',dpr=>{
+ const bounds=o=>{const ctx=canvas(dpr);paintCanonicalScene(ctx,scene([o]),createCanonicalPaintEnvironment());const width=400*dpr,height=300*dpr,data=ctx.getImageData(0,0,width,height).data;let top=height,left=width,bottom=0;for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4;if(data[i]>150&&data[i+1]<80&&data[i+2]<80){top=Math.min(top,y);left=Math.min(left,x);bottom=Math.max(bottom,y);}}return {top:top/dpr,left:left/dpr,bottom:bottom/dpr};};
  const top=box({bodyLayout:{anchor:'top',autofit:'none',insets:{left:190500,top:95250,bottom:95250,right:0}}}),middle=structuredClone(top),bottom=structuredClone(top);middle.bodyLayout.anchor='middle';bottom.bodyLayout.anchor='bottom';
  const a=bounds(top),b=bounds(middle),c=bounds(bottom);expect(a.left).toBeGreaterThanOrEqual(30);expect(a.top).toBeLessThan(b.top);expect(b.top).toBeLessThan(c.top);expect(c.bottom).toBeLessThan(210);
  const resize=structuredClone(top);resize.bodyLayout.autofit='resize';const shrink=structuredClone(top);shrink.bodyLayout.autofit='shrink';expect(bounds(resize)).toEqual(a);expect(bounds(shrink)).toEqual(a);
