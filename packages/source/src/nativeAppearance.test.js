@@ -1167,6 +1167,65 @@ describe('native PPTX appearance projection', () => {
     } finally { session.dispose(); }
   });
 
+  it('exports real core text and format edits from proved native runs', async () => {
+    const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const textSession = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`);
+    try {
+      const editor = createEditor({ document: textSession.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+      const run = textSession.document.slides[0].objects[0].text.paragraphs[0].runs[0];
+      expect(proof(textSession.document.slides[0].objects[0])).toBeTruthy();
+      expect(editor.dispatch('document.setRunText', { runId: run.id, text: 'مرحبا' }).changed).toBe(true);
+      const output = await textSession.export(editor.getSnapshot().document);
+      const reopened = await openPresentation(output.bytes, { format: 'pptx', xml });
+      try { expect(reopened.document.slides[0].objects[0].text.paragraphs[0].runs[0].text).toBe('مرحبا'); }
+      finally { reopened.dispose(); editor.dispose(); }
+    } finally { textSession.dispose(); }
+
+    const formatSession = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`);
+    try {
+      const editor = createEditor({ document: formatSession.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+      const run = formatSession.document.slides[0].objects[0].text.paragraphs[0].runs[0];
+      expect(editor.dispatch('document.setRunFormat', { runId: run.id, format: { bold: true } }).changed).toBe(true);
+      const output = await formatSession.export(editor.getSnapshot().document);
+      const reopened = await openPresentation(output.bytes, { format: 'pptx', xml });
+      try { expect(reopened.document.slides[0].objects[0].text.paragraphs[0].runs[0].style.b).toBe('1'); }
+      finally { reopened.dispose(); editor.dispose(); }
+    } finally { formatSession.dispose(); }
+  });
+
+  it('exports substantive edits when run, paragraph and object proof sidecars are removed together', async () => {
+    const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const session = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`);
+    try {
+      const editor = createEditor({ document: session.document, validateDocument, plugins: [documentPlugin, presentationPlugin] });
+      const paragraph = session.document.slides[0].objects[0].text.paragraphs[0];
+      const run = paragraph.runs[0];
+      editor.dispatch('document.setRunText', { runId: run.id, text: 'Edited native text' });
+      let snapshot = structuredClone(editor.getSnapshot().document);
+      delete snapshot.slides[0].objects[0].text.paragraphs[0].runs[0].extensions;
+      let output = await session.export(snapshot);
+      let reopened = await openPresentation(output.bytes, { format: 'pptx', xml });
+      try { expect(reopened.document.slides[0].objects[0].text.paragraphs[0].runs[0].text).toBe('Edited native text'); }
+      finally { reopened.dispose(); }
+
+      editor.dispatch('document.setParagraphFormat', { paragraphId: paragraph.id, format: { alignment: 'center' } });
+      snapshot = structuredClone(editor.getSnapshot().document);
+      delete snapshot.slides[0].objects[0].text.paragraphs[0].extensions.pptxEndRunAppearance;
+      output = await session.export(snapshot);
+      reopened = await openPresentation(output.bytes, { format: 'pptx', xml });
+      try { expect(reopened.document.slides[0].objects[0].text.paragraphs[0].style.alignment).toBe('center'); }
+      finally { reopened.dispose(); }
+
+      editor.dispatch('document.setRunText', { runId: run.id, text: 'Second native edit' });
+      snapshot = structuredClone(editor.getSnapshot().document);
+      delete snapshot.slides[0].objects[0].extensions.stagecraftNativeAppearance;
+      output = await session.export(snapshot);
+      reopened = await openPresentation(output.bytes, { format: 'pptx', xml });
+      try { expect(reopened.document.slides[0].objects[0].text.paragraphs[0].runs[0].text).toBe('Second native edit'); }
+      finally { reopened.dispose(); editor.dispose(); }
+    } finally { session.dispose(); }
+  });
+
   it('keeps untouched native export bytes identical after projection', async () => {
     const objectXml = shape(2, 'rect', 20, 20, 200, 100, '<a:solidFill><a:srgbClr val="112233"/></a:solidFill>');
     const bytes = await sourceReady(await buildPptx({ theme, master: emptyMaster, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(objectXml)}</p:sld>` }] }));
