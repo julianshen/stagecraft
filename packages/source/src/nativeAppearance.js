@@ -478,7 +478,7 @@ function supportedAutofitXml(bodyPr) {
   if (nodes.length !== 1) return false;
   const autofit = nodes[0];
   if (is(autofit, 'a', 'noAutofit') || is(autofit, 'a', 'spAutoFit')) {
-    return autofit.attributes.length === 0 && children(autofit).length === 0;
+    return autofit.attributes.length === 0 && children(autofit).length === 0 && !hasNonWhitespaceCharacterData(autofit);
   }
   if (!is(autofit, 'a', 'normAutofit') || children(autofit).length !== 0 || hasNonWhitespaceCharacterData(autofit)) return false;
   if (Array.from(autofit.attributes).some(attribute => !['fontScale', 'lnSpcReduction'].includes(attribute.name))) return false;
