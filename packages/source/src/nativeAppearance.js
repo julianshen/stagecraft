@@ -18,6 +18,7 @@ const UNSUPPORTED_BACKGROUND = Symbol('unsupported-background');
 const NO_COLOR_OVERRIDE = Symbol('no-color-override');
 const inputFits = value => new TextEncoder().encode(value).byteLength <= NATIVE_APPEARANCE_INPUT_MAX_BYTES;
 const paragraphRuns = paragraph => children(paragraph).filter(node => !is(node, 'a', 'pPr') && !is(node, 'a', 'endParaRPr'));
+const hasNonWhitespaceCharacterData = node => Array.from(node.childNodes).some(child => (child.nodeType === 3 || child.nodeType === 4) && child.nodeValue.trim() !== '');
 const styleIndex = value => /^\d+$/.test(value ?? '') ? Number(value) - 1001 : -1;
 const none = () => ({ kind: 'none' });
 const onOff = value => value === '1' || value === 'true' ? true : value === '0' || value === 'false' ? false : null;
@@ -471,6 +472,7 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
 }
 
 function supportedAutofitXml(bodyPr) {
+  if (hasNonWhitespaceCharacterData(bodyPr)) return false;
   const nodes = children(bodyPr);
   if (nodes.length === 0) return true;
   if (nodes.length !== 1) return false;
@@ -478,7 +480,7 @@ function supportedAutofitXml(bodyPr) {
   if (is(autofit, 'a', 'noAutofit') || is(autofit, 'a', 'spAutoFit')) {
     return autofit.attributes.length === 0 && children(autofit).length === 0;
   }
-  if (!is(autofit, 'a', 'normAutofit') || children(autofit).length !== 0) return false;
+  if (!is(autofit, 'a', 'normAutofit') || children(autofit).length !== 0 || hasNonWhitespaceCharacterData(autofit)) return false;
   if (Array.from(autofit.attributes).some(attribute => !['fontScale', 'lnSpcReduction'].includes(attribute.name))) return false;
   return [['fontScale', 1], ['lnSpcReduction', 0]].every(([name, minimum]) => {
     if (!autofit.hasAttribute(name)) return true;
