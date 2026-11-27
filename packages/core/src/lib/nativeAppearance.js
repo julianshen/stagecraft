@@ -30,6 +30,44 @@ export function nativeTextScript(text) {
   return nativeTextScripts(text).join('+');
 }
 
+const DEFAULT_NATIVE_COLOR_MAP = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' };
+
+/** Resolve the same effective theme and colour map for source projection and renderer proof checks. */
+export function nativeAppearanceContext(document, entity) {
+  let theme = null;
+  let current = entity;
+  const themeSeen = new Set();
+  while (current && !themeSeen.has(current.id)) {
+    themeSeen.add(current.id);
+    if (current.extensions?.pptxThemeOverride) { theme = null; break; }
+    if (current.themeId) {
+      theme = document?.themes?.find(item => item.id === current.themeId) ?? null;
+      break;
+    }
+    current = current.layoutId ? document?.layouts?.find(item => item.id === current.layoutId)
+      : current.masterId ? document?.masters?.find(item => item.id === current.masterId) : null;
+  }
+
+  const chain = [];
+  const mapSeen = new Set();
+  let unsupportedMap = false;
+  current = entity;
+  while (current && !mapSeen.has(current.id)) {
+    if (current.extensions?.pptxColorMapOverride === 'unsupported') { unsupportedMap = true; break; }
+    mapSeen.add(current.id);
+    if (current.extensions?.pptxColorMapOverride === 'master') {
+      current = current.layoutId ? document?.layouts?.find(item => item.id === current.layoutId)
+        : current.masterId ? document?.masters?.find(item => item.id === current.masterId) : null;
+      continue;
+    }
+    chain.unshift(current);
+    current = current.layoutId ? document?.layouts?.find(item => item.id === current.layoutId)
+      : current.masterId ? document?.masters?.find(item => item.id === current.masterId) : null;
+  }
+  const colorMap = unsupportedMap ? null : Object.assign({ ...DEFAULT_NATIVE_COLOR_MAP }, ...chain.map(item => item.extensions?.pptxColorMap));
+  return { theme, colorMap };
+}
+
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const exactKeys = (value, required, optional = []) => record(value)
   && required.every(key => Object.hasOwn(value, key))
