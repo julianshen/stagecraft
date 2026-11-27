@@ -7,7 +7,7 @@ export const SURFACE_REASON_MESSAGES = Object.freeze({
   'unsupported-format': 'Showing the standard view: canvas view supports PowerPoint files only.',
   'plugin-renderer': 'Showing the standard view: this editor uses custom object renderers.',
   'inherited-appearance': 'Showing the standard view: this slide uses its layout background. Set a slide background to use canvas view.',
-  'unresolved-appearance': 'Showing the standard view: imported slide styling is not supported in canvas view yet.',
+  'unresolved-appearance': 'Showing the standard view: this slide has styling that could not be resolved for canvas view yet.',
   'unsupported-content': 'Showing the standard view: this slide has content canvas view cannot show yet (images, tables, charts or groups).',
   'invalid-geometry': 'Showing the standard view: an object on this slide has an invalid size or position.',
   'unsupported-embedding': 'Showing the standard view: the editor is inside a scaled or rotated container.',
@@ -18,21 +18,61 @@ export const SURFACE_REASON_MESSAGES = Object.freeze({
   'render-failed': 'Showing the standard view: canvas view could not start.',
 });
 
+const PLACEHOLDER_STYLE_MESSAGE =
+  'Showing the standard view: this slide uses placeholder styling not supported in canvas view yet.';
+
 export const INHERITED_APPEARANCE_MESSAGES = Object.freeze({
   'inherited-background': 'Showing the standard view: this slide uses its layout background. Set a slide background to use canvas view.',
   'inherited-artwork': 'Showing the standard view: this slide inherits layout or master artwork.',
+  'theme-background-unresolved': 'Showing the standard view: this slide uses a theme background that could not be resolved.',
   'authored-layout-mismatch': 'Showing the standard view: this slide uses a layout not supported in canvas view yet.',
   'theme-object-defaults': 'Showing the standard view: this slide uses theme default styling not supported in canvas view yet.',
 });
 
+export const UNRESOLVED_APPEARANCE_MESSAGES = Object.freeze({
+  'native-appearance-proof-missing': 'Showing the standard view: this slide is missing resolved appearance data for canvas view.',
+  'native-appearance-proof-invalid': 'Showing the standard view: this slide has incomplete appearance data for canvas view.',
+  'native-appearance-stale': 'Showing the standard view: this slide was edited and needs to be reopened to use canvas view.',
+  'theme-color-unresolved': 'Showing the standard view: this slide uses a theme colour transform not supported in canvas view yet.',
+  'text-appearance-unresolved': 'Showing the standard view: this slide has text styling that could not be resolved for canvas view yet.',
+  'placeholder-style-unresolved': PLACEHOLDER_STYLE_MESSAGE,
+});
+
+export const UNSUPPORTED_CONTENT_MESSAGES = Object.freeze({
+  'gradient-fill': 'Showing the standard view: this slide has a gradient fill that canvas view cannot show yet.',
+  'picture-fill': 'Showing the standard view: this slide has a picture fill that canvas view cannot show yet.',
+  'outline-unsupported': 'Showing the standard view: this slide has a shape outline style that canvas view cannot show yet.',
+  'custom-geometry': 'Showing the standard view: this slide has a custom shape geometry that canvas view cannot show yet.',
+  'flip-unsupported': 'Showing the standard view: this slide has a flipped shape that canvas view cannot show yet.',
+  'list-style-unsupported': 'Showing the standard view: this slide has a bulleted list or numbered list that canvas view cannot show yet.',
+  'native-autofit-unsupported': 'Showing the standard view: this slide has text autofit scaling that canvas view cannot show yet.',
+  'placeholder-style-unresolved': PLACEHOLDER_STYLE_MESSAGE,
+});
+
+const DIAGNOSTIC_MESSAGES_BY_REASON = Object.freeze({
+  'inherited-appearance': INHERITED_APPEARANCE_MESSAGES,
+  'unresolved-appearance': UNRESOLVED_APPEARANCE_MESSAGES,
+  'unsupported-content': UNSUPPORTED_CONTENT_MESSAGES,
+});
+
+function formatAdditionalDiagnostics(message, totalCount) {
+  const extra = totalCount - 1;
+  if (extra <= 0) return message;
+  const trimmed = message.endsWith('.') ? message.slice(0, -1) : message;
+  return `${trimmed} (and ${extra} other ${extra === 1 ? 'item' : 'items'}).`;
+}
+
 export function surfaceMessageForReason(reason, diagnostics = []) {
-  if (reason === 'inherited-appearance' && Array.isArray(diagnostics)) {
+  const table = DIAGNOSTIC_MESSAGES_BY_REASON[reason];
+  if (table && Array.isArray(diagnostics)) {
     for (const d of diagnostics) {
-      if (d?.code && INHERITED_APPEARANCE_MESSAGES[d.code]) {
-        return INHERITED_APPEARANCE_MESSAGES[d.code];
+      if (d?.code && table[d.code]) {
+        return formatAdditionalDiagnostics(table[d.code], diagnostics.length);
       }
     }
-    return 'Showing the standard view: this slide uses inherited layout styling.';
+    if (reason === 'inherited-appearance') {
+      return 'Showing the standard view: this slide uses inherited layout styling.';
+    }
   }
   return SURFACE_REASON_MESSAGES[reason] ?? 'Showing the standard view.';
 }

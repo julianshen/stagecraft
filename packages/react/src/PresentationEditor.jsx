@@ -1470,7 +1470,7 @@ export function PresentationCanvas({
     )}
     {showFallbackNotice && (
       <div className="stagecraft-konva-fallback-bar">
-        <p role="status">{surfaceMessageForReason(decision.reason, sceneResult?.diagnostics)}</p>
+        <p role="status" data-diagnostic-code={sceneResult?.diagnostics?.[0]?.code || undefined}>{surfaceMessageForReason(decision.reason, sceneResult?.diagnostics)}</p>
         {canSetWhiteBg && (
           <button type="button" onClick={() => ui.setSlideProperties({ background: { type: 'solid', color: '#ffffff' } }, ui.activeSlide.id)}>
             Use a white background
