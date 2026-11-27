@@ -118,6 +118,45 @@ describe('native PPTX appearance projection', () => {
     finally { placeholderSession.dispose(); }
   });
 
+  it('fails closed for unresolved inherited colours and proves a valid scheme control', async () => {
+    for (const [color, expected] of [
+      ['<a:schemeClr val="phClr"/>', undefined],
+      ['<a:schemeClr val="accent1"/>', undefined],
+      ['<a:schemeClr val="tx1"/>', '#000000'],
+    ]) {
+      const master = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800"><a:solidFill>${color}</a:solidFill><a:latin typeface="Arial"/></a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+      const box = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Native</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+      const bytes = await sourceReady(await buildPptx({
+        theme: color.includes('accent1') ? theme.replace('<a:accent1><a:srgbClr val="4472C4"/></a:accent1>', '<a:accent1/>') : theme,
+        master, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(box)}</p:sld>` }],
+      }));
+      const session = await openPresentation(bytes, { format: 'pptx', xml });
+      try {
+        const object = session.document.slides[0].objects[0];
+        if (expected) expect(object.text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.color).toBe(expected);
+        else expect(proof(object)).toBeUndefined();
+      } finally { session.dispose(); }
+    }
+  });
+
+  it('never substitutes defaults for unresolved direct, paragraph, fill, line or background colours', async () => {
+    const unresolved = '<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>';
+    const variants = [
+      textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: unresolved }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' }),
+      textBox(2, 20, 20, 300, 100, para('Native', { pPr: `<a:pPr><a:defRPr sz="1800">${unresolved}</a:defRPr></a:pPr>` }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' }),
+      shape(2, 'rect', 20, 20, 200, 100, unresolved),
+      shape(2, 'rect', 20, 20, 200, 100, `<a:ln w="9525">${unresolved}</a:ln>`),
+    ];
+    for (const objectXml of variants) {
+      const session = await openFixture(`<p:sld ${NS}>${tree(objectXml)}</p:sld>`);
+      try { expect(proof(session.document.slides[0].objects[0])).toBeUndefined(); }
+      finally { session.dispose(); }
+    }
+    const background = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100)).replace('<p:cSld>', `<p:cSld><p:bg><p:bgPr>${unresolved}</p:bgPr></p:bg>`)}</p:sld>`);
+    try { expect(background.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined(); }
+    finally { background.dispose(); }
+  });
+
   it('lets higher-precedence inherited colours replace either representation', async () => {
     const master = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:defPPr><a:defRPr sz="1800"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="Arial"/></a:defRPr></a:defPPr><a:lvl1pPr><a:defRPr><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
     const box = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Native</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
