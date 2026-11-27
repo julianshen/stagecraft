@@ -348,7 +348,7 @@ describe('KONVA-2b surface decision, fallback wording, and API boundary', () => 
       ['inherited-appearance', 'native-layout-summary-missing', "layout background could not be resolved"],
       ['unresolved-appearance', 'native-appearance-proof-missing', 'cannot confirm this slide matches PowerPoint yet'],
       ['unresolved-appearance', 'native-appearance-proof-invalid', 'cannot confirm this slide matches PowerPoint yet'],
-      ['unresolved-appearance', 'native-appearance-stale', 'reopened'],
+      ['unresolved-appearance', 'native-appearance-stale', 'was edited, so canvas view cannot confirm it matches PowerPoint yet'],
       ['unresolved-appearance', 'theme-color-unresolved', 'theme colour variation'],
       ['unresolved-appearance', 'text-appearance-unresolved', 'text styling'],
       ['unresolved-appearance', 'placeholder-style-unresolved', 'placeholder styling'],

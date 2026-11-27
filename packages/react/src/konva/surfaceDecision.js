@@ -37,10 +37,11 @@ export const INHERITED_APPEARANCE_MESSAGES = frozenMap({
   'theme-object-defaults': 'Showing the standard view: this slide uses theme default styling not supported in canvas view yet.',
 });
 
+// Includes all contracts/konva-3.md §4 codes; codes not yet emitted by the K3b renderer are reserved for source diagnostics.
 export const UNRESOLVED_APPEARANCE_MESSAGES = frozenMap({
   'native-appearance-proof-missing': UNCONFIRMED_APPEARANCE_MESSAGE,
   'native-appearance-proof-invalid': UNCONFIRMED_APPEARANCE_MESSAGE,
-  'native-appearance-stale': 'Showing the standard view: this slide was edited and needs to be reopened to use canvas view.',
+  'native-appearance-stale': 'Showing the standard view: this slide was edited, so canvas view cannot confirm it matches PowerPoint yet.',
   'theme-color-unresolved': 'Showing the standard view: this slide uses a theme colour variation canvas view cannot show yet.',
   'text-appearance-unresolved': 'Showing the standard view: this slide has text styling that could not be resolved for canvas view yet.',
   'placeholder-style-unresolved': PLACEHOLDER_STYLE_MESSAGE,
