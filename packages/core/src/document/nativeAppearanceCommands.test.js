@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createEditor } from '@stagecraft/core/editor';
-import { createDocument, documentPlugin, presentationPlugin, validateDocument } from '@stagecraft/core/document';
+import { createDocument, documentPlugin, presentationPlugin, validateAuthoredObject, validateDocument } from '@stagecraft/core/document';
 import { nativeObjectAppearanceInput, nativeSlideAppearanceInput } from '@stagecraft/core/lib/nativeAppearance.js';
 
 const source = { format: 'pptx', part: 'ppt/slides/slide1.xml', path: [] };
@@ -48,6 +48,23 @@ function makeEditor(object = textObject(), slide = {}, documentOverrides = {}) {
 }
 
 const proof = editor => editor.getSnapshot().document.slides[0].objects[0].extensions.stagecraftNativeAppearance;
+
+describe('authored native autofit rejection', () => {
+  it('accepts fit-free authored shrink layout but rejects source-owned fit', () => {
+    const object = {
+      id: 'authored-text', type: 'text',
+      geometry: { x: 100, y: 200, width: 300, height: 400 },
+      extensions: { stagecraftAuthored: true },
+      text: { paragraphs: [{ id: 'p1', runs: [{
+        id: 'r1', text: 'Authored', editable: true, style: {}, extensions: { stagecraftAuthored: true },
+      }] }] },
+      bodyLayout: { autofit: 'shrink' },
+    };
+    expect(validateAuthoredObject(object)).toBe(true);
+    expect(() => validateAuthoredObject({ ...object, bodyLayout: { autofit: 'shrink', fit: {} } }))
+      .toThrowError(expect.objectContaining({ code: 'INVALID_AUTHORED_SCHEMA' }));
+  });
+});
 
 describe('native appearance command invalidation', () => {
   it('keeps the proof through geometry moves and same-id text edits', () => {

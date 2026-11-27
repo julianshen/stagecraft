@@ -6,6 +6,7 @@ import {
 } from '@stagecraft/core';
 import {
   createDocument as createDocumentSubpath, migrateLegacyDeck, toLegacyDeck,
+  type AuthoredObject, type AuthoredTextBodyLayout, type TextBodyLayout, type TextBodyLayoutPatch,
   type DocumentCommandPayloads, type PresentationCommandPayloads,
 } from '@stagecraft/core/document';
 import {
@@ -103,6 +104,28 @@ createDocument({ units: 'px' });
 // @ts-expect-error Built-in command payload fields retain their value types.
 const invalidText: DocumentCommandPayloads['document.setRunText'] = { runId: 'run', text: 1 };
 void invalidText;
+
+const nativeBodyLayouts: TextBodyLayout[] = [
+  { autofit: 'shrink', fit: {} },
+  { autofit: 'shrink', fit: { fontScale: 85000 } },
+  { autofit: 'shrink', fit: { lnSpcReduction: 10000 } },
+  { autofit: 'shrink', fit: { fontScale: 85000, lnSpcReduction: 10000 } },
+];
+const authoredBodyLayout: AuthoredTextBodyLayout = { autofit: 'shrink', anchor: 'top' };
+const invalidBodyLayoutPatch: TextBodyLayoutPatch = {
+  // @ts-expect-error Native fit is source-owned, not an editable body-layout patch.
+  fit: {},
+};
+const invalidAuthoredObject: AuthoredObject = {
+  id: 'authored', type: 'text', geometry: { x: 0, y: 0, width: 100, height: 100 },
+  extensions: { stagecraftAuthored: true }, text: { paragraphs: [] },
+  bodyLayout: {
+    autofit: 'shrink',
+    // @ts-expect-error Native fit is source-owned and cannot be authored.
+    fit: {},
+  },
+};
+void nativeBodyLayouts; void authoredBodyLayout; void invalidBodyLayoutPatch; void invalidAuthoredObject;
 editor.dispose();
 
 const xml: XmlRuntime = {

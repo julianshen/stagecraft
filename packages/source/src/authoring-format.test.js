@@ -20,8 +20,36 @@ describe('PPTX semantic formatting helpers', () => {
     expect(readPptxBodyLayout(null)).toBeUndefined();
     expect(readPptxBodyLayout(body(''))).toEqual({});
     expect(readPptxBodyLayout(body('wrap="none" anchor="t" lIns="12700" tIns="25400" rIns="38100" bIns="50800"', '<a:spAutoFit/>'))).toEqual({ wrap: 'none', anchor: 'top', insets: { left: 12700, top: 25400, right: 38100, bottom: 50800 }, autofit: 'resize' });
-    expect(readPptxBodyLayout(body('wrap="square" anchor="ctr"', '<a:normAutofit/>'))).toMatchObject({ wrap: 'square', anchor: 'middle', autofit: 'shrink' });
+    expect(readPptxBodyLayout(body('wrap="square" anchor="ctr"', '<a:normAutofit/>'))).toEqual({ wrap: 'square', anchor: 'middle', autofit: 'shrink', fit: {} });
     expect(readPptxBodyLayout(body('anchor="b"', '<a:noAutofit/>'))).toMatchObject({ anchor: 'bottom', autofit: 'none' });
+  });
+
+  it.each([
+    ['empty', '', {}],
+    ['fontScale only', 'fontScale="85000"', { fontScale: 85000 }],
+    ['lnSpcReduction only', 'lnSpcReduction="10000"', { lnSpcReduction: 10000 }],
+    ['both values', 'fontScale="85000" lnSpcReduction="10000"', { fontScale: 85000, lnSpcReduction: 10000 }],
+    ['unknown attribute', 'fontScale="85000" unknown="1"', { fontScale: 85000 }],
+  ])('reads only recognized present normAutofit values: %s', (_label, attributes, fit) => {
+    expect(readPptxBodyLayout(body('', `<a:normAutofit ${attributes}/>`))).toEqual({ autofit: 'shrink', fit });
+  });
+
+  it.each([
+    ['percent string', 'fontScale="90000%"', {}],
+    ['fractional scale', 'fontScale="90000.5"', {}],
+    ['negative scale', 'fontScale="-1"', {}],
+    ['zero scale', 'fontScale="0"', {}],
+    ['scale above range', 'fontScale="100001"', {}],
+    ['unsafe scale', 'fontScale="9007199254740992"', {}],
+    ['exponent scale', 'fontScale="1e5"', {}],
+    ['fractional reduction', 'lnSpcReduction="10000.5"', {}],
+    ['negative reduction', 'lnSpcReduction="-1"', {}],
+    ['reduction above range', 'lnSpcReduction="100001"', {}],
+    ['unsafe reduction', 'lnSpcReduction="9007199254740992"', {}],
+    ['valid scale with malformed reduction', 'fontScale="85000" lnSpcReduction="10%"', { fontScale: 85000 }],
+    ['malformed scale with valid reduction', 'fontScale="0" lnSpcReduction="10000"', { lnSpcReduction: 10000 }],
+  ])('excludes malformed present normAutofit values: %s', (_label, attributes, fit) => {
+    expect(readPptxBodyLayout(body('', `<a:normAutofit ${attributes}/>`))).toEqual({ autofit: 'shrink', fit });
   });
 
   it('sets and removes every paragraph formatting property', () => {
@@ -35,6 +63,20 @@ describe('PPTX semantic formatting helpers', () => {
     expect(readPptxParagraphStyle(node).bullet).toEqual({ type: 'none' });
     applyPptxParagraphFormat(node, { bullet: { type: 'none' } }, { bullet: { type: 'char', char: '•' } });
     expect(readPptxParagraphStyle(node).bullet).toEqual({ type: 'char', char: '•' });
+  });
+
+  it.each([
+    ['empty fit', {}, {}],
+    ['fontScale only', { fontScale: 90000 }, { fontScale: '90000' }],
+    ['lnSpcReduction only', { lnSpcReduction: 1000 }, { lnSpcReduction: '1000' }],
+    ['both values', { fontScale: 90000, lnSpcReduction: 1000 }, { fontScale: '90000', lnSpcReduction: '1000' }],
+  ])('writes only supplied normAutofit attributes: %s', (_label, fit, attributes) => {
+    const node = body('');
+    applyPptxBodyLayout(node, { autofit: 'shrink', fit });
+    const norm = node.querySelector('a\\:normAutofit');
+    expect(norm?.getAttribute('fontScale') ?? null).toBe(attributes.fontScale ?? null);
+    expect(norm?.getAttribute('lnSpcReduction') ?? null).toBe(attributes.lnSpcReduction ?? null);
+    expect(readPptxBodyLayout(node)).toEqual({ autofit: 'shrink', fit });
   });
 
   it('sets and removes body layout, autofit and shrink measurements', () => {
