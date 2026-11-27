@@ -15,6 +15,7 @@ import {
   nativeTextScript,
   nativeTextScripts,
 } from './nativeAppearance.js';
+import * as nativeAppearance from './nativeAppearance.js';
 
 const resolvedRun = {
   color: '#112233',
@@ -78,6 +79,182 @@ function proveObject(object) {
   };
   return object;
 }
+
+const completeFit = { fontScale: 77500, lnSpcReduction: 20000 };
+
+function autofitObject(autofit, fit) {
+  const object = nativeObject();
+  if (autofit !== undefined) object.bodyLayout.autofit = autofit;
+  if (fit !== undefined) object.bodyLayout.fit = fit;
+  return object;
+}
+
+function shrinkObject(fit = completeFit) {
+  return autofitObject('shrink', fit);
+}
+
+describe('native autofit appearance proofs', () => {
+  it.each(['shrink', 'resize'])('binds %s input to text, width, and height but not position or rotation', autofit => {
+    const object = autofitObject(autofit, autofit === 'shrink' ? completeFit : undefined);
+    const before = nativeObjectAppearanceInput(object);
+    for (const mutate of [
+      value => { value.text.paragraphs[0].runs[0].text = 'Edited autofit text'; },
+      value => { value.geometry.width += 1; },
+      value => { value.geometry.height += 1; },
+    ]) {
+      const changed = structuredClone(object);
+      mutate(changed);
+      expect(nativeObjectAppearanceInput(changed)).not.toBe(before);
+    }
+    for (const mutate of [
+      value => { value.geometry.x += 1; },
+      value => { value.geometry.y += 1; },
+      value => { value.geometry.rotation += 1; },
+    ]) {
+      const changed = structuredClone(object);
+      mutate(changed);
+      expect(nativeObjectAppearanceInput(changed)).toBe(before);
+    }
+  });
+
+  it('keeps partial stored fit distinct from policy-approved effective fit', () => {
+    const partial = shrinkObject({ fontScale: 77500 });
+    const partialInput = JSON.parse(nativeObjectAppearanceInput(partial));
+    expect(partialInput.bodyLayout.fit).toEqual({ fontScale: 77500 });
+    expect(partialInput).not.toHaveProperty('effectiveFit');
+    expect(partialInput.fitBinding).toMatch(/^[0-9a-f]{8}$/);
+
+    const complete = shrinkObject();
+    const completeInput = JSON.parse(nativeObjectAppearanceInput(complete));
+    expect(completeInput.bodyLayout.fit).toEqual(completeFit);
+    expect(completeInput.effectiveFit).toEqual(completeFit);
+
+    const absent = autofitObject('shrink');
+    const explicitDefaults = shrinkObject({ fontScale: 100000, lnSpcReduction: 0 });
+    expect(JSON.parse(nativeObjectAppearanceInput(absent)).bodyLayout).not.toHaveProperty('fit');
+    expect(JSON.parse(nativeObjectAppearanceInput(explicitDefaults)).effectiveFit)
+      .toEqual({ fontScale: 100000, lnSpcReduction: 0 });
+    expect(nativeObjectAppearanceInput(absent)).not.toBe(nativeObjectAppearanceInput(explicitDefaults));
+  });
+
+  it.each([
+    ['absent fit', undefined, { fontScale: 100000, lnSpcReduction: 0 }],
+    ['empty fit', {}, { fontScale: 100000, lnSpcReduction: 0 }],
+    ['fontScale-only fit', { fontScale: 77500 }, { fontScale: 77500, lnSpcReduction: 0 }],
+    ['reduction-only fit', { lnSpcReduction: 20000 }, { fontScale: 100000, lnSpcReduction: 20000 }],
+    ['complete fit', completeFit, completeFit],
+  ])('resolves schema defaults purely for %s', (_name, fit, expected) => {
+    const object = shrinkObject(fit);
+    expect(nativeAppearance.nativeAutofitEffectiveFit(object, true)).toEqual(expected);
+    expect(nativeAppearance.nativeAutofitEffectiveFit(object, false))
+      .toEqual(fit === completeFit ? completeFit : null);
+  });
+
+  it('never resolves effective fit for resize or non-autofit layouts', () => {
+    for (const object of [autofitObject('resize', completeFit), autofitObject('none', completeFit), nativeObject()]) {
+      expect(nativeAppearance.nativeAutofitEffectiveFit(object, true)).toBeNull();
+    }
+  });
+
+  it.each([
+    ['absent fit', undefined],
+    ['empty fit', {}],
+    ['fontScale-only fit', { fontScale: 77500 }],
+    ['reduction-only fit', { lnSpcReduction: 20000 }],
+  ])('refuses %s under the strict module policy', (_name, fit) => {
+    const object = proveObject(autofitObject('shrink', fit));
+    expect(isNativeObjectAppearanceValid(object)).toBe(false);
+  });
+
+  it('exercises fit validation independently with valid matching-input controls', () => {
+    for (const fit of [completeFit, { fontScale: 1, lnSpcReduction: 0 }, { fontScale: 100000, lnSpcReduction: 100000 }]) {
+      const object = proveObject(shrinkObject(fit));
+      object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object);
+      expect(isNativeObjectAppearanceValid(object)).toBe(true);
+    }
+  });
+
+  it.each([
+    ['null fit', null],
+    ['array fit', []],
+    ['string fit', '77500'],
+    ['extra fit key', { ...completeFit, extra: true }],
+    ['zero fontScale', { ...completeFit, fontScale: 0 }],
+    ['negative fontScale', { ...completeFit, fontScale: -1 }],
+    ['oversized fontScale', { ...completeFit, fontScale: 100001 }],
+    ['fractional fontScale', { ...completeFit, fontScale: 77500.5 }],
+    ['unsafe fontScale', { ...completeFit, fontScale: Number.MAX_SAFE_INTEGER + 1 }],
+    ['non-finite fontScale', { ...completeFit, fontScale: Infinity }],
+    ['string fontScale', { ...completeFit, fontScale: '77500' }],
+    ['undefined fontScale', { fontScale: undefined, lnSpcReduction: 20000 }],
+    ['negative reduction', { ...completeFit, lnSpcReduction: -1 }],
+    ['oversized reduction', { ...completeFit, lnSpcReduction: 100001 }],
+    ['fractional reduction', { ...completeFit, lnSpcReduction: 1.5 }],
+    ['unsafe reduction', { ...completeFit, lnSpcReduction: Number.MAX_SAFE_INTEGER + 1 }],
+    ['NaN reduction', { ...completeFit, lnSpcReduction: NaN }],
+    ['string reduction', { ...completeFit, lnSpcReduction: '20000' }],
+    ['undefined reduction', { fontScale: 77500, lnSpcReduction: undefined }],
+  ])('rejects malformed stored fit even with a rebuilt matching input: %s', (_name, fit) => {
+    const object = proveObject(shrinkObject(fit));
+    object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object);
+    expect(isNativeObjectAppearanceValid(object)).toBe(false);
+    expect(nativeAppearance.nativeAutofitEffectiveFit(object, true)).toBeNull();
+  });
+
+  it('rejects stored fit on resize and non-autofit objects with matching inputs', () => {
+    for (const autofit of ['resize', 'none', undefined]) {
+      const object = proveObject(autofitObject(autofit, completeFit));
+      object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object);
+      expect(isNativeObjectAppearanceValid(object)).toBe(false);
+    }
+    for (const autofit of ['resize', 'none', undefined]) {
+      const object = proveObject(autofitObject(autofit));
+      object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object);
+      expect(isNativeObjectAppearanceValid(object)).toBe(true);
+    }
+  });
+
+  it('rejects proof inputs with a missing or forged fit binding', () => {
+    const object = proveObject(shrinkObject());
+    const proof = object.extensions.stagecraftNativeAppearance;
+    const input = JSON.parse(proof.input);
+    expect(input.fitBinding).toMatch(/^[0-9a-f]{8}$/);
+
+    const missing = structuredClone(input);
+    delete missing.fitBinding;
+    proof.input = JSON.stringify(missing);
+    expect(isNativeObjectAppearanceValid(object)).toBe(false);
+
+    proof.input = JSON.stringify({ ...input, fitBinding: input.fitBinding === '00000000' ? '00000001' : '00000000' });
+    expect(isNativeObjectAppearanceValid(object)).toBe(false);
+  });
+
+  it('hashes large text into a fixed-size binding without inflating the capped input', () => {
+    const object = shrinkObject();
+    const before = nativeObjectAppearanceInput(object);
+    object.text.paragraphs[0].runs[0].text = `autofit-text-marker-${'x'.repeat(64 * 1024)}`;
+    const input = nativeObjectAppearanceInput(object);
+    expect(input).not.toBe(before);
+    expect(input).not.toContain('autofit-text-marker-');
+    expect(JSON.parse(input).fitBinding).toMatch(/^[0-9a-f]{8}$/);
+    expect(new TextEncoder().encode(input).byteLength).toBeLessThanOrEqual(NATIVE_APPEARANCE_INPUT_MAX_BYTES);
+    proveObject(object);
+    expect(isNativeObjectAppearanceValid(object)).toBe(true);
+  });
+
+  it.each(['shrink', 'resize'])('makes %s proofs stale after direct text or size mutation', autofit => {
+    for (const mutate of [
+      value => { value.text.paragraphs[0].runs[0].text += ' edited'; },
+      value => { value.geometry.width += 1; },
+      value => { value.geometry.height += 1; },
+    ]) {
+      const object = proveObject(autofitObject(autofit, autofit === 'shrink' ? completeFit : undefined));
+      expect(isNativeObjectAppearanceValid(object)).toBe(true);
+      mutate(object);
+      expect(isNativeObjectAppearanceValid(object)).toBe(false);
+    }
+  });
+});
 
 describe('native appearance proof helpers', () => {
   it('shares source theme and colour-map traversal semantics', () => {
