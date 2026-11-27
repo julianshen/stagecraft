@@ -51,28 +51,20 @@ export function nativeAppearanceContext(document, entity) {
   const chain = [];
   const mapSeen = new Set();
   let unsupportedMap = false;
-  let ambiguousMap = false;
-  let masterMapPending = false;
   current = entity;
   while (current && !mapSeen.has(current.id)) {
     if (current.extensions?.pptxColorMapOverride === 'unsupported') { unsupportedMap = true; break; }
     mapSeen.add(current.id);
     if (current.extensions?.pptxColorMapOverride === 'master') {
-      masterMapPending = true;
       current = current.layoutId ? document?.layouts?.find(item => item.id === current.layoutId)
         : current.masterId ? document?.masters?.find(item => item.id === current.masterId) : null;
       continue;
     }
-    if (current.extensions?.pptxColorMapOverride === 'mapping' && masterMapPending && chain.length === 0) {
-      ambiguousMap = true;
-      break;
-    }
-    masterMapPending = false;
     chain.unshift(current);
     current = current.layoutId ? document?.layouts?.find(item => item.id === current.layoutId)
       : current.masterId ? document?.masters?.find(item => item.id === current.masterId) : null;
   }
-  const colorMap = unsupportedMap || ambiguousMap ? null : Object.assign({ ...DEFAULT_NATIVE_COLOR_MAP }, ...chain.map(item => item.extensions?.pptxColorMap));
+  const colorMap = unsupportedMap ? null : Object.assign({ ...DEFAULT_NATIVE_COLOR_MAP }, ...chain.map(item => item.extensions?.pptxColorMap));
   return { theme, colorMap };
 }
 
