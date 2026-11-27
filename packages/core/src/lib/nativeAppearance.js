@@ -30,6 +30,44 @@ export function nativeTextScript(text) {
   return nativeTextScripts(text).join('+');
 }
 
+const DEFAULT_NATIVE_COLOR_MAP = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' };
+
+/** Resolve the same effective theme and colour map for source projection and renderer proof checks. */
+export function nativeAppearanceContext(document, entity) {
+  let theme = null;
+  let current = entity;
+  const themeSeen = new Set();
+  while (current && !themeSeen.has(current.id)) {
+    themeSeen.add(current.id);
+    if (current.extensions?.pptxThemeOverride) { theme = null; break; }
+    if (current.themeId) {
+      theme = document?.themes?.find(item => item.id === current.themeId) ?? null;
+      break;
+    }
+    current = current.layoutId ? document?.layouts?.find(item => item.id === current.layoutId)
+      : current.masterId ? document?.masters?.find(item => item.id === current.masterId) : null;
+  }
+
+  const chain = [];
+  const mapSeen = new Set();
+  let unsupportedMap = false;
+  current = entity;
+  while (current && !mapSeen.has(current.id)) {
+    if (current.extensions?.pptxColorMapOverride === 'unsupported') { unsupportedMap = true; break; }
+    mapSeen.add(current.id);
+    if (current.extensions?.pptxColorMapOverride === 'master') {
+      current = current.layoutId ? document?.layouts?.find(item => item.id === current.layoutId)
+        : current.masterId ? document?.masters?.find(item => item.id === current.masterId) : null;
+      continue;
+    }
+    chain.unshift(current);
+    current = current.layoutId ? document?.layouts?.find(item => item.id === current.layoutId)
+      : current.masterId ? document?.masters?.find(item => item.id === current.masterId) : null;
+  }
+  const colorMap = unsupportedMap ? null : Object.assign({ ...DEFAULT_NATIVE_COLOR_MAP }, ...chain.map(item => item.extensions?.pptxColorMap));
+  return { theme, colorMap };
+}
+
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const exactKeys = (value, required, optional = []) => record(value)
   && required.every(key => Object.hasOwn(value, key))
@@ -68,6 +106,7 @@ const themeAppearanceInput = (theme, colorMap) => theme ? {
   fills: theme.extensions?.pptxFillStyles,
   lines: theme.extensions?.pptxLineStyles,
   backgrounds: theme.extensions?.pptxBackgroundFillStyles,
+  backgroundDefinitions: theme.extensions?.pptxBackgroundFillDefinitions,
   fonts: fontSchemeInput(theme.extensions?.pptxFontScheme),
   colorMap,
 } : null;
@@ -156,11 +195,11 @@ export function nativeLayoutAppearanceInput(entity, document) {
   });
 }
 
-const validBackground = value => record(value) && (value.kind === 'none'
+export const isNativeAppearanceBackgroundValid = value => record(value) && (value.kind === 'none'
   ? Object.keys(value).length === 1
   : value.kind === 'solid' && exactKeys(value, ['kind', 'color']) && solidColor(value.color));
-const validFill = value => validBackground(value);
-const validStroke = value => value?.kind === 'none' && validBackground(value)
+const validFill = value => isNativeAppearanceBackgroundValid(value);
+const validStroke = value => value?.kind === 'none' && isNativeAppearanceBackgroundValid(value)
   || exactKeys(value, ['kind', 'color', 'widthEmu'])
   && value.kind === 'solid' && solidColor(value.color)
   && Number.isSafeInteger(value.widthEmu) && value.widthEmu > 0;
@@ -229,7 +268,7 @@ export function isNativeSlideAppearanceValid(slide, document) {
     && typeof proof.input === 'string'
     && inputBytes(proof.input) <= NATIVE_APPEARANCE_INPUT_MAX_BYTES
     && proof.input === nativeSlideAppearanceInput(slide, document)
-    && validBackground(proof.background)
+    && isNativeAppearanceBackgroundValid(proof.background)
     && proof.inheritedArtworkCount === 0;
 }
 
@@ -242,7 +281,7 @@ export function isNativeLayoutAppearanceValid(entity, document) {
     && typeof proof.input === 'string'
     && inputBytes(proof.input) <= NATIVE_APPEARANCE_INPUT_MAX_BYTES
     && proof.input === nativeLayoutAppearanceInput(entity, document)
-    && validBackground(proof.background)
+    && isNativeAppearanceBackgroundValid(proof.background)
     && Number.isSafeInteger(proof.artworkCount)
     && proof.artworkCount >= 0
     && proof.artworkCount === (entity.objects?.length ?? 0);

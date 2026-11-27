@@ -7,7 +7,7 @@ import { documentPlugin, presentationPlugin, validateDocument } from '@stagecraf
 import { openPresentation } from './index.js';
 import { projectNativeAppearance } from './nativeAppearance.js';
 import { resolvePptxColor } from './pptxColor.js';
-import { isNativeLayoutAppearanceValid, isNativeObjectAppearanceValid, isNativeSlideAppearanceValid, nativeObjectAppearanceInput } from '@stagecraft/core/lib/nativeAppearance.js';
+import { isNativeAppearanceBackgroundValid, isNativeLayoutAppearanceValid, isNativeObjectAppearanceValid, isNativeSlideAppearanceValid, nativeObjectAppearanceInput } from '@stagecraft/core/lib/nativeAppearance.js';
 import { NS, buildPptx, para, shape, textBox, tree, xfrm } from '../../../tests/helpers/pptxFixture.js';
 import { resolveTextFamily } from '../../renderer/src/vendor/officeview/drawing/text-layout.ts';
 
@@ -307,14 +307,104 @@ describe('native PPTX appearance projection', () => {
     finally { fontSession.dispose(); }
   });
 
-  it('refuses overridden inherited backgrounds and maps default colours once', async () => {
+  it('substitutes bgRef colours into theme phClr backgrounds in the consuming context', async () => {
+    const placeholderTheme = theme.replace(/<a:bgFillStyleLst>[\s\S]*?<\/a:bgFillStyleLst>/, '<a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst>');
+    const master = `<p:sldMaster ${NS}>${tree('').replace('<p:cSld>', '<p:cSld><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg>')}<p:clrMap bg1="dk1"/></p:sldMaster>`;
+    const session = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { theme: placeholderTheme, master, layout: emptyLayout });
+    try {
+      expect(session.document.themes[0].extensions.pptxBackgroundFillDefinitions[0]).toEqual({ kind: 'placeholder', transforms: [] });
+      expect(session.document.masters[0].extensions.stagecraftLayoutSummary.background).toEqual({ kind: 'solid', color: '#000000' });
+      expect(session.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#000000' });
+    } finally { session.dispose(); }
+
+    const mappingSlide = `<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}<p:clrMapOvr><a:overrideClrMapping bg1="lt1"/></p:clrMapOvr></p:sld>`;
+    const mapped = await openFixture(mappingSlide, { theme: placeholderTheme, master, layout: emptyLayout });
+    try { expect(mapped.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#FFFFFF' }); }
+    finally { mapped.dispose(); }
+
+    const srgbMaster = `<p:sldMaster ${NS}>${tree('').replace('<p:cSld>', '<p:cSld><p:bg><p:bgRef idx="1001"><a:srgbClr val="ABCDEF"/></p:bgRef></p:bg>')}<p:clrMap bg1="dk1"/></p:sldMaster>`;
+    const srgb = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { theme: placeholderTheme, master: srgbMaster, layout: emptyLayout });
+    try {
+      const { masters, slides } = srgb.document;
+      expect(masters[0].extensions.stagecraftLayoutSummary.background).toEqual({ kind: 'solid', color: '#ABCDEF' });
+      expect(slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#ABCDEF' });
+      expect(isNativeLayoutAppearanceValid(masters[0], srgb.document)).toBe(true);
+      expect(isNativeSlideAppearanceValid(slides[0], srgb.document)).toBe(true);
+    } finally { srgb.dispose(); }
+
+    const transformedTheme = placeholderTheme.replace('<a:schemeClr val="phClr"/>', '<a:schemeClr val="phClr"><a:lumMod val="50000"/></a:schemeClr>');
+    const whiteMaster = master.replace('bg1="dk1"', 'bg1="lt1"');
+    const transformed = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { theme: transformedTheme, master: whiteMaster, layout: emptyLayout });
+    try { expect(transformed.document.masters[0].extensions.stagecraftLayoutSummary.background).toEqual({ kind: 'solid', color: '#808080' }); }
+    finally { transformed.dispose(); }
+
+    const alphaTheme = placeholderTheme.replace('<a:schemeClr val="phClr"/>', '<a:schemeClr val="phClr"><a:alpha val="50000"/></a:schemeClr>');
+    const unsupported = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { theme: alphaTheme, master, layout: emptyLayout });
+    try { expect(unsupported.document.masters[0].extensions.stagecraftLayoutSummary).toBeUndefined(); }
+    finally { unsupported.dispose(); }
+
+    const noColourRef = master.replace('<a:schemeClr val="bg1"/>', '');
+    const unresolved = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { theme: placeholderTheme, master: noColourRef, layout: emptyLayout });
+    try { expect(unresolved.document.masters[0].extensions.stagecraftLayoutSummary).toBeUndefined(); }
+    finally { unresolved.dispose(); }
+  });
+
+  const placeholderTheme = theme.replace(/<a:bgFillStyleLst>[\s\S]*?<\/a:bgFillStyleLst>/, '<a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst>');
+  const fixedTheme = theme.replace(/<a:bgFillStyleLst>[\s\S]*?<\/a:bgFillStyleLst>/, '<a:bgFillStyleLst><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></a:bgFillStyleLst>');
+  const noneTheme = theme.replace(/<a:bgFillStyleLst>[\s\S]*?<\/a:bgFillStyleLst>/, '<a:bgFillStyleLst><a:noFill/></a:bgFillStyleLst>');
+  it.each([
+    ['direct sRGB bgPr', theme, '<p:bg><p:bgPr><a:solidFill><a:srgbClr val="ABCDEF"/></a:solidFill></p:bgPr></p:bg>'],
+    ['direct scheme bgPr', theme, '<p:bg><p:bgPr><a:solidFill><a:schemeClr val="tx1"/></a:solidFill></p:bgPr></p:bg>'],
+    ['direct noFill bgPr', theme, '<p:bg><p:bgPr><a:noFill/></p:bgPr></p:bg>'],
+    ['placeholder sRGB bgRef', placeholderTheme, '<p:bg><p:bgRef idx="1001"><a:srgbClr val="ABCDEF"/></p:bgRef></p:bg>'],
+    ['placeholder scheme bgRef', placeholderTheme, '<p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg>'],
+    ['placeholder system bgRef', placeholderTheme, '<p:bg><p:bgRef idx="1001"><a:sysClr val="windowText" lastClr="123456"/></p:bgRef></p:bg>'],
+    ['fixed scheme bgRef', fixedTheme, '<p:bg><p:bgRef idx="1001"><a:srgbClr val="ABCDEF"/></p:bgRef></p:bg>'],
+    ['noFill theme bgRef', noneTheme, '<p:bg><p:bgRef idx="1001"><a:srgbClr val="ABCDEF"/></p:bgRef></p:bg>'],
+    ['theme bg1 fallback', theme, null],
+  ])('keeps %s backgrounds valid across projected summaries', async (_name, fixtureTheme, background) => {
+    const master = background ? emptyMaster.replace('<p:cSld>', `<p:cSld>${background}`) : emptyMaster;
+    const session = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { theme: fixtureTheme, master, layout: emptyLayout });
+    try {
+      const [projectedMaster] = session.document.masters;
+      const [layout] = session.document.layouts;
+      const [slide] = session.document.slides;
+      for (const [entity, proof] of [[projectedMaster, projectedMaster.extensions.stagecraftLayoutSummary], [layout, layout.extensions.stagecraftLayoutSummary], [slide, slide.extensions.stagecraftSlideAppearance]]) {
+        expect(proof).toBeDefined();
+        expect(isNativeAppearanceBackgroundValid(proof.background)).toBe(true);
+        expect(entity === slide ? isNativeSlideAppearanceValid(entity, session.document) : isNativeLayoutAppearanceValid(entity, session.document)).toBe(true);
+      }
+    } finally { session.dispose(); }
+  });
+
+  it.each([
+    ['transformed sRGB child', '<p:bg><p:bgRef idx="1001"><a:srgbClr val="ABCDEF"><a:alpha val="50000"/></a:srgbClr></p:bgRef></p:bg>', false],
+    ['sRGB child with placeholder transform', '<p:bg><p:bgRef idx="1001"><a:srgbClr val="ABCDEF"/></p:bgRef></p:bg>', true],
+    ['missing child', '<p:bg><p:bgRef idx="1001"/></p:bg>', false],
+  ])('refuses unsupported bgRef substitution: %s', async (_name, background, transformed) => {
+    const placeholderTheme = theme.replace(/<a:bgFillStyleLst>[\s\S]*?<\/a:bgFillStyleLst>/, '<a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst>');
+    const fixtureTheme = transformed ? placeholderTheme.replace('<a:schemeClr val="phClr"/>', '<a:schemeClr val="phClr"><a:lumMod val="50000"/></a:schemeClr>') : placeholderTheme;
+    const master = emptyMaster.replace('<p:cSld>', `<p:cSld>${background}`);
+    const session = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { theme: fixtureTheme, master, layout: emptyLayout });
+    try {
+      const [projectedMaster] = session.document.masters;
+      const [layout] = session.document.layouts;
+      const [slide] = session.document.slides;
+      expect(projectedMaster.extensions.stagecraftLayoutSummary).toBeUndefined();
+      expect(layout.extensions.stagecraftLayoutSummary).toBeUndefined();
+      expect(slide.extensions.stagecraftSlideAppearance).toBeUndefined();
+    } finally { session.dispose(); }
+  });
+
+  it('re-resolves overridden inherited backgrounds and maps default colours once', async () => {
     const backgroundLayout = emptyLayout.replace('<p:cSld>', '<p:cSld><p:bg><p:bgPr><a:solidFill><a:schemeClr val="tx1"/></a:solidFill></p:bgPr></p:bg>');
     const mappedMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/></p:sldMaster>`;
     const slide = `<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}<p:clrMapOvr><a:overrideClrMapping tx1="lt1"/></p:clrMapOvr></p:sld>`;
     const backgroundSession = await openFixture(slide, { master: mappedMaster, layout: backgroundLayout });
     try {
       expect(backgroundSession.document.slides[0].extensions.pptxColorMapOverride).toBe('mapping');
-      expect(backgroundSession.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
+      expect(backgroundSession.document.layouts[0].extensions.stagecraftLayoutSummary.background).toEqual({ kind: 'solid', color: '#000000' });
+      expect(backgroundSession.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#FFFFFF' });
     }
     finally { backgroundSession.dispose(); }
 
@@ -325,6 +415,54 @@ describe('native PPTX appearance projection', () => {
       expect(chained.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.color).toBe('#4472C4');
       expect(chained.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#4472C4' });
     } finally { chained.dispose(); }
+  });
+
+  it('inherits master backgrounds through masterClrMapping on layouts and slides', async () => {
+    const master = `<p:sldMaster ${NS}>${tree('').replace('<p:cSld>', '<p:cSld><p:bg><p:bgPr><a:solidFill><a:schemeClr val="tx1"/></a:solidFill></p:bgPr></p:bg>')}<p:clrMap bg1="lt1" tx1="dk1"/></p:sldMaster>`;
+    const masterMappingLayout = emptyLayout.replace('</p:sldLayout>', '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>');
+    const layoutSession = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}</p:sld>`, { master, layout: masterMappingLayout });
+    try {
+      expect(layoutSession.document.layouts[0].extensions.pptxColorMapOverride).toBe('master');
+      expect(layoutSession.document.layouts[0].extensions.stagecraftLayoutSummary.background).toEqual({ kind: 'solid', color: '#000000' });
+      expect(layoutSession.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#000000' });
+    } finally { layoutSession.dispose(); }
+
+    const masterMappingSlide = `<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
+    const slideSession = await openFixture(masterMappingSlide, { master, layout: emptyLayout });
+    try {
+      expect(slideSession.document.slides[0].extensions.pptxColorMapOverride).toBe('master');
+      expect(slideSession.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#000000' });
+    } finally { slideSession.dispose(); }
+  });
+
+  it('uses the layout override for slide masterClrMapping (CLRMAP-NATIVE-codex.md)', async () => {
+    const master = `<p:sldMaster ${NS}>${tree('').replace('<p:cSld>', '<p:cSld><p:bg><p:bgPr><a:solidFill><a:schemeClr val="bg1"/></a:solidFill></p:bgPr></p:bg>')}<p:clrMap bg1="lt1"/></p:sldMaster>`;
+    const mappingLayout = emptyLayout.replace('</p:sldLayout>', '<p:clrMapOvr><a:overrideClrMapping bg1="dk1"/></p:clrMapOvr></p:sldLayout>');
+    const masterMappingSlide = `<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
+    const session = await openFixture(masterMappingSlide, { master, layout: mappingLayout });
+    try {
+      const [projectedMaster] = session.document.masters;
+      const [layout] = session.document.layouts;
+      const [slide] = session.document.slides;
+      expect(projectedMaster.extensions.stagecraftLayoutSummary.background).toEqual({ kind: 'solid', color: '#FFFFFF' });
+      expect(layout.extensions.stagecraftLayoutSummary.background).toEqual({ kind: 'solid', color: '#000000' });
+      expect(slide.extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#000000' });
+      expect(isNativeLayoutAppearanceValid(layout, session.document)).toBe(true);
+      expect(isNativeSlideAppearanceValid(slide, session.document)).toBe(true);
+    } finally { session.dispose(); }
+  });
+
+  it('inherits literal backgrounds under mapping overrides and uses the effective bg1 fallback map', async () => {
+    const literalMaster = `<p:sldMaster ${NS}>${tree('').replace('<p:cSld>', '<p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></p:bgPr></p:bg>')}<p:clrMap bg1="dk1"/></p:sldMaster>`;
+    const mappingSlide = `<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}<p:clrMapOvr><a:overrideClrMapping bg1="lt1"/></p:clrMapOvr></p:sld>`;
+    const literal = await openFixture(mappingSlide, { master: literalMaster, layout: emptyLayout });
+    try { expect(literal.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#FF0000' }); }
+    finally { literal.dispose(); }
+
+    const fallbackMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="dk1"/></p:sldMaster>`;
+    const fallback = await openFixture(mappingSlide, { master: fallbackMaster, layout: emptyLayout });
+    try { expect(fallback.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#FFFFFF' }); }
+    finally { fallback.dispose(); }
   });
 
   it('uses the last run only when end-run properties are absent', async () => {
@@ -581,7 +719,7 @@ describe('native PPTX appearance projection', () => {
     const override = await openFixture(overrideSlide);
     try {
       expect(proof(override.document.slides[0].objects[0]).fill).toEqual({ kind: 'solid', color: '#FFFFFF' });
-      expect(override.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
+      expect(override.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#FFFFFF' });
     } finally { override.dispose(); }
 
     const unsupportedOverride = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}<p:clrMapOvr><a:unknownMapping/></p:clrMapOvr></p:sld>`);

@@ -7,6 +7,7 @@ import {
   isNativeLayoutAppearanceValid,
   isNativeObjectAppearanceValid,
   isNativeSlideAppearanceValid,
+  nativeAppearanceContext,
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
   nativeSlideAppearanceInput,
@@ -78,6 +79,42 @@ function proveObject(object) {
 }
 
 describe('native appearance proof helpers', () => {
+  it('shares source theme and colour-map traversal semantics', () => {
+    const theme = { id: 'theme', extensions: {} };
+    const master = { id: 'master', themeId: 'theme', extensions: { pptxColorMap: { tx1: 'lt1', bg1: 'dk1' } } };
+    const layout = { id: 'layout', masterId: 'master', extensions: { pptxColorMap: { tx1: 'dk1' } } };
+    const slide = { id: 'slide', layoutId: 'layout', extensions: { pptxColorMap: { bg1: 'lt1' } } };
+    const document = { themes: [theme], masters: [master], layouts: [layout] };
+    expect(nativeAppearanceContext(document, slide)).toEqual({
+      theme,
+      colorMap: { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' },
+    });
+    expect(nativeAppearanceContext(document, { id: 'direct', themeId: 'theme' }).theme).toBe(theme);
+
+    slide.extensions.pptxColorMapOverride = 'master';
+    expect(nativeAppearanceContext(document, slide).colorMap).toEqual({ bg1: 'dk1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' });
+    slide.extensions.pptxColorMapOverride = 'mapping';
+    slide.extensions.pptxColorMap.bg1 = 'dk1';
+    expect(nativeAppearanceContext(document, slide).colorMap.bg1).toBe('dk1');
+    slide.extensions.pptxColorMapOverride = 'unsupported';
+    expect(nativeAppearanceContext(document, slide).colorMap).toBeNull();
+
+    slide.extensions = { pptxThemeOverride: true };
+    expect(nativeAppearanceContext(document, slide).theme).toBeNull();
+    expect(nativeAppearanceContext(document, { id: 'missing', themeId: 'missing' }).theme).toBeNull();
+    expect(nativeAppearanceContext({ ...document, themes: [] }, master).theme).toBeNull();
+    expect(nativeAppearanceContext(document, { id: 'cycle-a', layoutId: 'cycle-b' })).toBeDefined();
+  });
+
+  it('uses the layout override with slide masterClrMapping (CLRMAP-NATIVE-codex.md)', () => {
+    const theme = { id: 'theme', extensions: {} };
+    const master = { id: 'master', themeId: 'theme', extensions: { pptxColorMap: { bg1: 'lt1' } } };
+    const layout = { id: 'layout', masterId: 'master', extensions: { pptxColorMapOverride: 'mapping', pptxColorMap: { bg1: 'dk1' } } };
+    const slide = { id: 'slide', layoutId: 'layout', extensions: { pptxColorMapOverride: 'master' } };
+    const document = { themes: [theme], masters: [master], layouts: [layout] };
+    expect(nativeAppearanceContext(document, slide).colorMap).toEqual({ bg1: 'dk1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' });
+  });
+
   it('detects unsupported letters mixed with known scripts', () => {
     expect(nativeTextScripts('Привет𐍈')).toEqual(['Cyrl', 'Other']);
     expect(nativeTextScript('Привет𐍈')).toBe('Cyrl+Other');
