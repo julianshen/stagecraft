@@ -345,6 +345,7 @@ describe('KONVA-2b surface decision, fallback wording, and API boundary', () => 
 
     const cases = [
       ['inherited-appearance', 'theme-background-unresolved', 'theme background'],
+      ['inherited-appearance', 'native-layout-summary-missing', "layout background could not be resolved"],
       ['unresolved-appearance', 'native-appearance-proof-missing', 'cannot confirm this slide matches PowerPoint yet'],
       ['unresolved-appearance', 'native-appearance-proof-invalid', 'cannot confirm this slide matches PowerPoint yet'],
       ['unresolved-appearance', 'native-appearance-stale', 'reopened'],
