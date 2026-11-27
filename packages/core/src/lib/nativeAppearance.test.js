@@ -156,6 +156,15 @@ describe('native autofit appearance proofs', () => {
       .toEqual(fit === completeFit ? completeFit : null);
   });
 
+  it.each([
+    ['custom-prototype fit', Object.create({ fontScale: 1, lnSpcReduction: 0 }), null],
+    ['Date fit', new Date(), null],
+    ['Map fit', new Map(), null],
+    ['null-prototype fit', Object.assign(Object.create(null), completeFit), completeFit],
+  ])('requires a plain-record prototype for %s', (_name, fit, expected) => {
+    expect(nativeAutofitFitValues(fit)).toEqual(expected);
+  });
+
   it('never resolves effective fit for resize or non-autofit layouts', () => {
     for (const object of [autofitObject('resize', completeFit), autofitObject('none', completeFit), nativeObject()]) {
       expect(nativeAutofitEffectiveFit(object)).toBeNull();
