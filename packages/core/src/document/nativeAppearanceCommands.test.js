@@ -29,9 +29,10 @@ function proveObject(object) {
   };
 }
 
-function makeEditor(object = textObject(), slide = {}) {
+function makeEditor(object = textObject(), slide = {}, documentOverrides = {}) {
   proveObject(object);
   const document = createDocument({
+    ...documentOverrides,
     slides: [{
       id: 's1', source, objects: [object], ...slide,
       extensions: {
@@ -101,6 +102,17 @@ describe('native appearance command invalidation', () => {
     expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style).toBeUndefined();
     expect(editor.getSnapshot().canUndo).toBe(false);
     expect(proof(editor)).toBeTruthy();
+  });
+
+  it('allows ODP no-op formatting when paragraph style is absent', () => {
+    const object = textObject();
+    object.extensions.stagecraftAuthored = true;
+    object.source = { format: 'odp', part: 'content.xml', path: [] };
+    delete object.text.paragraphs[0].style;
+    const editor = makeEditor(object, {}, { extensions: { sourceFormat: 'odp' } });
+    expect(editor.dispatch('document.setParagraphFormat', { paragraphId: 'p1', format: { alignment: null } }).changed).toBe(false);
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style).toBeUndefined();
+    expect(editor.getSnapshot().canUndo).toBe(false);
   });
 
   it('clears retained legacy backgrounds even when canonical background is absent', () => {
