@@ -86,6 +86,29 @@ it('admits a native slide proof without requiring layout or master summaries', (
   expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({ status: 'ready' });
 });
 
+it('refuses native inherited artwork even when the slide proof claims none', () => {
+  const document = nativeDocument();
+  document.layouts[0].objects.push({ id: 'layout-art', type: 'shape' });
+  document.slides[0].extensions.stagecraftSlideAppearance.input = nativeSlideAppearanceInput(
+    document.slides[0], document,
+  );
+
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'inherited-appearance',
+    diagnostics: [{ code: 'inherited-artwork' }],
+  });
+});
+
+it('classifies non-string native proof inputs as invalid rather than stale', () => {
+  const document = nativeDocument();
+  document.slides[0].extensions.stagecraftSlideAppearance.input = { malformed: true };
+
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-proof-invalid' }],
+  });
+});
+
 it('distinguishes a missing native slide proof from missing layout summaries', () => {
   const document = nativeDocument({ layoutProof: false, slideProof: false });
   expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({

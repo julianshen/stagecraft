@@ -288,6 +288,24 @@ describe('native appearance proof helpers', () => {
     expect(isNativeObjectAppearanceValid(object, context)).toBe(false);
   });
 
+  it('rejects a slide proof that claims no inherited artwork when its layout or master has objects', () => {
+    const layoutObject = { id: 'layout-art', type: 'shape' };
+    const masterObject = { id: 'master-art', type: 'shape' };
+    const layout = { id: 'l1', masterId: 'm1', objects: [layoutObject] };
+    const master = { id: 'm1', objects: [masterObject] };
+    const slide = { id: 's1', source: { format: 'pptx' }, layoutId: 'l1', objects: [], extensions: {} };
+    const document = { layouts: [layout], masters: [master] };
+    slide.extensions.stagecraftSlideAppearance = {
+      version: 1, appearanceResolved: true, input: nativeSlideAppearanceInput(slide, document),
+      background: { kind: 'solid', color: '#FFFFFF' }, inheritedArtworkCount: 0,
+    };
+
+    expect(isNativeSlideAppearanceValid(slide, document)).toBe(false);
+    layout.objects = [];
+    slide.extensions.stagecraftSlideAppearance.input = nativeSlideAppearanceInput(slide, document);
+    expect(isNativeSlideAppearanceValid(slide, document)).toBe(false);
+  });
+
   it('binds object proof inputs to resolved theme appearance context', () => {
     const object = proveObject(nativeObject());
     const context = { theme: { id: 't1', extensions: { pptxColorScheme: { dk1: '#000000' }, pptxFillStyles: [], pptxLineStyles: [] } }, colorMap: { tx1: 'dk1' } };
