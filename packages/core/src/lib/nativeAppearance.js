@@ -152,18 +152,26 @@ const validNativeAutofitFit = value => exactKeys(value, [], ['fontScale', 'lnSpc
   && ['fontScale', 'lnSpcReduction'].every(key => !Object.hasOwn(value, key)
     || (Number.isSafeInteger(value[key]) && value[key] >= (key === 'fontScale' ? 1 : 0) && value[key] <= 100000));
 
-/** Resolve stored shrink values, optionally applying schema defaults for pure evidence checks. */
-export function nativeAutofitEffectiveFit(object, resolveDefaults = NATIVE_AUTOFIT_SCHEMA_DEFAULTS_APPROVED) {
+/** Validate and resolve stored shrink values without applying appearance-proof policy. */
+export function nativeAutofitFitValues(fit) {
+  const values = fit === undefined ? {} : fit;
+  if (!validNativeAutofitFit(values)) return null;
+  return {
+    fontScale: values.fontScale ?? 100000,
+    lnSpcReduction: values.lnSpcReduction ?? 0,
+  };
+}
+
+/** Resolve stored shrink values only when the internal schema-default policy allows absent attributes. */
+export function nativeAutofitEffectiveFit(object) {
   if (object?.bodyLayout?.autofit !== 'shrink') return null;
   const fit = object.bodyLayout.fit === undefined ? {} : object.bodyLayout.fit;
-  if (!validNativeAutofitFit(fit)) return null;
+  const values = nativeAutofitFitValues(fit);
+  if (!values) return null;
   const hasFontScale = Object.hasOwn(fit, 'fontScale');
   const hasReduction = Object.hasOwn(fit, 'lnSpcReduction');
-  if (!resolveDefaults && (!hasFontScale || !hasReduction)) return null;
-  return {
-    fontScale: hasFontScale ? fit.fontScale : 100000,
-    lnSpcReduction: hasReduction ? fit.lnSpcReduction : 0,
-  };
+  if (!NATIVE_AUTOFIT_SCHEMA_DEFAULTS_APPROVED && (!hasFontScale || !hasReduction)) return null;
+  return values;
 }
 
 const nativeAutofitFitBinding = object => stableHash({

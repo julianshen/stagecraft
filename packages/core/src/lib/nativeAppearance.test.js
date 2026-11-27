@@ -9,6 +9,7 @@ import {
   isNativeSlideAppearanceValid,
   nativeAppearanceContext,
   nativeAutofitEffectiveFit,
+  nativeAutofitFitValues,
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
   nativeSlideAppearanceInput,
@@ -150,14 +151,14 @@ describe('native autofit appearance proofs', () => {
     ['complete fit', completeFit, completeFit],
   ])('resolves schema defaults purely for %s', (_name, fit, expected) => {
     const object = autofitObject('shrink', fit);
-    expect(nativeAutofitEffectiveFit(object, true)).toEqual(expected);
-    expect(nativeAutofitEffectiveFit(object, false))
+    expect(nativeAutofitFitValues(fit)).toEqual(expected);
+    expect(nativeAutofitEffectiveFit(object))
       .toEqual(fit === completeFit ? completeFit : null);
   });
 
   it('never resolves effective fit for resize or non-autofit layouts', () => {
     for (const object of [autofitObject('resize', completeFit), autofitObject('none', completeFit), nativeObject()]) {
-      expect(nativeAutofitEffectiveFit(object, true)).toBeNull();
+      expect(nativeAutofitEffectiveFit(object)).toBeNull();
     }
   });
 
@@ -203,7 +204,8 @@ describe('native autofit appearance proofs', () => {
     const object = proveObject(shrinkObject(fit));
     object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object);
     expect(isNativeObjectAppearanceValid(object)).toBe(false);
-    expect(nativeAutofitEffectiveFit(object, true)).toBeNull();
+    expect(nativeAutofitFitValues(fit)).toBeNull();
+    expect(nativeAutofitEffectiveFit(object)).toBeNull();
   });
 
   it('rejects stored fit on resize and non-autofit objects with matching inputs', () => {
