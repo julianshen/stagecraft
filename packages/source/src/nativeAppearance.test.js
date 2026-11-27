@@ -42,7 +42,7 @@ const FONT_SLOTS = [
   { id: 'cs', tag: 'cs', field: 'fontFamilyComplexScript', text: 'مرحبا', language: 'ar-SA', script: 'Arab' },
 ];
 const FONT_PARITY_CASES = FONT_SLOTS.flatMap(slot => {
-  const sources = ['direct-face', 'direct-alias', 'direct-major-alias', 'inherited-face', 'inherited-alias', 'inherited-major-alias', 'theme', 'none'];
+  const sources = ['direct-face', 'direct-alias', 'direct-major-alias', 'direct-over-inherited', 'inherited-face', 'inherited-alias', 'inherited-major-alias', 'theme', 'none'];
   if (slot.id !== 'lt') sources.push('latin-fallback');
   return sources.flatMap(source => [false, true].flatMap(populated => [false, true].map(supplemental => ({
     slot, source, populated, supplemental, themeLatin: 'Theme Latin',
@@ -150,14 +150,15 @@ describe('native PPTX appearance projection', () => {
     const group = name => `<a:${name}><a:latin typeface="${themeLatin}"/><a:ea typeface="${slot.id === 'ea' ? component : 'Theme EA'}"/><a:cs typeface="${slot.id === 'cs' ? component : 'Theme CS'}"/>${supplementalFace ? `<a:font script="${slot.script}" typeface="${supplementalFace}"/>` : ''}</a:${name}>`;
     const customTheme = theme.replace(/<a:majorFont>[\s\S]*?<\/a:majorFont>/, group('majorFont'))
       .replace(/<a:minorFont>[\s\S]*?<\/a:minorFont>/, group('minorFont'));
-    const inherited = source.startsWith('inherited');
+    const inherited = source.startsWith('inherited') || source === 'direct-over-inherited';
     const direct = source.startsWith('direct') || source === 'latin-fallback';
     const aliasGroup = source.includes('major') ? 'mj' : 'mn';
     const face = source.includes('alias') ? `+${aliasGroup}-${slot.id}` : `${slot.id.toUpperCase()} Face`;
     const fontNode = source === 'latin-fallback' ? '<a:latin typeface="Latin Override"/>'
       : inherited || direct ? `<a:${slot.tag} typeface="${face}"/>` : '';
+    const inheritedFontNode = source === 'direct-over-inherited' ? `<a:${slot.tag} typeface="Inherited Face"/>` : fontNode;
     const master = inherited
-      ? `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800">${fontNode}</a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`
+      ? `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800">${inheritedFontNode}</a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`
       : emptyMaster;
     const runXml = `<a:p><a:r><a:rPr sz="1800"${slot.language ? ` lang="${slot.language}"` : ''}>${direct ? fontNode : ''}</a:rPr><a:t>${slot.text}</a:t></a:r></a:p>`;
     const box = textBox(2, 20, 20, 300, 100, runXml, { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
