@@ -20,6 +20,8 @@ export const SURFACE_REASON_MESSAGES = Object.freeze({
 
 const PLACEHOLDER_STYLE_MESSAGE =
   'Showing the standard view: this slide uses placeholder styling not supported in canvas view yet.';
+const UNCONFIRMED_APPEARANCE_MESSAGE =
+  'Showing the standard view: canvas view cannot confirm this slide matches PowerPoint yet.';
 
 export const INHERITED_APPEARANCE_MESSAGES = Object.freeze({
   'inherited-background': 'Showing the standard view: this slide uses its layout background. Set a slide background to use canvas view.',
@@ -30,10 +32,10 @@ export const INHERITED_APPEARANCE_MESSAGES = Object.freeze({
 });
 
 export const UNRESOLVED_APPEARANCE_MESSAGES = Object.freeze({
-  'native-appearance-proof-missing': 'Showing the standard view: this slide is missing resolved appearance data for canvas view.',
-  'native-appearance-proof-invalid': 'Showing the standard view: this slide has incomplete appearance data for canvas view.',
+  'native-appearance-proof-missing': UNCONFIRMED_APPEARANCE_MESSAGE,
+  'native-appearance-proof-invalid': UNCONFIRMED_APPEARANCE_MESSAGE,
   'native-appearance-stale': 'Showing the standard view: this slide was edited and needs to be reopened to use canvas view.',
-  'theme-color-unresolved': 'Showing the standard view: this slide uses a theme colour transform not supported in canvas view yet.',
+  'theme-color-unresolved': 'Showing the standard view: this slide uses a theme colour variation canvas view cannot show yet.',
   'text-appearance-unresolved': 'Showing the standard view: this slide has text styling that could not be resolved for canvas view yet.',
   'placeholder-style-unresolved': PLACEHOLDER_STYLE_MESSAGE,
 });
@@ -62,19 +64,35 @@ function formatAdditionalDiagnostics(message, totalCount) {
   return `${trimmed} (and ${extra} other ${extra === 1 ? 'item' : 'items'}).`;
 }
 
-export function surfaceMessageForReason(reason, diagnostics = []) {
+export function surfaceDiagnosticForReason(reason, diagnostics = []) {
   const table = DIAGNOSTIC_MESSAGES_BY_REASON[reason];
+  const fallbackCode = Array.isArray(diagnostics)
+    ? diagnostics.find(d => typeof d?.code === 'string' && d.code)?.code
+    : undefined;
   if (table && Array.isArray(diagnostics)) {
     for (const d of diagnostics) {
       if (d?.code && table[d.code]) {
-        return formatAdditionalDiagnostics(table[d.code], diagnostics.length);
+        return {
+          code: d.code,
+          message: formatAdditionalDiagnostics(table[d.code], diagnostics.length),
+        };
       }
     }
     if (reason === 'inherited-appearance') {
-      return 'Showing the standard view: this slide uses inherited layout styling.';
+      return {
+        code: fallbackCode,
+        message: 'Showing the standard view: this slide uses inherited layout styling.',
+      };
     }
   }
-  return SURFACE_REASON_MESSAGES[reason] ?? 'Showing the standard view.';
+  return {
+    code: fallbackCode,
+    message: SURFACE_REASON_MESSAGES[reason] ?? 'Showing the standard view.',
+  };
+}
+
+export function surfaceMessageForReason(reason, diagnostics = []) {
+  return surfaceDiagnosticForReason(reason, diagnostics).message;
 }
 
 export function isRelevantFontEvent(scene, event) {

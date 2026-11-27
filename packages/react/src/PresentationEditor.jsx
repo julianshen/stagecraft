@@ -10,7 +10,7 @@ import {
   hasNonEmptyObjectRenderers,
   isRelevantFontEvent,
   isUnsupportedCssTransform,
-  surfaceMessageForReason,
+  surfaceDiagnosticForReason,
 } from './konva/surfaceDecision.js';
 import {
   usePresentationPlugins,
@@ -1403,6 +1403,9 @@ export function PresentationCanvas({
     }
   }, [konvaActive, svgOverride]);
   const showFallbackNotice = surface === 'konva' && !svgOverride && decision.status === 'fallback' && decision.reason;
+  const fallbackDiagnostic = showFallbackNotice
+    ? surfaceDiagnosticForReason(decision.reason, sceneResult?.diagnostics)
+    : null;
   const canSetWhiteBg = decision.reason === 'inherited-appearance'
     && sceneResult?.diagnostics?.every(d => d.code === 'inherited-background')
     && ui.activeSlide && ui.can('slide-properties') && ui.hasCommand('presentation.setSlideProperties');
@@ -1470,7 +1473,7 @@ export function PresentationCanvas({
     )}
     {showFallbackNotice && (
       <div className="stagecraft-konva-fallback-bar">
-        <p role="status" data-diagnostic-code={sceneResult?.diagnostics?.[0]?.code || undefined}>{surfaceMessageForReason(decision.reason, sceneResult?.diagnostics)}</p>
+        <p role="status" data-diagnostic-code={fallbackDiagnostic.code}>{fallbackDiagnostic.message}</p>
         {canSetWhiteBg && (
           <button type="button" onClick={() => ui.setSlideProperties({ background: { type: 'solid', color: '#ffffff' } }, ui.activeSlide.id)}>
             Use a white background

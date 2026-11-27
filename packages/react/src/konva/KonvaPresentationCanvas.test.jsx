@@ -345,10 +345,10 @@ describe('KONVA-2b surface decision, fallback wording, and API boundary', () => 
 
     const cases = [
       ['inherited-appearance', 'theme-background-unresolved', 'theme background'],
-      ['unresolved-appearance', 'native-appearance-proof-missing', 'missing resolved appearance'],
-      ['unresolved-appearance', 'native-appearance-proof-invalid', 'incomplete appearance'],
+      ['unresolved-appearance', 'native-appearance-proof-missing', 'cannot confirm this slide matches PowerPoint yet'],
+      ['unresolved-appearance', 'native-appearance-proof-invalid', 'cannot confirm this slide matches PowerPoint yet'],
       ['unresolved-appearance', 'native-appearance-stale', 'reopened'],
-      ['unresolved-appearance', 'theme-color-unresolved', 'theme colour'],
+      ['unresolved-appearance', 'theme-color-unresolved', 'theme colour variation'],
       ['unresolved-appearance', 'text-appearance-unresolved', 'text styling'],
       ['unresolved-appearance', 'placeholder-style-unresolved', 'placeholder styling'],
       ['unsupported-content', 'gradient-fill', 'a gradient fill'],
@@ -371,7 +371,19 @@ describe('KONVA-2b surface decision, fallback wording, and API boundary', () => 
       .toBe(surfaceMessageForReason('unsupported-content', [{ code: 'placeholder-style-unresolved' }]));
   });
 
-  it('K3b: summarizes multiple diagnostics with the first issue and remaining item count', async () => {
+  it('K3b: selects the first known diagnostic code for both message and data-diagnostic-code', async () => {
+    const { surfaceDiagnosticForReason } = await import('./surfaceDecision.js');
+    const selected = surfaceDiagnosticForReason('unsupported-content', [
+      { code: 'future-x', objectId: 'o1' },
+      { code: 'gradient-fill', objectId: 'o2' },
+    ]);
+    expect(selected.code).toBe('gradient-fill');
+    expect(selected.message).toContain('a gradient fill');
+    expect(selected.message).toContain('and 1 other item');
+    expect(selected.message).not.toContain('future-x');
+  });
+
+  it('K3b: summarizes multiple diagnostics by counting all diagnostics including unknown codes and other reasons', async () => {
     const { surfaceMessageForReason } = await import('./surfaceDecision.js');
     const two = surfaceMessageForReason('unsupported-content', [
       { code: 'gradient-fill', objectId: 'o1' },
@@ -384,8 +396,8 @@ describe('KONVA-2b surface decision, fallback wording, and API boundary', () => 
 
     const three = surfaceMessageForReason('unsupported-content', [
       { code: 'gradient-fill', objectId: 'o1' },
-      { code: 'picture-fill', objectId: 'o2' },
-      { code: 'list-style-unsupported', objectId: 'o3' },
+      { code: 'future-unknown', objectId: 'o2' },
+      { code: 'inherited-background', objectId: 'o3' },
     ]);
     expect(three).toContain('a gradient fill');
     expect(three).toContain('and 2 other items');
