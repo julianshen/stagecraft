@@ -32,6 +32,7 @@ export const INHERITED_APPEARANCE_MESSAGES = frozenMap({
   'inherited-background': 'Showing the standard view: this slide uses its layout background. Set a slide background to use canvas view.',
   'inherited-artwork': 'Showing the standard view: this slide inherits layout or master artwork.',
   'theme-background-unresolved': 'Showing the standard view: this slide uses a theme background that could not be resolved.',
+  'native-layout-summary-missing': "Showing the standard view: this slide's layout background could not be resolved for canvas view yet.",
   'authored-layout-mismatch': 'Showing the standard view: this slide uses a layout not supported in canvas view yet.',
   'theme-object-defaults': 'Showing the standard view: this slide uses theme default styling not supported in canvas view yet.',
 });
