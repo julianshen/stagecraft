@@ -420,6 +420,7 @@ export function toLegacyDeck(document) {
   };
 }
 const validRunTextPayload = payload => record(payload) && nonempty(payload.runId) && typeof payload.text === 'string' && xmlValidChars(payload.text) && Object.keys(payload).every(key => key === 'runId' || key === 'text');
+const nativeAutofit = object => object.source?.format === 'pptx' && ['shrink', 'resize'].includes(object.bodyLayout?.autofit);
 function updateRun(document, payload, update) {
   validateDocument(document);
   const d = copy(document);
@@ -482,8 +483,9 @@ function setRunText(document, payload) {
   return updateRun(document, payload, (run, object) => {
     if (run.extensions?.stagecraftAuthored === true && payload.text.length > MAX_AUTHORED_RUN_LENGTH) fail('INVALID_AUTHORED_SCHEMA');
     const previousScript = run.extensions?.pptxAppearance?.script;
+    const textChanged = run.text !== payload.text;
     run.text = payload.text;
-    if (previousScript && previousScript !== nativeTextScript(payload.text)) invalidateNativeObjectAppearance(object);
+    if (textChanged && (nativeAutofit(object) || (previousScript && previousScript !== nativeTextScript(payload.text)))) invalidateNativeObjectAppearance(object);
   });
 }
 const PARAGRAPH_FORMAT_KEYS = ['alignment', 'spaceBefore', 'spaceAfter', 'lineSpacing', 'level', 'indentStart', 'indentEnd', 'firstLineIndent', 'bullet'];
@@ -1266,7 +1268,9 @@ export const presentationPlugin = Object.freeze({
       // faithful ODP write needs placement compensation that is not proved native-correct yet.
       // Reject before any mutation rather than emit a wrong transform.
       if (p.geometry.rotation !== undefined && p.geometry.rotation !== 0 && (object.source?.format === 'odp' || d.extensions?.sourceFormat === 'odp')) fail('UNSUPPORTED_ROTATION');
+      const fitChanged = nativeAutofit(object) && (object.geometry?.width !== p.geometry.width || object.geometry?.height !== p.geometry.height);
       object.geometry = { ...object.geometry, ...p.geometry };
+      if (fitChanged) invalidateNativeObjectAppearance(object);
       if (object.type === 'chart') chartGeometry(object.geometry);
       if (object.extensions?.stagecraftAuthored === true) validateAuthoredObject(object);
     }),
