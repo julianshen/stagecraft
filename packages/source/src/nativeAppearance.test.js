@@ -433,6 +433,14 @@ describe('native PPTX appearance projection', () => {
       expect(slideSession.document.slides[0].extensions.pptxColorMapOverride).toBe('master');
       expect(slideSession.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#000000' });
     } finally { slideSession.dispose(); }
+
+    const ambiguousMaster = `<p:sldMaster ${NS}>${tree('').replace('<p:cSld>', '<p:cSld><p:bg><p:bgPr><a:solidFill><a:schemeClr val="bg1"/></a:solidFill></p:bgPr></p:bg>')}<p:clrMap bg1="lt1"/></p:sldMaster>`;
+    const mappingLayout = emptyLayout.replace('</p:sldLayout>', '<p:clrMapOvr><a:overrideClrMapping bg1="dk1"/></p:clrMapOvr></p:sldLayout>');
+    const ambiguous = await openFixture(masterMappingSlide, { master: ambiguousMaster, layout: mappingLayout });
+    try {
+      expect(ambiguous.document.layouts[0].extensions.stagecraftLayoutSummary.background).toEqual({ kind: 'solid', color: '#000000' });
+      expect(ambiguous.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
+    } finally { ambiguous.dispose(); }
   });
 
   it('inherits literal backgrounds under mapping overrides and uses the effective bg1 fallback map', async () => {

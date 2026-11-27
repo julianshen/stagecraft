@@ -106,6 +106,18 @@ describe('native appearance proof helpers', () => {
     expect(nativeAppearanceContext(document, { id: 'cycle-a', layoutId: 'cycle-b' })).toBeDefined();
   });
 
+  it('fails closed when master mapping crosses an override mapping', () => {
+    const theme = { id: 'theme', extensions: {} };
+    const master = { id: 'master', themeId: 'theme', extensions: { pptxColorMap: { bg1: 'lt1' } } };
+    const layout = { id: 'layout', masterId: 'master', extensions: { pptxColorMapOverride: 'mapping', pptxColorMap: { bg1: 'dk1' } } };
+    const slide = { id: 'slide', layoutId: 'layout', extensions: { pptxColorMapOverride: 'master' } };
+    const document = { themes: [theme], masters: [master], layouts: [layout] };
+    expect(nativeAppearanceContext(document, slide).colorMap).toBeNull();
+
+    layout.extensions.pptxColorMapOverride = 'master';
+    expect(nativeAppearanceContext(document, slide).colorMap).toEqual({ bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' });
+  });
+
   it('detects unsupported letters mixed with known scripts', () => {
     expect(nativeTextScripts('Привет𐍈')).toEqual(['Cyrl', 'Other']);
     expect(nativeTextScript('Привет𐍈')).toBe('Cyrl+Other');
