@@ -118,6 +118,14 @@ describe('native PPTX appearance projection', () => {
     finally { placeholderSession.dispose(); }
   });
 
+  it('refuses hidden native shapes before issuing appearance proofs', async () => {
+    const hidden = shape(2, 'rect', 20, 20, 200, 100, '<a:solidFill><a:srgbClr val="112233"/></a:solidFill>')
+      .replace('<p:cNvPr id="2"', '<p:cNvPr hidden="1" id="2"');
+    const session = await openFixture(`<p:sld ${NS}>${tree(hidden)}</p:sld>`);
+    try { expect(proof(session.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { session.dispose(); }
+  });
+
   it('fails closed for unresolved inherited colours and proves a valid scheme control', async () => {
     for (const [color, expected] of [
       ['<a:schemeClr val="phClr"/>', undefined],
