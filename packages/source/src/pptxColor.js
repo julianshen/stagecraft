@@ -78,7 +78,8 @@ export function resolvePptxSchemeColor(slot, transforms = [], palette = {}, colo
   const mapped = colorMap[slot] ?? slot;
   const rgb = hexRgb(palette[mapped]);
   if (!rgb) return null;
-  const node = { children: transforms.map(transform => ({ localName: transform.name, getAttribute: () => transform.raw })) };
+  const nodes = transforms.map(transform => ({ nodeType: 1, localName: transform.name, getAttribute: () => transform.raw }));
+  const node = { childNodes: nodes, children: nodes };
   const transformed = applyTransforms(node, rgb);
   return transformed ? rgbHex(transformed) : null;
 }
