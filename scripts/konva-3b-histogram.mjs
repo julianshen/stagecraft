@@ -46,6 +46,7 @@ const analyze = async (base64, format) => page.evaluate(async ({ base64, format,
         const type = object.type ?? 'unknown'; result[type] ??= { complete: 0, missing: 0, stale: 0, invalid: 0 };
         const proof = object.extensions?.stagecraftNativeAppearance;
         if (!proof) { result[type].missing++; continue; }
+        if (typeof proof.input !== 'string') { result[type].invalid++; continue; }
         let expected;
         try { expected = native.nativeObjectAppearanceInput(object, { theme, colorMap, document, slide }); }
         catch { result[type].invalid++; continue; }

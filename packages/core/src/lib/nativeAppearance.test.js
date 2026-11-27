@@ -441,7 +441,7 @@ describe('native appearance proof helpers', () => {
     const slide = { id: 's1', source: { format: 'pptx' }, layoutId: 'l1', extensions: {} };
     const document = {
       layouts: [{ id: 'l1', masterId: 'm1', themeId: 't1', objects: [] }],
-      masters: [{ id: 'm1', objects: [{ id: 'a', type: 'shape' }] }],
+      masters: [{ id: 'm1', objects: [] }],
       themes: [{ id: 't1', extensions: { pptxColorScheme: { lt1: '#FFFFFF' } } }],
     };
     slide.extensions.stagecraftSlideAppearance = {
@@ -449,7 +449,7 @@ describe('native appearance proof helpers', () => {
       background: { kind: 'solid', color: '#FFFFFF' }, inheritedArtworkCount: 0,
     };
     expect(isNativeSlideAppearanceValid(slide, document)).toBe(true);
-    document.masters[0].objects[0].id = 'changed';
+    document.masters[0].objects.push({ id: 'a', type: 'shape' });
     expect(isNativeSlideAppearanceValid(slide, document)).toBe(false);
   });
 

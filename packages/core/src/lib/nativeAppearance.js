@@ -261,6 +261,9 @@ export function isNativeObjectAppearanceValid(object, context) {
 
 export function isNativeSlideAppearanceValid(slide, document) {
   const proof = slide?.extensions?.stagecraftSlideAppearance;
+  const layout = document?.layouts?.find(item => item.id === slide?.layoutId);
+  const master = document?.masters?.find(item => item.id === (slide?.masterId ?? layout?.masterId));
+  const inheritedArtworkCount = (layout?.objects?.length ?? 0) + (master?.objects?.length ?? 0);
   return exactKeys(proof, ['version', 'appearanceResolved', 'input', 'background', 'inheritedArtworkCount'])
     && proof.version === NATIVE_APPEARANCE_VERSION
     && slide.source?.format === 'pptx'
@@ -269,7 +272,8 @@ export function isNativeSlideAppearanceValid(slide, document) {
     && inputBytes(proof.input) <= NATIVE_APPEARANCE_INPUT_MAX_BYTES
     && proof.input === nativeSlideAppearanceInput(slide, document)
     && isNativeAppearanceBackgroundValid(proof.background)
-    && proof.inheritedArtworkCount === 0;
+    && proof.inheritedArtworkCount === inheritedArtworkCount
+    && inheritedArtworkCount === 0;
 }
 
 export function isNativeLayoutAppearanceValid(entity, document) {

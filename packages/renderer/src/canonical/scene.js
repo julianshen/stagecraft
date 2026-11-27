@@ -26,7 +26,8 @@ function proofCheck(entity, expectedInput, validate, missingCode='native-appeara
   ??entity?.extensions?.stagecraftSlideAppearance
   ??entity?.extensions?.stagecraftLayoutSummary;
  if(!proof)return { valid:false, code:missingCode };
- if(typeof proof.input==='string'&&expectedInput!==null&&proof.input!==expectedInput)
+ if(typeof proof.input!=='string')return { valid:false, code:'native-appearance-proof-invalid' };
+ if(expectedInput!==null&&proof.input!==expectedInput)
   return { valid:false, code:'native-appearance-stale' };
  try { if(validate())return {valid:true,proof}; }
  catch { /* A malformed proof is a fixed refusal, not a scene-build exception. */ }
@@ -113,6 +114,7 @@ export function buildCanonicalScene(document,slideId) {
  if(authoredSlide&&slide.layoutId!=null&&slide.layoutId!==document.layouts?.[0]?.id)return unsupported('inherited-appearance','authored-layout-mismatch');
  const layout=nativeSlide?document.layouts?.find(item=>item.id===slide.layoutId):layoutForSlide(document,slide);
  const master=document.masters?.find(item=>item.id===(slide.masterId??layout?.masterId));
+ if(nativeSlide&&[layout,master].some(value=>value?.objects?.length))return unsupported('inherited-appearance','inherited-artwork');
  if(!nativeSlide&&[layout,master].some(value=>value?.objects?.length))return unsupported('inherited-appearance','inherited-artwork');
  const theme=themeForSlide(document,slide),nativeContext=nativeSlide?rendererNativeAppearanceContext(document,slide):null;
  const rawTheme=nativeContext?.theme??null,colorMap=nativeContext?.colorMap??null;
