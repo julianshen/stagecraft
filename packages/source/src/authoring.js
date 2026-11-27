@@ -83,6 +83,7 @@ const cleanExtensions = value => {
     delete out.pptxOtherTextStyle;
     delete out.pptxEndRunAppearance;
     delete out.pptxColorMapOverride;
+    delete out.pptxBackgroundFillDefinitions;
     if (Object.hasOwn(out, 'pptxAppearance')) {
         const appearance = cleanPptxAppearance(out.pptxAppearance);
         if (appearance && Object.keys(appearance).length) out.pptxAppearance = appearance;

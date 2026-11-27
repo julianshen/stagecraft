@@ -1,5 +1,6 @@
 import {
   NATIVE_APPEARANCE_INPUT_MAX_BYTES,
+  nativeAppearanceContext,
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
   nativeSlideAppearanceInput,
@@ -39,39 +40,8 @@ const nativeWritingScript = (text, language) => {
 };
 const schemeHex = (palette, colorMap, slot) => palette?.[colorMap?.[slot] ?? slot] ?? null;
 
-function themeFor(document, entity) {
-  let current = entity;
-  const seen = new Set();
-  while (current && !seen.has(current.id)) {
-    seen.add(current.id);
-    if (current.extensions?.pptxThemeOverride) return null;
-    if (current.themeId) return document.themes.find(theme => theme.id === current.themeId) ?? null;
-    const layout = current.layoutId ? document.layouts.find(item => item.id === current.layoutId) : null;
-    current = layout ?? (current.masterId ? document.masters.find(item => item.id === current.masterId) : null);
-  }
-  return null;
-}
-
-function colorMapFor(document, entity) {
-  const chain = [];
-  const seen = new Set();
-  let current = entity;
-  while (current && !seen.has(current.id)) {
-    if (current.extensions?.pptxColorMapOverride === 'unsupported') return null;
-    seen.add(current.id);
-    if (current.extensions?.pptxColorMapOverride === 'master') {
-      const layout = current.layoutId ? document.layouts.find(item => item.id === current.layoutId) : null;
-      current = layout ?? (current.masterId ? document.masters.find(master => master.id === current.masterId) : null);
-      continue;
-    }
-    chain.unshift(current);
-    if (current.layoutId) current = document.layouts.find(layout => layout.id === current.layoutId);
-    else current = current.masterId ? document.masters.find(master => master.id === current.masterId) : null;
-  }
-  const map = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' };
-  for (const item of chain) Object.assign(map, item.extensions?.pptxColorMap);
-  return map;
-}
+const themeFor = (document, entity) => nativeAppearanceContext(document, entity).theme;
+const colorMapFor = (document, entity) => nativeAppearanceContext(document, entity).colorMap;
 
 function simpleFill(parent, theme, colorMap, allowPlaceholder = false) {
   const fills = FILL_TAGS.includes(parent.localName) ? [parent] : children(parent).filter(node => FILL_TAGS.includes(node.localName));
@@ -82,6 +52,33 @@ function simpleFill(parent, theme, colorMap, allowPlaceholder = false) {
   const colorNode = children(fills[0])[0];
   if (allowPlaceholder && is(colorNode, 'a', 'phClr')) return { kind: 'placeholder' };
   const color = resolvePptxColor(colorNode, theme?.extensions?.pptxColorScheme, colorMap);
+  return color ? { kind: 'solid', color } : null;
+}
+
+function backgroundDefinition(parent) {
+  const fills = FILL_TAGS.includes(parent.localName) ? [parent] : children(parent).filter(node => FILL_TAGS.includes(node.localName));
+  if (fills.length > 1) return null;
+  if (!fills.length) return none();
+  if (is(fills[0], 'a', 'noFill')) return none();
+  if (!is(fills[0], 'a', 'solidFill') || children(fills[0]).length !== 1) return null;
+  const colorNode = children(fills[0])[0];
+  if (is(colorNode, 'a', 'schemeClr')) {
+    const scheme = colorNode.getAttribute('val');
+    if (!scheme || scheme === 'phClr') return null;
+    const transforms = children(colorNode).map(transform => ({ name: transform.localName, raw: transform.getAttribute('val') }));
+    if (transforms.some(transform => !['lumMod', 'lumOff'].includes(transform.name)
+      || !/^\d+$/.test(transform.raw ?? '') || !Number.isSafeInteger(Number(transform.raw)))) return null;
+    return { kind: 'scheme', scheme, transforms };
+  }
+  const color = resolvePptxColor(colorNode, {}, {});
+  return color ? { kind: 'solid', color } : null;
+}
+
+function resolveBackgroundDefinition(definition, theme, colorMap) {
+  if (!definition) return null;
+  if (definition.kind !== 'scheme') return definition;
+  if (!theme || !colorMap) return null;
+  const color = resolvePptxSchemeColor(definition.scheme, definition.transforms, theme.extensions?.pptxColorScheme, colorMap);
   return color ? { kind: 'solid', color } : null;
 }
 
@@ -155,6 +152,7 @@ async function projectTheme(document, load) {
       pptxFillStyles: projectStyles('fillStyleLst'),
       pptxLineStyles: projectStyles('lnStyleLst', true),
       pptxBackgroundFillStyles: projectStyles('bgFillStyleLst'),
+      pptxBackgroundFillDefinitions: children(child(format, 'a', 'bgFillStyleLst')).map(backgroundDefinition),
     };
   }
 }
@@ -209,12 +207,12 @@ async function projectEntityBackgrounds(document, load) {
     if (bg) {
       const ref = child(bg, 'p', 'bgRef');
       if (ref) {
-        const vectors = await themeStyleVectors(theme, entityColorMap, load);
-        value = vectors ? (fillFromStyle(vectors.backgrounds, styleIndex(ref.getAttribute('idx'))) ?? UNSUPPORTED_BACKGROUND) : UNSUPPORTED_BACKGROUND;
+        const definitions = theme?.extensions?.pptxBackgroundFillDefinitions;
+        value = definitions ? (definitions[styleIndex(ref.getAttribute('idx'))] ?? UNSUPPORTED_BACKGROUND) : UNSUPPORTED_BACKGROUND;
       } else {
         const bgPr = child(bg, 'p', 'bgPr');
         value = bgPr && children(bgPr).every(item => FILL_TAGS.includes(item.localName))
-          ? (simpleFill(bgPr, theme, entityColorMap) ?? UNSUPPORTED_BACKGROUND) : UNSUPPORTED_BACKGROUND;
+          ? (backgroundDefinition(bgPr) ?? UNSUPPORTED_BACKGROUND) : UNSUPPORTED_BACKGROUND;
       }
     }
     own.set(entity.id, value);
@@ -222,25 +220,35 @@ async function projectEntityBackgrounds(document, load) {
   return own;
 }
 
-function effectiveBackground(document, entity, own, fallback = null, seen = new Set()) {
-  if (seen.has(entity.id)) return null;
+function inheritedBackgroundDefinition(document, entity, own, seen = new Set()) {
+  if (seen.has(entity.id)) return UNSUPPORTED_BACKGROUND;
   seen.add(entity.id);
   if (own.has(entity.id)) {
     const value = own.get(entity.id);
-    if (value === UNSUPPORTED_BACKGROUND) return null;
+    if (value === UNSUPPORTED_BACKGROUND) return value;
     if (value !== undefined) return value;
   }
-  if (entity.extensions?.pptxColorMapOverride) return null;
+  if (entity.extensions?.pptxColorMapOverride === 'unsupported') return UNSUPPORTED_BACKGROUND;
   const layout = entity.layoutId ? document.layouts.find(item => item.id === entity.layoutId) : null;
-  if (layout) return effectiveBackground(document, layout, own, fallback, seen);
+  if (layout) return inheritedBackgroundDefinition(document, layout, own, seen);
   if (entity.masterId) {
     const master = document.masters.find(item => item.id === entity.masterId);
-    if (master) return effectiveBackground(document, master, own, fallback, seen);
+    if (master) return inheritedBackgroundDefinition(document, master, own, seen);
+  }
+  return undefined;
+}
+
+function effectiveBackground(document, entity, own, fallback = null) {
+  const definition = inheritedBackgroundDefinition(document, entity, own);
+  if (definition === UNSUPPORTED_BACKGROUND) return null;
+  const { theme, colorMap } = nativeAppearanceContext(document, entity);
+  if (definition !== undefined) {
+    if (definition.kind === 'scheme' && !theme?.source?.part) return null;
+    return resolveBackgroundDefinition(definition, theme, colorMap);
   }
   if (fallback) return fallback;
-  const theme = themeFor(document, entity);
-  const colorMap = colorMapFor(document, entity);
-  const color = schemeHex(theme?.extensions?.pptxColorScheme, colorMap, 'bg1');
+  if (!theme?.source?.part || !colorMap) return null;
+  const color = schemeHex(theme.extensions?.pptxColorScheme, colorMap, 'bg1');
   return color ? { kind: 'solid', color } : null;
 }
 

@@ -106,6 +106,7 @@ const themeAppearanceInput = (theme, colorMap) => theme ? {
   fills: theme.extensions?.pptxFillStyles,
   lines: theme.extensions?.pptxLineStyles,
   backgrounds: theme.extensions?.pptxBackgroundFillStyles,
+  backgroundDefinitions: theme.extensions?.pptxBackgroundFillDefinitions,
   fonts: fontSchemeInput(theme.extensions?.pptxFontScheme),
   colorMap,
 } : null;
