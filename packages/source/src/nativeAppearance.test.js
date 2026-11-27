@@ -95,6 +95,69 @@ describe('native PPTX appearance projection', () => {
     } finally { session.dispose(); }
   });
 
+  it('refuses partial direct lines and fixed style-reference colour overrides', async () => {
+    const partial = shape(2, 'rect', 20, 20, 200, 100, '<a:ln w="19050"/>', '<p:style><a:lnRef idx="1001"/></p:style>');
+    const partialSession = await openFixture(`<p:sld ${NS}>${tree(partial)}</p:sld>`);
+    try { expect(proof(partialSession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { partialSession.dispose(); }
+
+    const fixedOverride = shape(2, 'rect', 20, 20, 200, 100, '', '<p:style><a:fillRef idx="1001"><a:schemeClr val="accent2"/></a:fillRef></p:style>');
+    const fixedSession = await openFixture(`<p:sld ${NS}>${tree(fixedOverride)}</p:sld>`);
+    try { expect(proof(fixedSession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { fixedSession.dispose(); }
+  });
+
+  it('refuses significant inherited defPPr and missing supplemental EA faces', async () => {
+    const defaultParagraphMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:defPPr algn="ctr"/><a:lvl1pPr><a:defRPr sz="1800"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+    const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const bytes = await sourceReady(await buildPptx({ theme, master: defaultParagraphMaster, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(box)}</p:sld>` }] }));
+    const session = await openPresentation(bytes, { format: 'pptx', xml });
+    try { expect(proof(session.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { session.dispose(); }
+
+    const japaneseTheme = theme.replace('<a:ea typeface="Noto Sans JP"/>', '<a:ea typeface=""/><a:font script="Jpan" typeface="Yu Gothic"/>');
+    const japanese = textBox(2, 20, 20, 300, 100, para('こんにちは', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="ja-JP"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const fontSession = await openFixture(`<p:sld ${NS}>${tree(japanese)}</p:sld>`, { theme: japaneseTheme });
+    try { expect(proof(fontSession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { fontSession.dispose(); }
+  });
+
+  it('resolves inherited colours with slide overrides and preserves explicit CS fonts', async () => {
+    const mappedMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="Arial"/></a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+    const box = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Native</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const slide = `<p:sld ${NS}>${tree(box)}<p:clrMapOvr><a:overrideClrMapping tx1="lt1"/></p:clrMapOvr></p:sld>`;
+    const bytes = await sourceReady(await buildPptx({ theme, master: mappedMaster, layout: emptyLayout, slides: [{ xml: slide }] }));
+    const session = await openPresentation(bytes, { format: 'pptx', xml });
+    try { expect(session.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.color).toBe('#FFFFFF'); }
+    finally { session.dispose(); }
+
+    const supplemental = theme.replace('<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/>', '<a:latin typeface="Arial"/><a:ea typeface="Noto Sans JP"/><a:cs typeface="Amiri"/><a:font script="Arab" typeface="Noto Naskh Arabic"/>');
+    const arabic = textBox(2, 20, 20, 300, 100, para('مرحبا', { rPr: ' sz="1800"', rKids: '<a:cs typeface="Tahoma"/>' }).replace('lang="en-US"', 'lang="ar-SA"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const fontSession = await openFixture(`<p:sld ${NS}>${tree(arabic)}</p:sld>`, { theme: supplemental });
+    try { expect(fontSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Tahoma'); }
+    finally { fontSession.dispose(); }
+  });
+
+  it('refuses overridden inherited backgrounds and maps default colours once', async () => {
+    const backgroundLayout = emptyLayout.replace('<p:cSld>', '<p:cSld><p:bg><p:bgPr><a:solidFill><a:schemeClr val="tx1"/></a:solidFill></p:bgPr></p:bg>');
+    const mappedMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/></p:sldMaster>`;
+    const slide = `<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}<p:clrMapOvr><a:overrideClrMapping tx1="lt1"/></p:clrMapOvr></p:sld>`;
+    const backgroundSession = await openFixture(slide, { master: mappedMaster, layout: backgroundLayout });
+    try {
+      expect(backgroundSession.document.slides[0].extensions.pptxColorMapOverride).toBe('mapping');
+      expect(backgroundSession.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
+    }
+    finally { backgroundSession.dispose(); }
+
+    const chainedMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="accent1" tx1="accent1" accent1="accent2"/></p:sldMaster>`;
+    const text = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const chained = await openFixture(`<p:sld ${NS}>${tree(text)}</p:sld>`, { master: chainedMaster });
+    try {
+      expect(chained.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.color).toBe('#4472C4');
+      expect(chained.document.slides[0].extensions.stagecraftSlideAppearance.background).toEqual({ kind: 'solid', color: '#4472C4' });
+    } finally { chained.dispose(); }
+  });
+
   it('uses the last run only when end-run properties are absent', async () => {
     const box = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"><a:latin typeface="Arial"/></a:rPr><a:t>Native</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const session = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`);
@@ -349,7 +412,7 @@ describe('native PPTX appearance projection', () => {
     const override = await openFixture(overrideSlide);
     try {
       expect(proof(override.document.slides[0].objects[0]).fill).toEqual({ kind: 'solid', color: '#FFFFFF' });
-      expect(override.document.slides[0].extensions.stagecraftSlideAppearance).toBeDefined();
+      expect(override.document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
     } finally { override.dispose(); }
 
     const unsupportedOverride = await openFixture(`<p:sld ${NS}>${tree(shape(2, 'rect', 20, 20, 200, 100))}<p:clrMapOvr><a:unknownMapping/></p:clrMapOvr></p:sld>`);
@@ -519,7 +582,9 @@ describe('native PPTX appearance projection', () => {
 
   it('honours colour overrides on fillRef, lnRef and fontRef', async () => {
     const styled = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Styled"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:style><a:fillRef idx="1001"><a:schemeClr val="accent2"/></a:fillRef><a:lnRef idx="1001"><a:schemeClr val="accent2"/></a:lnRef></p:style><p:spPr>${xfrm(20, 20, 200, 100)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:sp>`;
-    const session = await openFixture(`<p:sld ${NS}>${tree(styled)}</p:sld>`);
+    const placeholderTheme = theme.replace(/<a:fillStyleLst>[\s\S]*?<\/a:fillStyleLst>/, '<a:fillStyleLst><a:solidFill><a:phClr/></a:solidFill></a:fillStyleLst>')
+      .replace('<a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="dk1"/></a:solidFill></a:ln></a:lnStyleLst>', '<a:lnStyleLst><a:ln w="9525"><a:solidFill><a:phClr/></a:solidFill></a:ln></a:lnStyleLst>');
+    const session = await openFixture(`<p:sld ${NS}>${tree(styled)}</p:sld>`, { theme: placeholderTheme });
     try {
       expect(proof(session.document.slides[0].objects[0])).toMatchObject({
         fill: { kind: 'solid', color: '#ED7D31' }, stroke: { kind: 'solid', color: '#ED7D31', widthEmu: 9525 },
