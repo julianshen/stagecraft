@@ -35,6 +35,7 @@ function makeEditor(object = textObject(), slide = {}) {
     slides: [{
       id: 's1', source, objects: [object], ...slide,
       extensions: {
+        ...slide.extensions,
         stagecraftSlideAppearance: {
           version: 1, appearanceResolved: true, input: '', background: { kind: 'solid', color: '#FFFFFF' }, inheritedArtworkCount: 0,
         },
@@ -90,6 +91,23 @@ describe('native appearance command invalidation', () => {
     expect(editor.getSnapshot().revision).toBe(0);
     expect(editor.getSnapshot().canUndo).toBe(false);
     expect(proof(editor)).toBeTruthy();
+  });
+
+  it('preserves absent paragraph style when clearing unset formatting', () => {
+    const object = textObject();
+    delete object.text.paragraphs[0].style;
+    const editor = makeEditor(object);
+    expect(editor.dispatch('document.setParagraphFormat', { paragraphId: 'p1', format: { alignment: null } }).changed).toBe(false);
+    expect(editor.getSnapshot().document.slides[0].objects[0].text.paragraphs[0].style).toBeUndefined();
+    expect(editor.getSnapshot().canUndo).toBe(false);
+    expect(proof(editor)).toBeTruthy();
+  });
+
+  it('clears retained legacy backgrounds even when canonical background is absent', () => {
+    const editor = makeEditor(textObject(), { extensions: { legacy: { bgColor: 'url(secret)' } } });
+    expect(editor.dispatch('presentation.setSlideProperties', { slideId: 's1', properties: { background: null } }).changed).toBe(true);
+    expect(editor.getSnapshot().document.slides[0].extensions.legacy.bgColor).toBeUndefined();
+    expect(editor.getSnapshot().document.slides[0].extensions.stagecraftSlideAppearance).toBeUndefined();
   });
 
   it.each([
