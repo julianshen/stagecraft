@@ -386,6 +386,7 @@ function resolveNativeSelectedFont(runProperties, fallbackProperties, inherited,
   return { writing, slot, family: normalizeFont(face || fonts?.supplemental?.[writing] || fonts?.latin || 'Calibri') };
 }
 
+/** Resolve run appearance; only the writing-script-selected font slot is authoritative. */
 function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef, baseColor = null, inherited = {}, text = '') {
   const rawSize = runProperties?.getAttribute('sz') ?? fallbackProperties?.getAttribute('sz');
   const size = rawSize ?? (inherited.fontSizePt === undefined ? null : String(Math.round(inherited.fontSizePt * 100)));
