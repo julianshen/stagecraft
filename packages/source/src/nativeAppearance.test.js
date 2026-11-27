@@ -9,6 +9,7 @@ import { projectNativeAppearance } from './nativeAppearance.js';
 import { resolvePptxColor } from './pptxColor.js';
 import { isNativeLayoutAppearanceValid, isNativeObjectAppearanceValid, isNativeSlideAppearanceValid, nativeObjectAppearanceInput } from '@stagecraft/core/lib/nativeAppearance.js';
 import { NS, buildPptx, para, shape, textBox, tree, xfrm } from '../../../tests/helpers/pptxFixture.js';
+import { resolveTextFamily } from '../../renderer/src/vendor/officeview/drawing/text-layout.ts';
 
 const xml = {
   parse: text => new JSDOM(text, { contentType: 'text/xml' }).window.document,
@@ -34,6 +35,19 @@ const theme = `<a:theme ${NS} name="T"><a:themeElements><a:clrScheme name="C">
   <a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="dk1"/></a:solidFill></a:ln></a:lnStyleLst>
   <a:effectStyleLst/><a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>
   </a:themeElements></a:theme>`;
+
+const FONT_SLOTS = [
+  { id: 'lt', tag: 'latin', field: 'fontFamily', text: 'Привет', language: 'ru-RU', script: 'Cyrl' },
+  { id: 'ea', tag: 'ea', field: 'fontFamilyEastAsia', text: 'こんにちは', language: 'ja-JP', script: 'Jpan' },
+  { id: 'cs', tag: 'cs', field: 'fontFamilyComplexScript', text: 'مرحبا', language: 'ar-SA', script: 'Arab' },
+];
+const FONT_PARITY_CASES = FONT_SLOTS.flatMap(slot => {
+  const sources = ['direct-face', 'direct-alias', 'direct-major-alias', 'inherited-face', 'inherited-alias', 'inherited-major-alias', 'theme', 'none'];
+  if (slot.id !== 'lt') sources.push('latin-fallback');
+  return sources.flatMap(source => [false, true].flatMap(populated => [false, true].map(supplemental => ({
+    slot, source, populated, supplemental, themeLatin: 'Theme Latin',
+  })))).concat([{ slot, source: 'none', populated: false, supplemental: false, themeLatin: '' }]);
+});
 
 async function openFixture(slideXml, options = {}) {
   const bytes = await sourceReady(await buildPptx({
@@ -116,6 +130,37 @@ describe('native PPTX appearance projection', () => {
     const placeholderSession = await openFixture(`<p:sld ${NS}>${tree(unresolvedPlaceholder)}</p:sld>`, { theme: placeholderTheme });
     try { expect(proof(placeholderSession.document.slides[0].objects[0])).toBeUndefined(); }
     finally { placeholderSession.dispose(); }
+  });
+
+  it.each(FONT_PARITY_CASES)('matches renderer fonts: $slot.id/$source/component=$populated/supplemental=$supplemental', async ({ slot, source, populated, supplemental, themeLatin }) => {
+    const component = populated ? `Theme ${slot.id.toUpperCase()}` : '';
+    const supplementalFace = supplemental ? 'Supplemental Face' : null;
+    const group = name => `<a:${name}><a:latin typeface="${themeLatin}"/><a:ea typeface="${slot.id === 'ea' ? component : 'Theme EA'}"/><a:cs typeface="${slot.id === 'cs' ? component : 'Theme CS'}"/>${supplementalFace ? `<a:font script="${slot.script}" typeface="${supplementalFace}"/>` : ''}</a:${name}>`;
+    const customTheme = theme.replace(/<a:majorFont>[\s\S]*?<\/a:majorFont>/, group('majorFont'))
+      .replace(/<a:minorFont>[\s\S]*?<\/a:minorFont>/, group('minorFont'));
+    const inherited = source.startsWith('inherited');
+    const direct = source.startsWith('direct') || source === 'latin-fallback';
+    const aliasGroup = source.includes('major') ? 'mj' : 'mn';
+    const face = source.includes('alias') ? `+${aliasGroup}-${slot.id}` : `${slot.id.toUpperCase()} Face`;
+    const fontNode = source === 'latin-fallback' ? '<a:latin typeface="Latin Override"/>'
+      : inherited || direct ? `<a:${slot.tag} typeface="${face}"/>` : '';
+    const master = inherited
+      ? `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800">${fontNode}</a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`
+      : emptyMaster;
+    const runXml = `<a:p><a:r><a:rPr sz="1800">${direct ? fontNode : ''}</a:rPr><a:t>${slot.text}</a:t></a:r></a:p>`;
+    const box = textBox(2, 20, 20, 300, 100, runXml, { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const bytes = await sourceReady(await buildPptx({ theme: customTheme, master, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(box)}</p:sld>` }] }));
+    const session = await openPresentation(bytes, { format: 'pptx', xml });
+    try {
+      const fonts = { latin: themeLatin, eastAsian: slot.id === 'ea' ? component : 'Theme EA', complexScript: slot.id === 'cs' ? component : 'Theme CS', supplemental: supplementalFace ? { [slot.script]: supplementalFace } : {} };
+      const expectedRun = { text: slot.text, language: slot.language };
+      if (source === 'latin-fallback') expectedRun.fontFamily = 'Latin Override';
+      else if (direct || inherited) expectedRun[slot.field] = face;
+      const expected = resolveTextFamily(expectedRun, { fonts: { major: fonts, minor: fonts } });
+      const object = session.document.slides[0].objects[0];
+      expect(proof(object), JSON.stringify({ slot, source, populated, supplemental, expected })).toBeDefined();
+      expect(object.text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved[slot.field]).toBe(expected);
+    } finally { session.dispose(); }
   });
 
   it('refuses hidden native shapes before issuing appearance proofs', async () => {
@@ -204,7 +249,7 @@ describe('native PPTX appearance projection', () => {
     finally { session.dispose(); }
   });
 
-  it('refuses significant inherited defPPr and missing supplemental EA faces', async () => {
+  it('refuses significant inherited defPPr and resolves supplemental EA faces', async () => {
     const defaultParagraphMaster = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:defPPr algn="ctr"/><a:lvl1pPr><a:defRPr sz="1800"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
     const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const bytes = await sourceReady(await buildPptx({ theme, master: defaultParagraphMaster, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(box)}</p:sld>` }] }));
@@ -215,7 +260,7 @@ describe('native PPTX appearance projection', () => {
     const japaneseTheme = theme.replace('<a:ea typeface="Noto Sans JP"/>', '<a:ea typeface=""/><a:font script="Jpan" typeface="Yu Gothic"/>');
     const japanese = textBox(2, 20, 20, 300, 100, para('こんにちは', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="ja-JP"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const fontSession = await openFixture(`<p:sld ${NS}>${tree(japanese)}</p:sld>`, { theme: japaneseTheme });
-    try { expect(proof(fontSession.document.slides[0].objects[0])).toBeUndefined(); }
+    try { expect(fontSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyEastAsia).toBe('Yu Gothic'); }
     finally { fontSession.dispose(); }
   });
 
@@ -304,7 +349,7 @@ describe('native PPTX appearance projection', () => {
     const session = await openPresentation(bytes, { format: 'pptx', xml });
     try {
       expect(session.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved)
-        .toMatchObject({ bold: true, italic: false, fontFamilyComplexScript: 'Noto Naskh Arabic' });
+        .toMatchObject({ bold: true, italic: false, fontFamilyComplexScript: 'Arial' });
       const document = session.document;
       document.slides[0].objects[0].text.paragraphs.push(structuredClone(document.slides[0].objects[0].text.paragraphs[0]));
       await projectNativeAppearance(document, zip, xml);
@@ -606,17 +651,17 @@ describe('native PPTX appearance projection', () => {
 
     const noLangArabic = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>مرحبا</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const noLangArabicSession = await openFixture(`<p:sld ${NS}>${tree(noLangArabic)}</p:sld>`, { theme: supplemental });
-    try { expect(noLangArabicSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Naskh Arabic'); }
+    try { expect(noLangArabicSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Amiri'); }
     finally { noLangArabicSession.dispose(); }
 
     const arabic = textBox(2, 20, 20, 300, 100, para('مرحبا', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="ar-SA"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const arabicSession = await openFixture(`<p:sld ${NS}>${tree(arabic)}</p:sld>`, { theme: supplemental });
-    try { expect(arabicSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Naskh Arabic'); }
+    try { expect(arabicSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Amiri'); }
     finally { arabicSession.dispose(); }
 
     const mismatched = textBox(2, 20, 20, 300, 100, para('مرحبا', { rPr: ' sz="1800"' }).replace('lang="en-US"', 'lang="hi-IN"'), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const mismatchedSession = await openFixture(`<p:sld ${NS}>${tree(mismatched)}</p:sld>`, { theme: supplemental });
-    try { expect(mismatchedSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Naskh Arabic'); }
+    try { expect(mismatchedSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Amiri'); }
     finally { mismatchedSession.dispose(); }
 
     const mixed = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>مرحبا नमस्ते</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
@@ -626,7 +671,7 @@ describe('native PPTX appearance projection', () => {
 
     const cyrillic = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Привет</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const cyrillicSession = await openFixture(`<p:sld ${NS}>${tree(cyrillic)}</p:sld>`, { theme: supplemental });
-    try { expect(cyrillicSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Sans Cyrillic'); }
+    try { expect(cyrillicSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamily).toBe('Arial'); }
     finally { cyrillicSession.dispose(); }
 
     const mixedCyrillic = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>مرحبا Привет</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
@@ -651,7 +696,7 @@ describe('native PPTX appearance projection', () => {
 
     const arabicDigits = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>١٢٣</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const digitsSession = await openFixture(`<p:sld ${NS}>${tree(arabicDigits)}</p:sld>`, { theme: supplemental });
-    try { expect(digitsSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Noto Naskh Arabic'); }
+    try { expect(digitsSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamilyComplexScript).toBe('Amiri'); }
     finally { digitsSession.dispose(); }
 
     const mixedDigits = textBox(2, 20, 20, 300, 100, '<a:p><a:r><a:rPr sz="1800"></a:rPr><a:t>Native١٢٣</a:t></a:r></a:p>', { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
@@ -884,11 +929,11 @@ describe('native PPTX appearance projection', () => {
     finally { session.dispose(); }
   });
 
-  it('refuses incomplete theme font slots and inherited style containers', async () => {
+  it('falls back to Calibri for incomplete theme fonts and handles empty inherited styles', async () => {
     const incompleteFonts = theme.replace(/<a:minorFont>[\s\S]*?<\/a:minorFont>/, '<a:minorFont/>');
     const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
     const fontSession = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`, { theme: incompleteFonts });
-    try { expect(proof(fontSession.document.slides[0].objects[0])).toBeUndefined(); }
+    try { expect(fontSession.document.slides[0].objects[0].text.paragraphs[0].runs[0].extensions.pptxAppearance.resolved.fontFamily).toBe('Calibri'); }
     finally { fontSession.dispose(); }
 
     for (const otherStyle of ['', '<a:lvl1pPr/>']) {
