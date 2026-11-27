@@ -371,8 +371,9 @@ function resolveNativeSelectedFont(runProperties, fallbackProperties, inherited,
   const slot = ['Hans', 'Hant', 'Jpan', 'Hang'].includes(writing) ? 'ea'
     : !['Latn', 'Cyrl', 'Grek', 'Armn', 'Geor', 'Cher', 'Cans', 'Yiii'].includes(writing) ? 'cs' : 'lt';
   const slotKey = slot === 'ea' ? 'fontFamilyEastAsia' : slot === 'cs' ? 'fontFamilyComplexScript' : 'fontFamily';
-  const direct = runProperties ? child(runProperties, 'a', slot)?.getAttribute('typeface') : null;
-  const fallback = fallbackProperties ? child(fallbackProperties, 'a', slot)?.getAttribute('typeface') : null;
+  const xmlSlot = slot === 'lt' ? 'latin' : slot;
+  const direct = runProperties ? child(runProperties, 'a', xmlSlot)?.getAttribute('typeface') : null;
+  const fallback = fallbackProperties ? child(fallbackProperties, 'a', xmlSlot)?.getAttribute('typeface') : null;
   const selectedChild = direct || fallback || inherited[slotKey];
   const latinChild = (runProperties ? child(runProperties, 'a', 'latin')?.getAttribute('typeface') : null)
     || (fallbackProperties ? child(fallbackProperties, 'a', 'latin')?.getAttribute('typeface') : null)
