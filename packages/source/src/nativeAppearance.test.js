@@ -1283,6 +1283,16 @@ describe('native PPTX appearance projection', () => {
     } finally { session.dispose(); }
   });
 
+  it('preserves a valid native object proof without an explicit autofit child', async () => {
+    const { session } = await openAutofitFixture('');
+    try {
+      const object = session.document.slides[0].objects[0];
+      const context = appearanceContext(session.document, session.document.slides[0]);
+      expect(proof(object)).toBeDefined();
+      expect(isNativeObjectAppearanceValid(object, context)).toBe(true);
+    } finally { session.dispose(); }
+  });
+
   it.each([
     ['shrink', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"/>', { fontScale: 85000, lnSpcReduction: 10000 }],
     ['resize', '<a:spAutoFit/>', null],
@@ -1337,7 +1347,6 @@ describe('native PPTX appearance projection', () => {
     ['spAutoFit attribute', '<a:spAutoFit unknown="1"/>'],
     ['spAutoFit child', '<a:spAutoFit><a:extLst/></a:spAutoFit>'],
     ['unknown autofit child', '<a:unknownAutofit/>'],
-    ['missing autofit child', ''],
     ['multiple autofit children', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"/><a:spAutoFit/>'],
     ['repeated normAutofit child', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"/><a:normAutofit/>'],
   ])('opens malformed or unknown raw autofit without a proof: %s', async (_label, autofit) => {
