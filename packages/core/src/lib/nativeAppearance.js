@@ -121,6 +121,8 @@ export function nativeAppearanceContext(document, entity) {
 }
 
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const plainRecord = value => record(value)
+  && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 const exactKeys = (value, required, optional = []) => record(value)
   && required.every(key => Object.hasOwn(value, key))
   && Object.keys(value).every(key => required.includes(key) || optional.includes(key));
@@ -148,7 +150,7 @@ const stableHash = value => {
   for (const byte of new TextEncoder().encode(stableJson(value))) hash = Math.imul(hash ^ byte, 16777619);
   return (hash >>> 0).toString(16).padStart(8, '0');
 };
-const validNativeAutofitFit = value => exactKeys(value, [], ['fontScale', 'lnSpcReduction'])
+const validNativeAutofitFit = value => plainRecord(value) && exactKeys(value, [], ['fontScale', 'lnSpcReduction'])
   && ['fontScale', 'lnSpcReduction'].every(key => !Object.hasOwn(value, key)
     || (Number.isSafeInteger(value[key]) && value[key] >= (key === 'fontScale' ? 1 : 0) && value[key] <= 100000));
 
@@ -157,8 +159,8 @@ export function nativeAutofitFitValues(fit) {
   const values = fit === undefined ? {} : fit;
   if (!validNativeAutofitFit(values)) return null;
   return {
-    fontScale: values.fontScale ?? 100000,
-    lnSpcReduction: values.lnSpcReduction ?? 0,
+    fontScale: Object.hasOwn(values, 'fontScale') ? values.fontScale : 100000,
+    lnSpcReduction: Object.hasOwn(values, 'lnSpcReduction') ? values.lnSpcReduction : 0,
   };
 }
 
