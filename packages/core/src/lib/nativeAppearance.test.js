@@ -8,6 +8,7 @@ import {
   isNativeObjectAppearanceValid,
   isNativeSlideAppearanceValid,
   nativeAppearanceContext,
+  nativeAutofitEffectiveFit,
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
   nativeSlideAppearanceInput,
@@ -15,7 +16,6 @@ import {
   nativeTextScript,
   nativeTextScripts,
 } from './nativeAppearance.js';
-import * as nativeAppearance from './nativeAppearance.js';
 
 const resolvedRun = {
   color: '#112233',
@@ -144,15 +144,15 @@ describe('native autofit appearance proofs', () => {
     ['reduction-only fit', { lnSpcReduction: 20000 }, { fontScale: 100000, lnSpcReduction: 20000 }],
     ['complete fit', completeFit, completeFit],
   ])('resolves schema defaults purely for %s', (_name, fit, expected) => {
-    const object = shrinkObject(fit);
-    expect(nativeAppearance.nativeAutofitEffectiveFit(object, true)).toEqual(expected);
-    expect(nativeAppearance.nativeAutofitEffectiveFit(object, false))
+    const object = autofitObject('shrink', fit);
+    expect(nativeAutofitEffectiveFit(object, true)).toEqual(expected);
+    expect(nativeAutofitEffectiveFit(object, false))
       .toEqual(fit === completeFit ? completeFit : null);
   });
 
   it('never resolves effective fit for resize or non-autofit layouts', () => {
     for (const object of [autofitObject('resize', completeFit), autofitObject('none', completeFit), nativeObject()]) {
-      expect(nativeAppearance.nativeAutofitEffectiveFit(object, true)).toBeNull();
+      expect(nativeAutofitEffectiveFit(object, true)).toBeNull();
     }
   });
 
@@ -198,7 +198,7 @@ describe('native autofit appearance proofs', () => {
     const object = proveObject(shrinkObject(fit));
     object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object);
     expect(isNativeObjectAppearanceValid(object)).toBe(false);
-    expect(nativeAppearance.nativeAutofitEffectiveFit(object, true)).toBeNull();
+    expect(nativeAutofitEffectiveFit(object, true)).toBeNull();
   });
 
   it('rejects stored fit on resize and non-autofit objects with matching inputs', () => {

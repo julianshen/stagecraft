@@ -1,6 +1,8 @@
 export const NATIVE_APPEARANCE_VERSION = 1;
 export const NATIVE_APPEARANCE_INPUT_MAX_BYTES = 16 * 1024;
 
+const NATIVE_AUTOFIT_SCHEMA_DEFAULTS_APPROVED = false;
+
 const TEXT_SCRIPT_PATTERNS = [
   ['Arab', /\p{Script=Arab}/u], ['Hebr', /\p{Script=Hebr}/u], ['Thai', /\p{Script=Thai}/u],
   ['Deva', /\p{Script=Deva}/u], ['Beng', /\p{Script=Beng}/u], ['Taml', /\p{Script=Taml}/u],
@@ -146,6 +148,29 @@ const stableHash = value => {
   for (const byte of new TextEncoder().encode(stableJson(value))) hash = Math.imul(hash ^ byte, 16777619);
   return (hash >>> 0).toString(16).padStart(8, '0');
 };
+const validNativeAutofitFit = value => exactKeys(value, [], ['fontScale', 'lnSpcReduction'])
+  && ['fontScale', 'lnSpcReduction'].every(key => !Object.hasOwn(value, key)
+    || (Number.isSafeInteger(value[key]) && value[key] >= (key === 'fontScale' ? 1 : 0) && value[key] <= 100000));
+
+/** Resolve stored shrink values, optionally applying schema defaults for pure evidence checks. */
+export function nativeAutofitEffectiveFit(object, resolveDefaults = NATIVE_AUTOFIT_SCHEMA_DEFAULTS_APPROVED) {
+  if (object?.bodyLayout?.autofit !== 'shrink') return null;
+  const fit = object.bodyLayout.fit === undefined ? {} : object.bodyLayout.fit;
+  if (!validNativeAutofitFit(fit)) return null;
+  const hasFontScale = Object.hasOwn(fit, 'fontScale');
+  const hasReduction = Object.hasOwn(fit, 'lnSpcReduction');
+  if (!resolveDefaults && (!hasFontScale || !hasReduction)) return null;
+  return {
+    fontScale: hasFontScale ? fit.fontScale : 100000,
+    lnSpcReduction: hasReduction ? fit.lnSpcReduction : 0,
+  };
+}
+
+const nativeAutofitFitBinding = object => stableHash({
+  paragraphs: (object.text?.paragraphs ?? []).map(paragraph => (paragraph.runs ?? []).map(run => run.text)),
+  width: object.geometry?.width,
+  height: object.geometry?.height,
+});
 const fontSchemeInput = fonts => fonts && Object.fromEntries(['major', 'minor'].map(group => [group, {
   latin: fonts[group]?.latin, eastAsian: fonts[group]?.eastAsian, complexScript: fonts[group]?.complexScript,
   supplementalHash: stableHash(fonts[group]?.supplemental ?? {}),
@@ -176,8 +201,10 @@ const inheritedAppearanceInput = context => {
   } : undefined;
 };
 
-/** Appearance-determining canonical inputs only: geometry and run text are deliberately excluded. */
+/** Appearance-determining canonical inputs only; autofit adds a fixed-size text/frame-size binding. */
 export function nativeObjectAppearanceInput(object, context) {
+  const effectiveFit = object.bodyLayout?.autofit === 'shrink' ? nativeAutofitEffectiveFit(object) : null;
+  const hasFitBinding = ['shrink', 'resize'].includes(object.bodyLayout?.autofit);
   return stableJson({
     type: object.type,
     shape: object.shape,
@@ -185,6 +212,8 @@ export function nativeObjectAppearanceInput(object, context) {
     source: sourceInput(object.source),
     metrics: object.extensions?.pptxTextMetrics,
     bodyLayout: object.bodyLayout,
+    ...(effectiveFit ? { effectiveFit } : {}),
+    ...(hasFitBinding ? { fitBinding: nativeAutofitFitBinding(object) } : {}),
     text: object.text ? {
       paragraphs: object.text.paragraphs.map(paragraph => ({
         id: paragraph.id,
@@ -303,6 +332,8 @@ export function isNativeObjectAppearanceValid(object, context) {
   if (!['shape', 'text'].includes(object.type)) return false;
   if (object.type === 'shape' && !['rect', 'ellipse', 'roundRect'].includes(object.shape)) return false;
   if (object.type === 'text' && object.shape !== undefined && object.shape !== 'rect') return false;
+  if (object.bodyLayout?.autofit === 'shrink' && !nativeAutofitEffectiveFit(object)) return false;
+  if (object.bodyLayout?.autofit !== 'shrink' && object.bodyLayout?.fit !== undefined) return false;
   if (!object.text) return proof.text === undefined;
   if (!exactKeys(proof.text, ['paragraphs']) || !Array.isArray(proof.text.paragraphs)
     || proof.text.paragraphs.length !== object.text.paragraphs.length) return false;
