@@ -2,9 +2,30 @@ import { expect,it,vi } from 'vitest';
 import { buildCanonicalScene,createCanonicalPaintEnvironment,paintCanonicalScene,paintCanonicalNode,waitForCanonicalFonts } from './index.js';
 import { box,deck } from '../../../../tests/helpers/canonicalScene.js';
 import { nativeShapeFixture } from './nativeShapeFixture.js';
+import { openPresentation } from '../../../source/src/index.js';
+import JSZip from 'jszip';
+import { NS,buildPptx,para,shape,slideXml,textBox,tree } from '../../../../tests/helpers/pptxFixture.js';
+const EDGE_CHANNEL_TOLERANCE=18;
 const scene=objects=>{const r=buildCanonicalScene(deck(objects),'s');expect(r.status).toBe('ready');return r.scene;};
-const canvas=()=>{const c=document.createElement('canvas');c.width=960;c.height=540;return c.getContext('2d');};
+const canvas=(dpr=1)=>{const c=document.createElement('canvas');c.width=960*dpr;c.height=540*dpr;const ctx=c.getContext('2d');if(dpr!==1)ctx.scale(dpr,dpr);return ctx;};
 const pixel=(ctx,x,y)=>[...ctx.getImageData(x,y,1,1).data];
+const devicePixel=(ctx,x,y,dpr)=>pixel(ctx,Math.round(x*dpr),Math.round(y*dpr));
+const withinPixel=(actual,expected,tolerance)=>actual.every((channel,index)=>Math.abs(channel-expected[index])<=tolerance);
+const EMPTY_MASTER=`<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+const EMPTY_LAYOUT=`<p:sldLayout ${NS}>${tree('')}</p:sldLayout>`;
+const PACKAGE_RELS='<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/></Relationships>';
+const CONTENT_TYPES='<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/><Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/></Types>';
+const explicitWhiteBackground='<p:bg><p:bgPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></p:bgPr></p:bg>';
+async function openNativeFixture(inner){
+ let bytes=await buildPptx({master:EMPTY_MASTER,layout:EMPTY_LAYOUT,slides:[{xml:slideXml(inner,{bg:explicitWhiteBackground})}]});
+ const zip=await JSZip.loadAsync(bytes);zip.file('_rels/.rels',PACKAGE_RELS);zip.file('[Content_Types].xml',CONTENT_TYPES);bytes=await zip.generateAsync({type:'uint8array'});
+ return openPresentation(bytes,{format:'pptx'});
+}
+async function paintNativeFixture(inner,dpr=1){
+ const source=await openNativeFixture(inner);
+ try {const result=buildCanonicalScene(source.document,source.document.slides[0].id);if(result.status!=='ready')throw new Error(JSON.stringify({result,objects:source.document.slides[0].objects}));const ctx=canvas(dpr);paintCanonicalScene(ctx,result.scene,createCanonicalPaintEnvironment());return {ctx,result};}
+ finally {source.dispose();}
+}
 it('paints solid rect/ellipse in canonical z order and local versus scene placement',()=>{
  const g={x:95250,y:95250,width:952500,height:952500},a=box({id:'a',type:'shape',shape:'rect',fill:'#ff0000',text:undefined,geometry:g}),b=box({id:'b',type:'shape',shape:'ellipse',fill:'#00ff00',text:undefined,geometry:g});
  const s=scene([a,b]),ctx=canvas(),env=createCanonicalPaintEnvironment();paintCanonicalScene(ctx,s,env);
@@ -80,4 +101,31 @@ it('paints native no-fill as transparent and honours the projected roundRect adj
  expect(rounded.status).toBe('ready');const roundContext=canvas();paintCanonicalScene(roundContext,rounded.scene,createCanonicalPaintEnvironment());
  // Pixel expectations derive from the fixture's white background, solid fill, and roundRect EMU geometry.
  expect(pixel(roundContext,10,10)).toEqual([255,255,255,255]);expect(pixel(roundContext,50,30)).toEqual([18,52,86,255]);
+});
+it.each([1,2])('paints fill from a real PPTX part after source projection at DPR %s',async dpr=>{
+ const inner=shape(2,'rect',15,15,150,75,'<a:solidFill><a:srgbClr val="123456"/></a:solidFill><a:ln><a:noFill/></a:ln>');
+ const {ctx,result}=await paintNativeFixture(inner,dpr);expect(result.scene.nodes[0].paint.fill).toBe('#123456');
+ expect(devicePixel(ctx,50,30,dpr)).toEqual([18,52,86,255]);
+});
+it.each([1,2])('paints an XML-projected outline with the OOXML EMU width at DPR %s',async dpr=>{
+ const inner=shape(2,'rect',15,15,150,75,'<a:noFill/><a:ln w="19050"><a:solidFill><a:srgbClr val="654321"/></a:solidFill></a:ln>');
+ const {ctx,result}=await paintNativeFixture(inner,dpr);expect(result.scene.nodes[0].paint.stroke).toEqual({kind:'solid',color:'#654321',widthEmu:19050});
+ expect(withinPixel(devicePixel(ctx,9,35,dpr),[101,67,33,255],EDGE_CHANNEL_TOLERANCE)).toBe(true);
+ expect(withinPixel(devicePixel(ctx,10,35,dpr),[101,67,33,255],EDGE_CHANNEL_TOLERANCE)).toBe(true);
+ expect(withinPixel(devicePixel(ctx,11,35,dpr),[255,255,255,255],EDGE_CHANNEL_TOLERANCE)).toBe(true);
+});
+it.each([1,2])('paints the roundRect preset and avLst corner adjustment from PPTX XML at DPR %s',async dpr=>{
+ const inner=shape(2,'roundRect',15,15,150,75,'<a:solidFill><a:srgbClr val="123456"/></a:solidFill><a:ln><a:noFill/></a:ln>').replace('<a:avLst/>','<a:avLst><a:gd name="adj" fmla="val 10000"/></a:avLst>');
+ const {ctx,result}=await paintNativeFixture(inner,dpr);expect(result.scene.nodes[0].paint.adjust).toEqual({adj:10000});
+ expect(devicePixel(ctx,50,30,dpr)).toEqual([18,52,86,255]);expect(withinPixel(devicePixel(ctx,10,10,dpr),[255,255,255,255],EDGE_CHANNEL_TOLERANCE)).toBe(true);
+});
+it.each([1,2])('paints XML-projected native text colour and East Asian font slot at DPR %s',async dpr=>{
+ const object=textBox(2,15,15,600,300,para('漢字',{rPr:' sz="3000"',rKids:'<a:solidFill><a:srgbClr val="CC0000"/></a:solidFill><a:latin typeface="monospace"/><a:ea typeface="serif"/>'}),{bodyPr:'<a:bodyPr lIns="0" rIns="0" tIns="0" bIns="0"><a:noAutofit/></a:bodyPr>'});
+ const {ctx,result}=await paintNativeFixture(object,dpr);const run=result.scene.nodes[0].paint.text.body.paragraphs[0].runs[0];
+ expect(run.color).toBe('#cc0000');expect(run.fontFamilyEastAsia).toBe('serif');
+ const ready=await waitForCanonicalFonts(result.scene);expect(ready.status).toBe('ready');
+ const calls=[],original=ctx.fillText.bind(ctx);vi.spyOn(ctx,'fillText').mockImplementation((...args)=>{calls.push(ctx.font);return original(...args);});
+ paintCanonicalScene(ctx,result.scene,createCanonicalPaintEnvironment());expect(calls.some(font=>font.includes('serif'))).toBe(true);
+ const data=ctx.getImageData(10*dpr,10*dpr,400*dpr,200*dpr).data;let redPixels=0;for(let i=0;i<data.length;i+=4)if(data[i]>150&&data[i+1]<100&&data[i+2]<100)redPixels++;
+ expect(redPixels).toBeGreaterThan(5);
 });
