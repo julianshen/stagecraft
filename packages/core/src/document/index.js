@@ -608,8 +608,8 @@ function setParagraphFormat(document, payload) {
   // breaking export later ('Non-list ODP paragraph levels are unsupported').
   const format = object.source?.format ?? d.extensions?.sourceFormat;
   if (format === 'odp') {
-    const bullet = paragraph.style.bullet;
-    if ((paragraph.style.level ?? 0) > 0 && (!bullet || bullet.type === 'none')) fail('UNSUPPORTED_EDIT');
+    const bullet = paragraph.style?.bullet;
+    if ((paragraph.style?.level ?? 0) > 0 && (!bullet || bullet.type === 'none')) fail('UNSUPPORTED_EDIT');
   }
   const styleChanged = !jsonEqual(beforeStyle, paragraph.style);
   if (styleChanged) invalidateNativeObjectAppearance(object);
