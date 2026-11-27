@@ -19,6 +19,24 @@ const none = () => ({ kind: 'none' });
 const onOff = value => value === '1' || value === 'true' ? true : value === '0' || value === 'false' ? false : null;
 const SUPPLEMENTAL_SCRIPTS = { ar: 'Arab', fa: 'Arab', ur: 'Arab', he: 'Hebr', th: 'Thai', hi: 'Deva', mr: 'Deva', ne: 'Deva', bn: 'Beng', ta: 'Taml', te: 'Telu', kn: 'Knda', ml: 'Mlym', gu: 'Gujr', pa: 'Guru' };
 const NON_SUPPLEMENTAL_LANGUAGES = new Set(['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'sv', 'da', 'no', 'fi', 'pl', 'cs', 'sk', 'hu', 'ro', 'bg', 'ru', 'uk', 'tr', 'el', 'ja', 'ko', 'zh', 'id', 'ms', 'vi']);
+const WRITING_SCRIPT_PATTERNS = [
+  [/\p{Script=Arabic}/u, 'Arab'], [/\p{Script=Hebrew}/u, 'Hebr'], [/\p{Script=Devanagari}/u, 'Deva'],
+  [/\p{Script=Thai}/u, 'Thai'], [/\p{Script=Tamil}/u, 'Taml'], [/\p{Script=Telugu}/u, 'Telu'],
+  [/\p{Script=Bengali}/u, 'Beng'], [/\p{Script=Gujarati}/u, 'Gujr'], [/\p{Script=Gurmukhi}/u, 'Guru'],
+  [/\p{Script=Kannada}/u, 'Knda'], [/\p{Script=Malayalam}/u, 'Mlym'], [/\p{Script=Oriya}/u, 'Orya'],
+  [/\p{Script=Sinhala}/u, 'Sinh'], [/\p{Script=Khmer}/u, 'Khmr'], [/\p{Script=Lao}/u, 'Laoo'],
+  [/\p{Script=Myanmar}/u, 'Mymr'], [/\p{Script=Tibetan}/u, 'Tibt'], [/\p{Script=Mongolian}/u, 'Mong'],
+  [/\p{Script=Syriac}/u, 'Syrc'], [/\p{Script=Thaana}/u, 'Thaa'], [/\p{Script=Ethiopic}/u, 'Ethi'],
+  [/\p{Script=Georgian}/u, 'Geor'], [/\p{Script=Armenian}/u, 'Armn'], [/\p{Script=Cherokee}/u, 'Cher'],
+  [/\p{Script=Canadian_Aboriginal}/u, 'Cans'], [/\p{Script=Yi}/u, 'Yiii'],
+  [/\p{Script=Cyrillic}/u, 'Cyrl'], [/\p{Script=Greek}/u, 'Grek'],
+];
+const nativeWritingScript = (text, language) => {
+  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return 'Jpan';
+  if (/\p{Script=Hangul}/u.test(text)) return 'Hang';
+  if (/\p{Script=Han}/u.test(text)) return /^ja/i.test(language ?? '') ? 'Jpan' : /^ko/i.test(language ?? '') ? 'Hang' : /^zh-(TW|HK|MO|Hant)/i.test(language ?? '') ? 'Hant' : 'Hans';
+  return WRITING_SCRIPT_PATTERNS.find(([pattern]) => pattern.test(text))?.[1] ?? 'Latn';
+};
 const schemeHex = (palette, colorMap, slot) => palette?.[colorMap?.[slot] ?? slot] ?? null;
 
 function themeFor(document, entity) {
@@ -348,6 +366,26 @@ function resolveRunFont(runProperties, fallbackProperties, theme, fontRef, slot,
   return resolveFont(direct, theme, fontRef, themeSlot, inheritedFont, script);
 }
 
+function resolveNativeSelectedFont(runProperties, fallbackProperties, inherited, theme, fontRef, text, language) {
+  const writing = nativeWritingScript(text, language);
+  const slot = ['Hans', 'Hant', 'Jpan', 'Hang'].includes(writing) ? 'ea'
+    : !['Latn', 'Cyrl', 'Grek', 'Armn', 'Geor', 'Cher', 'Cans', 'Yiii'].includes(writing) ? 'cs' : 'lt';
+  const slotKey = slot === 'ea' ? 'fontFamilyEastAsia' : slot === 'cs' ? 'fontFamilyComplexScript' : 'fontFamily';
+  const direct = runProperties ? child(runProperties, 'a', slot)?.getAttribute('typeface') : null;
+  const fallback = fallbackProperties ? child(fallbackProperties, 'a', slot)?.getAttribute('typeface') : null;
+  const selectedChild = direct || fallback || inherited[slotKey];
+  const latinChild = (runProperties ? child(runProperties, 'a', 'latin')?.getAttribute('typeface') : null)
+    || (fallbackProperties ? child(fallbackProperties, 'a', 'latin')?.getAttribute('typeface') : null)
+    || inherited.fontFamily;
+  const requested = selectedChild || latinChild || `+${fontRef === 'major' ? 'mj' : 'mn'}-lt`;
+  const alias = /^\+(mj|mn)-(lt|ea|cs)$/.exec(requested);
+  if (!alias) return { writing, slot, family: normalizeFont(requested) };
+  const fonts = theme?.extensions?.pptxFontScheme?.[alias[1] === 'mj' ? 'major' : 'minor'];
+  const component = selectedChild ? alias[2] : slot;
+  const face = component === 'ea' ? fonts?.eastAsian : component === 'cs' ? fonts?.complexScript : fonts?.latin;
+  return { writing, slot, family: normalizeFont(face || fonts?.supplemental?.[writing] || fonts?.latin || 'Calibri') };
+}
+
 function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef, baseColor = null, inherited = {}, text = '') {
   const rawSize = runProperties?.getAttribute('sz') ?? fallbackProperties?.getAttribute('sz');
   const size = rawSize ?? (inherited.fontSizePt === undefined ? null : String(Math.round(inherited.fontSizePt * 100)));
@@ -379,20 +417,20 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
   const detectedScripts = nativeTextScripts(text);
   if (detectedScripts.length !== 1 || detectedScripts[0] === 'Other') return null;
   const detectedScript = detectedScripts[0];
-  const supplementalScript = detectedScript === 'Latn' ? null : detectedScript;
   if (primary && !SUPPLEMENTAL_SCRIPTS[primary] && !NON_SUPPLEMENTAL_LANGUAGES.has(primary)) return null;
-  const fontFamily = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'latin', inherited.fontFamily, detectedScript);
-  const fontFamilyEastAsia = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'ea', inherited.fontFamilyEastAsia, detectedScript);
-  const fontFamilyComplexScript = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'cs', inherited.fontFamilyComplexScript, detectedScript);
-  const supplementalFont = supplementalScript ? theme.extensions.pptxFontScheme?.[fontRef]?.supplemental?.[supplementalScript] : null;
-  const explicitComplexScript = child(runProperties, 'a', 'cs') || child(fallbackProperties, 'a', 'cs') || inherited.fontFamilyComplexScript;
-  const resolvedComplexScript = !explicitComplexScript && supplementalFont ? normalizeFont(supplementalFont) : fontFamilyComplexScript;
-  if (!color || !fontFamily || !fontFamilyEastAsia || !resolvedComplexScript) return null;
+  const selectedFont = resolveNativeSelectedFont(runProperties, fallbackProperties, inherited, theme, fontRef, text, language);
+  let fontFamily = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'latin', inherited.fontFamily, detectedScript) || selectedFont.family;
+  let fontFamilyEastAsia = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'ea', inherited.fontFamilyEastAsia, detectedScript) || selectedFont.family;
+  let fontFamilyComplexScript = resolveRunFont(runProperties, fallbackProperties, theme, fontRef, 'cs', inherited.fontFamilyComplexScript, detectedScript) || selectedFont.family;
+  if (selectedFont.slot === 'lt') fontFamily = selectedFont.family;
+  else if (selectedFont.slot === 'ea') fontFamilyEastAsia = selectedFont.family;
+  else fontFamilyComplexScript = selectedFont.family;
+  if (!color || !fontFamily || !fontFamilyEastAsia || !fontFamilyComplexScript) return null;
   return {
     color,
     fontFamily,
     fontFamilyEastAsia,
-    fontFamilyComplexScript: resolvedComplexScript,
+    fontFamilyComplexScript,
     fontSizePt: Number(size) / 100,
     bold,
     italic,
