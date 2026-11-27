@@ -105,6 +105,26 @@ describe('native PPTX appearance projection', () => {
     const fixedSession = await openFixture(`<p:sld ${NS}>${tree(fixedOverride)}</p:sld>`);
     try { expect(proof(fixedSession.document.slides[0].objects[0])).toBeUndefined(); }
     finally { fixedSession.dispose(); }
+
+    const fixedLine = shape(2, 'rect', 20, 20, 200, 100, '', '<p:style><a:lnRef idx="1001"><a:schemeClr val="accent2"/></a:lnRef></p:style>');
+    const lineSession = await openFixture(`<p:sld ${NS}>${tree(fixedLine)}</p:sld>`);
+    try { expect(proof(lineSession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { lineSession.dispose(); }
+
+    const placeholderTheme = theme.replace(/<a:fillStyleLst>[\s\S]*?<\/a:fillStyleLst>/, '<a:fillStyleLst><a:solidFill><a:phClr/></a:solidFill></a:fillStyleLst>');
+    const unresolvedPlaceholder = shape(2, 'rect', 20, 20, 200, 100, '', '<p:style><a:fillRef idx="1001"/></p:style>');
+    const placeholderSession = await openFixture(`<p:sld ${NS}>${tree(unresolvedPlaceholder)}</p:sld>`, { theme: placeholderTheme });
+    try { expect(proof(placeholderSession.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { placeholderSession.dispose(); }
+  });
+
+  it.each(['<a:alpha val="50000"/>', '<a:lumMod val="bad"/>', '<a:lumOff val="9007199254740992"/>'])('refuses unsupported inherited colour transforms: %s', async transform => {
+    const master = `<p:sldMaster ${NS}>${tree('')}<p:clrMap bg1="lt1" tx1="dk1"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz="1800"><a:solidFill><a:schemeClr val="tx1">${transform}</a:schemeClr></a:solidFill><a:latin typeface="Arial"/></a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`;
+    const box = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }), { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const bytes = await sourceReady(await buildPptx({ theme, master, layout: emptyLayout, slides: [{ xml: `<p:sld ${NS}>${tree(box)}</p:sld>` }] }));
+    const session = await openPresentation(bytes, { format: 'pptx', xml });
+    try { expect(proof(session.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { session.dispose(); }
   });
 
   it('refuses significant inherited defPPr and missing supplemental EA faces', async () => {

@@ -104,6 +104,8 @@ describe('PPTX appearance colour resolution', () => {
     expect(resolvePptxSchemeColor('bg1', [{ name: 'lumOff', raw: '20000' }], palette, { bg1: 'lt1' })).toBe('#FFFFFF');
     expect(resolvePptxSchemeColor('missing', [], palette, {})).toBeNull();
     expect(resolvePptxSchemeColor('tx1', [{ name: 'alpha', raw: '50000' }], palette, { tx1: 'dk1' })).toBeNull();
+    expect(resolvePptxSchemeColor('tx1', [{ name: 'lumMod', raw: 'bad' }], palette, { tx1: 'dk1' })).toBeNull();
+    expect(resolvePptxSchemeColor('tx1', [{ name: 'lumOff', raw: '9007199254740992' }], palette, { tx1: 'dk1' })).toBeNull();
   });
 
   it('reads only known clrMap slots', () => {
