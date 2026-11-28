@@ -312,8 +312,14 @@ it('preserves prior admission for default 100% spacing with stored 10000 reducti
   expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({ status: 'ready' });
 });
 
-it('preserves master admission for default 100% spacing with any stored reduction', () => {
+it('preserves master admission for explicit 100% spacing with any stored reduction', () => {
   const document = nativeTextDocument('shrink', { fontScale: 85000, lnSpcReduction: 30000 });
+  const object = document.slides[0].objects[0];
+  object.text.paragraphs[0].style = { lineSpacing: 100 };
+  object.extensions.stagecraftNativeAppearance.text.paragraphs[0].lineSpacingPct = 100;
+  object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+    theme: document.themes[0], colorMap, document, slide: document.slides[0],
+  });
   expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({ status: 'ready' });
 });
 
