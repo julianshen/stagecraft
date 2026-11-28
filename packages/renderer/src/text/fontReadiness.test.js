@@ -51,13 +51,14 @@ describe('font face availability probe', () => {
     expect(availability.isAvailable('normal 16px "Missing"', 'Hello')).toBe(false);
   });
 
-  it('treats a face as available when it differs from either of two fallbacks', () => {
+  it('treats a face as unavailable when it matches either fallback', () => {
     const calls = [];
     const availability = createFontAvailability({
       fonts: fakeFonts(),
       canvas: fakeCanvas(font => font.includes('monospace') ? 100 : font.includes('serif') ? 120 : 100, calls),
     });
-    expect(availability.isAvailable('normal 16px "Mock"', 'Hello')).toBe(true);
+    expect(availability.isAvailable('normal 16px "Mock"', 'Hello')).toBe(false);
+    expect(availability.isAvailable('normal 16px "Real"', 'Hello')).toBe(false);
   });
 
   it('measures the run text plus a fixed metric-sensitive sample', () => {
