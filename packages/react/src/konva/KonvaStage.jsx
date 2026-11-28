@@ -518,10 +518,13 @@ export default function KonvaStage({
             }}
             onTransformEnd={e => {
               const g = gestureRef.current;
+              if (g?.kind !== 'transform') {
+                return;
+              }
               gestureRef.current = null;
               setTransforming(false);
               const target = e.target;
-              if (!target?.getStage?.() || !g || g.kind !== 'transform') {
+              if (!target?.getStage?.()) {
                 return;
               }
               const failTransform = (message = 'Transform could not be applied.') => {

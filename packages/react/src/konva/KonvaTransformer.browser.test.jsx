@@ -898,21 +898,27 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     });
     expect(tr.isTransforming()).toBe(false);
 
-    // 4. Concurrent drag + transform: transformstart while dragging is refused cleanly
+    // 4. Concurrent drag + transform: real anchor mousedown while dragging runs re-entrant stopTransform and must NOT discard the drag
     const nodePos = node.getAbsolutePosition();
+    const startX = editor.getSnapshot().document.slides[0].objects[0].geometry.x;
+    const revBeforeDrag = editor.getSnapshot().revision;
     act(() => {
       canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: rect.left + nodePos.x, clientY: rect.top + nodePos.y }));
-      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, buttons: 1, clientX: rect.left + nodePos.x + 15, clientY: rect.top + nodePos.y + 10 }));
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, buttons: 1, clientX: rect.left + nodePos.x + 40, clientY: rect.top + nodePos.y }));
     });
     expect(node.isDragging()).toBe(true);
+    const anchor = tr.findOne('.bottom-right');
     act(() => {
-      tr.fire('transformstart', { target: node, evt: new MouseEvent('mousedown', { buttons: 1 }) });
+      anchor.fire('mousedown', {
+        evt: new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: rect.left + anchor.getAbsolutePosition().x, clientY: rect.top + anchor.getAbsolutePosition().y }),
+      });
     });
     expect(tr.isTransforming()).toBe(false);
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: rect.left + nodePos.x + 15, clientY: rect.top + nodePos.y + 10 }));
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: rect.left + nodePos.x + 40, clientY: rect.top + nodePos.y }));
     });
+    await waitFor(() => expect(editor.getSnapshot().revision).toBe(revBeforeDrag + 1));
+    expect(editor.getSnapshot().document.slides[0].objects[0].geometry.x).toBeGreaterThan(startX);
     expect(screen.queryAllByRole('alert')).toEqual([]);
   });
 });
