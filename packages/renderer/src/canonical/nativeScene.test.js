@@ -121,6 +121,37 @@ function nativeTextDocument(autofit, fit = { fontScale: 62500, lnSpcReduction: 2
   return document;
 }
 
+function nativeTextWithFontSize(pt, fit = { fontScale: 25000, lnSpcReduction: 20000 }) {
+  const document = nativeTextDocument('shrink', fit);
+  const slide = document.slides[0];
+  const object = slide.objects[0];
+  const paragraph = object.text.paragraphs[0];
+  const run = paragraph.runs[0];
+  run.style.sz = String(Math.round(pt * 100));
+  run.extensions.pptxAppearance.resolved.fontSizePt = pt;
+  paragraph.extensions.pptxEndRunAppearance.fontSizePt = pt;
+  object.extensions.stagecraftNativeAppearance.text.paragraphs[0].endRun.fontSizePt = pt;
+  object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+    theme: document.themes[0], colorMap, document, slide,
+  });
+  return document;
+}
+
+it('refuses native shrink when a snapped run or end size falls below one point', () => {
+  expect(buildCanonicalScene(nativeTextWithFontSize(1), 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-proof-invalid', objectId: 'native-shape' }],
+  });
+});
+
+it('admits native shrink when a half-point tie snaps to one point', () => {
+  const result = buildCanonicalScene(nativeTextWithFontSize(2), 'native-slide');
+  expect(result.status).toBe('ready');
+  const body = result.scene.nodes[0].paint.text.body;
+  expect(body.paragraphs[0].runs[0].fontSizePt).toBe(1);
+  expect(body.paragraphs[0].endProperties.fontSizePt).toBe(1);
+});
+
 it.each([
   [{ fontScale: 100000, lnSpcReduction: 0 }, 18, 1],
   [{ fontScale: 85000, lnSpcReduction: 10000 }, 15, 0.9],
