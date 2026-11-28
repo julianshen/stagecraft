@@ -173,6 +173,31 @@ it.each(['text', 'width', 'height'])('refuses a native shrink proof made stale b
   });
 });
 
+it.each(['text', 'width', 'height'])('refuses native resize when its stored-frame proof is stale after %s changes', field => {
+  const document = nativeTextDocument('resize');
+  const object = document.slides[0].objects[0];
+  if (field === 'text') object.text.paragraphs[0].runs[0].text += ' changed';
+  else object.geometry[field] += 95250;
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-stale', objectId: object.id }],
+  });
+});
+
+it.each(['shrink', 'resize'])('preserves a native %s proof across x/y/rotation-only edits', autofit => {
+  const document = nativeTextDocument(autofit);
+  const object = document.slides[0].objects[0];
+  object.geometry.x += 95250;
+  object.geometry.y += 190500;
+  object.geometry.rotation = 15;
+  const result = buildCanonicalScene(document, 'native-slide');
+  expect(result.status).toBe('ready');
+  expect(result.scene.nodes[0].geometry).toEqual(object.geometry);
+  expect(result.scene.nodes[0].frame).toMatchObject({
+    x: object.geometry.x / 9525, y: object.geometry.y / 9525, rotation: 15,
+  });
+});
+
 it('keeps native resize text and stored geometry unchanged', () => {
   const document = nativeTextDocument('resize');
   const result = buildCanonicalScene(document, 'native-slide');
