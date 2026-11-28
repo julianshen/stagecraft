@@ -9,30 +9,25 @@ export const ROTATION_SNAPS_15 = Object.freeze(
  * Normalize degrees to the half-open range [0, 360) rounded to 0.01°, returning null for non-finite input.
  */
 export function normalizeRotation(degrees) {
-  if (typeof degrees !== 'number' || !Number.isFinite(degrees)) return null;
-  const wrapped = ((degrees % 360) + 360) % 360;
-  const rounded = Math.round(wrapped * 100) / 100;
-  if (rounded >= 360 || Object.is(rounded, -0)) return 0;
-  return rounded;
+  if (!Number.isFinite(degrees)) return null;
+  const rounded = Math.round((((degrees % 360) + 360) % 360) * 100) / 100;
+  return rounded >= 360 ? 0 : rounded;
 }
 
 /**
  * Clamp Transformer boundBoxFunc results to a minimum stage-pixel dimension without flipping.
  */
 export function clampTransformBox(oldBox, newBox, minStagePx) {
-  if (!newBox || !Number.isFinite(newBox.width) || !Number.isFinite(newBox.height)) {
-    return oldBox;
-  }
-  const width = newBox.width < minStagePx ? (Math.abs(newBox.x - oldBox.x) < 1e-6 ? minStagePx : oldBox.width) : newBox.width;
-  const height = newBox.height < minStagePx ? (Math.abs(newBox.y - oldBox.y) < 1e-6 ? minStagePx : oldBox.height) : newBox.height;
-  if (width < minStagePx || height < minStagePx) return oldBox;
-  return {
-    ...newBox,
-    x: newBox.width < minStagePx && Math.abs(newBox.x - oldBox.x) >= 1e-6 ? oldBox.x : newBox.x,
-    y: newBox.height < minStagePx && Math.abs(newBox.y - oldBox.y) >= 1e-6 ? oldBox.y : newBox.y,
-    width,
-    height,
+  if (!newBox || !Number.isFinite(newBox.width) || !Number.isFinite(newBox.height)) return oldBox;
+  // Per axis: a too-small size grows to the minimum when its leading edge stayed put; otherwise the axis keeps the old box.
+  const axis = (oldPos, oldSize, newPos, newSize) => {
+    if (newSize >= minStagePx) return [newPos, newSize];
+    return Math.abs(newPos - oldPos) < 1e-6 ? [newPos, minStagePx] : [oldPos, oldSize];
   };
+  const [x, width] = axis(oldBox.x, oldBox.width, newBox.x, newBox.width);
+  const [y, height] = axis(oldBox.y, oldBox.height, newBox.y, newBox.height);
+  if (width < minStagePx || height < minStagePx) return oldBox;
+  return { ...newBox, x, y, width, height };
 }
 
 /**
@@ -50,7 +45,7 @@ export function normalizeTransformGeometry({
 }) {
   if (
     ![centerX, centerY, widthPx, heightPx, scaleX, scaleY].every(
-      v => typeof v === 'number' && Number.isFinite(v),
+      Number.isFinite,
     )
     || scaleX <= 0
     || scaleY <= 0
@@ -68,7 +63,7 @@ export function normalizeTransformGeometry({
   const y = Math.round(centerY * EMU_PER_PX - height / 2);
   if (![x, y, width, height].every(Number.isSafeInteger)) return null;
 
-  const hasStartRotation = startGeometry != null && Object.hasOwn(startGeometry, 'rotation') && startGeometry.rotation !== undefined;
+  const hasStartRotation = startGeometry?.rotation !== undefined;
   const result = {
     ...startGeometry,
     x,

@@ -1043,15 +1043,9 @@ export function PresentationCanvas({
       setOuterTransformUnsupported(prev => (prev ? false : prev));
       return;
     }
-    let unsupported = false;
     const transforms = [];
-    for (let el = rootEl; el && el.nodeType === 1; el = el.parentElement) {
-      const transform = getComputedStyle(el).transform;
-      transforms.push(transform);
-      if (isUnsupportedCssTransform(transform)) {
-        unsupported = true;
-      }
-    }
+    for (let el = rootEl; el && el.nodeType === 1; el = el.parentElement) transforms.push(getComputedStyle(el).transform);
+    const unsupported = transforms.some(isUnsupportedCssTransform);
     const signature = transforms.join('|');
     const changed = lastEmbeddingTransformRef.current !== null && lastEmbeddingTransformRef.current !== signature;
     lastEmbeddingTransformRef.current = signature;
@@ -1373,21 +1367,13 @@ export function PresentationCanvas({
   }
   function keyboard(event) {
     if (event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return;
-    if (konvaTransformingRef.current) {
-      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z') {
-        event.preventDefault();
-        return;
-      }
-      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
-        event.preventDefault();
-        return;
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        return;
-      }
+    const undoKey = (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z';
+    // While a Konva transform is active the stage owns Escape; undo and nudges would commit against its captured revision.
+    if (konvaTransformingRef.current && (undoKey || event.key === 'Escape' || event.key.startsWith('Arrow'))) {
+      event.preventDefault();
+      return;
     }
-    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z') {
+    if (undoKey) {
       event.preventDefault();
       event.shiftKey ? ui.redo() : ui.undo();
       return;

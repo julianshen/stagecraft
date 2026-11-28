@@ -14,6 +14,15 @@ import {
   normalizeTransformGeometry,
 } from './transformGeometry.js';
 
+const frameBox = frame => ({
+  centerX: frame.x + frame.width / 2,
+  centerY: frame.y + frame.height / 2,
+  width: frame.width,
+  height: frame.height,
+  rotation: frame.rotation,
+});
+const isCommitted = result => result === true || (typeof result === 'object' && result !== null && result.ok === true);
+
 class GestureUnmountGuard extends Component {
   componentWillUnmount() {
     this.props.onUnmount?.();
@@ -55,9 +64,11 @@ export default function KonvaStage({
     if (isTransformingRef) isTransformingRef.current = active;
   }
 
+  const shiftSnapsRef = useRef(false);
   function applyShiftSnaps(shiftKey) {
     const tr = transformerRef.current;
-    if (!tr) return;
+    if (!tr || shiftSnapsRef.current === shiftKey) return;
+    shiftSnapsRef.current = shiftKey;
     tr.rotationSnaps(shiftKey ? ROTATION_SNAPS_15 : []);
     tr.rotationSnapTolerance(shiftKey ? 7.5 : 0);
   }
@@ -122,6 +133,15 @@ export default function KonvaStage({
     node.scale({ x: 1, y: 1 });
   }
 
+  /** Reset a node to a canonical box (when given) and repaint it together with the Transformer. */
+  function resetNode(node, box) {
+    if (box) restoreNodeBox(node, box);
+    const tr = transformerRef.current;
+    tr?.forceUpdate?.();
+    node.getLayer()?.batchDraw();
+    tr?.getLayer()?.batchDraw();
+  }
+
   function cancelGesture({ restoreStart = true } = {}) {
     const g = gestureRef.current;
     if (!g) return;
@@ -137,28 +157,11 @@ export default function KonvaStage({
       node.stopDrag();
     }
     if (restoreStart) {
-      restoreNodeBox(node, {
-        centerX: g.startCenterX,
-        centerY: g.startCenterY,
-        width: g.startWidth,
-        height: g.startHeight,
-        rotation: g.startRotation,
-      });
+      resetNode(node, g.startBox ?? { centerX: g.startCenterX, centerY: g.startCenterY });
     } else {
       const latest = sceneRef.current?.nodes.find(n => n.id === g.id);
-      if (latest) {
-        restoreNodeBox(node, {
-          centerX: latest.frame.x + latest.frame.width / 2,
-          centerY: latest.frame.y + latest.frame.height / 2,
-          width: latest.frame.width,
-          height: latest.frame.height,
-          rotation: latest.frame.rotation,
-        });
-      }
+      resetNode(node, latest ? frameBox(latest.frame) : null);
     }
-    tr?.forceUpdate?.();
-    node.getLayer()?.batchDraw();
-    tr?.getLayer()?.batchDraw();
     if (g.stale) {
       try {
         onError?.(new Error(g.kind === 'transform' ? 'Transform could not be applied.' : 'Move could not be applied.'));
@@ -399,7 +402,7 @@ export default function KonvaStage({
                       geometry: { ...g.geometry, x: nextX, y: nextY },
                       expectedRevision: g.revision,
                     });
-                    committed = result === true || (typeof result === 'object' && result !== null && result.ok === true);
+                    committed = isCommitted(result);
                   } catch {
                     committed = false;
                   }
@@ -475,15 +478,7 @@ export default function KonvaStage({
                 || e.evt?.altKey
               ) {
                 transformerRef.current?.stopTransform();
-                if (node) {
-                  restoreNodeBox(target, {
-                    centerX: node.frame.x + node.frame.width / 2,
-                    centerY: node.frame.y + node.frame.height / 2,
-                    width: node.frame.width,
-                    height: node.frame.height,
-                    rotation: node.frame.rotation,
-                  });
-                }
+                if (node) restoreNodeBox(target, frameBox(node.frame));
                 return;
               }
               applyShiftSnaps(Boolean(e.evt?.shiftKey));
@@ -496,11 +491,7 @@ export default function KonvaStage({
                 policyKey,
                 revision,
                 geometry: { ...node.geometry },
-                startCenterX: node.frame.x + node.frame.width / 2,
-                startCenterY: node.frame.y + node.frame.height / 2,
-                startWidth: node.frame.width,
-                startHeight: node.frame.height,
-                startRotation: node.frame.rotation,
+                startBox: frameBox(node.frame),
                 konvaNode: target,
               };
             }}
@@ -518,21 +509,11 @@ export default function KonvaStage({
               gestureRef.current = null;
               setTransforming(false);
               const target = e.target;
-              const tr = transformerRef.current;
               if (!target?.getStage?.() || !g || g.kind !== 'transform') {
                 return;
               }
               const failTransform = (message = 'Transform could not be applied.') => {
-                restoreNodeBox(target, {
-                  centerX: g.startCenterX,
-                  centerY: g.startCenterY,
-                  width: g.startWidth,
-                  height: g.startHeight,
-                  rotation: g.startRotation,
-                });
-                tr?.forceUpdate?.();
-                target.getLayer()?.batchDraw();
-                tr?.getLayer()?.batchDraw();
+                resetNode(target, g.startBox);
                 try {
                   onError?.(new Error(message));
                 } catch {
@@ -568,28 +549,16 @@ export default function KonvaStage({
                 return;
               }
               if (geometriesEqual(normalized, g.geometry)) {
-                restoreNodeBox(target, {
-                  centerX: g.startCenterX,
-                  centerY: g.startCenterY,
-                  width: g.startWidth,
-                  height: g.startHeight,
-                  rotation: g.startRotation,
-                });
-                tr?.forceUpdate?.();
-                target.getLayer()?.batchDraw();
-                tr?.getLayer()?.batchDraw();
+                resetNode(target, g.startBox);
                 return;
               }
-              restoreNodeBox(target, {
+              resetNode(target, {
                 centerX: (normalized.x + normalized.width / 2) / EMU_PER_PX,
                 centerY: (normalized.y + normalized.height / 2) / EMU_PER_PX,
                 width: normalized.width / EMU_PER_PX,
                 height: normalized.height / EMU_PER_PX,
                 rotation: normalized.rotation ?? 0,
               });
-              tr?.forceUpdate?.();
-              target.getLayer()?.batchDraw();
-              tr?.getLayer()?.batchDraw();
               let committed = false;
               try {
                 const result = onMove?.({
@@ -598,7 +567,7 @@ export default function KonvaStage({
                   geometry: normalized,
                   expectedRevision: g.revision,
                 });
-                committed = result === true || (typeof result === 'object' && result !== null && result.ok === true);
+                committed = isCommitted(result);
               } catch {
                 committed = false;
               }
