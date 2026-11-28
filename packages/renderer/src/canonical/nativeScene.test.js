@@ -137,7 +137,7 @@ function nativeTextWithFontSize(pt, fit = { fontScale: 25000, lnSpcReduction: 20
   return document;
 }
 
-it.each([[8, 6000], [8, 6250], [10, 4000], [12, 5000]])(
+it.each([[8, 6000], [8, 5000], [10, 4000], [12, 4000]])(
   'floors native shrink run and end sizes after whole-point snapping (%spt at %s)', (fontSize, fontScale) => {
     const result = buildCanonicalScene(nativeTextWithFontSize(fontSize, { fontScale, lnSpcReduction: 20000 }), 'native-slide');
     expect(result.status).toBe('ready');
@@ -269,6 +269,21 @@ it.each([
   const result = buildCanonicalScene(document, 'native-slide');
   expect(result.status).toBe('ready');
   expect(result.scene.nodes[0].paint.text.body.paragraphs[0].lineSpacing.value).toBeCloseTo(expected, 12);
+});
+
+it.each([[120, 20000], [160, 0]])('refuses native shrink outside the measured spacing window (%s%% minus %s)', (lineSpacing, lnSpcReduction) => {
+  const document = nativeTextDocument('shrink', { fontScale: 100000, lnSpcReduction });
+  const object = document.slides[0].objects[0];
+  object.text.paragraphs[0].style = { lineSpacing };
+  object.extensions.stagecraftNativeAppearance.text.paragraphs[0].lineSpacingPct = lineSpacing;
+  object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+    theme: document.themes[0], colorMap, document, slide: document.slides[0],
+  });
+
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-proof-invalid', objectId: object.id }],
+  });
 });
 
 it('refuses native shrink spacing at the PowerPoint-unmatched effective 70% ratio', () => {
