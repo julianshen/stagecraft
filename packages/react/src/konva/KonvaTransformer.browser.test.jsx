@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, act } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, act, within } from '@testing-library/react';
 import { createEditor } from '@stagecraft/core/editor';
 import { createDocument, documentPlugin, presentationPlugin, validateDocument } from '@stagecraft/core/document';
 import { nativeObjectAppearanceInput, nativeSlideAppearanceInput } from '@stagecraft/core/lib/nativeAppearance.js';
@@ -246,7 +246,12 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
   });
 
   it('resizes unrotated object from corner and edge handles, preserves opposite anchor, clamps >= 1pt, and supports undo/redo', async () => {
-    const editor = makeEditor([makeRect('r1', 100, 100, 200, 100)]);
+    const baseEditor = makeEditor([makeRect('r1', 100, 100, 200, 100)]);
+    const dispatchCalls = [];
+    const editor = {
+      ...baseEditor,
+      dispatch: (...args) => { dispatchCalls.push(args); return baseEditor.dispatch(...args); },
+    };
     const { container } = render(
       <EditorProvider editor={editor}>
         <PresentationEditor surface="konva" />
@@ -261,8 +266,8 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     const tr = stage.findOne('Transformer');
     const startGeom = structuredClone(editor.getSnapshot().document.slides[0].objects[0].geometry);
 
-    // Bottom-right drag (+40px, +20px) keeps top-left fixed
-    await dragAnchor(canvas, tr, 'bottom-right', 40, 20);
+    // Non-2:1 bottom-right drag (+30px, +25px) keeps top-left fixed, proves no default aspect lock, and dispatches full payload
+    await dragAnchor(canvas, tr, 'bottom-right', 30, 25);
     await waitFor(() => {
       expect(editor.getSnapshot().revision).toBe(1);
     });
@@ -271,17 +276,25 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     expect(afterCorner.y).toBe(startGeom.y);
     expect(afterCorner.width).toBeGreaterThan(startGeom.width);
     expect(afterCorner.height).toBeGreaterThan(startGeom.height);
+    expect(Math.abs(afterCorner.width / startGeom.width - afterCorner.height / startGeom.height)).toBeGreaterThan(0.05);
+    expect(dispatchCalls[0]).toEqual([
+      'presentation.setGeometry',
+      { slideId: 's1', objectId: 'r1', geometry: afterCorner },
+      { expectedRevision: 0, origin: 'react' },
+    ]);
     expect(stage.findOne('.r1').scaleX()).toBe(1);
     expect(stage.findOne('.r1').scaleY()).toBe(1);
 
-    // Dragging past top-left anchor clamps at >= 1pt (12700 EMU) and never flips
+    // Dragging past top-left anchor clamps at exact 12700 EMU (1pt) with x/y unchanged
     await dragAnchor(canvas, tr, 'bottom-right', -1000, -1000);
     await waitFor(() => {
       expect(editor.getSnapshot().revision).toBe(2);
     });
     const afterClamp = editor.getSnapshot().document.slides[0].objects[0].geometry;
-    expect(afterClamp.width).toBeGreaterThanOrEqual(PT);
-    expect(afterClamp.height).toBeGreaterThanOrEqual(PT);
+    expect(afterClamp.x).toBe(startGeom.x);
+    expect(afterClamp.y).toBe(startGeom.y);
+    expect(afterClamp.width).toBe(12700);
+    expect(afterClamp.height).toBe(12700);
 
     // Undo restores previous geometry cleanly in one step
     act(() => {
@@ -296,6 +309,41 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
       editor.redo();
     });
     expect(editor.getSnapshot().document.slides[0].objects[0].geometry).toEqual(afterCorner);
+  });
+
+  it.each([
+    { anchor: 'top-left', dx: -30, dy: -20, fixedRight: true, fixedBottom: true },
+    { anchor: 'top-center', dx: 0, dy: -24, fixedBottom: true, fixedWidth: true },
+    { anchor: 'top-right', dx: 30, dy: -20, fixedLeft: true, fixedBottom: true },
+    { anchor: 'middle-right', dx: 36, dy: 0, fixedLeft: true, fixedHeight: true },
+    { anchor: 'bottom-right', dx: 30, dy: 25, fixedLeft: true, fixedTop: true },
+    { anchor: 'bottom-center', dx: 0, dy: 24, fixedTop: true, fixedWidth: true },
+    { anchor: 'bottom-left', dx: -30, dy: 20, fixedRight: true, fixedTop: true },
+    { anchor: 'middle-left', dx: -36, dy: 0, fixedRight: true, fixedHeight: true },
+  ])('preserves opposite anchor/edge in EMU for $anchor handle', async ({ anchor, dx, dy, fixedLeft, fixedTop, fixedRight, fixedBottom, fixedWidth, fixedHeight }) => {
+    const editor = makeEditor([makeRect('r1', 150, 150, 200, 100)]);
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    const canvas = await waitForKonvaCanvas(container);
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const stage = getStageForContainer(Konva, container);
+    selectObject(container, 'r1');
+    await waitFor(() => expect(stage.findOne('Transformer').nodes().length).toBe(1));
+    const tr = stage.findOne('Transformer');
+    const startGeom = structuredClone(editor.getSnapshot().document.slides[0].objects[0].geometry);
+
+    await dragAnchor(canvas, tr, anchor, dx, dy);
+    await waitFor(() => expect(editor.getSnapshot().revision).toBe(1));
+    const after = editor.getSnapshot().document.slides[0].objects[0].geometry;
+    if (fixedLeft) expect(after.x).toBe(startGeom.x);
+    if (fixedTop) expect(after.y).toBe(startGeom.y);
+    if (fixedRight) expect(after.x + after.width).toBe(startGeom.x + startGeom.width);
+    if (fixedBottom) expect(after.y + after.height).toBe(startGeom.y + startGeom.height);
+    if (fixedWidth) expect(after.width).toBe(startGeom.width);
+    if (fixedHeight) expect(after.height).toBe(startGeom.height);
   });
 
   it.each([30, 90])('resizes %s-degree rotated objects along local axes while preserving the opposite anchor in slide coordinates', async angle => {
@@ -400,6 +448,9 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     expect(afterSnap.rotation).toBeLessThan(360);
     expect(afterSnap.width).toBe(startGeom.width);
     expect(afterSnap.height).toBe(startGeom.height);
+    // Rotation preserves center (x + width/2, y + height/2)
+    expect(Math.abs((afterSnap.x + afterSnap.width / 2) - (startGeom.x + startGeom.width / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs((afterSnap.y + afterSnap.height / 2) - (startGeom.y + startGeom.height / 2))).toBeLessThanOrEqual(1);
 
     // Free rotation (without Shift) rounds to 0.01 degrees and normalizes to [0, 360)
     await dragAnchor(canvas, tr, 'rotater', 20, 12, { shiftKey: false });
@@ -410,6 +461,18 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     expect(afterFree.rotation).toBeGreaterThanOrEqual(0);
     expect(afterFree.rotation).toBeLessThan(360);
     expect(Math.round(afterFree.rotation * 100) / 100).toBe(afterFree.rotation);
+    expect(Math.abs((afterFree.x + afterFree.width / 2) - (startGeom.x + startGeom.width / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs((afterFree.y + afterFree.height / 2) - (startGeom.y + startGeom.height / 2))).toBeLessThanOrEqual(1);
+
+    // Undo after rotation restores previous rotation cleanly
+    act(() => {
+      editor.undo();
+    });
+    expect(editor.getSnapshot().document.slides[0].objects[0].geometry).toEqual(afterSnap);
+    act(() => {
+      editor.undo();
+    });
+    expect(editor.getSnapshot().document.slides[0].objects[0].geometry).toEqual(startGeom);
     unmount();
 
     // Direct KonvaStage respects canRotate={false} (e.g. ODP capability)
@@ -568,17 +631,83 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     expect(onNonFitSurface).toHaveBeenLastCalledWith(expect.objectContaining({ active: 'konva', status: 'ready' }));
     nonFitView.unmount();
 
-    // 3. SVG guard preserved for rotated objects
+    // 3. SVG guard preserved for rotated objects (select rotated object -> no Resize object handle; 0-deg control -> present)
     const svgEditor = makeEditor([makeRect('r1', 100, 100, 200, 100, 25)]);
     const svgView = render(
       <EditorProvider editor={svgEditor}>
         <PresentationEditor surface="svg" />
       </EditorProvider>,
     );
-    expect(svgView.container.querySelectorAll('[data-resize-handle]')).toHaveLength(0);
+    fireEvent.click(within(svgView.container).getByRole('button', { name: 'Select object r1' }));
+    expect(within(svgView.container).queryByLabelText('Resize object')).toBeNull();
+    svgView.unmount();
+
+    const svgControlEditor = makeEditor([makeRect('r0', 100, 100, 200, 100, 0)]);
+    const svgControlView = render(
+      <EditorProvider editor={svgControlEditor}>
+        <PresentationEditor surface="svg" />
+      </EditorProvider>,
+    );
+    fireEvent.click(within(svgControlView.container).getByRole('button', { name: 'Select object r0' }));
+    expect(within(svgControlView.container).getByLabelText('Resize object')).toBeTruthy();
+    svgControlView.unmount();
   });
 
-  it('produces zoom-independent EMU edits and isolates two mounted stages', async () => {
+  it('produces zoom-independent EMU edits across 50/100/200 (including fractional CSS travel and zoom 50 clamp) and isolates two mounted stages', async () => {
+    const setEditorZoom = async (container, stage, zoom) => {
+      if (zoom === 100) return;
+      fireEvent.click(within(container).getByRole('tab', { name: 'View' }));
+      const zoomInput = within(container).getByLabelText(/Zoom/i);
+      fireEvent.change(zoomInput, { target: { value: String(zoom) } });
+      fireEvent.blur(zoomInput);
+      await waitFor(() => expect(Math.round(stage.width())).toBe(Math.round(960 * zoom / 100)));
+    };
+
+    const runAtZoom = async (zoom, dx, dy) => {
+      const editor = makeEditor([makeRect('z1', 100, 100, 200, 100)]);
+      const { container, unmount } = render(
+        <EditorProvider editor={editor}>
+          <PresentationEditor surface="konva" />
+        </EditorProvider>,
+      );
+      try {
+        const canvas = await waitForKonvaCanvas(container);
+        const { default: Konva } = await import('konva/lib/Core.js');
+        const stage = getStageForContainer(Konva, container);
+        await setEditorZoom(container, stage, zoom);
+        selectObject(container, 'z1');
+        await waitFor(() => expect(stage.findOne('Transformer').nodes().length).toBe(1));
+        const tr = stage.findOne('Transformer');
+        await dragAnchor(canvas, tr, 'bottom-right', dx, dy);
+        await waitFor(() => expect(editor.getSnapshot().revision).toBe(1));
+        return editor.getSnapshot().document.slides[0].objects[0].geometry;
+      } finally {
+        unmount();
+      }
+    };
+
+    // Identical EMU for CSS-normalized drag (20px @ 50%, 40px @ 100%, 80px @ 200%)
+    const z50 = await runAtZoom(50, 20, 12);
+    const z100 = await runAtZoom(100, 40, 24);
+    const z200 = await runAtZoom(200, 80, 48);
+    expect(z50).toEqual(z100);
+    expect(z200).toEqual(z100);
+
+    // Fractional slide-px travel at zoom 200 (odd CSS px 41 -> 20.5 slide px -> non-multiple of 19050 EMU, still safe integer)
+    const frac200 = await runAtZoom(200, 41, 21);
+    expect(Number.isSafeInteger(frac200.width)).toBe(true);
+    expect(Number.isSafeInteger(frac200.height)).toBe(true);
+    expect(frac200.width).toBe(200 * PT + 41 * PX);
+    expect(frac200.height).toBe(100 * PT + 21 * PX);
+
+    // Min-clamp at zoom 50 exercises MIN_OBJECT_SIZE_PX * scale in boundBoxFunc
+    const clamp50 = await runAtZoom(50, -1000, -1000);
+    expect(clamp50.x).toBe(100 * PT);
+    expect(clamp50.y).toBe(100 * PT);
+    expect(clamp50.width).toBe(12700);
+    expect(clamp50.height).toBe(12700);
+
+    // Two mounted stages stay isolated
     const editorA = makeEditor([makeRect('a1', 100, 100, 200, 100)]);
     const editorB = makeEditor([makeRect('b1', 100, 100, 200, 100)]);
     const { container } = render(
