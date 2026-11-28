@@ -17,6 +17,7 @@
   "include": [
     "foundation.ts",
     "canonical-renderer.ts",
+    "shrink-fit-options.ts",
     "react-workspace.tsx",
     "konva-surface.tsx",
     "server.ts"

@@ -22,6 +22,10 @@ const validGeometry = g => g && ['x','y','width','height'].every(k=>Number.isSaf
  && Number.isSafeInteger(g.x+g.width) && Number.isSafeInteger(g.y+g.height) && (g.rotation===undefined||Number.isFinite(g.rotation));
 const nativeShrinkParagraphMetricsSupported = body => body.paragraphs.every(p=>(!p.lineSpacing
  ||p.lineSpacing.kind==='percent'&&Number.isFinite(p.lineSpacing.value))&&(!p.spaceBefore||p.spaceBefore.value===0)&&(!p.spaceAfter||p.spaceAfter.value===0));
+const nativeShrinkLineSpacingSupported = value => {
+ const percent=Math.round(value*100000);
+ return percent===80000||(percent>=110000&&percent<=150000);
+};
 export function rendererNativeAppearanceContext(document, slide) {
  return nativeAppearanceContext(document, slide);
 }
@@ -187,7 +191,7 @@ export function buildCanonicalScene(document,slideId,{fontAvailability}={}) {
    ]);
    const lineSpacings=scaled.paragraphs.map(p=>p.lineSpacing?.value??1);
    if(sizes.some(size => !Number.isFinite(size) || size < 1)
-    ||lineSpacings.some(value=>!Number.isFinite(value)||value<=0))
+    ||lineSpacings.some(value=>!Number.isFinite(value)||value<=0||!nativeShrinkLineSpacingSupported(value)))
     return proofResult('unresolved-appearance','native-appearance-proof-invalid',object.id);
    text={...text,body:scaled};
   }

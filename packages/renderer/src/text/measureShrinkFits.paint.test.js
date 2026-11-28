@@ -114,6 +114,13 @@ it('floors snapped native sizes at one point and offers subtractive reduction wi
   expect(nativeDisplay.paragraphs[0].lineSpacing.value).toBeCloseTo(1.3, 12);
 });
 
+it('rejects unsupported native line-spacing reduction modes', () => {
+  const body = canonicalTextBody(make()).body;
+  expect(() => scaledTextBody(body, { fontScale: 62500, lnSpcReduction: 20000 }, {
+    lineSpacingReduction: 'additive',
+  })).toThrow(/lineSpacingReduction/);
+});
+
 it('scales point spacing and font sizes while preserving the authored insets and indents', () => {
   const o = make(); o.text.paragraphs[0].style = { spaceBefore: 10, spaceAfter: 20, lineSpacing: 150, indentStart: pt(5) };
   const body = canonicalTextBody(o).body, scaled = scaledTextBody(body, { fontScale: 50000, lnSpcReduction: 20000 });

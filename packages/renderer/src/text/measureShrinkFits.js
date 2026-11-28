@@ -17,6 +17,9 @@ export const SHRINK_FIT_POLICY = Object.freeze({
 export function scaledTextBody(body, { fontScale, lnSpcReduction }, {
   snapFontSize = false, minimumSnappedFontSizePt = 0, lineSpacingReduction = 'multiplicative',
 } = {}) {
+  if (lineSpacingReduction !== 'multiplicative' && lineSpacingReduction !== 'subtractive') {
+    throw new RangeError('Unsupported lineSpacingReduction mode.');
+  }
   const scale = fontScale / 100000, spacing = 1 - lnSpcReduction / 100000;
   const snapDenominator = 100000 * 100; // fontScale × canonical font-size hundredths
   const scaledSize = size => {

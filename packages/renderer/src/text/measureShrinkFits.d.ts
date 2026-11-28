@@ -26,7 +26,11 @@ export interface ScalableParagraph {
 export function scaledTextBody(
   body: { paragraphs: ScalableParagraph[]; [key: string]: unknown },
   fit: ShrinkFit,
-  options?: { snapFontSize?: boolean },
+  options?: {
+    snapFontSize?: boolean;
+    minimumSnappedFontSizePt?: number;
+    lineSpacingReduction?: 'multiplicative' | 'subtractive';
+  },
 ): {
   paragraphs: Array<ScalableParagraph & { lineSpacing: { kind: 'percent'; value: number } }>;
   [key: string]: unknown;

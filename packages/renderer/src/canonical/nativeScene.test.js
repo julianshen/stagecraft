@@ -139,7 +139,7 @@ function nativeTextWithFontSize(pt, fit = { fontScale: 25000, lnSpcReduction: 20
 
 it.each([[8, 6000], [8, 6250], [10, 4000], [12, 5000]])(
   'floors native shrink run and end sizes after whole-point snapping (%spt at %s)', (fontSize, fontScale) => {
-    const result = buildCanonicalScene(nativeTextWithFontSize(fontSize, { fontScale, lnSpcReduction: 0 }), 'native-slide');
+    const result = buildCanonicalScene(nativeTextWithFontSize(fontSize, { fontScale, lnSpcReduction: 20000 }), 'native-slide');
     expect(result.status).toBe('ready');
     const paragraph = result.scene.nodes[0].paint.text.body.paragraphs[0];
     expect(paragraph.runs[0].fontSizePt).toBe(1);
@@ -156,19 +156,28 @@ it('admits native shrink when a half-point tie snaps to one point', () => {
 });
 
 it.each([
-  [{ fontScale: 100000, lnSpcReduction: 0 }, 18, 1],
-  [{ fontScale: 85000, lnSpcReduction: 10000 }, 15, 0.9],
-  [{ fontScale: 62500, lnSpcReduction: 20000 }, 11, 0.8],
-  [{ fontScale: 25000, lnSpcReduction: 20000 }, 5, 0.8],
-])('paints native shrink from stored values %# without changing canonical data', (fit, expectedSize, expectedSpacing) => {
+  [{ fontScale: 100000, lnSpcReduction: 0 }, 18, 1.2, 120],
+  [{ fontScale: 85000, lnSpcReduction: 10000 }, 15, 1.1, 120],
+  [{ fontScale: 62500, lnSpcReduction: 20000 }, 11, 0.8, 100],
+  [{ fontScale: 25000, lnSpcReduction: 20000 }, 5, 0.8, 100],
+])('paints native shrink from stored values %# without changing canonical data', (fit, expectedSize, expectedSpacing, authoredSpacing) => {
   const document = nativeTextDocument('shrink', fit);
+  if (authoredSpacing !== 100) {
+    const object = document.slides[0].objects[0];
+    object.text.paragraphs[0].style = { lineSpacing: authoredSpacing };
+    object.extensions.stagecraftNativeAppearance.text.paragraphs[0].lineSpacingPct = authoredSpacing;
+    object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+      theme: document.themes[0], colorMap, document, slide: document.slides[0],
+    });
+  }
   const original = structuredClone(document);
   const result = buildCanonicalScene(document, 'native-slide');
   expect(result.status).toBe('ready');
   const body = result.scene.nodes[0].paint.text.body;
   expect(body.paragraphs[0].runs[0].fontSizePt).toBeCloseTo(expectedSize, 12);
   expect(body.paragraphs[0].endProperties.fontSizePt).toBeCloseTo(expectedSize, 12);
-  expect(body.paragraphs[0].lineSpacing).toEqual({ kind: 'percent', value: expectedSpacing });
+  expect(body.paragraphs[0].lineSpacing.kind).toBe('percent');
+  expect(body.paragraphs[0].lineSpacing.value).toBeCloseTo(expectedSpacing, 12);
   expect(document).toEqual(original);
 });
 
@@ -196,11 +205,19 @@ it('admits native text when the shared probe reports the face available', () => 
 });
 
 it.each([
-  [{}, 18, 1],
-  [{ fontScale: 62500 }, 11, 1],
-  [{ lnSpcReduction: 20000 }, 18, 0.8],
-])('paints schema defaults for partial native shrink values %# without changing canonical data', (fit, expectedSize, expectedSpacing) => {
+  [{}, 18, 1.2, 120],
+  [{ fontScale: 62500 }, 11, 1.2, 120],
+  [{ lnSpcReduction: 20000 }, 18, 0.8, 100],
+])('paints schema defaults for partial native shrink values %# without changing canonical data', (fit, expectedSize, expectedSpacing, authoredSpacing) => {
   const document = nativeTextDocument('shrink', fit);
+  if (authoredSpacing !== 100) {
+    const object = document.slides[0].objects[0];
+    object.text.paragraphs[0].style = { lineSpacing: authoredSpacing };
+    object.extensions.stagecraftNativeAppearance.text.paragraphs[0].lineSpacingPct = authoredSpacing;
+    object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+      theme: document.themes[0], colorMap, document, slide: document.slides[0],
+    });
+  }
   const original = structuredClone(document);
   const result = buildCanonicalScene(document, 'native-slide');
   expect(result.status).toBe('ready');
@@ -237,9 +254,9 @@ it.each([
 
 it.each([
   [90, 10000, 0.8],
-  [90, 20000, 0.7],
   [120, 10000, 1.1],
   [150, 20000, 1.3],
+  [150, 0, 1.5],
 ])('uses subtractive native line spacing for %s%% and reduction %s', (lineSpacing, lnSpcReduction, expected) => {
   const document = nativeTextDocument('shrink', { fontScale: 100000, lnSpcReduction });
   const object = document.slides[0].objects[0];
@@ -252,6 +269,36 @@ it.each([
   const result = buildCanonicalScene(document, 'native-slide');
   expect(result.status).toBe('ready');
   expect(result.scene.nodes[0].paint.text.body.paragraphs[0].lineSpacing.value).toBeCloseTo(expected, 12);
+});
+
+it.each([0.7, 0.9, 1.0])('refuses native shrink spacing at the PowerPoint-unmatched effective %s ratio', effective => {
+  const document = nativeTextDocument('shrink', { fontScale: 100000, lnSpcReduction: 0 });
+  const object = document.slides[0].objects[0];
+  object.text.paragraphs[0].style = { lineSpacing: effective * 100 };
+  object.extensions.stagecraftNativeAppearance.text.paragraphs[0].lineSpacingPct = effective * 100;
+  object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+    theme: document.themes[0], colorMap, document, slide: document.slides[0],
+  });
+
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-proof-invalid', objectId: object.id }],
+  });
+});
+
+it('refuses native shrink directly when the source line spacing is non-finite', () => {
+  const document = nativeTextDocument('shrink', { fontScale: 100000, lnSpcReduction: 0 });
+  const object = document.slides[0].objects[0];
+  object.text.paragraphs[0].style = { lineSpacing: Infinity };
+  object.extensions.stagecraftNativeAppearance.text.paragraphs[0].lineSpacingPct = Infinity;
+  object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+    theme: document.themes[0], colorMap, document, slide: document.slides[0],
+  });
+
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-proof-invalid', objectId: object.id }],
+  });
 });
 
 it('refuses native shrink when subtractive line spacing is non-positive', () => {

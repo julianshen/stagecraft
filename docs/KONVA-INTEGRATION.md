@@ -25,6 +25,8 @@ When `surface="konva"` is requested, `computeSurfaceDecision` evaluates eligibil
 
 Users can toggle `Switch to standard view` / `Return to canvas view` per editor instance without persisting global preferences.
 
+Native PPTX shrink text is painted from stored `fontScale`/`lnSpcReduction` values only when the effective line-spacing ratio (`line spacing − reduction`) is 80% or 110–150%. PowerPoint 16.115 PNG comparison found the 70%, 90%, and 100% samples outside the 1 CSS px origin tolerance, so those cases fall back to SVG for the whole slide. This conservative gate does not change the source file or export measurement.
+
 ## 3. Supported Editing & Interactions
 
 - **Selection & drag translation**: Single-pointer / single-touch drag on eligible authored shapes/text boxes commits one `document.setGeometry` command with `expectedRevision` and `origin: 'react'`. Multi-touch gestures are ignored.
