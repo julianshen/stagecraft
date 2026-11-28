@@ -19,6 +19,8 @@ const freeze = value => {
 const unsupported = (reason, code, objectId) => ({status:'unsupported',reason,diagnostics:[{code,...(objectId?{objectId}:{})}]});
 const validGeometry = g => g && ['x','y','width','height'].every(k=>Number.isSafeInteger(g[k])) && g.width>0 && g.height>0
  && Number.isSafeInteger(g.x+g.width) && Number.isSafeInteger(g.y+g.height) && (g.rotation===undefined||Number.isFinite(g.rotation));
+const nativeShrinkParagraphMetricsSupported = body => body.paragraphs.every(p=>(!p.lineSpacing
+ ||p.lineSpacing.kind==='percent'&&p.lineSpacing.value===1)&&(!p.spaceBefore||p.spaceBefore.value===0)&&(!p.spaceAfter||p.spaceAfter.value===0));
 export function rendererNativeAppearanceContext(document, slide) {
  return nativeAppearanceContext(document, slide);
 }
@@ -169,6 +171,8 @@ export function buildCanonicalScene(document,slideId) {
   if(nativeObject&&object.bodyLayout?.autofit==='shrink') {
    const fit=nativeAutofitEffectiveFit(object);
    if(!fit||!text)return proofResult('unresolved-appearance','native-appearance-proof-invalid',object.id);
+   if(!nativeShrinkParagraphMetricsSupported(text.body))
+    return proofResult('unresolved-appearance','native-appearance-proof-invalid',object.id);
    text={...text,body:scaledTextBody(text.body,fit)};
   }
   const g=object.geometry;
