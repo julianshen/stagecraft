@@ -190,6 +190,16 @@ describe('native PPTX appearance projection', () => {
     finally { session.dispose(); }
   });
 
+  it('refuses a major-font Han-and-digits run that the painter splits across EA and Latin slots', async () => {
+    const box = textBox(2, 20, 20, 300, 100,
+      '<a:p><a:r><a:rPr sz="1800"><a:latin typeface="+mj-lt"/><a:ea typeface="+mj-ea"/></a:rPr><a:t>漢字123</a:t></a:r></a:p>',
+      { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });
+    const session = await openFixture(`<p:sld ${NS}>${tree(box)}</p:sld>`);
+    try {
+      expect(proof(session.document.slides[0].objects[0])).toBeUndefined();
+    } finally { session.dispose(); }
+  });
+
   it('refuses hidden native shapes before issuing appearance proofs', async () => {
     const hidden = shape(2, 'rect', 20, 20, 200, 100, '<a:solidFill><a:srgbClr val="112233"/></a:solidFill>')
       .replace('<p:cNvPr id="2"', '<p:cNvPr hidden="1" id="2"');

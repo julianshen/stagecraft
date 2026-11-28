@@ -1,9 +1,11 @@
 import { expect, it } from 'vitest';
 import {
+  nativeTextFontSlots,
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
   nativeSlideAppearanceInput,
 } from '@stagecraft/core/lib/nativeAppearance.js';
+import { resolveTextFamily } from '../vendor/officeview/drawing/text-layout.ts';
 import { buildCanonicalScene } from './index.js';
 
 const colorMap = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' };
@@ -106,6 +108,59 @@ it('classifies non-string native proof inputs as invalid rather than stale', () 
   expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
     status: 'unsupported', reason: 'unresolved-appearance',
     diagnostics: [{ code: 'native-appearance-proof-invalid' }],
+  });
+});
+
+it('matches painter font slots for digits, CJK punctuation and spaces, Latin, and Arabic', () => {
+  const theme = { fonts: { minor: { latin: 'Latin Face', eastAsian: 'EA Face', complexScript: 'CS Face', supplemental: {} } } };
+  const cases = [
+    ['123', ['latin']],
+    ['漢、', ['eastAsian', 'latin']],
+    ['漢字  ', ['eastAsian']],
+    ['A B', ['latin']],
+    ['مرحبا', ['complexScript']],
+    ['漢字123', ['eastAsian', 'latin']],
+  ];
+  for (const [text, expected] of cases) {
+    const resolvedSlots = new Set();
+    let previous = null;
+    for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)) {
+      let family;
+      if (/^\s+$/u.test(segment) && previous) family = previous;
+      else family = resolveTextFamily({ text: segment }, theme);
+      previous = family;
+      resolvedSlots.add(({ 'Latin Face': 'latin', 'EA Face': 'eastAsian', 'CS Face': 'complexScript' })[family]);
+    }
+    expect(nativeTextFontSlots(text)).toEqual(expected);
+    expect(new Set(nativeTextFontSlots(text))).toEqual(resolvedSlots);
+  }
+});
+
+it('refuses a forged single-slot proof when the painter uses EA and Latin fonts in one run', () => {
+  const document = nativeDocument();
+  const slide = document.slides[0];
+  const object = slide.objects[0];
+  const runAppearance = {
+    color: '#112233', fontFamily: 'Georgia', fontFamilyEastAsia: 'Yu Gothic',
+    fontFamilyComplexScript: 'Amiri', fontSizePt: 18, bold: false, italic: false,
+  };
+  object.type = 'text';
+  object.text = { paragraphs: [{
+    id: 'paragraph-1',
+    runs: [{ id: 'run-1', text: '漢字123', style: { sz: '1800' }, extensions: {
+      pptxAppearance: { script: 'Hani', resolved: { ...runAppearance } },
+    } }],
+    extensions: { pptxEndRunAppearance: { ...runAppearance } },
+  }] };
+  object.extensions.stagecraftNativeAppearance.text = { paragraphs: [{
+    id: 'paragraph-1', runIds: ['run-1'], alignment: 'left', endRun: { ...runAppearance },
+  }] };
+  object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+    theme: document.themes[0], colorMap, document, slide,
+  });
+
+  expect(buildCanonicalScene(document, slide.id)).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
   });
 });
 

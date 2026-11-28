@@ -11,6 +11,7 @@ import {
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
   nativeSlideAppearanceInput,
+  nativeTextFontSlots,
   nativeTextScript,
   nativeTextScripts,
 } from './nativeAppearance.js';
@@ -123,6 +124,17 @@ describe('native appearance proof helpers', () => {
     expect(nativeTextScripts('١٢٣')).toEqual(['Arab']);
     expect(nativeTextScripts('Native١٢٣')).toEqual(['Arab', 'Latn']);
     expect(nativeTextScripts('1️⃣')).toEqual(['Other']);
+  });
+
+  it.each([
+    ['digits', '123', ['latin']],
+    ['CJK punctuation', '漢、', ['eastAsian', 'latin']],
+    ['CJK trailing spaces', '漢字  ', ['eastAsian']],
+    ['Latin and spaces', 'A B', ['latin']],
+    ['Arabic', 'مرحبا', ['complexScript']],
+    ['Han plus digits', '漢字123', ['eastAsian', 'latin']],
+  ])('computes painter font slots for %s', (_label, text, expected) => {
+    expect(nativeTextFontSlots(text)).toEqual(expected);
   });
 
   it('excludes geometry and run text from the appearance input', () => {
