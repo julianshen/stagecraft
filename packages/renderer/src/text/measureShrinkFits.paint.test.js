@@ -83,7 +83,7 @@ it('keeps export shrink measurement fractional by default', () => {
 });
 
 it('snaps native shrink faces to the nearest whole point, including ties and end properties', () => {
-  for (const [size, fontScale, expected] of [[28, 85000, 24], [28, 62500, 18], [18, 75000, 14], [18, 85000, 15]]) {
+  for (const [size, fontScale, expected] of [[28, 85000, 24], [28, 62500, 18], [18, 75000, 14], [18, 85000, 15], [45, 70000, 32], [85, 70000, 60]]) {
     const body = canonicalTextBody(make()).body;
     body.paragraphs[0].runs[0].fontSizePt = size;
     body.paragraphs[0].endProperties.fontSizePt = size;
