@@ -49,4 +49,25 @@ describe('canonical painter unit branches', () => {
     expect(context.rotate).toHaveBeenCalled();
     expect(layoutTextBody).toHaveBeenCalled();
   });
+
+  it('paints an outline without a fill and keeps preset adjustments in the geometry cache key', async () => {
+    const { paintGeometry } = await import('../vendor/officeview/drawing/paint.ts');
+    const { resolvePreset } = await import('../vendor/officeview/drawing/geometry.ts');
+    vi.clearAllMocks();
+    const environment = createCanonicalPaintEnvironment();
+    const context = ctx();
+    const outlined = node({ shape: 'rect', fill: null, stroke: { kind: 'solid', color: '#654321', widthEmu: 19050 } });
+    paintCanonicalNode(context, outlined, environment);
+    expect(paintGeometry).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({
+      line: { width: 2, fill: { kind: 'solid', color: { r: 101, g: 67, b: 33, a: 1 } } },
+    }), 30, 40);
+
+    const first = node({ shape: 'roundRect', fill: '#112233', adjust: { adj: 10000 } });
+    const second = node({ shape: 'roundRect', fill: '#112233', adjust: { adj: 40000 } });
+    paintCanonicalNode(context, first, environment);
+    paintCanonicalNode(context, second, environment);
+    expect(resolvePreset).toHaveBeenCalledTimes(3);
+    expect(resolvePreset).toHaveBeenNthCalledWith(2, 'roundRect', 30, 40, { adj: 10000 });
+    expect(resolvePreset).toHaveBeenNthCalledWith(3, 'roundRect', 30, 40, { adj: 40000 });
+  });
 });

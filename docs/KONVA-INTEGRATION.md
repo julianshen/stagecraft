@@ -1,6 +1,6 @@
-# Konva Canvas Integration (KONVA-2 — Experimental Opt-In)
+# Konva Canvas Integration (KONVA-2/KONVA-3 — Experimental Opt-In)
 
-This document describes the **experimental opt-in** Konva canvas surface (`surface="konva"`, default remains `'svg'`) shipped across K2a, K2b, and K2c.
+This document describes the **experimental opt-in** Konva canvas surface (`surface="konva"`, default remains `'svg'`) shipped across K2a, K2b, K2c, and K3b. Native PPTX admission remains limited to the measured subset below; SVG remains the default and whole-slide fallback.
 
 ## 1. Package Boundaries & Lazy Loading
 
@@ -65,3 +65,18 @@ Measured on `2026-11-26` at commit `b7bcf2f444db7e0794255fba40a96a849fe3f6ea` vi
 - **Cold slide budget disclosure (DPR 2)**:
   - **Passed**: Warm repaint (`0.2 ms med / 0.4 ms p95 <= 4 ms`), drag handler (`0.1 ms med / 0.2 ms p95 <= 8 ms`), backing store (`2` layers, `49.44 MB <= 90 MB`; hit canvas already `pixelRatio = 1` at `[1600, 900]`), and `coldSlideSwitchMs` on a mounted `Stage` (**`0.6 ms med / 1.3 ms p95`** for 16-obj DPR 2; `4.0 ms med / 4.7 ms p95` for 256-obj DPR 2).
   - **Measured deviation**: Initial fresh `KonvaStage` mount + DPR-2 `3200x1800` backing-store allocation + first draw on the 16-object scene at DPR 2 measures **`18.0 ms med / 20.4 ms p95 / 37.7 ms max`** (`2.5 ms` scene build + `15.0 ms` React mount & Stage/canvas alloc + `0.8 ms` explicit draw) vs the `<= 16 ms` ADR 0001 cold target. Because initial DPR-2 mount p95 exceeds `16 ms`, `surface="konva"` remains **experimental opt-in** (default `'svg'`).
+
+## 6. KONVA-3 Native PPTX Admission Status (`4ac21ec`)
+
+The section 8 histogram was rerun on the original 65 unique K2a package hashes. **14/100 PPTX slides were admitted across 14 packages. ODP remains 0/60 admitted.** On the admitted slides, all 64 native objects are proof-complete and validator-valid (**64/64, 100%**). This result is not representative of all native PPTX content: across the full corpus, 79/100 slide proofs are valid, while 167 native text objects and 3 groups have no complete object proof.
+
+| Format / refusal | Slides | Public reason | Internal diagnostic |
+|---|---:|---|---|
+| PPTX admitted | 14/100 | — | — |
+| PPTX refused: missing appearance proof | 76/100 | `unresolved-appearance` | `native-appearance-proof-missing` |
+| PPTX refused: text run spans multiple font slots | 10/100 | `unresolved-appearance` | `text-appearance-unresolved` |
+| ODP refused | 60/60 | `unsupported-format` | `format` |
+
+**The contract §8 floor was MISSED:** the target is at least 40/100 PPTX slides across at least 10 packages; observed admission is 14/100. Keep the canvas opt-in **experimental**, keep SVG as the default and whole-slide fallback, and do not weaken proof validation or expand admission by treating missing metrics as supported. No §7.3 native PowerPoint corpus was run. Stored-value autofit display is deferred to K3c under a separate contract.
+
+The committed renderer context-parity and pixel-probe work is at `fb12442` and `4ac21ec`. The histogram and object-level refusal audit are documented in the coordinator reports `reports/KONVA-3B-histogram-codex.md` and `reports/K3B-OBJECT-AUDIT-pi.md` (outside this repository). The histogram report includes the exact proof counts, package hashes, refusal diagnostics and reproducible runner invocation.

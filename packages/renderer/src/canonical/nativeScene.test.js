@@ -1,0 +1,183 @@
+import { expect, it } from 'vitest';
+import {
+  nativeTextFontSlots,
+  nativeLayoutAppearanceInput,
+  nativeObjectAppearanceInput,
+  nativeSlideAppearanceInput,
+} from '@stagecraft/core/lib/nativeAppearance.js';
+import { resolveTextFamily } from '../vendor/officeview/drawing/text-layout.ts';
+import { buildCanonicalScene } from './index.js';
+
+const colorMap = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' };
+const pptxSource = (part, path = []) => ({ format: 'pptx', part, path });
+
+function nativeDocument({ objectProof = true, slideProof = true, layoutProof = true, secondObject = false } = {}) {
+  const theme = {
+    id: 'theme',
+    extensions: {
+      pptxColorScheme: { dk1: '#000000', lt1: '#FFFFFF' },
+      pptxFontScheme: {
+        major: { latin: 'Georgia', eastAsian: 'Yu Gothic', complexScript: 'Amiri', supplemental: {} },
+        minor: { latin: 'Arial', eastAsian: 'Noto Sans JP', complexScript: 'Amiri', supplemental: {} },
+      },
+    },
+  };
+  const master = {
+    id: 'master', themeId: theme.id, source: pptxSource('ppt/slideMasters/slideMaster1.xml'),
+    objects: [], extensions: { pptxColorMap: colorMap },
+  };
+  const layout = {
+    id: 'layout', masterId: master.id, source: pptxSource('ppt/slideLayouts/slideLayout1.xml'),
+    objects: [], extensions: { pptxColorMap: colorMap },
+  };
+  const shape = (id, index) => ({
+    id, type: 'shape', shape: 'rect', geometry: { x: 95250 * index, y: 95250, width: 952500, height: 476250 },
+    source: pptxSource('ppt/slides/slide1.xml', [index]), extensions: { pptxColorMap: undefined },
+  });
+  const objects = [shape('native-shape', 1)];
+  if (secondObject) objects.push(shape('second-shape', 2));
+  const slide = {
+    id: 'native-slide', source: pptxSource('ppt/slides/slide1.xml'), layoutId: layout.id,
+    extensions: { pptxColorMap: colorMap }, objects,
+  };
+  const document = {
+    schemaVersion: 1, units: 'emu', size: { width: 9144000, height: 5143500 },
+    extensions: { sourceFormat: 'pptx' }, slides: [slide], layouts: [layout], masters: [master], themes: [theme],
+  };
+
+  if (layoutProof) {
+    for (const entity of [master, layout]) {
+      entity.extensions.stagecraftLayoutSummary = {
+        version: 1, appearanceResolved: true, input: nativeLayoutAppearanceInput(entity, document),
+        background: { kind: 'solid', color: '#FFFFFF' }, artworkCount: 0,
+      };
+    }
+  }
+  for (const object of objects) {
+    if (!objectProof) continue;
+    object.extensions.stagecraftNativeAppearance = {
+      version: 1, sourceFormat: 'pptx', appearanceResolved: true,
+      input: nativeObjectAppearanceInput(object, { theme, colorMap, document, slide }),
+      fill: { kind: 'solid', color: '#123456' },
+      stroke: { kind: 'solid', color: '#654321', widthEmu: 19050 },
+    };
+  }
+  if (slideProof) {
+    slide.extensions.stagecraftSlideAppearance = {
+      version: 1, appearanceResolved: true, input: nativeSlideAppearanceInput(slide, document),
+      background: { kind: 'solid', color: '#FFFFFF' }, inheritedArtworkCount: 0,
+    };
+  }
+  return document;
+}
+
+it('admits a native slide only from current slide, layout, and object proofs', () => {
+  const document = nativeDocument();
+  const result = buildCanonicalScene(document, 'native-slide');
+  expect(result.status).toBe('ready');
+  expect(result.scene.background).toBe('#FFFFFF');
+  expect(result.scene.nodes).toHaveLength(1);
+  expect(result.scene.nodes[0]).toMatchObject({
+    id: 'native-shape', type: 'shape',
+    paint: { fill: '#123456', stroke: { kind: 'solid', color: '#654321', widthEmu: 19050 } },
+  });
+});
+
+it('admits a native slide proof without requiring layout or master summaries', () => {
+  const document = nativeDocument({ layoutProof: false });
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({ status: 'ready' });
+});
+
+it('refuses native inherited artwork even when the slide proof claims none', () => {
+  const document = nativeDocument();
+  document.layouts[0].objects.push({ id: 'layout-art', type: 'shape' });
+  document.slides[0].extensions.stagecraftSlideAppearance.input = nativeSlideAppearanceInput(
+    document.slides[0], document,
+  );
+
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'inherited-appearance',
+    diagnostics: [{ code: 'inherited-artwork' }],
+  });
+});
+
+it('classifies non-string native proof inputs as invalid rather than stale', () => {
+  const document = nativeDocument();
+  document.slides[0].extensions.stagecraftSlideAppearance.input = { malformed: true };
+
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-proof-invalid' }],
+  });
+});
+
+it('matches painter font slots for digits, CJK punctuation and spaces, Latin, and Arabic', () => {
+  const theme = { fonts: { minor: { latin: 'Latin Face', eastAsian: 'EA Face', complexScript: 'CS Face', supplemental: {} } } };
+  const cases = [
+    ['123', ['latin']],
+    ['漢、', ['eastAsian', 'latin']],
+    ['漢字  ', ['eastAsian']],
+    ['A B', ['latin']],
+    ['مرحبا', ['complexScript']],
+    ['漢字123', ['eastAsian', 'latin']],
+  ];
+  for (const [text, expected] of cases) {
+    const resolvedSlots = new Set();
+    let previous = null;
+    for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)) {
+      let family;
+      if (/^\s+$/u.test(segment) && previous) family = previous;
+      else family = resolveTextFamily({ text: segment }, theme);
+      previous = family;
+      resolvedSlots.add(({ 'Latin Face': 'latin', 'EA Face': 'eastAsian', 'CS Face': 'complexScript' })[family]);
+    }
+    expect(nativeTextFontSlots(text)).toEqual(expected);
+    expect(new Set(nativeTextFontSlots(text))).toEqual(resolvedSlots);
+  }
+});
+
+it('refuses a forged single-slot proof when the painter uses EA and Latin fonts in one run', () => {
+  const document = nativeDocument();
+  const slide = document.slides[0];
+  const object = slide.objects[0];
+  const runAppearance = {
+    color: '#112233', fontFamily: 'Georgia', fontFamilyEastAsia: 'Yu Gothic',
+    fontFamilyComplexScript: 'Amiri', fontSizePt: 18, bold: false, italic: false,
+  };
+  object.type = 'text';
+  object.text = { paragraphs: [{
+    id: 'paragraph-1',
+    runs: [{ id: 'run-1', text: '漢字123', style: { sz: '1800' }, extensions: {
+      pptxAppearance: { script: 'Hani', resolved: { ...runAppearance } },
+    } }],
+    extensions: { pptxEndRunAppearance: { ...runAppearance } },
+  }] };
+  object.extensions.stagecraftNativeAppearance.text = { paragraphs: [{
+    id: 'paragraph-1', runIds: ['run-1'], alignment: 'left', endRun: { ...runAppearance },
+  }] };
+  object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+    theme: document.themes[0], colorMap, document, slide,
+  });
+
+  expect(buildCanonicalScene(document, slide.id)).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'text-appearance-unresolved', objectId: object.id }],
+  });
+});
+
+it('distinguishes a missing native slide proof from missing layout summaries', () => {
+  const document = nativeDocument({ layoutProof: false, slideProof: false });
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-proof-missing' }],
+  });
+});
+
+it('refuses the whole native slide with a missing object proof diagnostic', () => {
+  const document = nativeDocument({ secondObject: true });
+  delete document.slides[0].objects[1].extensions.stagecraftNativeAppearance;
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-proof-missing', objectId: 'second-shape' }],
+  });
+});

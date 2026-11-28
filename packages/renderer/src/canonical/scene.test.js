@@ -1,5 +1,7 @@
 import { expect, it } from 'vitest';
 import { buildCanonicalScene } from './index.js';
+import { rendererNativeAppearanceContext } from './scene.js';
+import { nativeAppearanceContext } from '@stagecraft/core/lib/nativeAppearance.js';
 import { box, deck } from '../../../../tests/helpers/canonicalScene.js';
 it('builds an immutable canonical scene without mutating its input',()=>{
  const d=deck(),before=structuredClone(d),r=buildCanonicalScene(d,'s');expect(r.status).toBe('ready');expect(d).toEqual(before);
@@ -11,7 +13,7 @@ it.each(['image','chart','table','group','opaque'])('refuses a whole slide conta
 });
 it('does not mistake supported native metrics for a full appearance model',()=>{
  const r=buildCanonicalScene(deck([box({source:{format:'pptx'},extensions:{pptxTextMetrics:{supported:true},editableGeometry:true}})]),'s');
- expect(r.reason).toBe('unresolved-appearance');expect(r.diagnostics).toContainEqual({code:'native-object-appearance',objectId:'box'});
+ expect(r.reason).toBe('unresolved-appearance');expect(r.diagnostics).toContainEqual({code:'native-appearance-proof-missing',objectId:'box'});
 });
 it.each(['bullet','decoration','flip','paint','geometry','theme','native-slide','odp','missing'])('reports explicit unsupported %s',kind=>{
  const d=deck(),o=d.slides[0].objects[0];
@@ -67,6 +69,10 @@ it('refuses a conflicting authored layout reference rather than hiding its artwo
  d.slides[0].layoutId='first';expect(buildCanonicalScene(d,'s').status).toBe('ready');
  delete d.slides[0].layoutId;expect(buildCanonicalScene(d,'s').status).toBe('ready');
 });
+it('reports a missing native layout summary separately from a missing slide proof',()=>{
+ const d=deck();d.extensions.sourceFormat='pptx';d.layouts=[{id:'layout',source:{format:'pptx'},objects:[]}];d.slides[0].layoutId='layout';
+ expect(buildCanonicalScene(d,'s')).toMatchObject({status:'unsupported',reason:'inherited-appearance',diagnostics:[{code:'native-layout-summary-missing'}]});
+});
 it('uses the SVG default color for ordinary authored sz-only runs',()=>{
  const d=deck();d.slides[0].objects[0].text.paragraphs[0].runs[0].style={sz:'2400'};
  d.layouts=[{id:'l',masterId:'m'}];d.masters=[{id:'m',themeId:'t'}];d.themes=[{id:'t',extensions:{pptxFontScheme:{minor:{latin:'Arial'}}}}];
@@ -90,6 +96,17 @@ it('selects the writer theme for new slides and the linked theme for native slid
  d.layouts=[{id:'first',masterId:'m0'},{id:'second',masterId:'m1'}];d.masters=[{id:'m0',themeId:'t0'},{id:'m1',themeId:'t1'}];d.themes=[{id:'t0',extensions:{pptxFontScheme:{minor:{latin:'Arial'}}}},{id:'t1',extensions:{pptxFontScheme:{minor:{latin:'Georgia'}}}}];
  const s=d.slides[0];s.layoutId='second';expect(themeForSlide(d,s).fonts.minor.latin).toBe('Arial');expect(buildCanonicalScene(d,'s').reason).toBe('inherited-appearance');
  s.source={format:'pptx',part:'ppt/slides/slide1.xml',path:[]};expect(themeForSlide(d,s).fonts.minor.latin).toBe('Georgia');expect(buildCanonicalScene(d,'s').reason).toBe('unresolved-appearance');
+});
+it('uses the core native appearance context for inherited theme and colour-map overrides',()=>{
+ const d=deck();
+ d.layouts=[{id:'l',masterId:'m',extensions:{pptxColorMap:{tx1:'lt1'}}}];
+ d.masters=[{id:'m',themeId:'t',extensions:{pptxColorMap:{bg1:'dk1',tx1:'dk1'}}}];
+ d.themes=[{id:'t',name:'inherited-theme'}];
+ const slide=d.slides[0];slide.source={format:'pptx',part:'ppt/slides/slide1.xml',path:[]};slide.layoutId='l';
+ slide.extensions={pptxColorMapOverride:'master'};
+ const expected=nativeAppearanceContext(d,slide);
+ expect(rendererNativeAppearanceContext(d,slide)).toEqual(expected);
+ expect(expected).toEqual({theme:d.themes[0],colorMap:{bg1:'dk1',tx1:'lt1',bg2:'lt2',tx2:'dk2'}});
 });
 it.each(['native-run','missing-body'])('refuses an object outside the core authored schema: %s',kind=>{
  const d=deck(),o=d.slides[0].objects[0];

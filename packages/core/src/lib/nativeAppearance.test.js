@@ -11,6 +11,7 @@ import {
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
   nativeSlideAppearanceInput,
+  nativeTextFontSlots,
   nativeTextScript,
   nativeTextScripts,
 } from './nativeAppearance.js';
@@ -123,6 +124,17 @@ describe('native appearance proof helpers', () => {
     expect(nativeTextScripts('١٢٣')).toEqual(['Arab']);
     expect(nativeTextScripts('Native١٢٣')).toEqual(['Arab', 'Latn']);
     expect(nativeTextScripts('1️⃣')).toEqual(['Other']);
+  });
+
+  it.each([
+    ['digits', '123', ['latin']],
+    ['CJK punctuation', '漢、', ['eastAsian', 'latin']],
+    ['CJK trailing spaces', '漢字  ', ['eastAsian']],
+    ['Latin and spaces', 'A B', ['latin']],
+    ['Arabic', 'مرحبا', ['complexScript']],
+    ['Han plus digits', '漢字123', ['eastAsian', 'latin']],
+  ])('computes painter font slots for %s', (_label, text, expected) => {
+    expect(nativeTextFontSlots(text)).toEqual(expected);
   });
 
   it('excludes geometry and run text from the appearance input', () => {
@@ -288,6 +300,24 @@ describe('native appearance proof helpers', () => {
     expect(isNativeObjectAppearanceValid(object, context)).toBe(false);
   });
 
+  it('rejects a slide proof that claims no inherited artwork when its layout or master has objects', () => {
+    const layoutObject = { id: 'layout-art', type: 'shape' };
+    const masterObject = { id: 'master-art', type: 'shape' };
+    const layout = { id: 'l1', masterId: 'm1', objects: [layoutObject] };
+    const master = { id: 'm1', objects: [masterObject] };
+    const slide = { id: 's1', source: { format: 'pptx' }, layoutId: 'l1', objects: [], extensions: {} };
+    const document = { layouts: [layout], masters: [master] };
+    slide.extensions.stagecraftSlideAppearance = {
+      version: 1, appearanceResolved: true, input: nativeSlideAppearanceInput(slide, document),
+      background: { kind: 'solid', color: '#FFFFFF' }, inheritedArtworkCount: 0,
+    };
+
+    expect(isNativeSlideAppearanceValid(slide, document)).toBe(false);
+    layout.objects = [];
+    slide.extensions.stagecraftSlideAppearance.input = nativeSlideAppearanceInput(slide, document);
+    expect(isNativeSlideAppearanceValid(slide, document)).toBe(false);
+  });
+
   it('binds object proof inputs to resolved theme appearance context', () => {
     const object = proveObject(nativeObject());
     const context = { theme: { id: 't1', extensions: { pptxColorScheme: { dk1: '#000000' }, pptxFillStyles: [], pptxLineStyles: [] } }, colorMap: { tx1: 'dk1' } };
@@ -423,7 +453,7 @@ describe('native appearance proof helpers', () => {
     const slide = { id: 's1', source: { format: 'pptx' }, layoutId: 'l1', extensions: {} };
     const document = {
       layouts: [{ id: 'l1', masterId: 'm1', themeId: 't1', objects: [] }],
-      masters: [{ id: 'm1', objects: [{ id: 'a', type: 'shape' }] }],
+      masters: [{ id: 'm1', objects: [] }],
       themes: [{ id: 't1', extensions: { pptxColorScheme: { lt1: '#FFFFFF' } } }],
     };
     slide.extensions.stagecraftSlideAppearance = {
@@ -431,7 +461,7 @@ describe('native appearance proof helpers', () => {
       background: { kind: 'solid', color: '#FFFFFF' }, inheritedArtworkCount: 0,
     };
     expect(isNativeSlideAppearanceValid(slide, document)).toBe(true);
-    document.masters[0].objects[0].id = 'changed';
+    document.masters[0].objects.push({ id: 'a', type: 'shape' });
     expect(isNativeSlideAppearanceValid(slide, document)).toBe(false);
   });
 
