@@ -143,6 +143,25 @@ it('refuses native shrink when the core effective fit is unavailable', () => {
   expect(result).toMatchObject({ status: 'unsupported', reason: 'unresolved-appearance' });
 });
 
+it.each([
+  ['lineSpacing', 150, 'lineSpacingPct'],
+  ['spaceBefore', 12, 'spaceBeforePt'],
+  ['spaceAfter', 8, 'spaceAfterPt'],
+])('refuses native shrink with non-default paragraph %s', (field, value, proofField) => {
+  const document = nativeTextDocument('shrink');
+  const object = document.slides[0].objects[0];
+  object.text.paragraphs[0].style = { [field]: value };
+  object.extensions.stagecraftNativeAppearance.text.paragraphs[0][proofField] = value;
+  object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+    theme: document.themes[0], colorMap, document, slide: document.slides[0],
+  });
+
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-proof-invalid', objectId: object.id }],
+  });
+});
+
 it.each(['text', 'width', 'height'])('refuses a native shrink proof made stale by %s changes', field => {
   const document = nativeTextDocument('shrink');
   const object = document.slides[0].objects[0];
