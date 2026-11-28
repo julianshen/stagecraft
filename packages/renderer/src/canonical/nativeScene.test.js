@@ -192,6 +192,22 @@ it('admits native text when the shared probe reports the face available', () => 
   expect(buildCanonicalScene(nativeTextDocument('shrink'), 'native-slide', { fontAvailability: available }).status).toBe('ready');
 });
 
+it.each([
+  [{}, 18, 1],
+  [{ fontScale: 62500 }, 11.25, 1],
+  [{ lnSpcReduction: 20000 }, 18, 0.8],
+])('paints schema defaults for partial native shrink values %# without changing canonical data', (fit, expectedSize, expectedSpacing) => {
+  const document = nativeTextDocument('shrink', fit);
+  const original = structuredClone(document);
+  const result = buildCanonicalScene(document, 'native-slide');
+  expect(result.status).toBe('ready');
+  const body = result.scene.nodes[0].paint.text.body;
+  expect(body.paragraphs[0].runs[0].fontSizePt).toBeCloseTo(expectedSize, 12);
+  expect(body.paragraphs[0].endProperties.fontSizePt).toBeCloseTo(expectedSize, 12);
+  expect(body.paragraphs[0].lineSpacing).toEqual({ kind: 'percent', value: expectedSpacing });
+  expect(document).toEqual(original);
+});
+
 it('refuses native shrink when the core effective fit is unavailable', () => {
   const document = nativeTextDocument('shrink', { fontScale: 62500 });
   const result = buildCanonicalScene(document, 'native-slide');
