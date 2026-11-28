@@ -9,6 +9,56 @@ const TEXT_SCRIPT_PATTERNS = [
   ['Grek', /\p{Script=Greek}/u], ['Hani', /\p{Script=Han}/u], ['Hang', /\p{Script=Hangul}/u],
   ['Hira', /\p{Script=Hiragana}/u], ['Kana', /\p{Script=Katakana}/u], ['Latn', /\p{Script=Latin}/u],
 ];
+const PAINTER_SCRIPT_PATTERNS = [
+  [/\p{Script=Arabic}/u, 'Arab'], [/\p{Script=Hebrew}/u, 'Hebr'], [/\p{Script=Devanagari}/u, 'Deva'],
+  [/\p{Script=Thai}/u, 'Thai'], [/\p{Script=Tamil}/u, 'Taml'], [/\p{Script=Telugu}/u, 'Telu'],
+  [/\p{Script=Bengali}/u, 'Beng'], [/\p{Script=Gujarati}/u, 'Gujr'], [/\p{Script=Gurmukhi}/u, 'Guru'],
+  [/\p{Script=Kannada}/u, 'Knda'], [/\p{Script=Malayalam}/u, 'Mlym'], [/\p{Script=Oriya}/u, 'Orya'],
+  [/\p{Script=Sinhala}/u, 'Sinh'], [/\p{Script=Khmer}/u, 'Khmr'], [/\p{Script=Lao}/u, 'Laoo'],
+  [/\p{Script=Myanmar}/u, 'Mymr'], [/\p{Script=Tibetan}/u, 'Tibt'], [/\p{Script=Mongolian}/u, 'Mong'],
+  [/\p{Script=Syriac}/u, 'Syrc'], [/\p{Script=Thaana}/u, 'Thaa'], [/\p{Script=Ethiopic}/u, 'Ethi'],
+  [/\p{Script=Georgian}/u, 'Geor'], [/\p{Script=Armenian}/u, 'Armn'], [/\p{Script=Cherokee}/u, 'Cher'],
+  [/\p{Script=Canadian_Aboriginal}/u, 'Cans'], [/\p{Script=Yi}/u, 'Yiii'],
+  [/\p{Script=Cyrillic}/u, 'Cyrl'], [/\p{Script=Greek}/u, 'Grek'],
+];
+const painterScript = (text, language) => {
+  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return 'Jpan';
+  if (/\p{Script=Hangul}/u.test(text)) return 'Hang';
+  if (/\p{Script=Han}/u.test(text)) return /^ja/i.test(language ?? '') ? 'Jpan'
+    : /^ko/i.test(language ?? '') ? 'Hang' : /^zh-(TW|HK|MO|Hant)/i.test(language ?? '') ? 'Hant' : 'Hans';
+  return PAINTER_SCRIPT_PATTERNS.find(([pattern]) => pattern.test(text))?.[1] ?? 'Latn';
+};
+const painterSlot = script => ['Hans', 'Hant', 'Jpan', 'Hang'].includes(script) ? 'eastAsian'
+  : ['Latn', 'Cyrl', 'Grek', 'Armn', 'Geor', 'Cher', 'Cans', 'Yiii'].includes(script) ? 'latin' : 'complexScript';
+
+/** Font slots used by OfficeView's per-grapheme resolver; spaces inherit the prior piece. */
+export function nativeTextFontSlots(text, language) {
+  const Segmenter = Intl.Segmenter;
+  let segments;
+  if (Segmenter) segments = [...new Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map(item => item.segment);
+  else {
+    segments = [];
+    let joined = false, regionalCount = 0;
+    for (const character of text) {
+      const regional = /\p{Regional_Indicator}/u.test(character);
+      if (segments.length && (joined || character === '\u200d' || /[\p{M}\p{Emoji_Modifier}\u{E0020}-\u{E007F}]/u.test(character) || regional && regionalCount % 2 === 1)) {
+        segments[segments.length - 1] += character;
+      } else segments.push(character);
+      joined = character === '\u200d';
+      regionalCount = regional ? regionalCount + 1 : 0;
+    }
+  }
+  const slots = new Set();
+  let previousSlot = null;
+  for (const grapheme of segments) {
+    const slot = /^\s+$/u.test(grapheme) && previousSlot
+      ? previousSlot : painterSlot(painterScript(grapheme, language));
+    slots.add(slot);
+    previousSlot = slot;
+  }
+  return slots.size ? [...slots] : ['latin'];
+}
+
 export function nativeTextScripts(text) {
   const scripts = new Set();
   if (/[\ufe0e\ufe0f\u20e3]/.test(text)) scripts.add('Other');
@@ -232,7 +282,7 @@ const validParagraphProof = (paragraph, canonical) => {
   }
   return canonical.runs.every(run => {
     const resolved = run.extensions?.pptxAppearance?.resolved;
-    return record(resolved) && validResolvedRun(resolved);
+    return nativeTextFontSlots(run.text).length === 1 && record(resolved) && validResolvedRun(resolved);
   });
 };
 

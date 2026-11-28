@@ -5,6 +5,7 @@ import {
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
   nativeSlideAppearanceInput,
+  nativeTextFontSlots,
   nativeTextScripts,
 } from '@stagecraft/core/lib/nativeAppearance.js';
 import { attrs, child, children, is, locate, xmlPart } from './xml.js';
@@ -541,6 +542,7 @@ function projectText(document, object, node, slide, theme, colorMap) {
     for (const [runIndex, run] of paragraph.runs.entries()) {
       const xmlRun = children(xmlParagraph).filter(item => is(item, 'a', 'r'))[runIndex];
       const runProperties = xmlRun ? child(xmlRun, 'a', 'rPr') : null;
+      if (nativeTextFontSlots(run.text).length !== 1) return null;
       const scripts = nativeTextScripts(run.text);
       if (scripts.length !== 1 || scripts[0] === 'Other') return null;
       const script = scripts[0];

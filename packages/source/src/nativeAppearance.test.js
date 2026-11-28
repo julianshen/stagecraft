@@ -191,6 +191,9 @@ describe('native PPTX appearance projection', () => {
   });
 
   it('refuses a major-font Han-and-digits run that the painter splits across EA and Latin slots', async () => {
+    const majorFonts = { major: { latin: 'Georgia', eastAsian: 'Yu Gothic', complexScript: 'Tahoma', supplemental: {} } };
+    expect(resolveTextFamily({ text: '漢', fontFamily: '+mj-lt', fontFamilyEastAsia: '+mj-ea' }, { fonts: majorFonts })).toBe('Yu Gothic');
+    expect(resolveTextFamily({ text: '1', fontFamily: '+mj-lt', fontFamilyEastAsia: '+mj-ea' }, { fonts: majorFonts })).toBe('Georgia');
     const box = textBox(2, 20, 20, 300, 100,
       '<a:p><a:r><a:rPr sz="1800"><a:latin typeface="+mj-lt"/><a:ea typeface="+mj-ea"/></a:rPr><a:t>漢字123</a:t></a:r></a:p>',
       { bodyPr: '<a:bodyPr><a:noAutofit/></a:bodyPr>' });

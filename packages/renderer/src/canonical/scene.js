@@ -3,7 +3,7 @@ import { AUTHORED_TEXT_COLOR } from '@stagecraft/core/lib/authoredText.js';
 import {
  isNativeLayoutAppearanceValid, isNativeObjectAppearanceValid, isNativeSlideAppearanceValid,
  nativeLayoutAppearanceInput, nativeObjectAppearanceInput, nativeSlideAppearanceInput,
-  nativeAppearanceContext, nativeTextScripts,
+  nativeAppearanceContext, nativeTextFontSlots, nativeTextScripts,
 } from '@stagecraft/core/lib/nativeAppearance.js';
 import { canonicalTextBody, themeForSlide, layoutForSlide } from '../text/canonicalTextBody.js';
 import { resolveTextFamily } from '../vendor/officeview/drawing/text-layout.ts';
@@ -148,6 +148,8 @@ export function buildCanonicalScene(document,slideId) {
   const nativeObject=object.source?.format==='pptx';
   let appearance=null;
   if(nativeObject){
+   if(object.text?.paragraphs?.some(paragraph=>paragraph.runs?.some(run=>nativeTextFontSlots(run.text,run.style?.lang??run.style?.language).length!==1)))
+    return proofResult('unresolved-appearance','native-appearance-proof-invalid',object.id);
    if(theme?.objectDefaults?.[object.type==='text'?'txDef':'spDef'])return unsupported('inherited-appearance','theme-object-defaults',object.id);
    let input=null;try{input=nativeObjectAppearanceInput(object,{theme:rawTheme,colorMap,document,slide});}catch{}
    const check=proofCheck(object,input,()=>isNativeObjectAppearanceValid(object,{theme:rawTheme,colorMap,document,slide}));
