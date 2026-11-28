@@ -123,9 +123,9 @@ function nativeTextDocument(autofit, fit = { fontScale: 62500, lnSpcReduction: 2
 
 it.each([
   [{ fontScale: 100000, lnSpcReduction: 0 }, 18, 1],
-  [{ fontScale: 85000, lnSpcReduction: 10000 }, 15.3, 0.9],
-  [{ fontScale: 62500, lnSpcReduction: 20000 }, 11.25, 0.8],
-  [{ fontScale: 25000, lnSpcReduction: 20000 }, 4.5, 0.8],
+  [{ fontScale: 85000, lnSpcReduction: 10000 }, 15, 0.9],
+  [{ fontScale: 62500, lnSpcReduction: 20000 }, 11, 0.8],
+  [{ fontScale: 25000, lnSpcReduction: 20000 }, 5, 0.8],
 ])('paints native shrink from stored values %# without changing canonical data', (fit, expectedSize, expectedSpacing) => {
   const document = nativeTextDocument('shrink', fit);
   const original = structuredClone(document);
@@ -136,6 +136,14 @@ it.each([
   expect(body.paragraphs[0].endProperties.fontSizePt).toBeCloseTo(expectedSize, 12);
   expect(body.paragraphs[0].lineSpacing).toEqual({ kind: 'percent', value: expectedSpacing });
   expect(document).toEqual(original);
+});
+
+it('keeps authored shrink text unscaled in the canonical scene', () => {
+  const authored = box({ bodyLayout: { autofit: 'shrink' } });
+  const result = buildCanonicalScene(deck([authored]), 's');
+  expect(result.status).toBe('ready');
+  const run = result.scene.nodes[0].paint.text.body.paragraphs[0].runs[0];
+  expect(run.fontSizePt).toBe(18);
 });
 
 it('refuses native text when the resolved face is unavailable, without affecting authored text', () => {
