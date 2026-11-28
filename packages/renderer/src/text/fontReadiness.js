@@ -30,9 +30,10 @@ const shorthandParts = shorthand => {
 const quoteFamily = family => `"${family.replace(/["\\]/g, '\\$&')}"`;
 
 /**
- * One availability signal for native text: a measured face is available only when its advance
- * differs from every generic fallback. document.fonts.check alone reports true for families
- * that resolve to a fallback. Results are cached per family/weight/style and cleared when fonts load.
+ * One signal for native text FACE availability (not per-glyph coverage): compare each stacked
+ * `"Family", <generic>` probe with the matching generic-only probe. document.fonts.check alone
+ * reports true for families that resolve to a fallback. Results are cached per family/weight/style
+ * and cleared when fonts load.
  */
 export function createFontAvailability({ fonts, canvas, watch = true } = {}) {
   let ctx;
@@ -68,9 +69,11 @@ export function createFontAvailability({ fonts, canvas, watch = true } = {}) {
       if (cache.has(key)) return cache.get(key);
       const probe = `${String(text).replace(/[\r\n\t]+/g, ' ')} ${FONT_AVAILABILITY_PROBE}`.trim();
       const prefix = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}16px `;
-      const targetWidth = measure(`${prefix}${quoteFamily(family)}`, probe);
-      const available = AVAILABILITY_FALLBACKS.every(fallback =>
-        Math.abs(targetWidth - measure(`${prefix}${fallback}`, probe)) > 0.01);
+      const available = AVAILABILITY_FALLBACKS.some(fallback => {
+        const stacked = measure(`${prefix}${quoteFamily(family)}, ${fallback}`, probe);
+        const generic = measure(`${prefix}${fallback}`, probe);
+        return Math.abs(stacked - generic) > 0.01;
+      });
       cache.set(key, available);
       return available;
     },

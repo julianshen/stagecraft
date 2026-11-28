@@ -97,10 +97,11 @@ describe('font face availability probe', () => {
       canvas: fakeCanvas(font => font.includes('Calibri') ? 140 : 100, calls),
     });
     expect(availability.isAvailable('normal bold 16px "Calibri"', 'Hi')).toBe(true);
-    expect(calls.some(call => call.font === 'bold 16px "Calibri"')).toBe(true);
+    expect(calls.some(call => call.font.startsWith('bold 16px "Calibri",'))).toBe(true);
   });
 
   it('detects a present family that matches one generic but not another', () => {
+    const calls = [];
     const availability = createFontAvailability({
       fonts: fakeFonts(),
       canvas: fakeCanvas(font => {
@@ -109,7 +110,7 @@ describe('font face availability probe', () => {
         if (font.includes('sans-serif')) return 130;
         if (font.includes('serif')) return 120;
         return 100;
-      }),
+      }, calls),
     });
     expect(availability.isAvailable('normal 16px "Arial"', 'Hello')).toBe(true);
     expect(availability.isAvailable('normal 16px "Missing"', 'Hello')).toBe(false);
