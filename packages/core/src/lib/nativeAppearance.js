@@ -1,7 +1,7 @@
 export const NATIVE_APPEARANCE_VERSION = 1;
 export const NATIVE_APPEARANCE_INPUT_MAX_BYTES = 16 * 1024;
 
-const NATIVE_AUTOFIT_SCHEMA_DEFAULTS_APPROVED = false;
+const NATIVE_AUTOFIT_SCHEMA_DEFAULTS_APPROVED = true;
 
 const TEXT_SCRIPT_PATTERNS = [
   ['Arab', /\p{Script=Arab}/u], ['Hebr', /\p{Script=Hebr}/u], ['Thai', /\p{Script=Thai}/u],

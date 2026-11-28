@@ -122,7 +122,7 @@ describe('native autofit appearance proofs', () => {
     const partial = shrinkObject({ fontScale: 77500 });
     const partialInput = JSON.parse(nativeObjectAppearanceInput(partial));
     expect(partialInput.bodyLayout.fit).toEqual({ fontScale: 77500 });
-    expect(partialInput).not.toHaveProperty('effectiveFit');
+    expect(partialInput.effectiveFit).toEqual({ fontScale: 77500, lnSpcReduction: 0 });
     expect(partialInput.fitBinding).toMatch(/^[0-9a-f]{8}$/);
 
     const complete = shrinkObject();
@@ -133,6 +133,8 @@ describe('native autofit appearance proofs', () => {
     const absent = autofitObject('shrink');
     const explicitDefaults = shrinkObject({ fontScale: 100000, lnSpcReduction: 0 });
     expect(JSON.parse(nativeObjectAppearanceInput(absent)).bodyLayout).not.toHaveProperty('fit');
+    expect(JSON.parse(nativeObjectAppearanceInput(absent)).effectiveFit)
+      .toEqual({ fontScale: 100000, lnSpcReduction: 0 });
     expect(JSON.parse(nativeObjectAppearanceInput(explicitDefaults)).effectiveFit)
       .toEqual({ fontScale: 100000, lnSpcReduction: 0 });
     expect(nativeObjectAppearanceInput(absent)).not.toBe(nativeObjectAppearanceInput(explicitDefaults));
@@ -140,7 +142,7 @@ describe('native autofit appearance proofs', () => {
 
   it('does not let callers override the internal schema-default policy', () => {
     const object = autofitObject('shrink');
-    expect(nativeAutofitEffectiveFit(object, true)).toBeNull();
+    expect(nativeAutofitEffectiveFit(object, false)).toEqual({ fontScale: 100000, lnSpcReduction: 0 });
   });
 
   it.each([
@@ -153,7 +155,7 @@ describe('native autofit appearance proofs', () => {
     const object = autofitObject('shrink', fit);
     expect(nativeAutofitFitValues(fit)).toEqual(expected);
     expect(nativeAutofitEffectiveFit(object))
-      .toEqual(fit === completeFit ? completeFit : null);
+      .toEqual(expected);
   });
 
   it.each([
@@ -176,9 +178,9 @@ describe('native autofit appearance proofs', () => {
     ['empty fit', {}],
     ['fontScale-only fit', { fontScale: 77500 }],
     ['reduction-only fit', { lnSpcReduction: 20000 }],
-  ])('refuses %s under the strict module policy', (_name, fit) => {
+  ])('accepts %s under the native-evidence-approved schema-default policy', (_name, fit) => {
     const object = proveObject(autofitObject('shrink', fit));
-    expect(isNativeObjectAppearanceValid(object)).toBe(false);
+    expect(isNativeObjectAppearanceValid(object)).toBe(true);
   });
 
   it('exercises fit validation independently with valid matching-input controls', () => {

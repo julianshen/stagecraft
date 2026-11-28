@@ -1323,13 +1323,18 @@ describe('native PPTX appearance projection', () => {
     ['no-attribute', '<a:normAutofit/>', {}],
     ['fontScale-only', '<a:normAutofit fontScale="85000"/>', { fontScale: 85000 }],
     ['reduction-only', '<a:normAutofit lnSpcReduction="10000"/>', { lnSpcReduction: 10000 }],
-  ])('opens %s normAutofit without a proof and preserves untouched bytes', async (_label, autofit, fit) => {
+  ])('opens %s normAutofit with effective defaults in its proof without materializing them', async (_label, autofit, fit) => {
     const { bytes, session } = await openAutofitFixture(autofit);
     try {
       const object = session.document.slides[0].objects[0];
       expect(object.bodyLayout.fit).toEqual(fit);
-      expect(nativeAutofitEffectiveFit(object)).toBeNull();
-      expect(proof(object)).toBeUndefined();
+      expect(nativeAutofitEffectiveFit(object)).toEqual({
+        fontScale: fit.fontScale ?? 100000,
+        lnSpcReduction: fit.lnSpcReduction ?? 0,
+      });
+      expect(proof(object)).toBeDefined();
+      const context = appearanceContext(session.document, session.document.slides[0]);
+      expect(isNativeObjectAppearanceValid(object, context)).toBe(true);
       const output = await session.export(session.document);
       expect(output.dirtyParts).toEqual([]);
       expect(Buffer.from(output.bytes).equals(Buffer.from(bytes))).toBe(true);
