@@ -135,7 +135,11 @@ export default function KonvaStage({
 
   /** Reset a node to a canonical box (when given) and repaint it together with the Transformer. */
   function resetNode(node, box) {
-    if (box) restoreNodeBox(node, box);
+    if (box) {
+      restoreNodeBox(node, box);
+    } else {
+      node.scale({ x: 1, y: 1 });
+    }
     const tr = transformerRef.current;
     tr?.forceUpdate?.();
     node.getLayer()?.batchDraw();
@@ -252,14 +256,18 @@ export default function KonvaStage({
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return undefined;
-    if (tr.isTransforming()) {
+    if (gestureRef.current?.kind === 'transform') {
+      cancelGesture({ restoreStart: true });
+    } else if (tr.isTransforming()) {
       tr.stopTransform();
     }
     const target = selectedMovable && selectedNode ? shapeRefs.current.get(selectedNode.id) : null;
     tr.nodes(target ? [target] : []);
     tr.getLayer()?.batchDraw();
     return () => {
-      if (tr.isTransforming()) {
+      if (gestureRef.current?.kind === 'transform') {
+        cancelGesture({ restoreStart: true });
+      } else if (tr.isTransforming()) {
         tr.stopTransform();
       }
       tr.nodes([]);
@@ -328,7 +336,9 @@ export default function KonvaStage({
                 }}
                 onDragStart={e => {
                   if (
-                    (e.evt?.buttons !== undefined && (e.evt.buttons & 1) === 0)
+                    gestureRef.current !== null
+                    || transformerRef.current?.isTransforming?.()
+                    || (e.evt?.buttons !== undefined && (e.evt.buttons & 1) === 0)
                     || (e.evt?.touches && e.evt.touches.length > 1)
                     || !isMovable(node)
                   ) {
@@ -474,11 +484,13 @@ export default function KonvaStage({
               if (
                 !node
                 || !selectedMovable
+                || gestureRef.current !== null
+                || target?.isDragging?.()
                 || (e.evt?.buttons !== undefined && (e.evt.buttons & 1) === 0)
                 || e.evt?.altKey
               ) {
                 transformerRef.current?.stopTransform();
-                if (node) restoreNodeBox(target, frameBox(node.frame));
+                if (node && !target?.isDragging?.()) restoreNodeBox(target, frameBox(node.frame));
                 return;
               }
               applyShiftSnaps(Boolean(e.evt?.shiftKey));

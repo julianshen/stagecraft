@@ -687,6 +687,9 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     await waitFor(() => expect(tr.nodes()[0]?.name()).toBe('r2'));
     expect(tr.isTransforming()).toBe(false);
     expect(dispatchCount).toBe(0);
+    expect(screen.queryAllByRole('alert')).toEqual([]);
+    expect(stage.findOne('.r1').width()).toBeCloseTo(200 * PT / 9525, 2);
+    expect(stage.findOne('.r1').height()).toBeCloseTo(100 * PT / 9525, 2);
 
     // Stale snapshot mutation mid-transform cancels and reports error
     await waitFor(() => {
@@ -839,5 +842,77 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     await waitFor(() => expect(editor.getSnapshot().revision).toBe(1));
     expect('rotation' in editor.getSnapshot().document.slides[0].objects[0].geometry).toBe(false);
     expect(node.rotation()).toBe(0);
+  });
+
+  it('preserves exact 33.3333deg rotation on handle click (0 commands) and resize, refuses concurrent drag+transform, and ignores Delete during transform', async () => {
+    const baseEditor = makeEditor([makeRect('r1', 100, 100, 200, 100, 33.3333)]);
+    let dispatchCount = 0;
+    const editor = {
+      ...baseEditor,
+      dispatch: (...args) => { dispatchCount += 1; return baseEditor.dispatch(...args); },
+    };
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    const canvas = await waitForKonvaCanvas(container);
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const stage = getStageForContainer(Konva, container);
+    selectObject(container, 'r1');
+    await waitFor(() => expect(stage.findOne('Transformer').nodes().length).toBe(1));
+    const tr = stage.findOne('Transformer');
+    const node = stage.findOne('.r1');
+
+    // 1. Handle press+release (no movement) on 33.3333deg object dispatches 0 commands
+    await dragAnchor(canvas, tr, 'bottom-right', 0, 0);
+    expect(dispatchCount).toBe(0);
+    expect(editor.getSnapshot().document.slides[0].objects[0].geometry.rotation).toBe(33.3333);
+
+    // 2. Resize on 33.3333deg object preserves exact 33.3333 rotation
+    await dragAnchor(canvas, tr, 'bottom-right', 30, 15);
+    await waitFor(() => expect(editor.getSnapshot().revision).toBe(1));
+    expect(editor.getSnapshot().document.slides[0].objects[0].geometry.rotation).toBe(33.3333);
+
+    // 3. Delete / Backspace ignored during active transform
+    let pos;
+    await waitFor(() => {
+      pos = tr.findOne('.bottom-right').getAbsolutePosition();
+      if (stage.getIntersection(pos) !== tr.findOne('.bottom-right')) throw new Error('hit not ready');
+    });
+    const rect = canvas.getBoundingClientRect();
+    act(() => {
+      canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: rect.left + pos.x, clientY: rect.top + pos.y }));
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, buttons: 1, clientX: rect.left + pos.x + 20, clientY: rect.top + pos.y + 10 }));
+    });
+    expect(tr.isTransforming()).toBe(true);
+    const editorRoot = container.querySelector('section');
+    act(() => {
+      editorRoot.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true }));
+      editorRoot.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true }));
+    });
+    expect(editor.getSnapshot().document.slides[0].objects).toHaveLength(1);
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: rect.left + pos.x + 20, clientY: rect.top + pos.y + 10 }));
+    });
+    expect(tr.isTransforming()).toBe(false);
+
+    // 4. Concurrent drag + transform: transformstart while dragging is refused cleanly
+    const nodePos = node.getAbsolutePosition();
+    act(() => {
+      canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: rect.left + nodePos.x, clientY: rect.top + nodePos.y }));
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, buttons: 1, clientX: rect.left + nodePos.x + 15, clientY: rect.top + nodePos.y + 10 }));
+    });
+    expect(node.isDragging()).toBe(true);
+    act(() => {
+      tr.fire('transformstart', { target: node, evt: new MouseEvent('mousedown', { buttons: 1 }) });
+    });
+    expect(tr.isTransforming()).toBe(false);
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: rect.left + nodePos.x + 15, clientY: rect.top + nodePos.y + 10 }));
+    });
+    expect(screen.queryAllByRole('alert')).toEqual([]);
   });
 });

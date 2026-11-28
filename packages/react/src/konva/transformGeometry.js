@@ -19,14 +19,37 @@ export function normalizeRotation(degrees) {
  */
 export function clampTransformBox(oldBox, newBox, minStagePx) {
   if (!newBox || !Number.isFinite(newBox.width) || !Number.isFinite(newBox.height)) return oldBox;
-  // Per axis: a too-small size grows to the minimum when its leading edge stayed put; otherwise the axis keeps the old box.
-  const axis = (oldPos, oldSize, newPos, newSize) => {
-    if (newSize >= minStagePx) return [newPos, newSize];
-    return Math.abs(newPos - oldPos) < 1e-6 ? [newPos, minStagePx] : [oldPos, oldSize];
+  if (newBox.width >= minStagePx && newBox.height >= minStagePx) return newBox;
+
+  // Stop aspect-locked (Shift) resize when either axis drops below minStagePx so the ratio holds.
+  if (
+    oldBox.width > 0
+    && oldBox.height > 0
+    && newBox.width > 0
+    && newBox.height > 0
+    && Math.abs(newBox.width / newBox.height - oldBox.width / oldBox.height) < 1e-3
+  ) {
+    return oldBox;
+  }
+
+  const rot = oldBox.rotation ?? 0;
+  const cos = Math.cos(rot);
+  const sin = Math.sin(rot);
+  const dx = newBox.x - oldBox.x;
+  const dy = newBox.y - oldBox.y;
+  const localDx = dx * cos + dy * sin;
+  const localDy = -dx * sin + dy * cos;
+
+  // Per local axis: a too-small size grows to the minimum when its leading edge stayed put; otherwise the axis keeps the old box.
+  const axis = (oldSize, d, newSize) => {
+    if (newSize >= minStagePx) return [d, newSize];
+    return Math.abs(d) < 1e-4 ? [d, minStagePx] : [0, oldSize];
   };
-  const [x, width] = axis(oldBox.x, oldBox.width, newBox.x, newBox.width);
-  const [y, height] = axis(oldBox.y, oldBox.height, newBox.y, newBox.height);
+  const [outDx, width] = axis(oldBox.width, localDx, newBox.width);
+  const [outDy, height] = axis(oldBox.height, localDy, newBox.height);
   if (width < minStagePx || height < minStagePx) return oldBox;
+  const x = rot === 0 ? oldBox.x + outDx : oldBox.x + (outDx * cos - outDy * sin);
+  const y = rot === 0 ? oldBox.y + outDy : oldBox.y + (outDx * sin + outDy * cos);
   return { ...newBox, x, y, width, height };
 }
 
@@ -54,8 +77,23 @@ export function normalizeTransformGeometry({
   ) {
     return null;
   }
-  const normalizedRotation = normalizeRotation(rotation);
-  if (normalizedRotation === null) return null;
+  if (!Number.isFinite(rotation)) return null;
+  const startRotation = startGeometry?.rotation;
+  const rawMod = ((rotation % 360) + 360) % 360;
+  let finalRotation;
+  if (startRotation !== undefined && Number.isFinite(startRotation)) {
+    const startMod = ((startRotation % 360) + 360) % 360;
+    const delta = Math.abs(rawMod - startMod);
+    if (Math.min(delta, 360 - delta) < 1e-6) {
+      finalRotation = startRotation;
+    } else {
+      finalRotation = normalizeRotation(rotation);
+      if (finalRotation === null) return null;
+    }
+  } else {
+    finalRotation = normalizeRotation(rotation);
+    if (finalRotation === null) return null;
+  }
 
   const width = Math.max(MIN_OBJECT_SIZE_EMU, Math.round(widthPx * scaleX * EMU_PER_PX));
   const height = Math.max(MIN_OBJECT_SIZE_EMU, Math.round(heightPx * scaleY * EMU_PER_PX));
@@ -63,7 +101,7 @@ export function normalizeTransformGeometry({
   const y = Math.round(centerY * EMU_PER_PX - height / 2);
   if (![x, y, width, height].every(Number.isSafeInteger)) return null;
 
-  const hasStartRotation = startGeometry?.rotation !== undefined;
+  const hasStartRotation = startRotation !== undefined;
   const result = {
     ...startGeometry,
     x,
@@ -71,8 +109,8 @@ export function normalizeTransformGeometry({
     width,
     height,
   };
-  if (normalizedRotation !== 0 || hasStartRotation) {
-    result.rotation = normalizedRotation;
+  if (finalRotation !== 0 || hasStartRotation) {
+    result.rotation = finalRotation;
   }
   return result;
 }

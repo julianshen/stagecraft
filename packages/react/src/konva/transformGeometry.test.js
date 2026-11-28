@@ -129,4 +129,71 @@ describe('KONVA-4 transformGeometry helpers', () => {
     expect('rotation' in rotatedBackToZero).toBe(true);
     expect(rotatedBackToZero.rotation).toBe(0);
   });
+
+  it('preserves exact fractional startGeometry.rotation when unchanged, and rounds only when changed', () => {
+    const startGeometry = { x: 100000, y: 100000, width: 1905000, height: 952500, rotation: 33.333333 };
+    const noOp = normalizeTransformGeometry({
+      centerX: (100000 + 1905000 / 2) / EMU_PER_PX,
+      centerY: (100000 + 952500 / 2) / EMU_PER_PX,
+      widthPx: 200,
+      heightPx: 100,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 33.333333,
+      startGeometry,
+    });
+    expect(noOp.rotation).toBe(33.333333);
+    expect(geometriesEqual(noOp, startGeometry)).toBe(true);
+
+    const resized = normalizeTransformGeometry({
+      centerX: (100000 + 1905000 / 2) / EMU_PER_PX,
+      centerY: (100000 + 952500 / 2) / EMU_PER_PX,
+      widthPx: 200,
+      heightPx: 100,
+      scaleX: 1.5,
+      scaleY: 1,
+      rotation: 33.333333,
+      startGeometry,
+    });
+    expect(resized.rotation).toBe(33.333333);
+
+    const rotated = normalizeTransformGeometry({
+      centerX: (100000 + 1905000 / 2) / EMU_PER_PX,
+      centerY: (100000 + 952500 / 2) / EMU_PER_PX,
+      widthPx: 200,
+      heightPx: 100,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 45.678,
+      startGeometry,
+    });
+    expect(rotated.rotation).toBe(45.68);
+  });
+
+  it('clamps rotated boxes in local space (30 and 90 deg) and stops aspect-locked resize at minimum', () => {
+    for (const deg of [30, 90]) {
+      const rad = (deg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const oldBox = { x: 100, y: 100, width: 80, height: 40, rotation: rad };
+      // Simulate dragging bottom-right past top-left in local space (top-left fixed, width < min, then crossed over)
+      const clampedLeadingFixed = clampTransformBox(oldBox, { x: 100, y: 100, width: 0.5, height: 40, rotation: rad }, 2);
+      expect(clampedLeadingFixed).toEqual({ x: 100, y: 100, width: 2, height: 40, rotation: rad });
+
+      // Dragging top-left past bottom-right in local space: opposite corner (80, 40) in local stays fixed
+      const shiftX = 79.5 * cos;
+      const shiftY = 79.5 * sin;
+      const clampedCrossOver = clampTransformBox(
+        oldBox,
+        { x: 100 + shiftX, y: 100 + shiftY, width: 0.5, height: 40, rotation: rad },
+        2,
+      );
+      expect(clampedCrossOver).toEqual(oldBox);
+    }
+
+    // Aspect-locked resize below min on one axis returns oldBox so ratio holds
+    const aspectOld = { x: 10, y: 20, width: 100, height: 50, rotation: 0 };
+    const aspectTooSmall = { x: 10, y: 20, width: 3, height: 1.5, rotation: 0 };
+    expect(clampTransformBox(aspectOld, aspectTooSmall, 2)).toEqual(aspectOld);
+  });
 });

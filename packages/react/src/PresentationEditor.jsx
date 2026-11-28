@@ -1368,8 +1368,8 @@ export function PresentationCanvas({
   function keyboard(event) {
     if (event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return;
     const undoKey = (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z';
-    // While a Konva transform is active the stage owns Escape; undo and nudges would commit against its captured revision.
-    if (konvaTransformingRef.current && (undoKey || event.key === 'Escape' || event.key.startsWith('Arrow'))) {
+    // While a Konva transform is active the stage owns Escape; ignore all editor shortcuts (including Delete/Backspace/Arrow/undo).
+    if (konvaTransformingRef.current) {
       event.preventDefault();
       return;
     }
