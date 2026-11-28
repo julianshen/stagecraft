@@ -122,7 +122,7 @@ describe('native autofit appearance proofs', () => {
     const partial = shrinkObject({ fontScale: 77500 });
     const partialInput = JSON.parse(nativeObjectAppearanceInput(partial));
     expect(partialInput.bodyLayout.fit).toEqual({ fontScale: 77500 });
-    expect(partialInput).not.toHaveProperty('effectiveFit');
+    expect(partialInput.effectiveFit).toEqual({ fontScale: 77500, lnSpcReduction: 0 });
     expect(partialInput.fitBinding).toMatch(/^[0-9a-f]{8}$/);
 
     const complete = shrinkObject();
@@ -133,6 +133,8 @@ describe('native autofit appearance proofs', () => {
     const absent = autofitObject('shrink');
     const explicitDefaults = shrinkObject({ fontScale: 100000, lnSpcReduction: 0 });
     expect(JSON.parse(nativeObjectAppearanceInput(absent)).bodyLayout).not.toHaveProperty('fit');
+    expect(JSON.parse(nativeObjectAppearanceInput(absent)).effectiveFit)
+      .toEqual({ fontScale: 100000, lnSpcReduction: 0 });
     expect(JSON.parse(nativeObjectAppearanceInput(explicitDefaults)).effectiveFit)
       .toEqual({ fontScale: 100000, lnSpcReduction: 0 });
     expect(nativeObjectAppearanceInput(absent)).not.toBe(nativeObjectAppearanceInput(explicitDefaults));

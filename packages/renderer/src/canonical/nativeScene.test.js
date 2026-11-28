@@ -208,8 +208,8 @@ it.each([
   expect(document).toEqual(original);
 });
 
-it('refuses native shrink when the core effective fit is unavailable', () => {
-  const document = nativeTextDocument('shrink', { fontScale: 62500 });
+it('refuses native shrink when the core effective fit is malformed', () => {
+  const document = nativeTextDocument('shrink', { fontScale: '62500' });
   const result = buildCanonicalScene(document, 'native-slide');
   expect(result).toMatchObject({ status: 'unsupported', reason: 'unresolved-appearance' });
 });
