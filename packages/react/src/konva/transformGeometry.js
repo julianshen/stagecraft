@@ -68,14 +68,18 @@ export function normalizeTransformGeometry({
   const y = Math.round(centerY * EMU_PER_PX - height / 2);
   if (![x, y, width, height].every(Number.isSafeInteger)) return null;
 
-  return {
+  const hasStartRotation = startGeometry != null && Object.hasOwn(startGeometry, 'rotation') && startGeometry.rotation !== undefined;
+  const result = {
     ...startGeometry,
     x,
     y,
     width,
     height,
-    rotation: normalizedRotation,
   };
+  if (normalizedRotation !== 0 || hasStartRotation) {
+    result.rotation = normalizedRotation;
+  }
+  return result;
 }
 
 /**

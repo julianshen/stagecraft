@@ -89,4 +89,44 @@ describe('KONVA-4 transformGeometry helpers', () => {
     expect(geometriesEqual(a, { ...a, rotation: 15 })).toBe(false);
     expect(geometriesEqual({ x: 100, y: 200, width: 30000, height: 40000 }, a)).toBe(true);
   });
+
+  it('keeps rotation absent when startGeometry had none and normalized rotation is 0, while preserving explicit or nonzero rotation', () => {
+    const withoutRotation = { x: 0, y: 0, width: 127000, height: 127000 };
+    const resizedNoRot = normalizeTransformGeometry({
+      centerX: 10,
+      centerY: 10,
+      widthPx: 20,
+      heightPx: 20,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      startGeometry: withoutRotation,
+    });
+    expect('rotation' in resizedNoRot).toBe(false);
+
+    const rotatedFromAbsent = normalizeTransformGeometry({
+      centerX: 10,
+      centerY: 10,
+      widthPx: 20,
+      heightPx: 20,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 45,
+      startGeometry: withoutRotation,
+    });
+    expect(rotatedFromAbsent.rotation).toBe(45);
+
+    const rotatedBackToZero = normalizeTransformGeometry({
+      centerX: 10,
+      centerY: 10,
+      widthPx: 20,
+      heightPx: 20,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 360,
+      startGeometry: { ...withoutRotation, rotation: 90 },
+    });
+    expect('rotation' in rotatedBackToZero).toBe(true);
+    expect(rotatedBackToZero.rotation).toBe(0);
+  });
 });

@@ -717,4 +717,49 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     expect(tr.isTransforming()).toBe(false);
     expect(screen.getAllByRole('alert').map(el => el.textContent)).toEqual(['Transform could not be applied.']);
   });
+
+  it('produces identical integer EMU geometry at DPR 2 as at DPR 1', async () => {
+    const runAtDpr = async (dpr) => {
+      const originalDescriptor = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
+      Object.defineProperty(window, 'devicePixelRatio', {
+        configurable: true,
+        value: dpr,
+      });
+      try {
+        const editor = makeEditor([makeRect('r1', 100, 100, 200, 100)]);
+        const { container, unmount } = render(
+          <EditorProvider editor={editor}>
+            <PresentationEditor surface="konva" />
+          </EditorProvider>,
+        );
+        try {
+          const canvas = await waitForKonvaCanvas(container);
+          const { default: Konva } = await import('konva/lib/Core.js');
+          const stage = getStageForContainer(Konva, container);
+          selectObject(container, 'r1');
+          await waitFor(() => expect(stage.findOne('Transformer').nodes().length).toBe(1));
+          const tr = stage.findOne('Transformer');
+          await dragAnchor(canvas, tr, 'bottom-right', 48, 24);
+          await waitFor(() => expect(editor.getSnapshot().revision).toBe(1));
+          const geom = editor.getSnapshot().document.slides[0].objects[0].geometry;
+          expect(Object.values(geom).every(Number.isSafeInteger)).toBe(true);
+          return geom;
+        } finally {
+          unmount();
+        }
+      } finally {
+        if (originalDescriptor) {
+          Object.defineProperty(window, 'devicePixelRatio', originalDescriptor);
+        } else {
+          delete window.devicePixelRatio;
+        }
+      }
+    };
+
+    const dpr1Geom = await runAtDpr(1);
+    const dpr2Geom = await runAtDpr(2);
+    expect(dpr2Geom).toEqual(dpr1Geom);
+    expect(dpr2Geom.width).toBeGreaterThan(200 * PT);
+    expect(dpr2Geom.height).toBeGreaterThan(100 * PT);
+  });
 });
