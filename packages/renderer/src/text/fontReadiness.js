@@ -49,7 +49,7 @@ export function createFontAvailability({ fonts, canvas } = {}) {
       const probe = `${String(text).replace(/[\r\n\t]+/g, ' ')} ${FONT_AVAILABILITY_PROBE}`.trim();
       const prefix = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}16px `;
       const targetWidth = measure(`${prefix}${quoteFamily(family)}`, probe);
-      const available = AVAILABILITY_FALLBACKS.some(fallback =>
+      const available = AVAILABILITY_FALLBACKS.every(fallback =>
         Math.abs(targetWidth - measure(`${prefix}${fallback}`, probe)) > 0.01);
       cache.set(key, available);
       return available;
