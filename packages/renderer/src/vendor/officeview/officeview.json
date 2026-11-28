@@ -1,6 +1,6 @@
 {
   "repo": "https://github.com/julianshen/officeview.git",
-  "commit": "9c9518e50bac0ed9622f934a87cccf47bcd52e42",
+  "commit": "0487d0d68aeca2fccd271aac58285dd9cae5de16",
   "entries": [
     "drawing/geometry.ts",
     "drawing/paint.ts",
