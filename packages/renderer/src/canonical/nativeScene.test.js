@@ -83,6 +83,85 @@ it('admits a native slide only from current slide, layout, and object proofs', (
   });
 });
 
+function nativeTextDocument(autofit, fit = { fontScale: 62500, lnSpcReduction: 20000 }) {
+  const document = nativeDocument();
+  const slide = document.slides[0];
+  const object = slide.objects[0];
+  object.type = 'text';
+  delete object.shape;
+  object.bodyLayout = {
+    autofit,
+    fit: autofit === 'shrink' ? fit : undefined,
+    anchor: 'top', wrap: 'square',
+    insets: { left: 95250, right: 95250, top: 0, bottom: 0 },
+  };
+  object.text = { paragraphs: [{ id: 'paragraph-1', runs: [{
+    id: 'run-1', text: 'Stored fit display', style: { sz: '1800' },
+    extensions: { pptxAppearance: { script: 'Latn', resolved: {
+      color: '#112233', fontFamily: 'Arial', fontFamilyEastAsia: 'Noto Sans JP',
+      fontFamilyComplexScript: 'Amiri', fontSizePt: 18, bold: false, italic: false,
+    } } },
+  }], extensions: { pptxEndRunAppearance: {
+    color: '#112233', fontFamily: 'Arial', fontFamilyEastAsia: 'Noto Sans JP',
+    fontFamilyComplexScript: 'Amiri', fontSizePt: 18, bold: false, italic: false,
+  } } }] };
+  object.extensions.pptxTextMetrics = { supported: true };
+  object.extensions.stagecraftNativeAppearance.text = { paragraphs: [{
+    id: 'paragraph-1', runIds: ['run-1'], alignment: 'left', spaceBeforePt: 0,
+    spaceAfterPt: 0, lineSpacingPct: 100, indentStartEmu: 0, indentEndEmu: 0,
+    firstLineIndentEmu: 0, endRun: {
+      color: '#112233', fontFamily: 'Arial', fontFamilyEastAsia: 'Noto Sans JP',
+      fontFamilyComplexScript: 'Amiri', fontSizePt: 18, bold: false, italic: false,
+    },
+  }] };
+  object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+    theme: document.themes[0], colorMap, document, slide,
+  });
+  return document;
+}
+
+it.each([
+  [{ fontScale: 100000, lnSpcReduction: 0 }, 18, 1],
+  [{ fontScale: 85000, lnSpcReduction: 10000 }, 15.3, 0.9],
+  [{ fontScale: 62500, lnSpcReduction: 20000 }, 11.25, 0.8],
+  [{ fontScale: 25000, lnSpcReduction: 20000 }, 4.5, 0.8],
+])('paints native shrink from stored values %# without changing canonical data', (fit, expectedSize, expectedSpacing) => {
+  const document = nativeTextDocument('shrink', fit);
+  const original = structuredClone(document);
+  const result = buildCanonicalScene(document, 'native-slide');
+  expect(result.status).toBe('ready');
+  const body = result.scene.nodes[0].paint.text.body;
+  expect(body.paragraphs[0].runs[0].fontSizePt).toBeCloseTo(expectedSize, 12);
+  expect(body.paragraphs[0].endProperties.fontSizePt).toBeCloseTo(expectedSize, 12);
+  expect(body.paragraphs[0].lineSpacing).toEqual({ kind: 'percent', value: expectedSpacing });
+  expect(document).toEqual(original);
+});
+
+it('refuses native shrink when the core effective fit is unavailable', () => {
+  const document = nativeTextDocument('shrink', { fontScale: 62500 });
+  const result = buildCanonicalScene(document, 'native-slide');
+  expect(result).toMatchObject({ status: 'unsupported', reason: 'unresolved-appearance' });
+});
+
+it.each(['text', 'width', 'height'])('refuses a native shrink proof made stale by %s changes', field => {
+  const document = nativeTextDocument('shrink');
+  const object = document.slides[0].objects[0];
+  if (field === 'text') object.text.paragraphs[0].runs[0].text += ' changed';
+  else object.geometry[field] += 95250;
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-stale', objectId: object.id }],
+  });
+});
+
+it('keeps native resize text and stored geometry unchanged', () => {
+  const document = nativeTextDocument('resize');
+  const result = buildCanonicalScene(document, 'native-slide');
+  expect(result.status).toBe('ready');
+  expect(result.scene.nodes[0].geometry).toEqual(document.slides[0].objects[0].geometry);
+  expect(result.scene.nodes[0].paint.text.body.paragraphs[0].runs[0].fontSizePt).toBe(18);
+});
+
 it('admits a native slide proof without requiring layout or master summaries', () => {
   const document = nativeDocument({ layoutProof: false });
   expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({ status: 'ready' });

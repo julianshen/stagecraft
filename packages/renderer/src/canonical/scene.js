@@ -2,10 +2,11 @@ import { validateAuthoredObject } from '@stagecraft/core/document';
 import { AUTHORED_TEXT_COLOR } from '@stagecraft/core/lib/authoredText.js';
 import {
  isNativeLayoutAppearanceValid, isNativeObjectAppearanceValid, isNativeSlideAppearanceValid,
- nativeLayoutAppearanceInput, nativeObjectAppearanceInput, nativeSlideAppearanceInput,
+ nativeAutofitEffectiveFit, nativeLayoutAppearanceInput, nativeObjectAppearanceInput, nativeSlideAppearanceInput,
   nativeAppearanceContext, nativeTextFontSlots, nativeTextScripts,
 } from '@stagecraft/core/lib/nativeAppearance.js';
 import { canonicalTextBody, themeForSlide, layoutForSlide } from '../text/canonicalTextBody.js';
+import { scaledTextBody } from '../text/measureShrinkFits.js';
 import { resolveTextFamily } from '../vendor/officeview/drawing/text-layout.ts';
 const PX = 9525;
 const color = value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
@@ -148,6 +149,8 @@ export function buildCanonicalScene(document,slideId) {
   const nativeObject=object.source?.format==='pptx';
   let appearance=null;
   if(nativeObject){
+   if(object.bodyLayout?.autofit==='shrink'&&!nativeAutofitEffectiveFit(object))
+    return proofResult('unresolved-appearance','native-appearance-proof-invalid',object.id);
    if(object.text?.paragraphs?.some(paragraph=>paragraph.runs?.some(run=>nativeTextFontSlots(run.text,run.style?.lang??run.style?.language).length!==1)))
     return proofResult('unresolved-appearance','text-appearance-unresolved',object.id);
    if(theme?.objectDefaults?.[object.type==='text'?'txDef':'spDef'])return unsupported('inherited-appearance','theme-object-defaults',object.id);
@@ -161,8 +164,13 @@ export function buildCanonicalScene(document,slideId) {
    catch { return unsupported('unsupported-content','authored-object-schema',object.id); }
    if(theme?.objectDefaults?.[object.type==='text'?'txDef':'spDef'])return unsupported('inherited-appearance','theme-object-defaults',object.id);
   }
-  const text=object.text?displayText(object,theme,appearance):null;
+  let text=object.text?displayText(object,theme,appearance):null;
   if(object.text&&!text)return unsupported('unsupported-content','text-format',object.id);
+  if(nativeObject&&object.bodyLayout?.autofit==='shrink') {
+   const fit=nativeAutofitEffectiveFit(object);
+   if(!fit||!text)return proofResult('unresolved-appearance','native-appearance-proof-invalid',object.id);
+   text={...text,body:scaledTextBody(text.body,fit)};
+  }
   const g=object.geometry;
   const fill=object.fill??(appearance?.fill?.kind==='solid'?appearance.fill.color:null);
   nodes.push({id:object.id,type:object.type,geometry:{...g},frame:{x:g.x/PX,y:g.y/PX,width:g.width/PX,height:g.height/PX,rotation:g.rotation??0},hitShape:object.shape??'rect',textIds:object.text?.paragraphs.map(p=>({paragraphId:p.id,runIds:p.runs.map(r=>r.id)}))??[],paint:{shape:object.shape??'rect',fill,stroke:appearance?.stroke??null,adjust:appearance?.adjust,text,layoutKey:text?JSON.stringify([g.width/PX,g.height/PX,text]):null}});
