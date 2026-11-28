@@ -198,8 +198,8 @@ The experimental `surface="konva"` path admits a measured native PowerPoint subs
 
 - `a:spAutoFit` paints the stored `a:xfrm` frame; it is not resized or re-measured on open.
 - `a:normAutofit` paints the stored `fontScale` and `lnSpcReduction` exactly. No remeasurement or OfficeView autofit pass runs. Canonical `bodyLayout.fit` stores only present attributes; absent attributes resolve to ECMA-376 defaults at display/proof time only.
-- The schema-default policy is **shipped** after PowerPoint evidence. `reports/KONVA-3C-R3-codex.md` records high-resolution PNG comparisons: cases 2/5/6/8 have matching line counts, ≤1 device-px line-start and bound differences, dilated ink mismatch `0.1309% / 0.0197% / 0.3909% / 0.0197%`, and outside-text differences below `0.05%`.
-- Native shrink font sizes and paragraph `endProperties` snap to the nearest whole point, ties up; `17.5 → 18`, `13.5 → 14`. Sizes below 1 pt fail closed. Export shrink measurement remains fractional. See `reports/K3D-C-native-codex.md`.
+- The schema-default policy is **shipped** in #172 after PowerPoint evidence: PowerPoint 16.115 open/render captures at 1280×720 with the bundled Calibri face. Cases 2/5/6/8 have matching line counts, ≤1 device-px line-start and bound differences, dilated ink mismatch `0.1309% / 0.0197% / 0.3909% / 0.0197%`, and outside-text differences below `0.05%`.
+- Native shrink font sizes and paragraph `endProperties` snap to the nearest whole point, ties up; `17.5 → 18`, `13.5 → 14`. Sizes below 1 pt fail closed. Export shrink measurement remains fractional. The PNG widths supporting nearest-whole snapping are in #171.
 - Line-spacing formula changes and paragraph before/after scaling remain out of scope: admitted native shrink uses 100% spacing where subtractive and multiplicative reduction agree, and non-default metrics are refused.
 
 ### Native text fidelity gates
@@ -210,6 +210,6 @@ The experimental `surface="konva"` path admits a measured native PowerPoint subs
 
 ### Corpus status
 
-All 65 K2a package hashes were verified. The strict/default histograms are **28/100 slides across 20 packages** and **44/100 across 24 packages**; the shipped policy uses the default-resolved result. ODP remains **0/60** (`unsupported-format`). Browser font availability reduces node admission further: **2/100** ready with Chromium default fonts and **26/100** with the diagnostic Office Calibri loaded (the remaining 4 are Aptos-only refusals). Evidence is in coordinator fixtures `fixtures/konva-3c-r3/rebased-403ea7a/` and reports `K3D-B-pi.md`, `K3D-A1-sync-report.md`, and `K3D-C-native-codex.md`.
+All 65 K2a package hashes were verified. The strict/default histograms are **28/100 slides across 20 packages** and **44/100 across 24 packages**; #172 ships the default-resolved result. ODP remains **0/60** (`unsupported-format`). Browser admission also depends on actual font availability (#169): re-measured on the R3 head with shipped defaults, **2/100** are ready with Chromium default fonts and **42/100** with the diagnostic Office Calibri loaded; 4 slides remain font-unavailable. Evidence in PRs #167–#172 includes PowerPoint 16.115 open/render captures, Calibri-loaded Chromium comparisons, and the histogram JSON.
 
 Not verified: Windows PowerPoint, Windows/Linux font sets, fonts other than Calibri, or per-glyph coverage. The font gate proves face availability only; tiny native sizes that round below 1 pt are refused and tracked as a follow-up.
