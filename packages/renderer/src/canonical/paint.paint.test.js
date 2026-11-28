@@ -155,19 +155,20 @@ it.each([1,2])('paints the XML-stored native shrink fit at DPR %s',async dpr=>{
  for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4;if(data[i]<80&&data[i+1]<90&&data[i+2]<110&&data[i+3]>0){ink++;top=Math.min(top,y);bottom=Math.max(bottom,y);left=Math.min(left,x);right=Math.max(right,x);}}
  expect(ink).toBeGreaterThan(100);expect(right-left).toBeGreaterThan(20*dpr);expect(bottom-top).toBeGreaterThan(8*dpr);
 });
-it('places the first native text baseline from the font ascent, not the ink bounds',async()=>{
+it('routes native PPTX text through the OfficeView PowerPoint baseline model',async()=>{
  const inner=textBox(2,15,15,600,300,para('Baseline reference',{rPr:' sz="1800"',rKids:'<a:latin typeface="Arial"/>'}),{bodyPr:'<a:bodyPr wrap="square" lIns="0" tIns="76200" rIns="0" bIns="0"><a:spAutoFit/></a:bodyPr>'});
  const source=await openNativeFixture(inner);
  try {
   const result=buildCanonicalScene(source.document,source.document.slides[0].id);expect(result.status).toBe('ready');
   const node=result.scene.nodes[0],ctx=canvas(),baselines=[],original=ctx.fillText.bind(ctx);
+  expect(node.paint.text.body.powerPoint).toBe(true);
+  const authored=buildCanonicalScene(deck([box()]),'s');expect(authored.status).toBe('ready');
+  expect(authored.scene.nodes[0].paint.text.body.powerPoint).not.toBe(true);
   vi.spyOn(ctx,'fillText').mockImplementation((text,x,y,...rest)=>{if(text)baselines.push(y);return original(text,x,y,...rest);});
   const env=createCanonicalPaintEnvironment();
   try {paintCanonicalScene(ctx,result.scene,env);} finally {env.dispose();}
-  const run=node.paint.text.body.paragraphs[0].runs[0];ctx.font=`${run.fontSizePt}pt "${run.fontFamily}"`;
-  const metrics=ctx.measureText('Mg'),lineHeight=run.fontSizePt*96/72*1.2;
-  const expected=8+metrics.fontBoundingBoxAscent
-   +(lineHeight-metrics.fontBoundingBoxAscent-metrics.fontBoundingBoxDescent)/2;
+  const run=node.paint.text.body.paragraphs[0].runs[0],lineSize=run.fontSizePt*96/72;
+  const expected=8+lineSize*1.2-0.24*lineSize;
   expect(baselines[0]).toBeCloseTo(expected,1);
  } finally {source.dispose();}
 });
