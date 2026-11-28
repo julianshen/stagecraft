@@ -13,10 +13,14 @@ export const SHRINK_FIT_POLICY = Object.freeze({
   heightMargin: 0.97,
 });
 
-/** Explicit candidate scaling; never enable officeview's additional automatic shrink pass. */
-export function scaledTextBody(body, { fontScale, lnSpcReduction }) {
+/** Explicit candidate scaling; native display can opt into PowerPoint's nearest-whole-point face size. Never enable officeview's additional automatic shrink pass. */
+export function scaledTextBody(body, { fontScale, lnSpcReduction }, { snapFontSize = false } = {}) {
   const scale = fontScale / 100000, spacing = 1 - lnSpcReduction / 100000;
-  const style = run => ({ ...run, fontSizePt: run.fontSizePt * scale });
+  const scaledSize = size => {
+    const value = size * scale;
+    return snapFontSize ? Math.round(value) : value;
+  };
+  const style = run => ({ ...run, fontSizePt: scaledSize(run.fontSizePt) });
   return { ...body, paragraphs: body.paragraphs.map(p => ({ ...p, runs: p.runs.map(style), endProperties: style(p.endProperties),
     lineSpacing: { kind: 'percent', value: (p.lineSpacing?.value ?? 1) * spacing },
     ...(p.spaceBefore ? { spaceBefore: { ...p.spaceBefore, value: p.spaceBefore.value * scale } } : {}),
