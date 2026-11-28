@@ -23,7 +23,11 @@ export interface ScalableParagraph {
   spaceAfter?: { value: number; [key: string]: unknown };
   [key: string]: unknown;
 }
-export function scaledTextBody(body: { paragraphs: ScalableParagraph[]; [key: string]: unknown }, fit: ShrinkFit): {
+export function scaledTextBody(
+  body: { paragraphs: ScalableParagraph[]; [key: string]: unknown },
+  fit: ShrinkFit,
+  options?: { snapFontSize?: boolean },
+): {
   paragraphs: Array<ScalableParagraph & { lineSpacing: { kind: 'percent'; value: number } }>;
   [key: string]: unknown;
 };

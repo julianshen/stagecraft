@@ -16,9 +16,12 @@ export const SHRINK_FIT_POLICY = Object.freeze({
 /** Explicit candidate scaling; native display can opt into PowerPoint's nearest-whole-point face size. Never enable officeview's additional automatic shrink pass. */
 export function scaledTextBody(body, { fontScale, lnSpcReduction }, { snapFontSize = false } = {}) {
   const scale = fontScale / 100000, spacing = 1 - lnSpcReduction / 100000;
+  const snapDenominator = 100000 * 100; // fontScale × canonical font-size hundredths
   const scaledSize = size => {
     const value = size * scale;
-    return snapFontSize ? Math.round(value) : value;
+    if (!snapFontSize) return value;
+    const numerator = Math.round(size * 100) * fontScale;
+    return Math.floor((numerator * 2 + snapDenominator) / (2 * snapDenominator));
   };
   const style = run => ({ ...run, fontSizePt: scaledSize(run.fontSizePt) });
   return { ...body, paragraphs: body.paragraphs.map(p => ({ ...p, runs: p.runs.map(style), endProperties: style(p.endProperties),
