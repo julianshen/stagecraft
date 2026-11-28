@@ -226,7 +226,7 @@ The canvas path is opt-in (`surface="konva"`); SVG remains the default and the w
 
 Native `a:spAutoFit` paints the stored `a:xfrm` geometry unchanged. Native `a:normAutofit` paints the stored `fontScale` and `lnSpcReduction`; it does not re-measure, re-fit, or run OfficeView autofit. The canonical `bodyLayout.fit` retains only attributes actually present in the package.
 
-The schema-default policy is **shipped**: absent `fontScale` resolves to `100000` and absent `lnSpcReduction` to `0` at display/proof time only. Existing exported bytes are unchanged because defaults are never written back. Red tests cover malformed values and the strict-to-default flip; the flip commit is downstream of Codex evidence in coordinator report `reports/KONVA-3C-R3-codex.md`.
+The schema-default policy is **shipped** (#172): absent `fontScale` resolves to `100000` and absent `lnSpcReduction` to `0` at display/proof time only. Existing exported bytes are unchanged because defaults are never written back. Red tests cover malformed values and the strict-to-default flip; the flip follows PowerPoint 16.115 open/render captures at 1280×720 with the bundled Calibri face.
 
 Fit proofs bind appearance to run text plus width/height, not position; x/y/rotation-only moves preserve the proof. Text, width, or height edits invalidate it in the core transaction; direct mutation is caught by recomputation. Font-size snapping and the text line model are covered below.
 
@@ -245,9 +245,9 @@ Line-spacing and paragraph before/after changes remain out of scope for native s
 | Node histogram, strict (absent shrink attribute refuses) | **28/100 PPTX slides**, 20 packages |
 | Node histogram, shipped schema defaults | **44/100 PPTX slides**, 24 packages |
 | ODP | **0/60** admitted (`unsupported-format`) |
-| Chromium, browser default fonts after #169 | **2/100** ready, 40 `fonts-unavailable` |
-| Chromium, diagnostic Office Calibri loaded | **26/100** ready, 4 Aptos-only refusals |
+| Chromium, browser default fonts (R3 head, shipped defaults) | **2/100** ready, 52 `fonts-unavailable` |
+| Chromium, diagnostic Office Calibri loaded (R3 head, shipped defaults) | **42/100** ready, 4 `fonts-unavailable` |
 
-All 65 K2a package hashes were verified. Evidence bundles and comparison images are in the coordinator fixtures `fixtures/konva-3c-r3/rebased-403ea7a/`; see also `reports/K3D-B-pi.md`, `reports/K3D-A1-sync-report.md`, and `reports/K3D-C-native-codex.md`.
+All 65 K2a package hashes were verified. The evidence lives in PRs #167–#172: native proof admission, stored autofit display, the font gate, the PowerPoint text line model, whole-point snapping, and the approved schema-default flip. The R3 captures were made in PowerPoint 16.115 (open/render, no text edits), exported as 1280×720 PNGs, and compared with the same bundled Calibri face in Chromium; the comparison bundles include canvas PNGs, per-case diff PNGs, and histogram JSON.
 
 Not verified: Windows PowerPoint, Windows/Linux font sets, fonts other than Calibri, and per-glyph coverage (the font probe establishes face availability, not glyph coverage). Tiny native sizes that round below 1 pt are refused and tracked as a follow-up.
