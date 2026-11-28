@@ -20,7 +20,7 @@ export function scaledTextBody(body, { fontScale, lnSpcReduction }, {
   if (lineSpacingReduction !== 'multiplicative' && lineSpacingReduction !== 'subtractive') {
     throw new RangeError('Unsupported lineSpacingReduction mode.');
   }
-  const scale = fontScale / 100000, spacing = 1 - lnSpcReduction / 100000;
+  const scale = fontScale / 100000, reduction = lnSpcReduction / 100000;
   const snapDenominator = 100000 * 100; // fontScale × canonical font-size hundredths
   const scaledSize = size => {
     const value = size * scale;
@@ -29,10 +29,9 @@ export function scaledTextBody(body, { fontScale, lnSpcReduction }, {
     return Math.max(minimumSnappedFontSizePt, Math.floor((numerator * 2 + snapDenominator) / (2 * snapDenominator)));
   };
   const style = run => ({ ...run, fontSizePt: scaledSize(run.fontSizePt) });
+  const reducedSpacing = base => (lineSpacingReduction === 'subtractive' ? base - reduction : base * (1 - reduction));
   return { ...body, paragraphs: body.paragraphs.map(p => ({ ...p, runs: p.runs.map(style), endProperties: style(p.endProperties),
-    lineSpacing: { kind: 'percent', value: lineSpacingReduction === 'subtractive'
-      ? (p.lineSpacing?.value ?? 1) - lnSpcReduction / 100000
-      : (p.lineSpacing?.value ?? 1) * spacing },
+    lineSpacing: { kind: 'percent', value: reducedSpacing(p.lineSpacing?.value ?? 1) },
     ...(p.spaceBefore ? { spaceBefore: { ...p.spaceBefore, value: p.spaceBefore.value * scale } } : {}),
     ...(p.spaceAfter ? { spaceAfter: { ...p.spaceAfter, value: p.spaceAfter.value * scale } } : {}),
   })) };

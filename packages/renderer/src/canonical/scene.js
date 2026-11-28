@@ -22,16 +22,14 @@ const validGeometry = g => g && ['x','y','width','height'].every(k=>Number.isSaf
  && Number.isSafeInteger(g.x+g.width) && Number.isSafeInteger(g.y+g.height) && (g.rotation===undefined||Number.isFinite(g.rotation));
 const nativeShrinkParagraphMetricsSupported = body => body.paragraphs.every(p=>(!p.lineSpacing
  ||p.lineSpacing.kind==='percent'&&Number.isFinite(p.lineSpacing.value))&&(!p.spaceBefore||p.spaceBefore.value===0)&&(!p.spaceAfter||p.spaceAfter.value===0));
-const DEFAULT_NATIVE_LINE_SPACING = 1;
-const SHRINK_EFFECTIVE_SPACING_80 = 80000;
-const SHRINK_EFFECTIVE_SPACING_MIN = 110000;
-const SHRINK_EFFECTIVE_SPACING_MAX = 150000;
+// PowerPoint parity for native shrink spacing: omitted/100% source spacing keeps the shipped behaviour for any
+// stored reduction; other source spacing is admitted only where the effective value matched PowerPoint
+// (exactly 80%, or 110-150%).
 const nativeShrinkLineSpacingSupported = (value, sourceValue) => {
- // Keep master behavior for default/omitted source spacing regardless of stored reduction.
- if(sourceValue===undefined||sourceValue===DEFAULT_NATIVE_LINE_SPACING)return true;
+ if(!Number.isFinite(value)||value<=0)return false;
+ if(sourceValue===undefined||sourceValue===1)return true;
  const percent=Math.round(value*100000);
- return percent===SHRINK_EFFECTIVE_SPACING_80
-  ||(percent>=SHRINK_EFFECTIVE_SPACING_MIN&&percent<=SHRINK_EFFECTIVE_SPACING_MAX);
+ return percent===80000||(percent>=110000&&percent<=150000);
 };
 export function rendererNativeAppearanceContext(document, slide) {
  return nativeAppearanceContext(document, slide);
@@ -196,12 +194,8 @@ export function buildCanonicalScene(document,slideId,{fontAvailability}={}) {
    const sizes = scaled.paragraphs.flatMap(p => [
     ...p.runs.map(r => r.fontSizePt), p.endProperties?.fontSizePt,
    ]);
-   const lineSpacings=scaled.paragraphs.map((p,index)=>({
-    value:p.lineSpacing?.value??1,
-    sourceValue:text.body.paragraphs[index].lineSpacing?.value??1,
-   }));
-   if(sizes.some(size => !Number.isFinite(size) || size < 1)
-    ||lineSpacings.some(({value,sourceValue})=>!Number.isFinite(value)||value<=0||!nativeShrinkLineSpacingSupported(value,sourceValue)))
+   if(sizes.some(size => !Number.isFinite(size))
+    ||scaled.paragraphs.some((p,index)=>!nativeShrinkLineSpacingSupported(p.lineSpacing.value,text.body.paragraphs[index].lineSpacing?.value)))
     return proofResult('unresolved-appearance','native-appearance-proof-invalid',object.id);
    text={...text,body:scaled};
   }
