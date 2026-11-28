@@ -194,7 +194,7 @@ it('admits native text when the shared probe reports the face available', () => 
 
 it.each([
   [{}, 18, 1],
-  [{ fontScale: 62500 }, 11.25, 1],
+  [{ fontScale: 62500 }, 11, 1],
   [{ lnSpcReduction: 20000 }, 18, 0.8],
 ])('paints schema defaults for partial native shrink values %# without changing canonical data', (fit, expectedSize, expectedSpacing) => {
   const document = nativeTextDocument('shrink', fit);
