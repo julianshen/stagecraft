@@ -101,9 +101,10 @@ describe('font face availability probe', () => {
   });
 
   it('treats CSS generic families like measured families', () => {
+    const calls = [];
     const availability = createFontAvailability({
       fonts: fakeFonts(),
-      canvas: fakeCanvas(font => font.includes('sans-serif') ? 130 : font.includes('monospace') ? 100 : font.includes('serif') ? 120 : 140),
+      canvas: fakeCanvas(font => font.includes('sans-serif') ? 130 : font.includes('monospace') ? 100 : font.includes('serif') ? 120 : 140, calls),
     });
     expect(availability.isAvailable('normal 16px sans-serif', 'Hi')).toBe(false);
   });

@@ -1,5 +1,5 @@
 import { AUTHORED_TEXT_COLOR } from '@stagecraft/core/lib/authoredText.js';
-import { DEFAULT_TEXT_INSETS_EMU, createFontAvailability, measureShrinkFits, measureResizeFits, resizeFallback, waitForAutofitFonts } from '@stagecraft/renderer';
+import { DEFAULT_TEXT_INSETS_EMU, createFontAvailability, getSharedFontAvailability, measureShrinkFits, measureResizeFits, resizeFallback, setSharedFontAvailability, waitForAutofitFonts } from '@stagecraft/renderer';
 import { buildCanonicalScene, waitForCanonicalFonts } from '@stagecraft/renderer/canonical';
 import { createContext, useContext, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { useEditor, useEditorSnapshot } from './EditorProvider.jsx';
@@ -1020,11 +1020,18 @@ export function PresentationCanvas({
     fonts: globalThis.document?.fonts,
     canvas: globalThis.document?.createElement?.('canvas'),
   }), []);
+  useEffect(() => {
+    setSharedFontAvailability(fontAvailability);
+    return () => {
+      if (getSharedFontAvailability() === fontAvailability) setSharedFontAvailability(null);
+      fontAvailability.dispose?.();
+    };
+  }, [fontAvailability]);
   const isOdpDoc = ui.snapshot.document?.extensions?.sourceFormat === 'odp';
   const sceneResult = useMemo(() => {
     if (!wantsKonva || !ui.canonical || isOdpDoc || !ui.activeSlide) return null;
-    return buildCanonicalScene(ui.snapshot.document, ui.activeSlide.id, { fontAvailability });
-  }, [wantsKonva, ui.canonical, isOdpDoc, ui.snapshot.document, ui.activeSlide, fontAvailability]);
+    return buildCanonicalScene(ui.snapshot.document, ui.activeSlide.id);
+  }, [wantsKonva, ui.canonical, isOdpDoc, ui.snapshot.document, ui.activeSlide]);
 
   const checkEmbeddingTransform = rootEl => {
     if (!wantsKonva || !rootEl || typeof getComputedStyle !== 'function') {

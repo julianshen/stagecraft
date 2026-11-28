@@ -4,8 +4,10 @@ import { resolveTextFamily } from '../vendor/officeview/drawing/text-layout.ts';
 import { fontShorthand } from '../vendor/officeview/drawing/text-paint.ts';
 
 export const FONT_AVAILABILITY_PROBE = 'WWWmmm ii ll 0189 OQ@#';
-const AVAILABILITY_FALLBACKS = ['monospace', 'serif'];
-const GENERIC_FAMILIES = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace']);
+const AVAILABILITY_FALLBACKS = ['monospace', 'serif', 'sans-serif'];
+let sharedFontAvailability = null;
+export function setSharedFontAvailability(value) { sharedFontAvailability = value; }
+export function getSharedFontAvailability() { return sharedFontAvailability; }
 const firstFontFamily = stack => {
   const quoted = /^\s*"((?:\\.|[^"\\])*)"/.exec(stack);
   if (quoted) return quoted[1].replace(/\\(["\\])/g, '$1');
@@ -15,17 +17,21 @@ const firstFontFamily = stack => {
 };
 const shorthandParts = shorthand => {
   const value = typeof shorthand === 'string' ? shorthand : '';
+  const sizes = [...value.matchAll(/(?:^|\s)\d+(?:\.\d+)?(?:px|pt|em|rem|%)(?=\s|$)/gi)];
+  const lastSize = sizes.at(-1);
+  const stylePart = lastSize ? value.slice(0, lastSize.index) : value;
+  const familyPart = lastSize ? value.slice(lastSize.index + lastSize[0].length).trim() : value;
   return {
-    family: firstFontFamily(value.replace(/^\s*(?:italic\s+)?(?:bold\s+)?\d+(?:\.\d+)?(?:px|pt)\s+/, '')),
-    italic: /\bitalic\b/i.test(value),
-    bold: /\bbold\b/i.test(value),
+    family: firstFontFamily(familyPart),
+    italic: /(?:^|\s)(?:italic|oblique)(?:\s|$)/i.test(stylePart),
+    bold: /(?:^|\s)(?:bold|[1-9]00)(?:\s|$)/i.test(stylePart),
   };
 };
 const quoteFamily = family => `"${family.replace(/["\\]/g, '\\$&')}"`;
 
 /**
  * One availability signal for native text: a measured face is available only when its advance
- * differs from at least one generic fallback. document.fonts.check alone reports true for families
+ * differs from every generic fallback. document.fonts.check alone reports true for families
  * that resolve to a fallback. Results are cached per family/weight/style and cleared when fonts load.
  */
 export function createFontAvailability({ fonts, canvas } = {}) {
@@ -52,7 +58,6 @@ export function createFontAvailability({ fonts, canvas } = {}) {
       if (!target || typeof target.measureText !== 'function') return false;
       const { family, italic, bold } = shorthandParts(shorthand);
       if (!family) return false;
-      if (GENERIC_FAMILIES.has(family.toLowerCase())) return true;
       const key = JSON.stringify([family.toLowerCase(), bold, italic]);
       if (cache.has(key)) return cache.get(key);
       const probe = `${String(text).replace(/[\r\n\t]+/g, ' ')} ${FONT_AVAILABILITY_PROBE}`.trim();

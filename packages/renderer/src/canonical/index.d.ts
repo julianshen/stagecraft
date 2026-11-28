@@ -1,5 +1,5 @@
 import type { CanonicalDocument, DocumentObject } from '@stagecraft/core/document';
-export type CanonicalSceneReason = 'no-slide' | 'not-canonical' | 'unsupported-format' | 'unsupported-content' | 'unresolved-appearance' | 'inherited-appearance' | 'invalid-geometry';
+export type CanonicalSceneReason = 'no-slide' | 'not-canonical' | 'unsupported-format' | 'unsupported-content' | 'unresolved-appearance' | 'inherited-appearance' | 'invalid-geometry' | 'fonts-unavailable';
 export type CanonicalDiagnostic = { readonly code: string; readonly objectId?: string };
 declare const canonicalNodeBrand: unique symbol;
 /** Opaque, immutable painter input. Obtain nodes from buildCanonicalScene. */
@@ -21,9 +21,14 @@ export interface CanonicalScene {
  readonly background: string;
  readonly nodes: readonly CanonicalNode[];
 }
+export interface FontAvailability {
+ readonly isAvailable: (shorthand: string, text?: string) => boolean;
+ invalidate?(): void;
+ dispose?(): void;
+}
 export type CanonicalSceneResult = { status: 'ready'; scene: CanonicalScene } | { status: 'unsupported'; reason: CanonicalSceneReason; diagnostics: readonly CanonicalDiagnostic[] };
 /** No source parsing; authored canonical content only. Unsupported content refuses the whole scene. */
-export function buildCanonicalScene(document: CanonicalDocument, slideId: string | null): CanonicalSceneResult;
+export function buildCanonicalScene(document: CanonicalDocument, slideId: string | null, options?: { fontAvailability?: FontAvailability }): CanonicalSceneResult;
 export interface CanonicalPaintEnvironment {
  readonly fontEpoch: number;
  invalidateFonts(): void;
@@ -37,4 +42,4 @@ export function paintCanonicalNode(ctx: CanvasRenderingContext2D, node: Canonica
 export function paintCanonicalScene(ctx: CanvasRenderingContext2D, scene: CanonicalScene, environment: CanonicalPaintEnvironment): void;
 export type CanonicalFontReadiness = {status:'ready'} | {status:'skipped';reason:'fonts-unavailable'|'fonts-timeout'} | {status:'failed';reason:'error';message:string};
 /** One bounded pass over scene fonts only. Host invalidates environment's font epoch after relevant font changes and suppresses obsolete completions. */
-export function waitForCanonicalFonts(scene: CanonicalScene, options?: { fonts?: Pick<FontFaceSet,'load'|'check'>; timeoutMs?: number }): Promise<CanonicalFontReadiness>;
+export function waitForCanonicalFonts(scene: CanonicalScene, options?: { fonts?: Pick<FontFaceSet,'load'|'check'>; timeoutMs?: number; fontAvailability?: FontAvailability; canvas?: HTMLCanvasElement }): Promise<CanonicalFontReadiness>;

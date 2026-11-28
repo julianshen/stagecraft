@@ -9,6 +9,7 @@
 // Decodes are cached on the paint env by source, so the editor, thumbnails and
 // the presenter share one decoded image; `sharedPaintEnv` is that common env.
 import { createPaintEnv, canvasFont } from './paint.js';
+import { getSharedFontAvailability } from '../text/fontReadiness.js';
 
 /** The env every surface shares unless it brings its own (tests, workers). */
 export const sharedPaintEnv = createPaintEnv();
@@ -85,7 +86,7 @@ function loadFont(env, spec, fonts, fontAvailability) {
  * so cached text layouts measured with the fallback are dropped), i.e. whether
  * a surface that already painted should paint again.
  */
-export async function ensureAssets(scene, env = sharedPaintEnv, { loadImage = decodeImage, fonts = globalThis.document?.fonts, fontAvailability } = {}) {
+export async function ensureAssets(scene, env = sharedPaintEnv, { loadImage = decodeImage, fonts = globalThis.document?.fonts, fontAvailability = getSharedFontAvailability() } = {}) {
   const { images, fonts: specs } = sceneAssets(scene);
   const changes = [
     ...images.filter((src) => !env.images.has(src)).map((src) => loadInto(env, src, loadImage)),

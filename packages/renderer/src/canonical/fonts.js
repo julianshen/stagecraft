@@ -21,13 +21,12 @@ export async function waitForCanonicalFonts(scene, { fonts = globalThis.document
   if (!queries.length) return { status: 'ready' };
   if (typeof fonts?.check !== 'function' || typeof fonts?.load !== 'function') return { status: 'skipped', reason: 'fonts-unavailable' };
   let timer;
+  let createdAvailability = null;
   try {
     const nativeQueries = queries.filter(query => query.native);
     const availability = nativeQueries.length
-      ? fontAvailability ?? createFontAvailability({ fonts, canvas: canvas ?? globalThis.document?.createElement?.('canvas') })
+      ? fontAvailability ?? (createdAvailability = createFontAvailability({ fonts, canvas: canvas ?? globalThis.document?.createElement?.('canvas') }))
       : null;
-    if (availability && !nativeQueries.every(query => availability.isAvailable(query.shorthand, query.text)))
-      return { status: 'skipped', reason: 'fonts-unavailable' };
     const missing = queries.filter(query => availability && query.native
       ? !availability.isAvailable(query.shorthand, query.text)
       : !fonts.check(query.shorthand, query.text));
@@ -45,5 +44,6 @@ export async function waitForCanonicalFonts(scene, { fonts = globalThis.document
     return { status: 'failed', reason: 'error', message: 'Canvas font readiness failed.' };
   } finally {
     clearTimeout(timer);
+    createdAvailability?.dispose?.();
   }
 }
