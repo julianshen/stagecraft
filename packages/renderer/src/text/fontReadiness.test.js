@@ -3,6 +3,7 @@ import {
   FONT_AVAILABILITY_PROBE,
   createFontAvailability,
   fontFamiliesFor,
+  setSharedFontAvailability,
   waitForCanonicalFonts,
 } from '../index.js';
 
@@ -87,6 +88,24 @@ describe('font face availability probe', () => {
     fonts.emit('loadingdone');
     availability.isAvailable('normal 16px "Calibri"', 'two');
     expect(calls.length).toBeGreaterThan(first);
+  });
+
+  it('parses weight/style from asset font shorthands before the family', () => {
+    const calls = [];
+    const availability = createFontAvailability({
+      fonts: fakeFonts(),
+      canvas: fakeCanvas(font => font.includes('Calibri') ? 140 : 100, calls),
+    });
+    expect(availability.isAvailable('normal bold 16px "Calibri"', 'Hi')).toBe(true);
+    expect(calls.some(call => call.font === 'bold 16px "Calibri"')).toBe(true);
+  });
+
+  it('treats CSS generic families like measured families', () => {
+    const availability = createFontAvailability({
+      fonts: fakeFonts(),
+      canvas: fakeCanvas(font => font.includes('sans-serif') ? 130 : font.includes('monospace') ? 100 : font.includes('serif') ? 120 : 140),
+    });
+    expect(availability.isAvailable('normal 16px sans-serif', 'Hi')).toBe(false);
   });
 
   it('refuses canonical font readiness when the real face is unavailable', async () => {
