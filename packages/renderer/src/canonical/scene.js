@@ -179,7 +179,13 @@ export function buildCanonicalScene(document,slideId,{fontAvailability}={}) {
    if(!fit||!text)return proofResult('unresolved-appearance','native-appearance-proof-invalid',object.id);
    if(!nativeShrinkParagraphMetricsSupported(text.body))
     return proofResult('unresolved-appearance','native-appearance-proof-invalid',object.id);
-   text={...text,body:scaledTextBody(text.body,fit)};
+   const scaled = scaledTextBody(text.body,fit,{snapFontSize:true});
+   const sizes = scaled.paragraphs.flatMap(p => [
+    ...p.runs.map(r => r.fontSizePt), p.endProperties?.fontSizePt,
+   ]);
+   if(sizes.some(size => !Number.isFinite(size) || size < 1))
+    return proofResult('unresolved-appearance','native-appearance-proof-invalid',object.id);
+   text={...text,body:scaled};
   }
   const g=object.geometry;
   const fill=object.fill??(appearance?.fill?.kind==='solid'?appearance.fill.color:null);

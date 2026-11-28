@@ -75,6 +75,24 @@ it('uses the PR4 text, frame and inherited minor font for a non-empty fit', () =
   expect(SHRINK_FIT_POLICY.fontScales).toContain(fit.fontScale);
   expect(fit.fontScale).toBeLessThan(100000);
 });
+it('keeps export shrink measurement fractional by default', () => {
+  const body = canonicalTextBody(make()).body;
+  const scaled = scaledTextBody(body, { fontScale: 62500, lnSpcReduction: 0 });
+  expect(scaled.paragraphs[0].runs[0].fontSizePt).toBeCloseTo(11.25, 12);
+  expect(scaled.paragraphs[0].endProperties.fontSizePt).toBeCloseTo(11.25, 12);
+});
+
+it('snaps native shrink faces to the nearest whole point, including ties and end properties', () => {
+  for (const [size, fontScale, expected] of [[28, 85000, 24], [28, 62500, 18], [18, 75000, 14], [18, 85000, 15], [45, 70000, 32], [85, 70000, 60]]) {
+    const body = canonicalTextBody(make()).body;
+    body.paragraphs[0].runs[0].fontSizePt = size;
+    body.paragraphs[0].endProperties.fontSizePt = size;
+    const scaled = scaledTextBody(body, { fontScale, lnSpcReduction: 0 }, { snapFontSize: true });
+    expect(scaled.paragraphs[0].runs[0].fontSizePt).toBe(expected);
+    expect(scaled.paragraphs[0].endProperties.fontSizePt).toBe(expected);
+  }
+});
+
 it('scales point spacing and font sizes while preserving the authored insets and indents', () => {
   const o = make(); o.text.paragraphs[0].style = { spaceBefore: 10, spaceAfter: 20, lineSpacing: 150, indentStart: pt(5) };
   const body = canonicalTextBody(o).body, scaled = scaledTextBody(body, { fontScale: 50000, lnSpcReduction: 20000 });
