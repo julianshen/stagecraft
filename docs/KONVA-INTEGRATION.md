@@ -25,7 +25,7 @@ When `surface="konva"` is requested, `computeSurfaceDecision` evaluates eligibil
 
 Users can toggle `Switch to standard view` / `Return to canvas view` per editor instance without persisting global preferences.
 
-Native PPTX shrink text is painted from stored `fontScale`/`lnSpcReduction` values when the source paragraph spacing is omitted or 100%, matching the previously shipped admission behavior. For non-default source spacing, effective spacing (`line spacing − reduction`) is admitted at 80% or from 110–150%; other ratios, including newly admitted 70% and 90% spacing, fall back to SVG for the whole slide. The shipped plain 100% behavior also remains admitted; its 48 pt sample is +1.5 CSS px and remains an open calibration issue. This gate does not change the source file or export measurement.
+Native PPTX shrink text is painted from stored `fontScale`/`lnSpcReduction` values when source paragraph spacing is omitted or 100%, matching the previously shipped admission behavior. Font sizes snap to the nearest whole point with a 1 pt floor. For non-default source spacing, effective spacing (`line spacing − reduction`) is admitted at 80% or from 110–150%; other effective ratios, including 70% and 90%, fall back to SVG for the whole slide. Compatibility means default/100% source spacing with any stored reduction remains admitted, including reductions that produce effective 70% or 90% spacing; these combinations were not independently cleared by the parity evidence and remain a known mismatch. The shipped plain 100% behavior also remains admitted; its 48 pt sample is +1.5 CSS px and remains an open calibration issue. This gate does not change the source file or export measurement.
 
 ## 3. Supported Editing & Interactions
 

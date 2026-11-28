@@ -323,7 +323,8 @@ it('preserves master admission for explicit 100% spacing with any stored reducti
   expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({ status: 'ready' });
 });
 
-it('refuses native shrink directly when the source line spacing is non-finite', () => {
+it('refuses native shrink whose source proof has non-finite line spacing', () => {
+  // Core proof validation rejects this source value before the renderer display guard runs.
   const document = nativeTextDocument('shrink', { fontScale: 100000, lnSpcReduction: 0 });
   const object = document.slides[0].objects[0];
   object.text.paragraphs[0].style = { lineSpacing: Infinity };
@@ -331,6 +332,16 @@ it('refuses native shrink directly when the source line spacing is non-finite', 
   object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
     theme: document.themes[0], colorMap, document, slide: document.slides[0],
   });
+
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-proof-invalid', objectId: object.id }],
+  });
+});
+
+it('refuses default-spacing native shrink when stored reduction produces zero spacing', () => {
+  const document = nativeTextDocument('shrink', { fontScale: 100000, lnSpcReduction: 100000 });
+  const object = document.slides[0].objects[0];
 
   expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
     status: 'unsupported', reason: 'unresolved-appearance',
