@@ -87,6 +87,15 @@ describe('ensureAssets', () => {
     expect(env.fontEpoch).toBe(1);
   });
 
+  it('uses a shared availability signal instead of fonts.check when provided', async () => {
+    const env = createPaintEnv();
+    const fonts = { check: () => false, load: vi.fn(async () => [{ family: 'Calibri' }]) };
+    const fontAvailability = { isAvailable: () => true };
+    const sc = scene([{ id: 't', type: 'text', ...box, content: 'x', color: '#000000', fontFamily: 'Calibri' }]);
+    expect(await ensureAssets(sc, env, { fonts, fontAvailability })).toBe(false);
+    expect(fonts.load).not.toHaveBeenCalled();
+  });
+
   it('leaves the epoch alone when nothing new loaded (a system font, or no font API at all)', async () => {
     const env = createPaintEnv();
     const sc = scene([{ id: 't', type: 'text', ...box, content: 'x', color: '#000000' }]);
