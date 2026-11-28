@@ -1,6 +1,6 @@
 # PowerPoint compatibility & feature parity — design review
 
-> Status: review + phase 1, shipped in #112 (matrix re-audited against `master` after merge). Companion to `SPEC.md` (per-feature
+> Status: review + phase 1, shipped in #112, with the experimental Konva canvas parity re-audited at K3c-R3 head `2a50307`. Companion to `SPEC.md` (per-feature
 > status tags), `PRODUCT-SPEC.md` (vision/UX) and `design.md` (tokens).
 
 ## 1. Verdict
@@ -99,7 +99,7 @@ remaining gaps cluster in four places, which phase 2–3 target:
 | | Bullets & levels | 🟡 list layout | 🟡 as text glyphs (bullets + auto-numbering per level) | 🟡 | #8 |
 | | Alignment H / V | 🟢 | 🟢 | 🟢 | — |
 | | Line spacing | 🟢 | 🟢 | 🟢 | — |
-| | Autofit / insets / columns | 🔴 | 🟡 fontScale applied | 🔴 | #13 |
+| | Autofit / insets / columns | 🟡 native canvas display of stored shrink/resize; no authored autofit UI or columns | 🟡 stored `fontScale`/`lnSpcReduction` retained for native display; columns absent | 🔴 export unchanged | authoring/export parity; columns |
 | | Hyperlinks | 🔴 | 🟡 plain text / inert shape (warned) | 🔴 | P2 |
 | **Shapes** | Preset shapes | 🟡 11 presets | 🟡 common presets mapped (rounded outlines kept), rest → rect (warned) | 🟢 | more presets |
 | | Fill solid / gradient / transparency | 🟢 | 🟢 every colour form; fill and outline alpha kept separately; radial and per-stop alpha approximated (warned) | 🟢 real linear `gradFill` (A4) | — |
@@ -189,3 +189,27 @@ Animation playback + export (`p:timing`), comments (the ⚪ collaboration item),
   writes, so an import can never produce a deck the editor couldn't.
 - **Canvas == export.** Any new visual property lands on the renderer, the export and the gate
   together (the existing single-sourcing convention).
+
+## 6. K3/K3d experimental canvas parity
+
+The experimental `surface="konva"` path admits a measured native PowerPoint subset; SVG remains the default and whole-slide fallback. Proof-backed slides only: a missing, stale, malformed, or unsupported native appearance refuses the complete slide with a fixed diagnostic. Geometry and export-writing rules are unchanged.
+
+### Native autofit display
+
+- `a:spAutoFit` paints the stored `a:xfrm` frame; it is not resized or re-measured on open.
+- `a:normAutofit` paints the stored `fontScale` and `lnSpcReduction` exactly. No remeasurement or OfficeView autofit pass runs. Canonical `bodyLayout.fit` stores only present attributes; absent attributes resolve to ECMA-376 defaults at display/proof time only.
+- The schema-default policy is **shipped** after PowerPoint evidence. `reports/KONVA-3C-R3-codex.md` records high-resolution PNG comparisons: cases 2/5/6/8 have matching line counts, ≤1 device-px line-start and bound differences, dilated ink mismatch `0.1309% / 0.0197% / 0.3909% / 0.0197%`, and outside-text differences below `0.05%`.
+- Native shrink font sizes and paragraph `endProperties` snap to the nearest whole point, ties up; `17.5 → 18`, `13.5 → 14`. Sizes below 1 pt fail closed. Export shrink measurement remains fractional. See `reports/K3D-C-native-codex.md`.
+- Line-spacing formula changes and paragraph before/after scaling remain out of scope: admitted native shrink uses 100% spacing where subtractive and multiplicative reduction agree, and non-default metrics are refused.
+
+### Native text fidelity gates
+
+- **Real font availability (#169):** native text falls back to SVG when the resolved face is not measurably available. `document.fonts.check` alone is not trusted. Authored text is unaffected.
+- **PowerPoint line model (#170):** native PPTX display uses OfficeView's measured PowerPoint baseline model; authored text and export measurement keep their existing model. Same-Calibri captures place first-ink rows within +1 device px on the affected cases.
+- **Whole-point snap (#171):** see above; the snap applies to runs and empty-paragraph end properties, with no unproven clamp.
+
+### Corpus status
+
+All 65 K2a package hashes were verified. The strict/default histograms are **28/100 slides across 20 packages** and **44/100 across 24 packages**; the shipped policy uses the default-resolved result. ODP remains **0/60** (`unsupported-format`). Browser font availability reduces node admission further: **2/100** ready with Chromium default fonts and **26/100** with the diagnostic Office Calibri loaded (the remaining 4 are Aptos-only refusals). Evidence is in coordinator fixtures `fixtures/konva-3c-r3/rebased-403ea7a/` and reports `K3D-B-pi.md`, `K3D-A1-sync-report.md`, and `K3D-C-native-codex.md`.
+
+Not verified: Windows PowerPoint, Windows/Linux font sets, fonts other than Calibri, or per-glyph coverage. The font gate proves face availability only; tiny native sizes that round below 1 pt are refused and tracked as a follow-up.
