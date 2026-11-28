@@ -31,6 +31,8 @@ export default function KonvaSurfaceShell({
   zoom = 100,
   readOnly = false,
   canMove,
+  canRotate,
+  isTransformingRef,
   fontEpochBump = 0,
   cancelToken = 0,
   invalidateGestureRef,
@@ -79,6 +81,8 @@ export default function KonvaSurfaceShell({
             zoom={zoom}
             readOnly={readOnly}
             canMove={canMove}
+            canRotate={canRotate}
+            isTransformingRef={isTransformingRef}
             fontEpochBump={fontEpochBump}
             cancelToken={cancelToken}
             invalidateGestureRef={invalidateGestureRef}

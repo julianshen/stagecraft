@@ -1,11 +1,27 @@
 import { Component, useEffect, useRef } from 'react';
-import { Stage, Layer, Rect, Shape } from 'react-konva/es/ReactKonvaCore';
+import { Stage, Layer, Rect, Shape, Transformer } from 'react-konva/es/ReactKonvaCore';
 import 'konva/lib/Core.js';
 import 'konva/lib/DragAndDrop.js';
 import 'konva/lib/shapes/Rect.js';
+import 'konva/lib/shapes/Transformer.js';
 import { createCanonicalPaintEnvironment, paintCanonicalNode } from '@stagecraft/renderer/canonical';
+import {
+  EMU_PER_PX,
+  MIN_OBJECT_SIZE_PX,
+  ROTATION_SNAPS_15,
+  clampTransformBox,
+  geometriesEqual,
+  normalizeTransformGeometry,
+} from './transformGeometry.js';
 
-const EMU_PER_PX = 9525;
+const frameBox = frame => ({
+  centerX: frame.x + frame.width / 2,
+  centerY: frame.y + frame.height / 2,
+  width: frame.width,
+  height: frame.height,
+  rotation: frame.rotation,
+});
+const isCommitted = result => result === true || (typeof result === 'object' && result !== null && result.ok === true);
 
 class GestureUnmountGuard extends Component {
   componentWillUnmount() {
@@ -25,6 +41,8 @@ export default function KonvaStage({
   zoom = 100,
   readOnly = false,
   canMove,
+  canRotate,
+  isTransformingRef,
   fontEpochBump = 0,
   cancelToken = 0,
   invalidateGestureRef,
@@ -37,8 +55,23 @@ export default function KonvaStage({
   const gestureRef = useRef(null);
   const envRef = useRef(null);
   const stageRef = useRef(null);
+  const transformerRef = useRef(null);
+  const shapeRefs = useRef(new Map());
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
+
+  function setTransforming(active) {
+    if (isTransformingRef) isTransformingRef.current = active;
+  }
+
+  const shiftSnapsRef = useRef(false);
+  function applyShiftSnaps(shiftKey) {
+    const tr = transformerRef.current;
+    if (!tr || shiftSnapsRef.current === shiftKey) return;
+    shiftSnapsRef.current = shiftKey;
+    tr.rotationSnaps(shiftKey ? ROTATION_SNAPS_15 : []);
+    tr.rotationSnapTolerance(shiftKey ? 7.5 : 0);
+  }
   const lastContextRef = useRef(null);
   const nextContext = [ownerKey, policyKey, revision, scene.slideId, readOnly, zoom];
   if (
@@ -79,6 +112,7 @@ export default function KonvaStage({
 
   function invalidateGesture() {
     gestureRef.current = null;
+    setTransforming(false);
   }
   if (invalidateGestureRef) {
     invalidateGestureRef.current = invalidateGesture;
@@ -87,31 +121,54 @@ export default function KonvaStage({
     cancelGestureRef.current = () => cancelGesture({ restoreStart: false });
   }
 
+  function restoreNodeBox(node, { centerX, centerY, width, height, rotation }) {
+    if (width !== undefined && height !== undefined) {
+      node.size({ width, height });
+      node.offset({ x: width / 2, y: height / 2 });
+    }
+    node.position({ x: centerX, y: centerY });
+    if (rotation !== undefined) {
+      node.rotation(rotation);
+    }
+    node.scale({ x: 1, y: 1 });
+  }
+
+  /** Reset a node to a canonical box (when given) and repaint it together with the Transformer. */
+  function resetNode(node, box) {
+    if (box) {
+      restoreNodeBox(node, box);
+    } else {
+      node.scale({ x: 1, y: 1 });
+    }
+    const tr = transformerRef.current;
+    tr?.forceUpdate?.();
+    node.getLayer()?.batchDraw();
+    tr?.getLayer()?.batchDraw();
+  }
+
   function cancelGesture({ restoreStart = true } = {}) {
     const g = gestureRef.current;
     if (!g) return;
     gestureRef.current = null;
+    setTransforming(false);
+    const tr = transformerRef.current;
+    if (tr?.isTransforming?.()) {
+      tr.stopTransform();
+    }
     const node = g.konvaNode;
     if (!node || !node.getStage()) return;
     if (node.isDragging()) {
       node.stopDrag();
     }
     if (restoreStart) {
-      node.position({ x: g.startCenterX, y: g.startCenterY });
+      resetNode(node, g.startBox ?? { centerX: g.startCenterX, centerY: g.startCenterY });
     } else {
       const latest = sceneRef.current?.nodes.find(n => n.id === g.id);
-      if (latest) {
-        node.position({
-          x: latest.frame.x + latest.frame.width / 2,
-          y: latest.frame.y + latest.frame.height / 2,
-        });
-      }
+      resetNode(node, latest ? frameBox(latest.frame) : null);
     }
-    node.scale({ x: 1, y: 1 });
-    node.getLayer()?.batchDraw();
     if (g.stale) {
       try {
-        onError?.(new Error('Move could not be applied.'));
+        onError?.(new Error(g.kind === 'transform' ? 'Transform could not be applied.' : 'Move could not be applied.'));
       } catch {
         return;
       }
@@ -138,13 +195,24 @@ export default function KonvaStage({
     const onKeyDown = event => {
       if (event.key === 'Escape') {
         cancelGesture();
+        return;
+      }
+      if (event.key === 'Shift') {
+        applyShiftSnaps(true);
+      }
+    };
+    const onKeyUp = event => {
+      if (event.key === 'Shift') {
+        applyShiftSnaps(false);
       }
     };
     window.addEventListener('blur', onBlur);
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
     return () => {
       window.removeEventListener('blur', onBlur);
       window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
     };
   }, []);
 
@@ -170,7 +238,41 @@ export default function KonvaStage({
     }
   }
 
+  function isRotatable(node) {
+    if (!isMovable(node)) return false;
+    if (typeof canRotate !== 'function') return true;
+    try {
+      return Boolean(canRotate(node));
+    } catch (err) {
+      onError?.(err);
+      return false;
+    }
+  }
+
   const selectedNode = scene.nodes.find(n => n.id === selectionId) ?? null;
+  const selectedMovable = selectedNode ? isMovable(selectedNode) : false;
+  const selectedRotatable = selectedNode ? isRotatable(selectedNode) : false;
+
+  useEffect(() => {
+    const tr = transformerRef.current;
+    if (!tr) return undefined;
+    if (gestureRef.current?.kind === 'transform') {
+      cancelGesture({ restoreStart: true });
+    } else if (tr.isTransforming()) {
+      tr.stopTransform();
+    }
+    const target = selectedMovable && selectedNode ? shapeRefs.current.get(selectedNode.id) : null;
+    tr.nodes(target ? [target] : []);
+    tr.getLayer()?.batchDraw();
+    return () => {
+      if (gestureRef.current?.kind === 'transform') {
+        cancelGesture({ restoreStart: true });
+      } else if (tr.isTransforming()) {
+        tr.stopTransform();
+      }
+      tr.nodes([]);
+    };
+  }, [selectedMovable, selectedNode?.id, scene]);
 
   return (
     <GestureUnmountGuard onUnmount={invalidateGesture}>
@@ -198,6 +300,10 @@ export default function KonvaStage({
             return (
               <Shape
                 key={node.id}
+                ref={instance => {
+                  if (instance) shapeRefs.current.set(node.id, instance);
+                  else shapeRefs.current.delete(node.id);
+                }}
                 name={node.id}
                 x={centerX}
                 y={centerY}
@@ -230,7 +336,9 @@ export default function KonvaStage({
                 }}
                 onDragStart={e => {
                   if (
-                    (e.evt?.buttons !== undefined && (e.evt.buttons & 1) === 0)
+                    gestureRef.current !== null
+                    || transformerRef.current?.isTransforming?.()
+                    || (e.evt?.buttons !== undefined && (e.evt.buttons & 1) === 0)
                     || (e.evt?.touches && e.evt.touches.length > 1)
                     || !isMovable(node)
                   ) {
@@ -304,7 +412,7 @@ export default function KonvaStage({
                       geometry: { ...g.geometry, x: nextX, y: nextY },
                       expectedRevision: g.revision,
                     });
-                    committed = result === true || (typeof result === 'object' && result !== null && result.ok === true);
+                    committed = isCommitted(result);
                   } catch {
                     committed = false;
                   }
@@ -344,7 +452,7 @@ export default function KonvaStage({
             );
           })}
         </Layer>
-        <Layer listening={false}>
+        <Layer listening={selectedMovable}>
           {selectedNode && (
             <Rect
               x={selectedNode.frame.x + selectedNode.frame.width / 2}
@@ -359,6 +467,130 @@ export default function KonvaStage({
               listening={false}
             />
           )}
+          <Transformer
+            ref={transformerRef}
+            flipEnabled={false}
+            keepRatio={false}
+            rotateEnabled={selectedRotatable}
+            ignoreStroke
+            borderStroke="#2563eb"
+            anchorStroke="#2563eb"
+            anchorFill="#ffffff"
+            anchorSize={8}
+            boundBoxFunc={(oldBox, newBox) => clampTransformBox(oldBox, newBox, MIN_OBJECT_SIZE_PX * scale)}
+            onTransformStart={e => {
+              const target = e.target;
+              const node = selectedNode;
+              if (
+                !node
+                || !selectedMovable
+                || gestureRef.current !== null
+                || target?.isDragging?.()
+                || (e.evt?.buttons !== undefined && (e.evt.buttons & 1) === 0)
+                || e.evt?.altKey
+              ) {
+                transformerRef.current?.stopTransform();
+                if (node && !target?.isDragging?.()) restoreNodeBox(target, frameBox(node.frame));
+                return;
+              }
+              applyShiftSnaps(Boolean(e.evt?.shiftKey));
+              setTransforming(true);
+              gestureRef.current = {
+                kind: 'transform',
+                id: node.id,
+                slideId: scene.slideId,
+                ownerKey,
+                policyKey,
+                revision,
+                geometry: { ...node.geometry },
+                startBox: frameBox(node.frame),
+                konvaNode: target,
+              };
+            }}
+            onTransform={e => {
+              if (e.evt?.altKey) {
+                cancelGesture({ restoreStart: true });
+                return;
+              }
+              if (e.evt) {
+                applyShiftSnaps(Boolean(e.evt.shiftKey));
+              }
+            }}
+            onTransformEnd={e => {
+              const g = gestureRef.current;
+              if (g?.kind !== 'transform') {
+                return;
+              }
+              gestureRef.current = null;
+              setTransforming(false);
+              const target = e.target;
+              if (!target?.getStage?.()) {
+                return;
+              }
+              const failTransform = (message = 'Transform could not be applied.') => {
+                resetNode(target, g.startBox);
+                try {
+                  onError?.(new Error(message));
+                } catch {
+                  return;
+                }
+              };
+              const current = sceneRef.current?.nodes.find(n => n.id === g.id);
+              if (
+                g.stale
+                || !current
+                || g.id !== selectionId
+                || g.ownerKey !== ownerKey
+                || g.policyKey !== policyKey
+                || g.slideId !== scene.slideId
+                || g.revision !== revision
+                || !isMovable(current)
+              ) {
+                failTransform();
+                return;
+              }
+              const normalized = normalizeTransformGeometry({
+                centerX: target.x(),
+                centerY: target.y(),
+                widthPx: target.width(),
+                heightPx: target.height(),
+                scaleX: target.scaleX(),
+                scaleY: target.scaleY(),
+                rotation: target.rotation(),
+                startGeometry: g.geometry,
+              });
+              if (!normalized) {
+                failTransform('Invalid geometry coordinates.');
+                return;
+              }
+              if (geometriesEqual(normalized, g.geometry)) {
+                resetNode(target, g.startBox);
+                return;
+              }
+              resetNode(target, {
+                centerX: (normalized.x + normalized.width / 2) / EMU_PER_PX,
+                centerY: (normalized.y + normalized.height / 2) / EMU_PER_PX,
+                width: normalized.width / EMU_PER_PX,
+                height: normalized.height / EMU_PER_PX,
+                rotation: normalized.rotation ?? 0,
+              });
+              let committed = false;
+              try {
+                const result = onMove?.({
+                  slideId: g.slideId,
+                  objectId: g.id,
+                  geometry: normalized,
+                  expectedRevision: g.revision,
+                });
+                committed = isCommitted(result);
+              } catch {
+                committed = false;
+              }
+              if (!committed) {
+                failTransform();
+              }
+            }}
+          />
         </Layer>
       </Stage>
     </GestureUnmountGuard>

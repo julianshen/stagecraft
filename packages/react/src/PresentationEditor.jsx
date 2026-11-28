@@ -996,6 +996,7 @@ export function PresentationCanvas({
     [surfaceNotice, setSurfaceNotice] = useState(''),
     konvaGestureInvalidateRef = useRef(null),
     konvaCancelGestureRef = useRef(null),
+    konvaTransformingRef = useRef(false),
     lastOutcomeRef = useRef(null);
 
   const canMoveGeometry = ui.can('object-geometry');
@@ -1035,19 +1036,20 @@ export function PresentationCanvas({
     return buildCanonicalScene(ui.snapshot.document, ui.activeSlide.id);
   }, [wantsKonva, ui.canonical, isOdpDoc, ui.snapshot.document, ui.activeSlide]);
 
+  const lastEmbeddingTransformRef = useRef(null);
   const checkEmbeddingTransform = rootEl => {
     if (!wantsKonva || !rootEl || typeof getComputedStyle !== 'function') {
+      lastEmbeddingTransformRef.current = null;
       setOuterTransformUnsupported(prev => (prev ? false : prev));
       return;
     }
-    let unsupported = false;
-    for (let el = rootEl; el && el.nodeType === 1; el = el.parentElement) {
-      if (isUnsupportedCssTransform(getComputedStyle(el).transform)) {
-        unsupported = true;
-        break;
-      }
-    }
-    if (unsupported) {
+    const transforms = [];
+    for (let el = rootEl; el && el.nodeType === 1; el = el.parentElement) transforms.push(getComputedStyle(el).transform);
+    const unsupported = transforms.some(isUnsupportedCssTransform);
+    const signature = transforms.join('|');
+    const changed = lastEmbeddingTransformRef.current !== null && lastEmbeddingTransformRef.current !== signature;
+    lastEmbeddingTransformRef.current = signature;
+    if (unsupported || changed) {
       konvaCancelGestureRef.current?.();
     }
     setOuterTransformUnsupported(prev => (prev === unsupported ? prev : unsupported));
@@ -1365,7 +1367,13 @@ export function PresentationCanvas({
   }
   function keyboard(event) {
     if (event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return;
-    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z') {
+    const undoKey = (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z';
+    // While a Konva transform is active the stage owns Escape; ignore all editor shortcuts (including Delete/Backspace/Arrow/undo).
+    if (konvaTransformingRef.current) {
+      event.preventDefault();
+      return;
+    }
+    if (undoKey) {
       event.preventDefault();
       event.shiftKey ? ui.redo() : ui.undo();
       return;
@@ -1457,6 +1465,8 @@ export function PresentationCanvas({
           const object = ui.activeSlide?.objects.find(o => o.id === node.id);
           return ui.can('object-geometry') && geometryEligible(object);
         }}
+        canRotate={() => !isOdpDoc}
+        isTransformingRef={konvaTransformingRef}
         fontEpochBump={fontState.epoch}
         cancelToken={konvaCancelToken}
         invalidateGestureRef={konvaGestureInvalidateRef}
