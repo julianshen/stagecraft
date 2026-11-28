@@ -1050,4 +1050,57 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     expect(editor.getSnapshot().document.slides[0].objects[0].geometry.x).toBeGreaterThan(startX);
     expect(screen.queryAllByRole('alert')).toEqual([]);
   });
+
+  it('preserves sub-1pt (10000 EMU) height on handle click, rotation, and width-only resize', async () => {
+    const sub1ptRect = makeRect('r1', 100, 100, 200, 1, 0);
+    sub1ptRect.geometry.height = 10000;
+    const baseEditor = makeEditor([sub1ptRect]);
+    let dispatchCount = 0;
+    const editor = {
+      ...baseEditor,
+      dispatch: (...args) => { dispatchCount += 1; return baseEditor.dispatch(...args); },
+    };
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    const canvas = await waitForKonvaCanvas(container);
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const stage = getStageForContainer(Konva, container);
+    fireEvent.click(within(container).getByRole('tab', { name: 'View' }));
+    const zoomInput = within(container).getByLabelText(/Zoom/i);
+    fireEvent.change(zoomInput, { target: { value: '200' } });
+    fireEvent.blur(zoomInput);
+    await waitFor(() => expect(Math.round(stage.width())).toBe(1920));
+
+    selectObject(container, 'r1');
+    await waitFor(() => expect(stage.findOne('Transformer').nodes().length).toBe(1));
+    const tr = stage.findOne('Transformer');
+    const startY = editor.getSnapshot().document.slides[0].objects[0].geometry.y;
+
+    // 1. Handle press+release -> 0 commands
+    await dragAnchor(canvas, tr, 'bottom-right', 0, 0);
+    expect(dispatchCount).toBe(0);
+    expect(editor.getSnapshot().document.slides[0].objects[0].geometry.height).toBe(10000);
+
+    // 2. Rotate -> rotation-only commit with height=10000 and y unchanged
+    await dragAnchor(canvas, tr, 'rotater', 38, 10);
+    await waitFor(() => expect(editor.getSnapshot().revision).toBe(1));
+    const afterRotate = editor.getSnapshot().document.slides[0].objects[0].geometry;
+    expect(afterRotate.height).toBe(10000);
+    expect(afterRotate.y).toBe(startY);
+    expect(afterRotate.rotation).not.toBe(0);
+
+    // 3. Undo rotation back to 0deg, then width-only resize keeps height=10000
+    act(() => {
+      editor.undo();
+    });
+    await waitFor(() => expect(editor.getSnapshot().document.slides[0].objects[0].geometry.rotation).toBe(0));
+    await dragAnchor(canvas, tr, 'bottom-right', 40, 0);
+    await waitFor(() => expect(editor.getSnapshot().revision).toBe(3));
+    const afterWidth = editor.getSnapshot().document.slides[0].objects[0].geometry;
+    expect(afterWidth.height).toBe(10000);
+    expect(afterWidth.width).toBeGreaterThan(200 * PT);
+  });
 });

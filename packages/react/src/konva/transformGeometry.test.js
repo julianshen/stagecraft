@@ -196,4 +196,43 @@ describe('KONVA-4 transformGeometry helpers', () => {
     const aspectTooSmall = { x: 10, y: 20, width: 3, height: 1.5, rotation: 0 };
     expect(clampTransformBox(aspectOld, aspectTooSmall, 2)).toEqual(aspectOld);
   });
+
+  it('preserves sub-1pt unchanged dimensions on no-op, rotate, and other-axis resize in normalizeTransformGeometry and clampTransformBox', () => {
+    const sub1pt = { x: 100000, y: 200000, width: 127000, height: 6350, rotation: 0 };
+    const cx = (sub1pt.x + sub1pt.width / 2) / EMU_PER_PX;
+    const cy = (sub1pt.y + sub1pt.height / 2) / EMU_PER_PX;
+    const wPx = sub1pt.width / EMU_PER_PX;
+    const hPx = sub1pt.height / EMU_PER_PX;
+
+    // No-op preserves 6350 height and y
+    const noOp = normalizeTransformGeometry({
+      centerX: cx, centerY: cy, widthPx: wPx, heightPx: hPx, scaleX: 1, scaleY: 1, rotation: 0, startGeometry: sub1pt,
+    });
+    expect(noOp).toEqual(sub1pt);
+    expect(geometriesEqual(noOp, sub1pt)).toBe(true);
+
+    // Rotation-only preserves 6350 height and y
+    const rotated = normalizeTransformGeometry({
+      centerX: cx, centerY: cy, widthPx: wPx, heightPx: hPx, scaleX: 1, scaleY: 1, rotation: 45, startGeometry: sub1pt,
+    });
+    expect(rotated.height).toBe(6350);
+    expect(rotated.y).toBe(200000);
+    expect(rotated.rotation).toBe(45);
+
+    // Width-only resize preserves 6350 height and y
+    const resizedWidth = normalizeTransformGeometry({
+      centerX: cx + wPx / 2, centerY: cy, widthPx: wPx, heightPx: hPx, scaleX: 2, scaleY: 1, rotation: 0, startGeometry: sub1pt,
+    });
+    expect(resizedWidth.width).toBe(254000);
+    expect(resizedWidth.height).toBe(6350);
+    expect(resizedWidth.y).toBe(200000);
+
+    // clampTransformBox lets unchanged sub-1pt axis pass through on rotate and other-axis resize
+    const oldSubBox = { x: 10, y: 20, width: 50, height: 0.5, rotation: 0 };
+    const rotatedSubBox = { x: 12, y: 22, width: 50, height: 0.5, rotation: 0.5 };
+    expect(clampTransformBox(oldSubBox, rotatedSubBox, 2)).toEqual(rotatedSubBox);
+
+    const widthResizedSubBox = { x: 10, y: 20, width: 80, height: 0.5, rotation: 0 };
+    expect(clampTransformBox(oldSubBox, widthResizedSubBox, 2)).toEqual(widthResizedSubBox);
+  });
 });
