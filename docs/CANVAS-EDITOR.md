@@ -251,3 +251,14 @@ Line-spacing and paragraph before/after changes remain out of scope for native s
 All 65 K2a package hashes were verified. The evidence is described in PRs #167–#172: native proof admission, stored autofit display, the font gate, the PowerPoint text line model, whole-point snapping, and the approved schema-default flip. The R3 captures were made in PowerPoint 16.115 (open/render, no text edits), exported as 1280×720 PNGs, and compared with the same bundled Calibri face in Chromium; the capture PNGs, diff PNGs and histogram JSON are kept outside the repository.
 
 Not verified: Windows PowerPoint, Windows/Linux font sets, fonts other than Calibri, and per-glyph coverage (the font probe establishes face availability, not glyph coverage). Tiny native sizes that round below 1 pt are refused and tracked as a follow-up.
+
+---
+
+## 12. KONVA-4 resize and rotate (experimental)
+
+On the opt-in Konva surface (`surface="konva"`), single-selected eligible `text` and `shape` objects (`geometryEligible` and `object-geometry` capability) expose a Konva `Transformer` in the overlay layer (2 layers total):
+
+- **Resize:** Built-in Transformer local-axis resize preserves the opposite anchor (including for rotated objects), clamps width and height to `>= 1 pt` (`12,700 EMU`) via `boundBoxFunc` with `flipEnabled={false}`, locks aspect ratio on `Shift` + corner handles (edge handles never lock), and cancels `Alt+drag` centered scaling so the opposite anchor is never shifted silently.
+- **Rotate:** Free rotation rounds to `0.01°` and normalizes to `[0, 360)`; `Shift` snaps to `15°` increments; `rotation: 0` clears visual rotation; ODP objects/documents disable the rotater handle.
+- **One command / K3c fallback:** Each completed gesture resets node scale to `1` and dispatches at most one revisioned `presentation.setGeometry` command (no-ops dispatch nothing). Width/height edits on K3c fit-bound native objects invalidate the proof and fall back to SVG with `unresolved-appearance`; rotation-only edits and non-fit native text resizes remain on Konva.
+- **Accepted SVG-guard asymmetry:** The legacy SVG surface still refuses pointer resizing of rotated objects (retaining inspector-only geometry edits for rotated objects). Konva allows pointer resizing of rotated `text` and `shape` objects directly on canvas.
