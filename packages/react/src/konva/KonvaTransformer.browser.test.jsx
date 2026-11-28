@@ -140,15 +140,22 @@ async function waitForKonvaCanvas(container) {
 }
 
 function getStageForContainer(Konva, container) {
-  const content = container.querySelector('.stagecraft-konva-paper .konvajs-content');
+  const content = container.querySelector('.konvajs-content');
   return Konva.stages.find(s => s.content === content) ?? null;
 }
 
-function dragAnchor(canvas, transformer, anchorName, dx, dy, { shiftKey = false, altKey = false } = {}) {
-  const anchor = transformer.findOne(`.${anchorName}`);
-  expect(anchor).toBeTruthy();
+async function dragAnchor(canvas, transformer, anchorName, dx, dy, { shiftKey = false, altKey = false } = {}) {
+  const stage = transformer.getStage();
+  let anchor;
+  let pos;
+  await waitFor(() => {
+    anchor = transformer.findOne(`.${anchorName}`);
+    if (!anchor) throw new Error(`Anchor ${anchorName} not found`);
+    pos = anchor.getAbsolutePosition();
+    const hit = stage.getIntersection(pos);
+    if (hit !== anchor) throw new Error(`Hit=${hit?.className}:${hit?.name()} expected=${anchorName} at ${pos.x},${pos.y}`);
+  }, { timeout: 5000 });
   const rect = canvas.getBoundingClientRect();
-  const pos = anchor.getAbsolutePosition();
   const startX = rect.left + pos.x;
   const startY = rect.top + pos.y;
   act(() => {
@@ -259,7 +266,7 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     const startGeom = structuredClone(editor.getSnapshot().document.slides[0].objects[0].geometry);
 
     // Bottom-right drag (+40px, +20px) keeps top-left fixed
-    dragAnchor(canvas, tr, 'bottom-right', 40, 20);
+    await dragAnchor(canvas, tr, 'bottom-right', 40, 20);
     await waitFor(() => {
       expect(editor.getSnapshot().revision).toBe(1);
     });
@@ -272,7 +279,7 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     expect(stage.findOne('.r1').scaleY()).toBe(1);
 
     // Dragging past top-left anchor clamps at >= 1pt (12700 EMU) and never flips
-    dragAnchor(canvas, tr, 'bottom-right', -1000, -1000);
+    await dragAnchor(canvas, tr, 'bottom-right', -1000, -1000);
     await waitFor(() => {
       expect(editor.getSnapshot().revision).toBe(2);
     });
@@ -295,8 +302,8 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     expect(editor.getSnapshot().document.slides[0].objects[0].geometry).toEqual(afterCorner);
   });
 
-  it('resizes rotated objects along local axes while preserving the opposite anchor in slide coordinates', async () => {
-    const editor = makeEditor([makeRect('r1', 150, 150, 200, 100, 30)]);
+  it.each([30, 90])('resizes %s-degree rotated objects along local axes while preserving the opposite anchor in slide coordinates', async angle => {
+    const editor = makeEditor([makeRect('r1', 150, 150, 200, 100, angle)]);
     const { container } = render(
       <EditorProvider editor={editor}>
         <PresentationEditor surface="konva" />
@@ -312,13 +319,13 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     const before = structuredClone(editor.getSnapshot().document.slides[0].objects[0].geometry);
     const beforeCorners = cornerSlidePoints(before);
 
-    dragAnchor(canvas, tr, 'bottom-right', 45, 25);
+    await dragAnchor(canvas, tr, 'bottom-right', 45, 25);
     await waitFor(() => {
       expect(editor.getSnapshot().revision).toBe(1);
     });
     const after = editor.getSnapshot().document.slides[0].objects[0].geometry;
     const afterCorners = cornerSlidePoints(after);
-    expect(after.rotation).toBe(30);
+    expect(after.rotation).toBe(angle);
     // Opposite anchor (top-left) stays fixed within 1 EMU rounding
     expect(Math.abs(afterCorners.tl.x - beforeCorners.tl.x)).toBeLessThanOrEqual(PX);
     expect(Math.abs(afterCorners.tl.y - beforeCorners.tl.y)).toBeLessThanOrEqual(PX);
@@ -341,12 +348,12 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     const startGeom = structuredClone(editor.getSnapshot().document.slides[0].objects[0].geometry);
 
     // Alt + corner drag must cancel cleanly (0 commands, centeredScaling neutralized)
-    dragAnchor(canvas, tr, 'bottom-right', 40, 20, { altKey: true });
+    await dragAnchor(canvas, tr, 'bottom-right', 40, 20, { altKey: true });
     expect(editor.getSnapshot().revision).toBe(0);
     expect(editor.getSnapshot().document.slides[0].objects[0].geometry).toEqual(startGeom);
 
     // Shift + corner keeps 2:1 aspect ratio
-    dragAnchor(canvas, tr, 'bottom-right', 60, 5, { shiftKey: true });
+    await dragAnchor(canvas, tr, 'bottom-right', 60, 5, { shiftKey: true });
     await waitFor(() => {
       expect(editor.getSnapshot().revision).toBe(1);
     });
@@ -355,7 +362,7 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
 
     // Shift + edge does not lock aspect
     const beforeEdge = structuredClone(afterShiftCorner);
-    dragAnchor(canvas, tr, 'middle-right', 40, 0, { shiftKey: true });
+    await dragAnchor(canvas, tr, 'middle-right', 40, 0, { shiftKey: true });
     await waitFor(() => {
       expect(editor.getSnapshot().revision).toBe(2);
     });
@@ -384,7 +391,7 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true, bubbles: true }));
     });
-    dragAnchor(canvas, tr, 'rotater', 38, 10, { shiftKey: true });
+    await dragAnchor(canvas, tr, 'rotater', 38, 10, { shiftKey: true });
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', shiftKey: false, bubbles: true }));
     });
@@ -397,6 +404,16 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     expect(afterSnap.rotation).toBeLessThan(360);
     expect(afterSnap.width).toBe(startGeom.width);
     expect(afterSnap.height).toBe(startGeom.height);
+
+    // Free rotation (without Shift) rounds to 0.01 degrees and normalizes to [0, 360)
+    await dragAnchor(canvas, tr, 'rotater', 20, 12, { shiftKey: false });
+    await waitFor(() => {
+      expect(editor.getSnapshot().revision).toBe(2);
+    });
+    const afterFree = editor.getSnapshot().document.slides[0].objects[0].geometry;
+    expect(afterFree.rotation).toBeGreaterThanOrEqual(0);
+    expect(afterFree.rotation).toBeLessThan(360);
+    expect(Math.round(afterFree.rotation * 100) / 100).toBe(afterFree.rotation);
     unmount();
 
     // ODP document disables rotation handle
@@ -447,9 +464,15 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     selectObject(container, 'r1');
     await waitFor(() => expect(stage.findOne('Transformer').nodes().length).toBe(1));
     const tr = stage.findOne('Transformer');
-    const anchor = tr.findOne('.bottom-right');
+    let anchor;
+    let pos;
+    await waitFor(() => {
+      anchor = tr.findOne('.bottom-right');
+      if (!anchor) throw new Error('bottom-right not found');
+      pos = anchor.getAbsolutePosition();
+      if (stage.getIntersection(pos) !== anchor) throw new Error('hit not ready');
+    });
     const rect = canvas.getBoundingClientRect();
-    const pos = anchor.getAbsolutePosition();
     const startX = rect.left + pos.x;
     const startY = rect.top + pos.y;
 
@@ -506,7 +529,7 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     const fitStage = getStageForContainer(Konva, fitView.container);
     selectObject(fitView.container, 'n1');
     await waitFor(() => expect(fitStage.findOne('Transformer').nodes().length).toBe(1));
-    dragAnchor(fitCanvas, fitStage.findOne('Transformer'), 'middle-right', 40, 0);
+    await dragAnchor(fitCanvas, fitStage.findOne('Transformer'), 'middle-right', 40, 0);
     await waitFor(() => {
       expect(onSurfaceChange).toHaveBeenLastCalledWith(
         expect.objectContaining({ active: 'svg', status: 'fallback', reason: 'unresolved-appearance' }),
@@ -514,6 +537,27 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     });
     expect(fitView.container.querySelector('.stagecraft-konva-fallback-bar p[role="status"]')).toBeTruthy();
     fitView.unmount();
+
+    // 1b. K3c fit-bound rotation-only -> stays on Konva
+    const rotEditor = createEditor({
+      document: makeNativeTextDoc({ autofit: 'shrink', fit: { fontScale: 85000, lnSpcReduction: 0 } }),
+      validateDocument,
+      plugins: [documentPlugin, presentationPlugin],
+    });
+    const onRotSurface = vi.fn();
+    const rotView = render(
+      <EditorProvider editor={rotEditor}>
+        <PresentationEditor surface="konva" onSurfaceChange={onRotSurface} />
+      </EditorProvider>,
+    );
+    const rotCanvas = await waitForKonvaCanvas(rotView.container);
+    const rotStage = getStageForContainer(Konva, rotView.container);
+    selectObject(rotView.container, 'n1');
+    await waitFor(() => expect(rotStage.findOne('Transformer').nodes().length).toBe(1));
+    await dragAnchor(rotCanvas, rotStage.findOne('Transformer'), 'rotater', 38, 10, { shiftKey: true });
+    await waitFor(() => expect(rotEditor.getSnapshot().revision).toBe(1));
+    expect(onRotSurface).toHaveBeenLastCalledWith(expect.objectContaining({ active: 'konva', status: 'ready' }));
+    rotView.unmount();
 
     // 2. K3a non-fit native text resize -> stays on Konva
     const nonFitEditor = createEditor({
@@ -531,7 +575,7 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     const nonFitStage = getStageForContainer(Konva, nonFitView.container);
     selectObject(nonFitView.container, 'n1');
     await waitFor(() => expect(nonFitStage.findOne('Transformer').nodes().length).toBe(1));
-    dragAnchor(nonFitCanvas, nonFitStage.findOne('Transformer'), 'middle-right', 40, 0);
+    await dragAnchor(nonFitCanvas, nonFitStage.findOne('Transformer'), 'middle-right', 40, 0);
     await waitFor(() => expect(nonFitEditor.getSnapshot().revision).toBe(1));
     expect(onNonFitSurface).toHaveBeenLastCalledWith(expect.objectContaining({ active: 'konva', status: 'ready' }));
     nonFitView.unmount();
@@ -577,8 +621,100 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
       expect(stageA.findOne('Transformer').nodes().length).toBe(1);
       expect(stageB.findOne('Transformer').nodes().length).toBe(1);
     });
-    dragAnchor(canvasA, stageA.findOne('Transformer'), 'middle-right', 40, 0);
+    await dragAnchor(canvasA, stageA.findOne('Transformer'), 'middle-right', 40, 0);
     await waitFor(() => expect(editorA.getSnapshot().revision).toBe(1));
     expect(editorB.getSnapshot().revision).toBe(0);
+  });
+
+  it('cancels mid-transform on blur, pointercancel, stale snapshot, selection change, and dispatches nothing on no-op', async () => {
+    const baseEditor = makeEditor([makeRect('r1', 100, 100, 200, 100), makeRect('r2', 400, 100, 120, 80)]);
+    let dispatchCount = 0;
+    const editor = {
+      ...baseEditor,
+      dispatch: (...args) => { dispatchCount += 1; return baseEditor.dispatch(...args); },
+    };
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    const canvas = await waitForKonvaCanvas(container);
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const stage = getStageForContainer(Konva, container);
+    selectObject(container, 'r1');
+    await waitFor(() => expect(stage.findOne('Transformer').nodes().length).toBe(1));
+    const tr = stage.findOne('Transformer');
+
+    // No-op transform (dx=0, dy=0) dispatches 0 commands
+    await dragAnchor(canvas, tr, 'bottom-right', 0, 0);
+    expect(dispatchCount).toBe(0);
+
+    // Blur cancels active transform and makes late mouseup inert
+    let anchor;
+    let pos;
+    await waitFor(() => {
+      anchor = tr.findOne('.bottom-right');
+      pos = anchor.getAbsolutePosition();
+      if (stage.getIntersection(pos) !== anchor) throw new Error('hit not ready');
+    });
+    const rect = canvas.getBoundingClientRect();
+    const startX = rect.left + pos.x;
+    const startY = rect.top + pos.y;
+    act(() => {
+      canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: startX, clientY: startY }));
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, buttons: 1, clientX: startX + 30, clientY: startY + 20 }));
+    });
+    expect(tr.isTransforming()).toBe(true);
+    act(() => { window.dispatchEvent(new Event('blur')); });
+    expect(tr.isTransforming()).toBe(false);
+    act(() => { window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: startX + 30, clientY: startY + 20 })); });
+    expect(dispatchCount).toBe(0);
+
+    // pointercancel on stage content cancels active transform
+    await waitFor(() => {
+      pos = tr.findOne('.bottom-right').getAbsolutePosition();
+      if (stage.getIntersection(pos) !== tr.findOne('.bottom-right')) throw new Error('hit not ready');
+    });
+    act(() => {
+      canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: rect.left + pos.x, clientY: rect.top + pos.y }));
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, buttons: 1, clientX: rect.left + pos.x + 25, clientY: rect.top + pos.y + 15 }));
+    });
+    expect(tr.isTransforming()).toBe(true);
+    act(() => { stage.content.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, clientX: rect.left + pos.x + 25, clientY: rect.top + pos.y + 15 })); });
+    expect(tr.isTransforming()).toBe(false);
+    act(() => { window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: rect.left + pos.x + 25, clientY: rect.top + pos.y + 15 })); });
+    expect(dispatchCount).toBe(0);
+
+    // Selection change mid-transform cancels active transform
+    await waitFor(() => {
+      pos = tr.findOne('.bottom-right').getAbsolutePosition();
+      if (stage.getIntersection(pos) !== tr.findOne('.bottom-right')) throw new Error('hit not ready');
+    });
+    act(() => {
+      canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: rect.left + pos.x, clientY: rect.top + pos.y }));
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, buttons: 1, clientX: rect.left + pos.x + 25, clientY: rect.top + pos.y + 15 }));
+    });
+    expect(tr.isTransforming()).toBe(true);
+    selectObject(container, 'r2');
+    await waitFor(() => expect(tr.nodes()[0]?.name()).toBe('r2'));
+    expect(tr.isTransforming()).toBe(false);
+    expect(dispatchCount).toBe(0);
+
+    // Stale snapshot mutation mid-transform cancels and reports error
+    await waitFor(() => {
+      pos = tr.findOne('.bottom-right').getAbsolutePosition();
+      if (stage.getIntersection(pos) !== tr.findOne('.bottom-right')) throw new Error('hit not ready');
+    });
+    act(() => {
+      canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: rect.left + pos.x, clientY: rect.top + pos.y }));
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, buttons: 1, clientX: rect.left + pos.x + 25, clientY: rect.top + pos.y + 15 }));
+    });
+    act(() => {
+      baseEditor.dispatch('presentation.setGeometry', {
+        slideId: 's1', objectId: 'r2', geometry: { x: 420 * PT, y: 100 * PT, width: 120 * PT, height: 80 * PT, rotation: 0 },
+      });
+    });
+    expect(tr.isTransforming()).toBe(false);
+    expect(screen.getAllByRole('alert').map(el => el.textContent)).toEqual(['Transform could not be applied.']);
   });
 });

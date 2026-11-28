@@ -996,6 +996,7 @@ export function PresentationCanvas({
     [surfaceNotice, setSurfaceNotice] = useState(''),
     konvaGestureInvalidateRef = useRef(null),
     konvaCancelGestureRef = useRef(null),
+    konvaTransformingRef = useRef(false),
     lastOutcomeRef = useRef(null);
 
   const canMoveGeometry = ui.can('object-geometry');
@@ -1365,6 +1366,20 @@ export function PresentationCanvas({
   }
   function keyboard(event) {
     if (event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return;
+    if (konvaTransformingRef.current) {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        return;
+      }
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+        event.preventDefault();
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        return;
+      }
+    }
     if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z') {
       event.preventDefault();
       event.shiftKey ? ui.redo() : ui.undo();
@@ -1457,6 +1472,8 @@ export function PresentationCanvas({
           const object = ui.activeSlide?.objects.find(o => o.id === node.id);
           return ui.can('object-geometry') && geometryEligible(object);
         }}
+        canRotate={() => !isOdpDoc}
+        isTransformingRef={konvaTransformingRef}
         fontEpochBump={fontState.epoch}
         cancelToken={konvaCancelToken}
         invalidateGestureRef={konvaGestureInvalidateRef}

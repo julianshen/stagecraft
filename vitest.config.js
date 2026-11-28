@@ -19,7 +19,7 @@ export default defineConfig({
         resolve: { dedupe: ['konva', 'react', 'react-dom'] },
         optimizeDeps: {
           entries: CHROMIUM_TESTS,
-          include: ['react-konva/es/ReactKonvaCore', 'konva/lib/Core.js', 'konva/lib/DragAndDrop.js', 'konva/lib/shapes/Rect.js'],
+          include: ['react-konva/es/ReactKonvaCore', 'konva/lib/Core.js', 'konva/lib/DragAndDrop.js', 'konva/lib/shapes/Rect.js', 'konva/lib/shapes/Transformer.js'],
         },
         test: {
           name: 'chromium', include: CHROMIUM_TESTS, globals: true, clearMocks: false,
