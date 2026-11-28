@@ -137,12 +137,15 @@ function nativeTextWithFontSize(pt, fit = { fontScale: 25000, lnSpcReduction: 20
   return document;
 }
 
-it('refuses native shrink when a snapped run or end size falls below one point', () => {
-  expect(buildCanonicalScene(nativeTextWithFontSize(1), 'native-slide')).toMatchObject({
-    status: 'unsupported', reason: 'unresolved-appearance',
-    diagnostics: [{ code: 'native-appearance-proof-invalid', objectId: 'native-shape' }],
-  });
-});
+it.each([[8, 6000], [8, 6250], [10, 4000], [12, 5000]])(
+  'floors native shrink run and end sizes after whole-point snapping (%spt at %s)', (fontSize, fontScale) => {
+    const result = buildCanonicalScene(nativeTextWithFontSize(fontSize, { fontScale, lnSpcReduction: 0 }), 'native-slide');
+    expect(result.status).toBe('ready');
+    const paragraph = result.scene.nodes[0].paint.text.body.paragraphs[0];
+    expect(paragraph.runs[0].fontSizePt).toBe(1);
+    expect(paragraph.endProperties.fontSizePt).toBe(1);
+  },
+);
 
 it('admits native shrink when a half-point tie snaps to one point', () => {
   const result = buildCanonicalScene(nativeTextWithFontSize(2), 'native-slide');
@@ -215,7 +218,6 @@ it('refuses native shrink when the core effective fit is malformed', () => {
 });
 
 it.each([
-  ['lineSpacing', 150, 'lineSpacingPct'],
   ['spaceBefore', 12, 'spaceBeforePt'],
   ['spaceAfter', 8, 'spaceAfterPt'],
 ])('refuses native shrink with non-default paragraph %s', (field, value, proofField) => {
@@ -230,6 +232,40 @@ it.each([
   expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
     status: 'unsupported', reason: 'unresolved-appearance',
     diagnostics: [{ code: 'native-appearance-proof-invalid', objectId: object.id }],
+  });
+});
+
+it.each([
+  [90, 10000, 0.8],
+  [90, 20000, 0.7],
+  [120, 10000, 1.1],
+  [150, 20000, 1.3],
+])('uses subtractive native line spacing for %s%% and reduction %s', (lineSpacing, lnSpcReduction, expected) => {
+  const document = nativeTextDocument('shrink', { fontScale: 100000, lnSpcReduction });
+  const object = document.slides[0].objects[0];
+  object.text.paragraphs[0].style = { lineSpacing };
+  object.extensions.stagecraftNativeAppearance.text.paragraphs[0].lineSpacingPct = lineSpacing;
+  object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+    theme: document.themes[0], colorMap, document, slide: document.slides[0],
+  });
+
+  const result = buildCanonicalScene(document, 'native-slide');
+  expect(result.status).toBe('ready');
+  expect(result.scene.nodes[0].paint.text.body.paragraphs[0].lineSpacing).toEqual({ kind: 'percent', value: expected });
+});
+
+it('refuses native shrink when subtractive line spacing is non-positive', () => {
+  const document = nativeTextDocument('shrink', { fontScale: 100000, lnSpcReduction: 20000 });
+  const object = document.slides[0].objects[0];
+  object.text.paragraphs[0].style = { lineSpacing: 20 };
+  object.extensions.stagecraftNativeAppearance.text.paragraphs[0].lineSpacingPct = 20;
+  object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+    theme: document.themes[0], colorMap, document, slide: document.slides[0],
+  });
+
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-proof-invalid', objectId: 'native-shape' }],
   });
 });
 
