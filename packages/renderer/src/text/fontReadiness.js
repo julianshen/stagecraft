@@ -34,7 +34,7 @@ const quoteFamily = family => `"${family.replace(/["\\]/g, '\\$&')}"`;
  * differs from every generic fallback. document.fonts.check alone reports true for families
  * that resolve to a fallback. Results are cached per family/weight/style and cleared when fonts load.
  */
-export function createFontAvailability({ fonts, canvas } = {}) {
+export function createFontAvailability({ fonts, canvas, watch = true } = {}) {
   let ctx;
   const context = () => {
     if (ctx === undefined) {
@@ -50,8 +50,14 @@ export function createFontAvailability({ fonts, canvas } = {}) {
     return target.measureText(text).width;
   };
   const invalidate = () => cache.clear();
-  fonts?.addEventListener?.('loadingdone', invalidate);
-  fonts?.addEventListener?.('loadingerror', invalidate);
+  let watching = false;
+  const watchEvents = () => {
+    if (watching) return;
+    fonts?.addEventListener?.('loadingdone', invalidate);
+    fonts?.addEventListener?.('loadingerror', invalidate);
+    watching = true;
+  };
+  if (watch) watchEvents();
   return {
     isAvailable(shorthand, text = '') {
       const target = context();
@@ -69,9 +75,13 @@ export function createFontAvailability({ fonts, canvas } = {}) {
       return available;
     },
     invalidate,
+    watch: watchEvents,
     dispose() {
-      fonts?.removeEventListener?.('loadingdone', invalidate);
-      fonts?.removeEventListener?.('loadingerror', invalidate);
+      if (watching) {
+        fonts?.removeEventListener?.('loadingdone', invalidate);
+        fonts?.removeEventListener?.('loadingerror', invalidate);
+        watching = false;
+      }
       cache.clear();
     },
   };
@@ -151,8 +161,12 @@ export function fontFamiliesFor(bodies) {
 }
 
 export async function waitForBodyFonts(bodies, {fonts,timeoutMs=2000,fontAvailability,canvas}={}) {
-  const availability = fontAvailability ?? (canvas ? createFontAvailability({ fonts, canvas }) : null);
-  if (!fonts?.load || !fonts?.check) return { status: 'skipped', reason: 'fonts-unavailable' };
+  let createdAvailability = null;
+  const availability = fontAvailability ?? (canvas ? (createdAvailability = createFontAvailability({ fonts, canvas })) : null);
+  if (!fonts?.load || !fonts?.check) {
+    createdAvailability?.dispose?.();
+    return { status: 'skipped', reason: 'fonts-unavailable' };
+  }
   let timer;
   try {
     return await Promise.race([
@@ -174,5 +188,5 @@ export async function waitForBodyFonts(bodies, {fonts,timeoutMs=2000,fontAvailab
       new Promise(resolve => { timer = setTimeout(() => resolve({ status: 'skipped', reason: 'fonts-timeout' }), timeoutMs); }),
     ]);
   } catch { return { status: 'failed', reason: 'error', message: 'Font readiness failed.' }; }
-  finally { clearTimeout(timer); }
+  finally { clearTimeout(timer); createdAvailability?.dispose?.(); }
 }

@@ -23,6 +23,7 @@ export interface CanonicalScene {
 }
 export interface FontAvailability {
  readonly isAvailable: (shorthand: string, text?: string) => boolean;
+ watch?(): void;
  invalidate?(): void;
  dispose?(): void;
 }

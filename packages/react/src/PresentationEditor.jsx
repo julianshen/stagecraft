@@ -1019,8 +1019,10 @@ export function PresentationCanvas({
   const fontAvailability = useMemo(() => createFontAvailability({
     fonts: globalThis.document?.fonts,
     canvas: globalThis.document?.createElement?.('canvas'),
+    watch: false,
   }), []);
   useEffect(() => {
+    fontAvailability.watch?.();
     setSharedFontAvailability(fontAvailability);
     return () => {
       if (getSharedFontAvailability() === fontAvailability) setSharedFontAvailability(null);
