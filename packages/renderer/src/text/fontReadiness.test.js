@@ -1,5 +1,138 @@
 import { describe, expect, it } from 'vitest';
-import { fontFamiliesFor } from '../index.js';
+import {
+  FONT_AVAILABILITY_PROBE,
+  createFontAvailability,
+  fontFamiliesFor,
+  setSharedFontAvailability,
+  waitForCanonicalFonts,
+} from '../index.js';
+
+function fakeFonts({ check = true, loaded = [] } = {}) {
+  const listeners = new Map();
+  return {
+    check: () => check,
+    load: async () => loaded,
+    ready: Promise.resolve(),
+    status: 'loaded',
+    addEventListener(type, fn) {
+      const list = listeners.get(type) ?? new Set();
+      list.add(fn);
+      listeners.set(type, list);
+    },
+    removeEventListener(type, fn) { listeners.get(type)?.delete(fn); },
+    emit(type) { for (const fn of listeners.get(type) ?? []) fn({ type }); },
+  };
+}
+
+function fakeCanvas(widthFor, calls) {
+  return {
+    getContext() {
+      return {
+        font: '',
+        measureText(text) {
+          calls.push({ font: this.font, text });
+          return { width: widthFor(this.font, text) };
+        },
+      };
+    },
+  };
+}
+
+describe('font face availability probe', () => {
+  it('does not trust fonts.check when the measured face matches both fallbacks', () => {
+    const calls = [];
+    const fonts = fakeFonts({ check: true });
+    const availability = createFontAvailability({
+      fonts,
+      canvas: fakeCanvas(font => font.includes('Calibri') ? 140 : 100, calls),
+    });
+
+    expect(availability.isAvailable('normal 16px "Calibri"', 'Hello')).toBe(true);
+    expect(fonts.check('normal 16px "Missing"', 'Hello')).toBe(true);
+    expect(availability.isAvailable('normal 16px "Missing"', 'Hello')).toBe(false);
+  });
+
+  it('treats a face as unavailable when it matches either fallback', () => {
+    const calls = [];
+    const availability = createFontAvailability({
+      fonts: fakeFonts(),
+      canvas: fakeCanvas(font => font.includes('monospace') ? 100 : font.includes('serif') ? 120 : 100, calls),
+    });
+    expect(availability.isAvailable('normal 16px "Mock"', 'Hello')).toBe(false);
+    expect(availability.isAvailable('normal 16px "Real"', 'Hello')).toBe(false);
+  });
+
+  it('measures the run text plus a fixed metric-sensitive sample', () => {
+    const calls = [];
+    const availability = createFontAvailability({
+      fonts: fakeFonts(),
+      canvas: fakeCanvas(font => font.includes('Calibri') ? 140 : 100, calls),
+    });
+    availability.isAvailable('italic bold 16px "Calibri"', 'Hi ');
+    const target = calls.find(call => call.font.includes('Calibri'));
+    expect(target.text).toContain('Hi');
+    expect(target.text).toContain(FONT_AVAILABILITY_PROBE);
+  });
+
+  it('memoizes per family/style and invalidates on loadingdone', () => {
+    const calls = [];
+    const fonts = fakeFonts();
+    const availability = createFontAvailability({
+      fonts,
+      canvas: fakeCanvas(font => font.includes('Calibri') ? 140 : 100, calls),
+    });
+    availability.isAvailable('normal 16px "Calibri"', 'one');
+    const first = calls.length;
+    availability.isAvailable('normal 16px "Calibri"', 'two');
+    expect(calls).toHaveLength(first);
+    fonts.emit('loadingdone');
+    availability.isAvailable('normal 16px "Calibri"', 'two');
+    expect(calls.length).toBeGreaterThan(first);
+  });
+
+  it('parses weight/style from asset font shorthands before the family', () => {
+    const calls = [];
+    const availability = createFontAvailability({
+      fonts: fakeFonts(),
+      canvas: fakeCanvas(font => font.includes('Calibri') ? 140 : 100, calls),
+    });
+    expect(availability.isAvailable('normal bold 16px "Calibri"', 'Hi')).toBe(true);
+    expect(calls.some(call => call.font.startsWith('bold 16px "Calibri",'))).toBe(true);
+  });
+
+  it('detects a present family that matches one generic but not another', () => {
+    const calls = [];
+    const availability = createFontAvailability({
+      fonts: fakeFonts(),
+      canvas: fakeCanvas(font => {
+        if (font.includes('Arial')) return 130;
+        if (font.includes('monospace')) return 100;
+        if (font.includes('sans-serif')) return 130;
+        if (font.includes('serif')) return 120;
+        return 100;
+      }, calls),
+    });
+    expect(availability.isAvailable('normal 16px "Arial"', 'Hello')).toBe(true);
+    expect(availability.isAvailable('normal 16px "Missing"', 'Hello')).toBe(false);
+  });
+
+  it('treats CSS generic families like measured families', () => {
+    const calls = [];
+    const availability = createFontAvailability({
+      fonts: fakeFonts(),
+      canvas: fakeCanvas(font => font.includes('sans-serif') ? 130 : font.includes('monospace') ? 100 : font.includes('serif') ? 120 : 140, calls),
+    });
+    expect(availability.isAvailable('normal 16px sans-serif', 'Hi')).toBe(true);
+  });
+
+  it('refuses canonical font readiness when the real face is unavailable', async () => {
+    const fonts = fakeFonts({ check: true });
+    const canvas = fakeCanvas(() => 100, []);
+    const scene = { nodes: [{ paint: { native: true, text: { body: { paragraphs: [{ runs: [{ text: 'Hi', fontSizePt: 18, fontFamily: 'Missing' }] }] } } } }] };
+    const result = await waitForCanonicalFonts(scene, { fonts, canvas });
+    expect(result).toEqual({ status: 'skipped', reason: 'fonts-unavailable' });
+  });
+});
 
 describe('fontFamiliesFor', () => {
   const theme = {

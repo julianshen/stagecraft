@@ -7,6 +7,7 @@ import {
 } from '@stagecraft/core/lib/nativeAppearance.js';
 import { resolveTextFamily } from '../vendor/officeview/drawing/text-layout.ts';
 import { buildCanonicalScene } from './index.js';
+import { box, deck } from '../../../../tests/helpers/canonicalScene.js';
 
 const colorMap = { bg1: 'lt1', tx1: 'dk1', bg2: 'lt2', tx2: 'dk2' };
 const pptxSource = (part, path = []) => ({ format: 'pptx', part, path });
@@ -135,6 +136,21 @@ it.each([
   expect(body.paragraphs[0].endProperties.fontSizePt).toBeCloseTo(expectedSize, 12);
   expect(body.paragraphs[0].lineSpacing).toEqual({ kind: 'percent', value: expectedSpacing });
   expect(document).toEqual(original);
+});
+
+it('refuses native text when the resolved face is unavailable, without affecting authored text', () => {
+  const unavailable = { isAvailable: () => false };
+  expect(buildCanonicalScene(nativeTextDocument('shrink'), 'native-slide', { fontAvailability: unavailable })).toMatchObject({
+    status: 'unsupported', reason: 'fonts-unavailable',
+    diagnostics: [{ code: 'native-font-face-unavailable', objectId: 'native-shape' }],
+  });
+  expect(buildCanonicalScene(nativeDocument(), 'native-slide', { fontAvailability: unavailable }).status).toBe('ready');
+  expect(buildCanonicalScene(deck([box()]), 's', { fontAvailability: unavailable }).status).toBe('ready');
+});
+
+it('admits native text when the shared probe reports the face available', () => {
+  const available = { isAvailable: () => true };
+  expect(buildCanonicalScene(nativeTextDocument('shrink'), 'native-slide', { fontAvailability: available }).status).toBe('ready');
 });
 
 it('refuses native shrink when the core effective fit is unavailable', () => {
