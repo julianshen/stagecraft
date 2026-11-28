@@ -3,6 +3,7 @@ import {
   isNativeAppearanceBackgroundValid,
   nativeAppearanceContext,
   nativeAutofitEffectiveFit,
+  nativeAutofitFitValues,
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
   nativeSlideAppearanceInput,
@@ -482,12 +483,14 @@ function supportedAutofitXml(bodyPr) {
   }
   if (!is(autofit, 'a', 'normAutofit') || children(autofit).length !== 0 || hasNonWhitespaceCharacterData(autofit)) return false;
   if (Array.from(autofit.attributes).some(attribute => !['fontScale', 'lnSpcReduction'].includes(attribute.name))) return false;
-  return [['fontScale', 1], ['lnSpcReduction', 0]].every(([name, minimum]) => {
-    if (!autofit.hasAttribute(name)) return true;
+  const fit = {};
+  for (const name of ['fontScale', 'lnSpcReduction']) {
+    if (!autofit.hasAttribute(name)) continue;
     const raw = autofit.getAttribute(name);
-    const value = Number(raw);
-    return /^\d+$/.test(raw) && Number.isSafeInteger(value) && value >= minimum && value <= 100000;
-  });
+    if (!/^\d+$/.test(raw)) return false;
+    fit[name] = Number(raw);
+  }
+  return nativeAutofitFitValues(fit) !== null;
 }
 
 function supportedTextXml(node, body, theme) {

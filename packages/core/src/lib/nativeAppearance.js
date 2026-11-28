@@ -176,6 +176,10 @@ export function nativeAutofitEffectiveFit(object) {
   return values;
 }
 
+/**
+ * Fixed-size staleness detector for native autofit text and frame size. The 32-bit hash is not
+ * an anti-forgery/tamper check; proofs still rely on the existing trusted-local-snapshot model.
+ */
 const nativeAutofitFitBinding = object => stableHash({
   paragraphs: (object.text?.paragraphs ?? []).map(paragraph => (paragraph.runs ?? []).map(run => run.text)),
   width: object.geometry?.width,
