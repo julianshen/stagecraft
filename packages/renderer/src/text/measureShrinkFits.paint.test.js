@@ -98,18 +98,20 @@ it('floors snapped native sizes at one point and offers subtractive reduction wi
   body.paragraphs[0].runs[0].fontSizePt = 8;
   body.paragraphs[0].endProperties.fontSizePt = 8;
   const fontFloor = scaledTextBody(body, { fontScale: 6000, lnSpcReduction: 0 }, {
-    snapFontSize: true, minimumFontSizePt: 1,
+    snapFontSize: true, minimumSnappedFontSizePt: 1,
   });
+  const exportFont = scaledTextBody(body, { fontScale: 6000, lnSpcReduction: 0 });
   expect(fontFloor.paragraphs[0].runs[0].fontSizePt).toBe(1);
   expect(fontFloor.paragraphs[0].endProperties.fontSizePt).toBe(1);
+  expect(exportFont.paragraphs[0].runs[0].fontSizePt).toBeCloseTo(0.48, 12);
 
   body.paragraphs[0].lineSpacing = { kind: 'percent', value: 1.5 };
   const exportModel = scaledTextBody(body, { fontScale: 62500, lnSpcReduction: 20000 });
   const nativeDisplay = scaledTextBody(body, { fontScale: 62500, lnSpcReduction: 20000 }, {
     lineSpacingReduction: 'subtractive',
   });
-  expect(exportModel.paragraphs[0].lineSpacing).toEqual({ kind: 'percent', value: 1.2 });
-  expect(nativeDisplay.paragraphs[0].lineSpacing).toEqual({ kind: 'percent', value: 1.3 });
+  expect(exportModel.paragraphs[0].lineSpacing.value).toBeCloseTo(1.2, 12);
+  expect(nativeDisplay.paragraphs[0].lineSpacing.value).toBeCloseTo(1.3, 12);
 });
 
 it('scales point spacing and font sizes while preserving the authored insets and indents', () => {

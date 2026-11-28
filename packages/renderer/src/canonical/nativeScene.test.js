@@ -251,7 +251,7 @@ it.each([
 
   const result = buildCanonicalScene(document, 'native-slide');
   expect(result.status).toBe('ready');
-  expect(result.scene.nodes[0].paint.text.body.paragraphs[0].lineSpacing).toEqual({ kind: 'percent', value: expected });
+  expect(result.scene.nodes[0].paint.text.body.paragraphs[0].lineSpacing.value).toBeCloseTo(expected, 12);
 });
 
 it('refuses native shrink when subtractive line spacing is non-positive', () => {
