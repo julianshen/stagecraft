@@ -93,6 +93,34 @@ it('snaps native shrink faces to the nearest whole point, including ties and end
   }
 });
 
+it('floors snapped native sizes at one point and offers subtractive reduction without changing the export default', () => {
+  const body = canonicalTextBody(make()).body;
+  body.paragraphs[0].runs[0].fontSizePt = 8;
+  body.paragraphs[0].endProperties.fontSizePt = 8;
+  const fontFloor = scaledTextBody(body, { fontScale: 6000, lnSpcReduction: 0 }, {
+    snapFontSize: true, minimumSnappedFontSizePt: 1,
+  });
+  const exportFont = scaledTextBody(body, { fontScale: 6000, lnSpcReduction: 0 });
+  expect(fontFloor.paragraphs[0].runs[0].fontSizePt).toBe(1);
+  expect(fontFloor.paragraphs[0].endProperties.fontSizePt).toBe(1);
+  expect(exportFont.paragraphs[0].runs[0].fontSizePt).toBeCloseTo(0.48, 12);
+
+  body.paragraphs[0].lineSpacing = { kind: 'percent', value: 1.5 };
+  const exportModel = scaledTextBody(body, { fontScale: 62500, lnSpcReduction: 20000 });
+  const nativeDisplay = scaledTextBody(body, { fontScale: 62500, lnSpcReduction: 20000 }, {
+    lineSpacingReduction: 'subtractive',
+  });
+  expect(exportModel.paragraphs[0].lineSpacing.value).toBeCloseTo(1.2, 12);
+  expect(nativeDisplay.paragraphs[0].lineSpacing.value).toBeCloseTo(1.3, 12);
+});
+
+it('rejects unsupported native line-spacing reduction modes', () => {
+  const body = canonicalTextBody(make()).body;
+  expect(() => scaledTextBody(body, { fontScale: 62500, lnSpcReduction: 20000 }, {
+    lineSpacingReduction: 'additive',
+  })).toThrow(/lineSpacingReduction/);
+});
+
 it('scales point spacing and font sizes while preserving the authored insets and indents', () => {
   const o = make(); o.text.paragraphs[0].style = { spaceBefore: 10, spaceAfter: 20, lineSpacing: 150, indentStart: pt(5) };
   const body = canonicalTextBody(o).body, scaled = scaledTextBody(body, { fontScale: 50000, lnSpcReduction: 20000 });

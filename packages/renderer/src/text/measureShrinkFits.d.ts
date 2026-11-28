@@ -26,7 +26,12 @@ export interface ScalableParagraph {
 export function scaledTextBody(
   body: { paragraphs: ScalableParagraph[]; [key: string]: unknown },
   fit: ShrinkFit,
-  options?: { snapFontSize?: boolean },
+  options?: {
+    snapFontSize?: boolean;
+    /** Applied only when snapFontSize is true; sets the post-snap minimum font size. */
+    minimumSnappedFontSizePt?: number;
+    lineSpacingReduction?: 'multiplicative' | 'subtractive';
+  },
 ): {
   paragraphs: Array<ScalableParagraph & { lineSpacing: { kind: 'percent'; value: number } }>;
   [key: string]: unknown;
