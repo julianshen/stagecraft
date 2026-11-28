@@ -271,11 +271,27 @@ it.each([
   expect(result.scene.nodes[0].paint.text.body.paragraphs[0].lineSpacing.value).toBeCloseTo(expected, 12);
 });
 
-it.each([0.7, 0.9])('refuses native shrink spacing at the PowerPoint-unmatched effective %s ratio', effective => {
+it('refuses native shrink spacing at the PowerPoint-unmatched effective 70% ratio', () => {
+  const effective = 0.7;
   const document = nativeTextDocument('shrink', { fontScale: 100000, lnSpcReduction: 0 });
   const object = document.slides[0].objects[0];
   object.text.paragraphs[0].style = { lineSpacing: effective * 100 };
   object.extensions.stagecraftNativeAppearance.text.paragraphs[0].lineSpacingPct = effective * 100;
+  object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
+    theme: document.themes[0], colorMap, document, slide: document.slides[0],
+  });
+
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({
+    status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'native-appearance-proof-invalid', objectId: object.id }],
+  });
+});
+
+it('refuses 90% source spacing with zero reduction', () => {
+  const document = nativeTextDocument('shrink', { fontScale: 100000, lnSpcReduction: 0 });
+  const object = document.slides[0].objects[0];
+  object.text.paragraphs[0].style = { lineSpacing: 90 };
+  object.extensions.stagecraftNativeAppearance.text.paragraphs[0].lineSpacingPct = 90;
   object.extensions.stagecraftNativeAppearance.input = nativeObjectAppearanceInput(object, {
     theme: document.themes[0], colorMap, document, slide: document.slides[0],
   });
@@ -293,6 +309,11 @@ it('keeps plain 100% native shrink admitted with no line-spacing reduction', () 
 
 it('preserves prior admission for default 100% spacing with stored 10000 reduction', () => {
   const document = nativeTextDocument('shrink', { fontScale: 85000, lnSpcReduction: 10000 });
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({ status: 'ready' });
+});
+
+it('preserves master admission for default 100% spacing with any stored reduction', () => {
+  const document = nativeTextDocument('shrink', { fontScale: 85000, lnSpcReduction: 30000 });
   expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({ status: 'ready' });
 });
 
