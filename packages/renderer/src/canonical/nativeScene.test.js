@@ -271,7 +271,7 @@ it.each([
   expect(result.scene.nodes[0].paint.text.body.paragraphs[0].lineSpacing.value).toBeCloseTo(expected, 12);
 });
 
-it.each([0.7, 0.9, 1.0])('refuses native shrink spacing at the PowerPoint-unmatched effective %s ratio', effective => {
+it.each([0.7, 0.9])('refuses native shrink spacing at the PowerPoint-unmatched effective %s ratio', effective => {
   const document = nativeTextDocument('shrink', { fontScale: 100000, lnSpcReduction: 0 });
   const object = document.slides[0].objects[0];
   object.text.paragraphs[0].style = { lineSpacing: effective * 100 };
@@ -284,6 +284,16 @@ it.each([0.7, 0.9, 1.0])('refuses native shrink spacing at the PowerPoint-unmatc
     status: 'unsupported', reason: 'unresolved-appearance',
     diagnostics: [{ code: 'native-appearance-proof-invalid', objectId: object.id }],
   });
+});
+
+it('keeps plain 100% native shrink admitted with no line-spacing reduction', () => {
+  const document = nativeTextDocument('shrink', { fontScale: 100000, lnSpcReduction: 0 });
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({ status: 'ready' });
+});
+
+it('preserves prior admission for default 100% spacing with stored 10000 reduction', () => {
+  const document = nativeTextDocument('shrink', { fontScale: 85000, lnSpcReduction: 10000 });
+  expect(buildCanonicalScene(document, 'native-slide')).toMatchObject({ status: 'ready' });
 });
 
 it('refuses native shrink directly when the source line spacing is non-finite', () => {
