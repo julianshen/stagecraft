@@ -1,5 +1,5 @@
 import { AUTHORED_TEXT_COLOR } from '@stagecraft/core/lib/authoredText.js';
-import { DEFAULT_TEXT_INSETS_EMU, measureShrinkFits, measureResizeFits, resizeFallback, waitForAutofitFonts } from '@stagecraft/renderer';
+import { DEFAULT_TEXT_INSETS_EMU, createFontAvailability, measureShrinkFits, measureResizeFits, resizeFallback, waitForAutofitFonts } from '@stagecraft/renderer';
 import { buildCanonicalScene, waitForCanonicalFonts } from '@stagecraft/renderer/canonical';
 import { createContext, useContext, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { useEditor, useEditorSnapshot } from './EditorProvider.jsx';
@@ -1016,11 +1016,15 @@ export function PresentationCanvas({
   }, [ui.activeSlide?.id, ui.snapshot.revision]);
 
   const wantsKonva = surface === 'konva' && !svgOverride;
+  const fontAvailability = useMemo(() => createFontAvailability({
+    fonts: globalThis.document?.fonts,
+    canvas: globalThis.document?.createElement?.('canvas'),
+  }), []);
   const isOdpDoc = ui.snapshot.document?.extensions?.sourceFormat === 'odp';
   const sceneResult = useMemo(() => {
     if (!wantsKonva || !ui.canonical || isOdpDoc || !ui.activeSlide) return null;
-    return buildCanonicalScene(ui.snapshot.document, ui.activeSlide.id);
-  }, [wantsKonva, ui.canonical, isOdpDoc, ui.snapshot.document, ui.activeSlide]);
+    return buildCanonicalScene(ui.snapshot.document, ui.activeSlide.id, { fontAvailability });
+  }, [wantsKonva, ui.canonical, isOdpDoc, ui.snapshot.document, ui.activeSlide, fontAvailability]);
 
   const checkEmbeddingTransform = rootEl => {
     if (!wantsKonva || !rootEl || typeof getComputedStyle !== 'function') {
@@ -1152,7 +1156,7 @@ export function PresentationCanvas({
       return;
     }
     const fonts = globalThis.document?.fonts;
-    waitForCanonicalFonts(sceneResult.scene, { fonts })
+    waitForCanonicalFonts(sceneResult.scene, { fonts, fontAvailability })
       .then(res => {
         if (cancelled) return;
         if (res.status === 'ready') {
@@ -1167,7 +1171,7 @@ export function PresentationCanvas({
         if (!cancelled) setFontState(prev => ({ key: sceneFontKey, slideId: ui.activeSlide?.id, owner: ownerKey, fontSignature: sceneFontSignature, status: 'fonts-unavailable', epoch: prev.epoch }));
       });
     return () => { cancelled = true; };
-  }, [canAttemptKonva, sceneResult, sceneFontKey, ownerKey, fontRetrySeq, sceneFontSignature]);
+  }, [canAttemptKonva, sceneResult, sceneFontKey, ownerKey, fontRetrySeq, sceneFontSignature, fontAvailability]);
 
   const sameOwnerFontsReady = fontState.owner === ownerKey
     && fontState.status === 'ready'

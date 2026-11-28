@@ -58,11 +58,12 @@ function loadInto(env, src, loadImage) {
 // asks while it is in flight; once settled it is 'done'. A face that arrives
 // bumps the font epoch once. A face the browser already has (fonts.check) is
 // done at once, with nothing to repaint.
-function loadFont(env, spec, fonts) {
+function loadFont(env, spec, fonts, fontAvailability) {
   const known = env.fonts.get(spec);
   if (known === 'done') return false;
   if (known) return known;
-  if (fonts.check?.(spec)) {
+  const alreadyAvailable = fontAvailability ? fontAvailability.isAvailable(spec) : fonts.check?.(spec);
+  if (alreadyAvailable) {
     env.fonts.set(spec, 'done');
     return false;
   }
@@ -84,11 +85,11 @@ function loadFont(env, spec, fonts) {
  * so cached text layouts measured with the fallback are dropped), i.e. whether
  * a surface that already painted should paint again.
  */
-export async function ensureAssets(scene, env = sharedPaintEnv, { loadImage = decodeImage, fonts = globalThis.document?.fonts } = {}) {
+export async function ensureAssets(scene, env = sharedPaintEnv, { loadImage = decodeImage, fonts = globalThis.document?.fonts, fontAvailability } = {}) {
   const { images, fonts: specs } = sceneAssets(scene);
   const changes = [
     ...images.filter((src) => !env.images.has(src)).map((src) => loadInto(env, src, loadImage)),
-    ...(fonts?.load ? specs.map((spec) => loadFont(env, spec, fonts)) : []),
+    ...(fonts?.load ? specs.map((spec) => loadFont(env, spec, fonts, fontAvailability)) : []),
   ];
   return (await Promise.all(changes)).some(Boolean);
 }

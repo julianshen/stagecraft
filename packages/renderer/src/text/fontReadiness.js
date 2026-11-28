@@ -2,6 +2,67 @@ import { canvasFont } from '../canvas/paint.js';
 import { graphemes } from '../vendor/officeview/core/text-recording.ts';
 import { resolveTextFamily } from '../vendor/officeview/drawing/text-layout.ts';
 import { fontShorthand } from '../vendor/officeview/drawing/text-paint.ts';
+
+export const FONT_AVAILABILITY_PROBE = 'WWWmmm ii ll 0189 OQ@#';
+const AVAILABILITY_FALLBACKS = ['monospace', 'serif'];
+const GENERIC_FAMILIES = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace']);
+const firstFontFamily = stack => {
+  const quoted = /^\s*"((?:\\.|[^"\\])*)"/.exec(stack);
+  if (quoted) return quoted[1].replace(/\\(["\\])/g, '$1');
+  const single = /^\s*'([^']*)'/.exec(stack);
+  if (single) return single[1];
+  return (stack ?? '').split(',')[0].trim().replace(/^["']|["']$/g, '');
+};
+const shorthandParts = shorthand => {
+  const value = typeof shorthand === 'string' ? shorthand : '';
+  return {
+    family: firstFontFamily(value.replace(/^\s*(?:italic\s+)?(?:bold\s+)?\d+(?:\.\d+)?(?:px|pt)\s+/, '')),
+    italic: /\bitalic\b/i.test(value),
+    bold: /\bbold\b/i.test(value),
+  };
+};
+const quoteFamily = family => `"${family.replace(/["\\]/g, '\\$&')}"`;
+
+/**
+ * One availability signal for native text: a measured face is available only when its advance
+ * differs from at least one generic fallback. document.fonts.check alone reports true for families
+ * that resolve to a fallback. Results are cached per family/weight/style and cleared when fonts load.
+ */
+export function createFontAvailability({ fonts, canvas } = {}) {
+  const ctx = canvas?.getContext?.('2d') ?? null;
+  const cache = new Map();
+  const measure = (font, text) => {
+    ctx.font = font;
+    return ctx.measureText(text).width;
+  };
+  const invalidate = () => cache.clear();
+  fonts?.addEventListener?.('loadingdone', invalidate);
+  fonts?.addEventListener?.('loadingerror', invalidate);
+  return {
+    isAvailable(shorthand, text = '') {
+      if (!ctx || typeof ctx.measureText !== 'function') return false;
+      const { family, italic, bold } = shorthandParts(shorthand);
+      if (!family) return false;
+      if (GENERIC_FAMILIES.has(family.toLowerCase())) return true;
+      const key = JSON.stringify([family.toLowerCase(), bold, italic]);
+      if (cache.has(key)) return cache.get(key);
+      const probe = `${String(text).replace(/[\r\n\t]+/g, ' ')} ${FONT_AVAILABILITY_PROBE}`.trim();
+      const prefix = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}16px `;
+      const targetWidth = measure(`${prefix}${quoteFamily(family)}`, probe);
+      const available = AVAILABILITY_FALLBACKS.some(fallback =>
+        Math.abs(targetWidth - measure(`${prefix}${fallback}`, probe)) > 0.01);
+      cache.set(key, available);
+      return available;
+    },
+    invalidate,
+    dispose() {
+      fonts?.removeEventListener?.('loadingdone', invalidate);
+      fonts?.removeEventListener?.('loadingerror', invalidate);
+      cache.clear();
+    },
+  };
+}
+
 export function* fontQueries(body, theme) {
   for (const paragraph of body.paragraphs) for (const run of paragraph.runs) {
     for (const text of new Set(graphemes(run.text || ' ').map(g => g.text))) {
@@ -10,11 +71,14 @@ export function* fontQueries(body, theme) {
     }
   }
 }
-export function fontsReady(body, theme, fonts, checked) {
+export function fontsReady(body, theme, fonts, checked, fontAvailability) {
   for (const { shorthand, text } of fontQueries(body, theme)) {
     const key = JSON.stringify([shorthand, text]);
     if (!checked.has(key)) {
-      if (!fonts.check(shorthand, text)) return false;
+      const ready = fontAvailability
+        ? fontAvailability.isAvailable(shorthand, text)
+        : fonts.check(shorthand, text);
+      if (!ready) return false;
       checked.add(key);
     }
   }
@@ -72,7 +136,8 @@ export function fontFamiliesFor(bodies) {
   return families;
 }
 
-export async function waitForBodyFonts(bodies, {fonts,timeoutMs=2000}) {
+export async function waitForBodyFonts(bodies, {fonts,timeoutMs=2000,fontAvailability,canvas}={}) {
+  const availability = fontAvailability ?? (canvas ? createFontAvailability({ fonts, canvas }) : null);
   if (!fonts?.load || !fonts?.check) return { status: 'skipped', reason: 'fonts-unavailable' };
   let timer;
   try {
@@ -82,10 +147,14 @@ export async function waitForBodyFonts(bodies, {fonts,timeoutMs=2000}) {
         if (!queries.size) return { status: 'ready' };
         await Promise.all([...queries].map(([shorthand, chars]) => {
           const text = [...chars].join('');
-          return fonts.check(shorthand, text) ? undefined : fonts.load(shorthand, text);
+          const missing = availability ? !availability.isAvailable(shorthand, text) : !fonts.check(shorthand, text);
+          return missing ? fonts.load(shorthand, text) : undefined;
         }));
         await fonts.ready;
-        return fonts.status === 'loaded' && [...queries].every(([shorthand, chars]) => fonts.check(shorthand, [...chars].join('')))
+        return fonts.status === 'loaded' && [...queries].every(([shorthand, chars]) => {
+          const text = [...chars].join('');
+          return availability ? availability.isAvailable(shorthand, text) : fonts.check(shorthand, text);
+        })
           ? { status: 'ready' } : { status: 'skipped', reason: 'fonts-unavailable' };
       }),
       new Promise(resolve => { timer = setTimeout(() => resolve({ status: 'skipped', reason: 'fonts-timeout' }), timeoutMs); }),

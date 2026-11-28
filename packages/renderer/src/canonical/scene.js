@@ -8,6 +8,7 @@ import {
 import { canonicalTextBody, themeForSlide, layoutForSlide } from '../text/canonicalTextBody.js';
 import { scaledTextBody } from '../text/measureShrinkFits.js';
 import { resolveTextFamily } from '../vendor/officeview/drawing/text-layout.ts';
+import { fontQueries } from '../text/fontReadiness.js';
 const PX = 9525;
 const color = value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
 const authored = item => item?.extensions?.stagecraftAuthored === true && !item.source;
@@ -104,7 +105,7 @@ function displayText(object, theme, appearance=null) {
  }
  return {body:adapted.body,theme:adapted.theme};
 }
-export function buildCanonicalScene(document,slideId) {
+export function buildCanonicalScene(document,slideId,{fontAvailability}={}) {
  if(document?.schemaVersion!==1||document.units!=='emu'||!Array.isArray(document.slides))return unsupported('not-canonical','document-model');
  if(document.extensions?.sourceFormat && document.extensions.sourceFormat!=='pptx')return unsupported('unsupported-format','format');
  const slide=document.slides.find(s=>s.id===slideId);
@@ -167,6 +168,10 @@ export function buildCanonicalScene(document,slideId) {
    if(theme?.objectDefaults?.[object.type==='text'?'txDef':'spDef'])return unsupported('inherited-appearance','theme-object-defaults',object.id);
   }
   let text=object.text?displayText(object,theme,appearance):null;
+  if(nativeObject&&text&&fontAvailability){
+   for(const query of fontQueries(text.body))
+    if(!fontAvailability.isAvailable(query.shorthand,query.text))return unsupported('fonts-unavailable','native-font-face-unavailable',object.id);
+  }
   if(object.text&&!text)return unsupported('unsupported-content','text-format',object.id);
   if(nativeObject&&object.bodyLayout?.autofit==='shrink') {
    const fit=nativeAutofitEffectiveFit(object);
