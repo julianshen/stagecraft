@@ -519,7 +519,7 @@ export default function KonvaStage({
               setTransforming(false);
               const target = e.target;
               const tr = transformerRef.current;
-              if (!target.getStage() || !g || g.kind !== 'transform') {
+              if (!target?.getStage?.() || !g || g.kind !== 'transform') {
                 return;
               }
               const failTransform = (message = 'Transform could not be applied.') => {
@@ -585,7 +585,7 @@ export default function KonvaStage({
                 centerY: (normalized.y + normalized.height / 2) / EMU_PER_PX,
                 width: normalized.width / EMU_PER_PX,
                 height: normalized.height / EMU_PER_PX,
-                rotation: normalized.rotation,
+                rotation: normalized.rotation ?? 0,
               });
               tr?.forceUpdate?.();
               target.getLayer()?.batchDraw();

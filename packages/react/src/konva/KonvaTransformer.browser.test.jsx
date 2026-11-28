@@ -9,18 +9,14 @@ import { PresentationEditor } from '../PresentationEditor.jsx';
 const PT = 12700;
 const PX = 9525;
 
-function makeDoc(objects, { slides, format = 'pptx' } = {}) {
-  const doc = createDocument({
+function makeDoc(objects, { slides } = {}) {
+  return createDocument({
     slides: slides ?? [{
       id: 's1',
       objects,
       extensions: { stagecraftAuthored: true },
     }],
   });
-  if (format === 'odp') {
-    doc.extensions = { ...doc.extensions, sourceFormat: 'odp' };
-  }
-  return doc;
 }
 
 function makeRect(id, xPt = 100, yPt = 100, wPt = 200, hPt = 100, rotation = 0) {
@@ -212,7 +208,7 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     await waitForKonvaCanvas(container);
     const { default: Konva } = await import('konva/lib/Core.js');
     const stage = getStageForContainer(Konva, container);
-    expect(stage.getLayers().length).toBeLessThanOrEqual(3);
+    expect(stage.getLayers().length).toBe(2);
 
     let tr = stage.findOne('Transformer');
     expect(tr).toBeTruthy();
@@ -416,15 +412,7 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
     expect(Math.round(afterFree.rotation * 100) / 100).toBe(afterFree.rotation);
     unmount();
 
-    // ODP document disables rotation handle
-    const odpEditor = makeEditor([makeRect('o1', 100, 100, 200, 100, 0)], { format: 'odp' });
-    const odp = render(
-      <EditorProvider editor={odpEditor}>
-        <PresentationEditor surface="konva" />
-      </EditorProvider>,
-    );
-    // ODP falls back to SVG by design; verify direct KonvaStage respects canRotate={false}
-    odp.unmount();
+    // Direct KonvaStage respects canRotate={false} (e.g. ODP capability)
     const { default: KonvaStage } = await import('./KonvaStage.jsx');
     const { buildCanonicalScene } = await import('@stagecraft/renderer/canonical');
     const scene = buildCanonicalScene(makeDoc([makeRect('r2', 100, 100, 200, 100, 0)]), 's1').scene;
@@ -719,8 +707,11 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
   });
 
   it('produces identical integer EMU geometry at DPR 2 as at DPR 1', async () => {
+    const { default: Konva } = await import('konva/lib/Core.js');
     const runAtDpr = async (dpr) => {
+      const prevPixelRatio = Konva.pixelRatio;
       const originalDescriptor = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
+      Konva.pixelRatio = dpr;
       Object.defineProperty(window, 'devicePixelRatio', {
         configurable: true,
         value: dpr,
@@ -734,8 +725,10 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
         );
         try {
           const canvas = await waitForKonvaCanvas(container);
-          const { default: Konva } = await import('konva/lib/Core.js');
           const stage = getStageForContainer(Konva, container);
+          const backingWidth = canvas.width;
+          const cssWidth = canvas.getBoundingClientRect().width;
+          expect(backingWidth).toBe(Math.round(cssWidth * dpr));
           selectObject(container, 'r1');
           await waitFor(() => expect(stage.findOne('Transformer').nodes().length).toBe(1));
           const tr = stage.findOne('Transformer');
@@ -743,11 +736,12 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
           await waitFor(() => expect(editor.getSnapshot().revision).toBe(1));
           const geom = editor.getSnapshot().document.slides[0].objects[0].geometry;
           expect(Object.values(geom).every(Number.isSafeInteger)).toBe(true);
-          return geom;
+          return { geom, backingWidth, cssWidth };
         } finally {
           unmount();
         }
       } finally {
+        Konva.pixelRatio = prevPixelRatio;
         if (originalDescriptor) {
           Object.defineProperty(window, 'devicePixelRatio', originalDescriptor);
         } else {
@@ -756,10 +750,94 @@ describe('KONVA-4 Transformer resize, rotate, and cancellation', () => {
       }
     };
 
-    const dpr1Geom = await runAtDpr(1);
-    const dpr2Geom = await runAtDpr(2);
-    expect(dpr2Geom).toEqual(dpr1Geom);
-    expect(dpr2Geom.width).toBeGreaterThan(200 * PT);
-    expect(dpr2Geom.height).toBeGreaterThan(100 * PT);
+    const dpr1 = await runAtDpr(1);
+    const dpr2 = await runAtDpr(2);
+    expect(dpr2.backingWidth).toBe(dpr1.backingWidth * 2);
+    expect(dpr2.geom).toEqual(dpr1.geom);
+    expect(dpr2.geom.width).toBeGreaterThan(200 * PT);
+    expect(dpr2.geom.height).toBeGreaterThan(100 * PT);
+  });
+
+  it('cancels active transform on any embedding CSS transform change (including supported scale-to-scale)', async () => {
+    const baseEditor = makeEditor([makeRect('r1', 100, 100, 200, 100)]);
+    let dispatchCount = 0;
+    const editor = {
+      ...baseEditor,
+      dispatch: (...args) => { dispatchCount += 1; return baseEditor.dispatch(...args); },
+    };
+    const { container, rerender } = render(
+      <div style={{ transform: 'scale(1)' }}>
+        <EditorProvider editor={editor}>
+          <PresentationEditor surface="konva" />
+        </EditorProvider>
+      </div>,
+    );
+    const canvas = await waitForKonvaCanvas(container);
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const stage = getStageForContainer(Konva, container);
+    selectObject(container, 'r1');
+    await waitFor(() => expect(stage.findOne('Transformer').nodes().length).toBe(1));
+    const tr = stage.findOne('Transformer');
+
+    let pos;
+    await waitFor(() => {
+      const anchor = tr.findOne('.bottom-right');
+      pos = anchor.getAbsolutePosition();
+      if (stage.getIntersection(pos) !== anchor) throw new Error('hit not ready');
+    });
+    const rect = canvas.getBoundingClientRect();
+    act(() => {
+      canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: rect.left + pos.x, clientY: rect.top + pos.y }));
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, buttons: 1, clientX: rect.left + pos.x + 30, clientY: rect.top + pos.y + 20 }));
+    });
+    expect(tr.isTransforming()).toBe(true);
+
+    rerender(
+      <div style={{ transform: 'scale(1.25)' }}>
+        <EditorProvider editor={editor}>
+          <PresentationEditor surface="konva" />
+        </EditorProvider>
+      </div>,
+    );
+    await waitFor(() => expect(tr.isTransforming()).toBe(false));
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: rect.left + pos.x + 30, clientY: rect.top + pos.y + 20 }));
+    });
+    expect(dispatchCount).toBe(0);
+  });
+
+  it('resets Konva node rotation to 0 (not 360) when committing an absent-rotation resize', async () => {
+    const rectWithoutRotation = makeRect('r1', 100, 100, 200, 100);
+    delete rectWithoutRotation.geometry.rotation;
+    const editor = makeEditor([rectWithoutRotation]);
+    const { container } = render(
+      <EditorProvider editor={editor}>
+        <PresentationEditor surface="konva" />
+      </EditorProvider>,
+    );
+    const canvas = await waitForKonvaCanvas(container);
+    const { default: Konva } = await import('konva/lib/Core.js');
+    const stage = getStageForContainer(Konva, container);
+    selectObject(container, 'r1');
+    await waitFor(() => expect(stage.findOne('Transformer').nodes().length).toBe(1));
+    const tr = stage.findOne('Transformer');
+    const node = stage.findOne('.r1');
+
+    let pos;
+    await waitFor(() => {
+      const anchor = tr.findOne('.bottom-right');
+      pos = anchor.getAbsolutePosition();
+      if (stage.getIntersection(pos) !== anchor) throw new Error('hit not ready');
+    });
+    const rect = canvas.getBoundingClientRect();
+    act(() => {
+      canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: rect.left + pos.x, clientY: rect.top + pos.y }));
+      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, buttons: 1, clientX: rect.left + pos.x + 30, clientY: rect.top + pos.y + 20 }));
+      node.rotation(360);
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0, clientX: rect.left + pos.x + 30, clientY: rect.top + pos.y + 20 }));
+    });
+    await waitFor(() => expect(editor.getSnapshot().revision).toBe(1));
+    expect('rotation' in editor.getSnapshot().document.slides[0].objects[0].geometry).toBe(false);
+    expect(node.rotation()).toBe(0);
   });
 });

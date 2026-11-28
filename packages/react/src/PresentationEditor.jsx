@@ -1036,19 +1036,26 @@ export function PresentationCanvas({
     return buildCanonicalScene(ui.snapshot.document, ui.activeSlide.id);
   }, [wantsKonva, ui.canonical, isOdpDoc, ui.snapshot.document, ui.activeSlide]);
 
+  const lastEmbeddingTransformRef = useRef(null);
   const checkEmbeddingTransform = rootEl => {
     if (!wantsKonva || !rootEl || typeof getComputedStyle !== 'function') {
+      lastEmbeddingTransformRef.current = null;
       setOuterTransformUnsupported(prev => (prev ? false : prev));
       return;
     }
     let unsupported = false;
+    const transforms = [];
     for (let el = rootEl; el && el.nodeType === 1; el = el.parentElement) {
-      if (isUnsupportedCssTransform(getComputedStyle(el).transform)) {
+      const transform = getComputedStyle(el).transform;
+      transforms.push(transform);
+      if (isUnsupportedCssTransform(transform)) {
         unsupported = true;
-        break;
       }
     }
-    if (unsupported) {
+    const signature = transforms.join('|');
+    const changed = lastEmbeddingTransformRef.current !== null && lastEmbeddingTransformRef.current !== signature;
+    lastEmbeddingTransformRef.current = signature;
+    if (unsupported || changed) {
       konvaCancelGestureRef.current?.();
     }
     setOuterTransformUnsupported(prev => (prev === unsupported ? prev : unsupported));
