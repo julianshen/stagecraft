@@ -138,7 +138,7 @@ it.each([1,2])('paints XML-projected native text colour and East Asian font slot
  const object=textBox(2,15,15,600,300,para('漢字',{rPr:' sz="3000"',rKids:'<a:solidFill><a:srgbClr val="CC0000"/></a:solidFill><a:latin typeface="monospace"/><a:ea typeface="serif"/>'}),{bodyPr:'<a:bodyPr lIns="0" rIns="0" tIns="0" bIns="0"><a:noAutofit/></a:bodyPr>'});
  const {ctx,result}=await paintNativeFixture(object,dpr);const run=result.scene.nodes[0].paint.text.body.paragraphs[0].runs[0];
  expect(run.color).toBe('#cc0000');expect(run.fontFamilyEastAsia).toBe('serif');
- const ready=await waitForCanonicalFonts(result.scene);expect(ready.status).toBe('ready');
+ const ready=await waitForCanonicalFonts(result.scene,{fontAvailability:{isAvailable:()=>true}});expect(ready.status).toBe('ready');
  const calls=[],original=ctx.fillText.bind(ctx);vi.spyOn(ctx,'fillText').mockImplementation((...args)=>{calls.push(ctx.font);return original(...args);});
  paintCanonicalScene(ctx,result.scene,createCanonicalPaintEnvironment());expect(calls.some(font=>font.includes('serif'))).toBe(true);
  const data=ctx.getImageData(10*dpr,10*dpr,400*dpr,200*dpr).data;let redPixels=0;for(let i=0;i<data.length;i+=4)if(data[i]>150&&data[i+1]<100&&data[i+2]<100)redPixels++;
@@ -150,7 +150,7 @@ it.each([1,2])('paints the XML-stored native shrink fit at DPR %s',async dpr=>{
  expect(object.paint.text.body.paragraphs[0].runs[0].fontSizePt).toBe(15);
  expect(object.paint.text.body.paragraphs[0].lineSpacing).toEqual({kind:'percent',value:0.8});
  expect(result.scene.nodes[0].geometry).toMatchObject({width:1143000,height:571500});
- await waitForCanonicalFonts(result.scene);paintCanonicalScene(ctx,result.scene,createCanonicalPaintEnvironment());
+ await waitForCanonicalFonts(result.scene,{fontAvailability:{isAvailable:()=>true}});paintCanonicalScene(ctx,result.scene,createCanonicalPaintEnvironment());
  const x0=20*dpr,y0=20*dpr,width=170*dpr,height=85*dpr,data=ctx.getImageData(x0,y0,width,height).data;let ink=0,top=height,bottom=0,left=width,right=0;
  for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4;if(data[i]<80&&data[i+1]<90&&data[i+2]<110&&data[i+3]>0){ink++;top=Math.min(top,y);bottom=Math.max(bottom,y);left=Math.min(left,x);right=Math.max(right,x);}}
  expect(ink).toBeGreaterThan(100);expect(right-left).toBeGreaterThan(20*dpr);expect(bottom-top).toBeGreaterThan(8*dpr);
