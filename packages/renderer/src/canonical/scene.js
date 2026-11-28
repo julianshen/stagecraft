@@ -182,7 +182,7 @@ export function buildCanonicalScene(document,slideId,{fontAvailability}={}) {
   }
   const g=object.geometry;
   const fill=object.fill??(appearance?.fill?.kind==='solid'?appearance.fill.color:null);
-  nodes.push({id:object.id,type:object.type,geometry:{...g},frame:{x:g.x/PX,y:g.y/PX,width:g.width/PX,height:g.height/PX,rotation:g.rotation??0},hitShape:object.shape??'rect',textIds:object.text?.paragraphs.map(p=>({paragraphId:p.id,runIds:p.runs.map(r=>r.id)}))??[],paint:{shape:object.shape??'rect',fill,stroke:appearance?.stroke??null,adjust:appearance?.adjust,text,layoutKey:text?JSON.stringify([g.width/PX,g.height/PX,text]):null}});
+  nodes.push({id:object.id,type:object.type,geometry:{...g},frame:{x:g.x/PX,y:g.y/PX,width:g.width/PX,height:g.height/PX,rotation:g.rotation??0},hitShape:object.shape??'rect',textIds:object.text?.paragraphs.map(p=>({paragraphId:p.id,runIds:p.runs.map(r=>r.id)}))??[],paint:{shape:object.shape??'rect',fill,stroke:appearance?.stroke??null,adjust:appearance?.adjust,native:nativeObject,text,layoutKey:text?JSON.stringify([g.width/PX,g.height/PX,text]):null}});
  }
  return {status:'ready',scene:freeze(structuredClone({slideId:slide.id,width:size.width/PX,height:size.height/PX,background:nativeSlide?inheritedBackground:slide.background?.color??inheritedBackground??'#ffffff',nodes}))};
 }

@@ -92,7 +92,7 @@ describe('font face availability probe', () => {
   it('refuses canonical font readiness when the real face is unavailable', async () => {
     const fonts = fakeFonts({ check: true });
     const canvas = fakeCanvas(() => 100, []);
-    const scene = { nodes: [{ paint: { text: { body: { paragraphs: [{ runs: [{ text: 'Hi', fontSizePt: 18, fontFamily: 'Missing' }] }] } } } }] };
+    const scene = { nodes: [{ paint: { native: true, text: { body: { paragraphs: [{ runs: [{ text: 'Hi', fontSizePt: 18, fontFamily: 'Missing' }] }] } } } }] };
     const result = await waitForCanonicalFonts(scene, { fonts, canvas });
     expect(result).toEqual({ status: 'skipped', reason: 'fonts-unavailable' });
   });

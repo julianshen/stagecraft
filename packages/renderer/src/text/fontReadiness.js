@@ -29,18 +29,27 @@ const quoteFamily = family => `"${family.replace(/["\\]/g, '\\$&')}"`;
  * that resolve to a fallback. Results are cached per family/weight/style and cleared when fonts load.
  */
 export function createFontAvailability({ fonts, canvas } = {}) {
-  const ctx = canvas?.getContext?.('2d') ?? null;
+  let ctx;
+  const context = () => {
+    if (ctx === undefined) {
+      try { ctx = canvas?.getContext?.('2d') ?? null; }
+      catch { ctx = null; }
+    }
+    return ctx;
+  };
   const cache = new Map();
   const measure = (font, text) => {
-    ctx.font = font;
-    return ctx.measureText(text).width;
+    const target = context();
+    target.font = font;
+    return target.measureText(text).width;
   };
   const invalidate = () => cache.clear();
   fonts?.addEventListener?.('loadingdone', invalidate);
   fonts?.addEventListener?.('loadingerror', invalidate);
   return {
     isAvailable(shorthand, text = '') {
-      if (!ctx || typeof ctx.measureText !== 'function') return false;
+      const target = context();
+      if (!target || typeof target.measureText !== 'function') return false;
       const { family, italic, bold } = shorthandParts(shorthand);
       if (!family) return false;
       if (GENERIC_FAMILIES.has(family.toLowerCase())) return true;
