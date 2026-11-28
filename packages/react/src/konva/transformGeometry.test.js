@@ -67,10 +67,17 @@ describe('KONVA-4 transformGeometry helpers', () => {
 
   it('clamps boundBoxFunc at the minimum stage size and exports 15-degree snaps', () => {
     const oldBox = { x: 10, y: 20, width: 50, height: 40, rotation: 0 };
-    expect(clampTransformBox(oldBox, { x: 10, y: 20, width: 0.5, height: 40, rotation: 0 }, 2)).toBe(oldBox);
-    expect(clampTransformBox(oldBox, { x: 10, y: 20, width: 50, height: -5, rotation: 0 }, 2)).toBe(oldBox);
+    expect(clampTransformBox(oldBox, { x: 10, y: 20, width: 0.5, height: 40, rotation: 0 }, 2)).toEqual({
+      x: 10, y: 20, width: 2, height: 40, rotation: 0,
+    });
+    expect(clampTransformBox(oldBox, { x: 10, y: 20, width: 50, height: -5, rotation: 0 }, 2)).toEqual({
+      x: 10, y: 20, width: 50, height: 2, rotation: 0,
+    });
+    expect(clampTransformBox(oldBox, { x: 58, y: 20, width: 0.5, height: 40, rotation: 0 }, 2)).toEqual({
+      x: 10, y: 20, width: 50, height: 40, rotation: 0,
+    });
     const valid = { x: 10, y: 20, width: 60, height: 45, rotation: 0 };
-    expect(clampTransformBox(oldBox, valid, 2)).toBe(valid);
+    expect(clampTransformBox(oldBox, valid, 2)).toEqual(valid);
     expect(ROTATION_SNAPS_15).toHaveLength(24);
     expect(ROTATION_SNAPS_15[0]).toBe(0);
     expect(ROTATION_SNAPS_15[23]).toBe(345);

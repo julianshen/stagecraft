@@ -20,16 +20,19 @@ export function normalizeRotation(degrees) {
  * Clamp Transformer boundBoxFunc results to a minimum stage-pixel dimension without flipping.
  */
 export function clampTransformBox(oldBox, newBox, minStagePx) {
-  if (
-    !newBox
-    || !Number.isFinite(newBox.width)
-    || !Number.isFinite(newBox.height)
-    || newBox.width < minStagePx
-    || newBox.height < minStagePx
-  ) {
+  if (!newBox || !Number.isFinite(newBox.width) || !Number.isFinite(newBox.height)) {
     return oldBox;
   }
-  return newBox;
+  const width = newBox.width < minStagePx ? (Math.abs(newBox.x - oldBox.x) < 1e-6 ? minStagePx : oldBox.width) : newBox.width;
+  const height = newBox.height < minStagePx ? (Math.abs(newBox.y - oldBox.y) < 1e-6 ? minStagePx : oldBox.height) : newBox.height;
+  if (width < minStagePx || height < minStagePx) return oldBox;
+  return {
+    ...newBox,
+    x: newBox.width < minStagePx && Math.abs(newBox.x - oldBox.x) >= 1e-6 ? oldBox.x : newBox.x,
+    y: newBox.height < minStagePx && Math.abs(newBox.y - oldBox.y) >= 1e-6 ? oldBox.y : newBox.y,
+    width,
+    height,
+  };
 }
 
 /**
