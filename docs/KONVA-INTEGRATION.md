@@ -73,7 +73,8 @@ The section 8 histogram was rerun on the original 65 unique K2a package hashes. 
 | Format / refusal | Slides | Public reason | Internal diagnostic |
 |---|---:|---|---|
 | PPTX admitted | 14/100 | — | — |
-| PPTX refused | 86/100 | `unresolved-appearance` | `native-appearance-proof-missing` |
+| PPTX refused: missing appearance proof | 76/100 | `unresolved-appearance` | `native-appearance-proof-missing` |
+| PPTX refused: text run spans multiple font slots | 10/100 | `unresolved-appearance` | `text-appearance-unresolved` |
 | ODP refused | 60/60 | `unsupported-format` | `format` |
 
 **The contract §8 floor was MISSED:** the target is at least 40/100 PPTX slides across at least 10 packages; observed admission is 14/100. Keep the canvas opt-in **experimental**, keep SVG as the default and whole-slide fallback, and do not weaken proof validation or expand admission by treating missing metrics as supported. No §7.3 native PowerPoint corpus was run. Stored-value autofit display is deferred to K3c under a separate contract.
