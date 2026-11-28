@@ -81,6 +81,5 @@ export function canonicalTextBody(object, theme) {
   const availableHeight = (g.height - insets.top - insets.bottom) / EMU_PER_PX;
   if (availableHeight <= 0 || g.width <= insets.left + insets.right) return null;
   return { width, height, availableHeight, theme, body: { paragraphs, wrap: layout.wrap !== 'none', anchor: { top: 't', middle: 'ctr', bottom: 'b' }[layout.anchor] ?? 't',
-    ...(object.source?.format === 'pptx' ? { powerPoint: true } : {}),
     insetLeftEmu: insets.left, insetRightEmu: insets.right, insetTopEmu: insets.top, insetBottomEmu: insets.bottom } };
 }
