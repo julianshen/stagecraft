@@ -161,6 +161,7 @@ it('refuses a forged single-slot proof when the painter uses EA and Latin fonts 
 
   expect(buildCanonicalScene(document, slide.id)).toMatchObject({
     status: 'unsupported', reason: 'unresolved-appearance',
+    diagnostics: [{ code: 'text-appearance-unresolved', objectId: object.id }],
   });
 });
 

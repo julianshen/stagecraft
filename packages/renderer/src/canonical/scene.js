@@ -149,7 +149,7 @@ export function buildCanonicalScene(document,slideId) {
   let appearance=null;
   if(nativeObject){
    if(object.text?.paragraphs?.some(paragraph=>paragraph.runs?.some(run=>nativeTextFontSlots(run.text,run.style?.lang??run.style?.language).length!==1)))
-    return proofResult('unresolved-appearance','native-appearance-proof-invalid',object.id);
+    return proofResult('unresolved-appearance','text-appearance-unresolved',object.id);
    if(theme?.objectDefaults?.[object.type==='text'?'txDef':'spDef'])return unsupported('inherited-appearance','theme-object-defaults',object.id);
    let input=null;try{input=nativeObjectAppearanceInput(object,{theme:rawTheme,colorMap,document,slide});}catch{}
    const check=proofCheck(object,input,()=>isNativeObjectAppearanceValid(object,{theme:rawTheme,colorMap,document,slide}));
