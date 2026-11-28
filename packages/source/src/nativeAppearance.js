@@ -2,6 +2,8 @@ import {
   NATIVE_APPEARANCE_INPUT_MAX_BYTES,
   isNativeAppearanceBackgroundValid,
   nativeAppearanceContext,
+  nativeAutofitEffectiveFit,
+  nativeAutofitFitValues,
   nativeLayoutAppearanceInput,
   nativeObjectAppearanceInput,
   nativeSlideAppearanceInput,
@@ -17,6 +19,7 @@ const UNSUPPORTED_BACKGROUND = Symbol('unsupported-background');
 const NO_COLOR_OVERRIDE = Symbol('no-color-override');
 const inputFits = value => new TextEncoder().encode(value).byteLength <= NATIVE_APPEARANCE_INPUT_MAX_BYTES;
 const paragraphRuns = paragraph => children(paragraph).filter(node => !is(node, 'a', 'pPr') && !is(node, 'a', 'endParaRPr'));
+const hasNonWhitespaceCharacterData = node => Array.from(node.childNodes).some(child => (child.nodeType === 3 || child.nodeType === 4) && child.nodeValue.trim() !== '');
 const styleIndex = value => /^\d+$/.test(value ?? '') ? Number(value) - 1001 : -1;
 const none = () => ({ kind: 'none' });
 const onOff = value => value === '1' || value === 'true' ? true : value === '0' || value === 'false' ? false : null;
@@ -469,6 +472,27 @@ function resolvedRun(runProperties, fallbackProperties, theme, colorMap, fontRef
   };
 }
 
+function supportedAutofitXml(bodyPr) {
+  if (hasNonWhitespaceCharacterData(bodyPr)) return false;
+  const nodes = children(bodyPr);
+  if (nodes.length === 0) return true;
+  if (nodes.length !== 1) return false;
+  const autofit = nodes[0];
+  if (is(autofit, 'a', 'noAutofit') || is(autofit, 'a', 'spAutoFit')) {
+    return autofit.attributes.length === 0 && children(autofit).length === 0 && !hasNonWhitespaceCharacterData(autofit);
+  }
+  if (!is(autofit, 'a', 'normAutofit') || children(autofit).length !== 0 || hasNonWhitespaceCharacterData(autofit)) return false;
+  if (Array.from(autofit.attributes).some(attribute => !['fontScale', 'lnSpcReduction'].includes(attribute.name))) return false;
+  const fit = {};
+  for (const name of ['fontScale', 'lnSpcReduction']) {
+    if (!autofit.hasAttribute(name)) continue;
+    const raw = autofit.getAttribute(name);
+    if (!/^\d+$/.test(raw)) return false;
+    fit[name] = Number(raw);
+  }
+  return nativeAutofitFitValues(fit) !== null;
+}
+
 function supportedTextXml(node, body, theme) {
   const txBox = ['1', 'true'].includes(child(child(node, 'p', 'nvSpPr'), 'p', 'cNvSpPr')?.getAttribute('txBox'));
   if (theme?.extensions?.pptxObjectDefaults?.[txBox ? 'txDef' : 'spDef']) return false;
@@ -478,7 +502,7 @@ function supportedTextXml(node, body, theme) {
   if (!bodyPr || anchor !== null && !['t', 'ctr', 'b'].includes(anchor)
     || insetAttributes.some(name => bodyPr?.hasAttribute(name) && !/^\d+$/.test(bodyPr.getAttribute(name)))
     || Object.keys(attrs(bodyPr)).some(attribute => !['wrap', 'anchor', ...insetAttributes].includes(attribute))
-    || children(bodyPr).some(item => !is(item, 'a', 'noAutofit'))) return false;
+    || !supportedAutofitXml(bodyPr)) return false;
   for (const paragraph of children(body).filter(item => is(item, 'a', 'p'))) {
     if (children(paragraph).some(item => !is(item, 'a', 'pPr') && !is(item, 'a', 'r') && !is(item, 'a', 'endParaRPr'))) return false;
     const properties = child(paragraph, 'a', 'pPr');
@@ -517,7 +541,7 @@ function projectText(document, object, node, slide, theme, colorMap) {
     master?.extensions.pptxOtherTextStyle,
     layout?.extensions.pptxOtherTextStyle,
   );
-  if (object.bodyLayout?.autofit === 'shrink' || object.bodyLayout?.autofit === 'resize') return null;
+  if (object.bodyLayout?.autofit === 'shrink' && !nativeAutofitEffectiveFit(object)) return null;
   if (!supportedTextXml(node, body, theme) || allPlaceholdersOrLists(node)) return null;
   let fontRef = object.extensions.pptxTextMetrics.fontRef;
   const styleNode = child(node, 'p', 'style');

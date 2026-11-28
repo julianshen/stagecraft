@@ -7,7 +7,7 @@ import { documentPlugin, presentationPlugin, validateDocument } from '@stagecraf
 import { openPresentation } from './index.js';
 import { projectNativeAppearance } from './nativeAppearance.js';
 import { resolvePptxColor } from './pptxColor.js';
-import { isNativeAppearanceBackgroundValid, isNativeLayoutAppearanceValid, isNativeObjectAppearanceValid, isNativeSlideAppearanceValid, nativeObjectAppearanceInput } from '@stagecraft/core/lib/nativeAppearance.js';
+import { isNativeAppearanceBackgroundValid, isNativeLayoutAppearanceValid, isNativeObjectAppearanceValid, isNativeSlideAppearanceValid, nativeAutofitEffectiveFit, nativeObjectAppearanceInput } from '@stagecraft/core/lib/nativeAppearance.js';
 import { NS, buildPptx, para, shape, textBox, tree, xfrm } from '../../../tests/helpers/pptxFixture.js';
 import { resolveTextFamily } from '../../renderer/src/vendor/officeview/drawing/text-layout.ts';
 
@@ -67,6 +67,16 @@ async function openFixture(slideXml, options = {}) {
     slides: [{ xml: slideXml }], ...options,
   }));
   return openPresentation(bytes, { format: 'pptx', xml });
+}
+const nativeAutofitBox = autofit => textBox(2, 20, 20, 300, 100,
+  para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }),
+  { bodyPr: `<a:bodyPr>${autofit}</a:bodyPr>` });
+async function openAutofitFixture(autofit) {
+  const bytes = await sourceReady(await buildPptx({
+    theme, master: emptyMaster, layout: emptyLayout,
+    slides: [{ xml: `<p:sld ${NS}>${tree(nativeAutofitBox(autofit))}</p:sld>` }],
+  }));
+  return { bytes, session: await openPresentation(bytes, { format: 'pptx', xml }) };
 }
 
 const proof = object => object.extensions.stagecraftNativeAppearance;
@@ -977,7 +987,6 @@ describe('native PPTX appearance projection', () => {
     ['multiple geometries', shape(2, 'rect', 20, 20, 200, 100).replace('<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>', '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>')],
     ['unsupported shape style', shape(2, 'rect', 20, 20, 200, 100, '', '<p:style><a:effectRef idx="2"/></p:style>')],
     ['text on non-rectangle', textBox(2, 20, 20, 200, 100, para('Native')).replace('prst="rect"', 'prst="ellipse"')],
-    ['text autofit', textBox(2, 20, 20, 200, 100, para('Native'), { bodyPr: '<a:bodyPr><a:spAutoFit/></a:bodyPr>' })],
     ['unsupported body property', textBox(2, 20, 20, 200, 100, para('Native'), { bodyPr: '<a:bodyPr vert="vert270"/>' })],
     ['placeholder text', textBox(2, 20, 20, 200, 100, para('Native')).replace('<p:nvPr/>', '<p:nvPr><p:ph type="body"/></p:nvPr>')],
     ['list text', textBox(2, 20, 20, 200, 100, para('Native', { pPr: '<a:lvl1pPr/>' }))],
@@ -1274,14 +1283,127 @@ describe('native PPTX appearance projection', () => {
     } finally { session.dispose(); }
   });
 
-  it('omits proofs for native autofit and list-style text', async () => {
-    const autofit = textBox(2, 20, 20, 300, 100, para('Native', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }), {
-      bodyPr: '<a:bodyPr><a:normAutofit/></a:bodyPr>',
-    });
+  it.each([
+    ['empty bodyPr', ''],
+    ['whitespace-only bodyPr', ' \n\t '],
+    ['whitespace around autofit', ' \n<a:normAutofit fontScale="85000" lnSpcReduction="10000"/>\t '],
+    ['whitespace-only normAutofit', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"> \n\t </a:normAutofit>'],
+    ['whitespace-only noAutofit', '<a:noAutofit> \n\t </a:noAutofit>'],
+    ['whitespace-only spAutoFit', '<a:spAutoFit> \n\t </a:spAutoFit>'],
+    ['whitespace-only CDATA', '<![CDATA[ \n\t ]]>'],
+  ])('preserves a valid native object proof for %s', async (_label, autofit) => {
+    const { session } = await openAutofitFixture(autofit);
+    try {
+      const object = session.document.slides[0].objects[0];
+      const context = appearanceContext(session.document, session.document.slides[0]);
+      expect(proof(object)).toBeDefined();
+      expect(isNativeObjectAppearanceValid(object, context)).toBe(true);
+    } finally { session.dispose(); }
+  });
+
+  it.each([
+    ['shrink', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"/>', { fontScale: 85000, lnSpcReduction: 10000 }],
+    ['resize', '<a:spAutoFit/>', null],
+  ])('proves full-value native %s autofit under strict R2', async (mode, autofit, fit) => {
+    const { session } = await openAutofitFixture(autofit);
+    try {
+      const object = session.document.slides[0].objects[0];
+      const context = appearanceContext(session.document, session.document.slides[0]);
+      expect(object.bodyLayout.autofit).toBe(mode);
+      expect(nativeAutofitEffectiveFit(object)).toEqual(fit);
+      expect(proof(object)).toBeDefined();
+      expect(isNativeObjectAppearanceValid(object, context)).toBe(true);
+      const input = JSON.parse(proof(object).input);
+      expect(input.fitBinding).toMatch(/^[0-9a-f]{8}$/);
+      expect(input.effectiveFit).toEqual(fit ?? undefined);
+    } finally { session.dispose(); }
+  });
+
+  it.each([
+    ['no-attribute', '<a:normAutofit/>', {}],
+    ['fontScale-only', '<a:normAutofit fontScale="85000"/>', { fontScale: 85000 }],
+    ['reduction-only', '<a:normAutofit lnSpcReduction="10000"/>', { lnSpcReduction: 10000 }],
+  ])('opens %s normAutofit without a proof and preserves untouched bytes', async (_label, autofit, fit) => {
+    const { bytes, session } = await openAutofitFixture(autofit);
+    try {
+      const object = session.document.slides[0].objects[0];
+      expect(object.bodyLayout.fit).toEqual(fit);
+      expect(nativeAutofitEffectiveFit(object)).toBeNull();
+      expect(proof(object)).toBeUndefined();
+      const output = await session.export(session.document);
+      expect(output.dirtyParts).toEqual([]);
+      expect(Buffer.from(output.bytes).equals(Buffer.from(bytes))).toBe(true);
+    } finally { session.dispose(); }
+  });
+
+  it.each([
+    ['unknown normAutofit attribute', '<a:normAutofit fontScale="85000" lnSpcReduction="10000" unknown="1"/>'],
+    ['normAutofit child', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"><a:extLst/></a:normAutofit>'],
+    ['malformed scale', '<a:normAutofit fontScale="90000%" lnSpcReduction="10000"/>'],
+    ['zero scale', '<a:normAutofit fontScale="0" lnSpcReduction="10000"/>'],
+    ['scale above range', '<a:normAutofit fontScale="100001" lnSpcReduction="10000"/>'],
+    ['unsafe scale', '<a:normAutofit fontScale="9007199254740992" lnSpcReduction="10000"/>'],
+    ['fractional scale', '<a:normAutofit fontScale="85000.5" lnSpcReduction="10000"/>'],
+    ['exponent scale', '<a:normAutofit fontScale="1e5" lnSpcReduction="10000"/>'],
+    ['malformed reduction', '<a:normAutofit fontScale="85000" lnSpcReduction="10%"/>'],
+    ['negative reduction', '<a:normAutofit fontScale="85000" lnSpcReduction="-1"/>'],
+    ['reduction above range', '<a:normAutofit fontScale="85000" lnSpcReduction="100001"/>'],
+    ['unsafe reduction', '<a:normAutofit fontScale="85000" lnSpcReduction="9007199254740992"/>'],
+    ['fractional reduction', '<a:normAutofit fontScale="85000" lnSpcReduction="10000.5"/>'],
+    ['noAutofit attribute', '<a:noAutofit unknown="1"/>'],
+    ['noAutofit child', '<a:noAutofit><a:extLst/></a:noAutofit>'],
+    ['spAutoFit attribute', '<a:spAutoFit unknown="1"/>'],
+    ['spAutoFit child', '<a:spAutoFit><a:extLst/></a:spAutoFit>'],
+    ['unknown autofit child', '<a:unknownAutofit/>'],
+    ['bodyPr character data', 'garbage<a:noAutofit/>'],
+    ['bodyPr CDATA', '<![CDATA[garbage]]><a:noAutofit/>'],
+    ['text-only bodyPr', 'garbage'],
+    ['normAutofit character data', '<a:normAutofit fontScale="85000" lnSpcReduction="10000">garbage</a:normAutofit>'],
+    ['normAutofit CDATA', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"><![CDATA[garbage]]></a:normAutofit>'],
+    ['noAutofit character data', '<a:noAutofit>garbage</a:noAutofit>'],
+    ['noAutofit CDATA', '<a:noAutofit><![CDATA[garbage]]></a:noAutofit>'],
+    ['spAutoFit character data', '<a:spAutoFit>garbage</a:spAutoFit>'],
+    ['spAutoFit CDATA', '<a:spAutoFit><![CDATA[garbage]]></a:spAutoFit>'],
+    ['multiple autofit children', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"/><a:spAutoFit/>'],
+    ['repeated normAutofit child', '<a:normAutofit fontScale="85000" lnSpcReduction="10000"/><a:normAutofit/>'],
+  ])('opens malformed or unknown raw autofit without a proof: %s', async (_label, autofit) => {
+    const { session } = await openAutofitFixture(autofit);
+    try { expect(proof(session.document.slides[0].objects[0])).toBeUndefined(); }
+    finally { session.dispose(); }
+  });
+
+  it('keeps full-value native shrink export and proof-only cleanup byte-identical', async () => {
+    const { bytes, session } = await openAutofitFixture('<a:normAutofit fontScale="85000" lnSpcReduction="10000"/>');
+    try {
+      const object = session.document.slides[0].objects[0];
+      expect(proof(object)).toBeDefined();
+      const cleaned = structuredClone(session.document);
+      const cleanedObject = cleaned.slides[0].objects[0];
+      delete cleanedObject.extensions.stagecraftNativeAppearance;
+      for (const paragraph of cleanedObject.text.paragraphs) {
+        delete paragraph.extensions.pptxEndRunAppearance;
+        for (const run of paragraph.runs) {
+          delete run.extensions.pptxAppearance.resolved;
+          delete run.extensions.pptxAppearance.script;
+        }
+      }
+      const projectedOutput = await session.export(session.document);
+      expect(projectedOutput.dirtyParts).toEqual([]);
+      expect(Buffer.from(projectedOutput.bytes).equals(Buffer.from(bytes))).toBe(true);
+      const cleanedOutput = await session.export(cleaned);
+      expect(cleanedOutput.dirtyParts).toEqual([]);
+      expect(Buffer.from(cleanedOutput.bytes).equals(Buffer.from(bytes))).toBe(true);
+    } finally { session.dispose(); }
+  });
+
+  it('proves full-value native autofit while still refusing list-style text', async () => {
+    const autofit = nativeAutofitBox('<a:normAutofit fontScale="85000" lnSpcReduction="10000"/>');
     const listed = textBox(3, 20, 150, 300, 100, `<a:p><a:pPr><a:buChar char="•"/></a:pPr>${para('List', { rPr: ' sz="1800"', rKids: '<a:latin typeface="Arial"/>' }).replace('<a:p>', '').replace('</a:p>', '')}</a:p>`);
     const session = await openFixture(`<p:sld ${NS}>${tree(autofit + listed)}</p:sld>`);
     try {
-      expect(session.document.slides[0].objects.every(object => !proof(object))).toBe(true);
+      const [proved, refused] = session.document.slides[0].objects;
+      expect(isNativeObjectAppearanceValid(proved, appearanceContext(session.document, session.document.slides[0]))).toBe(true);
+      expect(proof(refused)).toBeUndefined();
     } finally { session.dispose(); }
   });
 

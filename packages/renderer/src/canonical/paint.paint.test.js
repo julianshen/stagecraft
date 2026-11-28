@@ -144,3 +144,14 @@ it.each([1,2])('paints XML-projected native text colour and East Asian font slot
  const data=ctx.getImageData(10*dpr,10*dpr,400*dpr,200*dpr).data;let redPixels=0;for(let i=0;i<data.length;i+=4)if(data[i]>150&&data[i+1]<100&&data[i+2]<100)redPixels++;
  expect(redPixels).toBeGreaterThan(5);
 });
+it.each([1,2])('paints the XML-stored native shrink fit at DPR %s',async dpr=>{
+ const inner=textBox(2,15,15,180,90,para('Stored shrink fit display',{rPr:' sz="2400"',rKids:'<a:solidFill><a:srgbClr val="112233"/></a:solidFill><a:latin typeface="Arial"/>'}),{bodyPr:'<a:bodyPr wrap="square" lIns="0" rIns="0" tIns="0" bIns="0"><a:normAutofit fontScale="62500" lnSpcReduction="20000"/></a:bodyPr>'});
+ const {ctx,result}=await paintNativeFixture(inner,dpr);const object=result.scene.nodes[0];
+ expect(object.paint.text.body.paragraphs[0].runs[0].fontSizePt).toBe(15);
+ expect(object.paint.text.body.paragraphs[0].lineSpacing).toEqual({kind:'percent',value:0.8});
+ expect(result.scene.nodes[0].geometry).toMatchObject({width:1143000,height:571500});
+ await waitForCanonicalFonts(result.scene);paintCanonicalScene(ctx,result.scene,createCanonicalPaintEnvironment());
+ const x0=20*dpr,y0=20*dpr,width=170*dpr,height=85*dpr,data=ctx.getImageData(x0,y0,width,height).data;let ink=0,top=height,bottom=0,left=width,right=0;
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4;if(data[i]<80&&data[i+1]<90&&data[i+2]<110&&data[i+3]>0){ink++;top=Math.min(top,y);bottom=Math.max(bottom,y);left=Math.min(left,x);right=Math.max(right,x);}}
+ expect(ink).toBeGreaterThan(100);expect(right-left).toBeGreaterThan(20*dpr);expect(bottom-top).toBeGreaterThan(8*dpr);
+});

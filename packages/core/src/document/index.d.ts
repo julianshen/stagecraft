@@ -86,7 +86,11 @@ export type TextBodyLayout = {
   wrap?: 'square' | 'none';
   anchor?: 'top' | 'middle' | 'bottom';
   insets?: TextBodyInsets;  // EMU
+  /** Source-owned native shrink values actually present on a:normAutofit. */
+  fit?: { fontScale?: number; lnSpcReduction?: number };
 };
+/** Portable authored layout excludes source-owned native fit values. */
+export type AuthoredTextBodyLayout = Omit<TextBodyLayout, 'fit'>;
 /** Payload patch: unchanged keys are omitted, a present key typed `null` resets that value. */
 export type ParagraphFormatPatch = { [K in keyof ParagraphFormat]?: ParagraphFormat[K] | null };
 export type TextBodyInsets = { left?: number; top?: number; right?: number; bottom?: number };
@@ -128,7 +132,7 @@ export type AuthoredObject = {
   | { type: 'table'; table: AuthoredTable }
   | { type: 'image'; image: AuthoredImage }
   | { type: 'chart'; chart: AuthoredChart }
-) & { bodyLayout?: TextBodyLayout };
+) & { bodyLayout?: AuthoredTextBodyLayout };
 export type AuthoredSlide = { id: string; objects: AuthoredObject[]; extensions: { stagecraftAuthored: true }; name?: string; background?: SlideBackground; notes?: string };
 export type AuthoredAssetDescriptor = { id: string; contentType: 'image/png' | 'image/jpeg' };
 /** Throws DocumentError for unknown fields, invalid values or local duplicate IDs. */
