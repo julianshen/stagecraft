@@ -123,6 +123,8 @@ function doLayoutHorizontalTextBody(body: PptxTextBody, width: number, height: n
   const top = emuToPx(body.insetTopEmu), bottom = height - emuToPx(body.insetBottomEmu)
   const lines: PlacedTextLine[] = []
   let y = 0
+  /** Set when the last line followed PowerPoint's line model: its baseline-to-block-end distance. */
+  let tail: number | undefined, centeredTail: number | undefined
   for (const [paragraphIndex, paragraph] of body.paragraphs.entries()) {
     const references = originalRefs?.[paragraphIndex] ?? runRefs(paragraph)
     const pLeft = left + emuToPx(paragraph.marginLeftEmu ?? 0), pRight = right - emuToPx(paragraph.marginRightEmu ?? 0)
@@ -142,7 +144,7 @@ function doLayoutHorizontalTextBody(body: PptxTextBody, width: number, height: n
       const [from, to] = sortedBoundaryRange(boundaryPositions, start, end, includeStart)
       for (let at = from; at < to; at++) target.push(boundaryPositions[at])
     }
-    y += spacingPx(paragraph.spaceBefore, paragraphSize)
+    if (!(body.powerPoint && paragraphIndex === 0)) y += spacingPx(paragraph.spaceBefore, paragraphSize)
     const metrics = (style: PptxTextStyle) => {
       const size = px(style.fontSizePt ?? 12), m = measure('Mg', style)
       lineSize = Math.max(lineSize, size); ascent = Math.max(ascent, m.ascent ?? size * .8); descent = Math.max(descent, m.descent ?? size * .2)
@@ -160,6 +162,17 @@ function doLayoutHorizontalTextBody(body: PptxTextBody, width: number, height: n
         : spacingPx(paragraph.lineSpacing, normalAdvance, normalAdvance)
       const lineHeight = slots.length ? Math.max(textHeight, ascent + descent) : textHeight
       const extra = (lineHeight - (ascent + descent)) / 2
+      // PowerPoint's line model (probe decks, PowerPoint 16.114; the same for every font measured): the baseline sits
+      // L − 0.24 em below the line top at 100% or less and 0.9 em × pct above it. Exact-point spacing and lines
+      // holding inline objects are unmeasured and keep the centred split.
+      const pct = paragraph.lineSpacing ? paragraph.lineSpacing.kind === 'percent' ? paragraph.lineSpacing.value : undefined : 1
+      const modelled = body.powerPoint && !word && !slots.length && pct !== undefined
+      const baselineOffset = modelled ? pct <= 1 ? lineHeight - 0.24 * lineSize : 0.9 * pct * lineSize : ascent + extra
+      tail = modelled ? 0.24 * lineSize : undefined
+      // In tdf115394's 44 pt / 90% centered title, PowerPoint's ink is about 1.25 slide px above the
+      // 0.24-em centered extent. Keep the normal-leading tail in this compressed centered block only;
+      // bottom-anchored compressed text is unmeasured and keeps the 0.24-em tail.
+      centeredTail = modelled && pct < 1 ? 0.24 * normalAdvance : tail
       if (paragraph.align === 'justify' && automaticallyWrapped && advance < pRight - lineStart) {
         const word = (s: PlacedTextSegment) => /[^\s]/u.test(s.text)
         const lastTab = segments.reduce((at, s, i) => s.text === '\t' ? i : at, -1)
@@ -181,7 +194,7 @@ function doLayoutHorizontalTextBody(body: PptxTextBody, width: number, height: n
       else if (paragraph.align === 'right') offset = pRight - lineStart - advance
       for (const s of segments) s.x += offset
       for (const slot of slots) { slot.x += offset; slot.y = y + ascent + extra - slot.height }
-      lines.push({ segments, paragraphIndex, x: lineStart + offset, y, baseline: y + ascent + extra, height: lineHeight,
+      lines.push({ segments, paragraphIndex, x: lineStart + offset, y, baseline: y + baselineOffset, height: lineHeight,
         ...(slots.length ? { inlineSlots: slots } : {}),
         ...(first && paragraph.bullet ? { bullet: paragraph.bulletCharacter ?? '•' } : {}) })
       y += lineHeight; first = false; lineStart = pLeft; advance = 0; segments = []; lineSize = 0; ascent = 0; descent = 0; normalHeight = 0; previousRun = -1
@@ -337,8 +350,12 @@ function doLayoutHorizontalTextBody(body: PptxTextBody, width: number, height: n
     }
     // A trailing source break creates the following (possibly empty) line.
     finish()
-    y += spacingPx(paragraph.spaceAfter, paragraphSize)
+    if (!(body.powerPoint && paragraphIndex === body.paragraphs.length - 1)) y += spacingPx(paragraph.spaceAfter, paragraphSize)
   }
+  // The modelled block ends at the last baseline's tail (above 100% that is short of the last line's full height).
+  const last = lines[lines.length - 1]
+  const anchorTail = body.anchor === 'ctr' ? centeredTail : tail
+  if (last && anchorTail !== undefined) y = last.baseline + anchorTail
   const offset = top + (body.anchor === 'ctr' ? (bottom - top - y) / 2 : body.anchor === 'b' ? bottom - top - y : 0)
   for (const line of lines) { line.y += offset; line.baseline += offset; for (const slot of line.inlineSlots ?? []) slot.y += offset }
   return { lines, height: y }

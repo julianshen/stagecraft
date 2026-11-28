@@ -96,6 +96,7 @@ function displayText(object, theme, appearance=null) {
  // Native proof fonts are resolved before paint; the painter receives literal faces only.
  const adapted=canonicalTextBody(source,appearance?undefined:theme);
  if(!adapted)return null;
+ if(appearance&&object.source?.format==='pptx')adapted.body.powerPoint=true;
  for(const [pi,p] of adapted.body.paragraphs.entries()) {
   for(const [ri,r] of p.runs.entries())r.color=source.text.paragraphs[pi].runs[ri].style?.color??AUTHORED_TEXT_COLOR;
   const end=source.text.paragraphs[pi].extensions?.pptxEndRunAppearance;

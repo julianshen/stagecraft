@@ -51,14 +51,46 @@ export interface LogicalTextRange {
   }
 }
 export type RecordText = (text: string, x: number, y: number, width: number, logical: LogicalTextRange) => void
-export type TextRecordingContext = CanvasRenderingContext2D & { [RECORD_TEXT]?: RecordText }
+/** Optional grouping hook: a painter about to paint one paragraph (DOCX) or
+ * one cell (XLSX) calls `ctx[RECORD_GROUP]?.(key)`; `key` is the same object
+ * for every line/segment of that paragraph or cell within one paint and
+ * distinct otherwise. `undefined` ends the group. The library's own
+ * recording context does not define it. */
+export const RECORD_GROUP = Symbol('officeview.recordGroup')
+export type RecordGroup = (key: object | undefined) => void
+/** Optional decoration-ownership hook. A painter opens one scope per
+ * decorated stretch of text: `ctx[PAINT_DECORATION]?.('text')` before each
+ * piece of that text and `?.('line')` before each of its underline /
+ * strike-through lines (alternating, in paint order), then `?.(false)` to
+ * end the scope (in a finally). The server's occlusion observer uses it to
+ * tie a decoration to the runs it decorates; the library's own recording
+ * context does not define it. */
+export const PAINT_DECORATION = Symbol('officeview.paintDecoration')
+export type PaintDecoration = (phase: 'text' | 'line' | false) => void
+export type TextRecordingContext = CanvasRenderingContext2D & { [RECORD_TEXT]?: RecordText; [RECORD_GROUP]?: RecordGroup; [PAINT_DECORATION]?: PaintDecoration }
 
 /** UTF-16 boundaries, shared by layout and public selection carets. */
+type GraphemeSegmenter = { segment(text: string): Iterable<{ segment: string; index: number }> }
+type GraphemeSegmenterCtor = new (locale?: string, options?: { granularity: string }) => GraphemeSegmenter
+// Constructing a segmenter is costly (ICU setup) and text layout calls this per
+// run, so one instance is kept per host constructor; segment() is stateless.
+const PRINTABLE_ASCII = /^[\x20-\x7e]*$/
+let segmenterCache: { ctor: GraphemeSegmenterCtor; segmenter: GraphemeSegmenter } | null = null
 export function graphemes(text: string): Array<{ text: string; start: number }> {
   // Intl.Segmenter is present in supported browsers/Node; the fallback retains
   // combining marks and ZWJ sequences even on an older JS host.
-  const Segmenter = (Intl as unknown as { Segmenter?: new (locale?: string, options?: { granularity: string }) => { segment(text: string): Iterable<{ segment: string; index: number }> } }).Segmenter
-  if (Segmenter) return [...new Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map(s => ({ text: s.segment, start: s.index }))
+  // Printable ASCII has no extending or joining code points (and no CR LF
+  // pair): every character is its own cluster, as UAX #29 segments it.
+  if (PRINTABLE_ASCII.test(text)) {
+    const out = new Array<{ text: string; start: number }>(text.length)
+    for (let i = 0; i < text.length; i++) out[i] = { text: text[i], start: i }
+    return out
+  }
+  const Segmenter = (Intl as unknown as { Segmenter?: GraphemeSegmenterCtor }).Segmenter
+  if (Segmenter) {
+    if (segmenterCache?.ctor !== Segmenter) segmenterCache = { ctor: Segmenter, segmenter: new Segmenter(undefined, { granularity: 'grapheme' }) }
+    return [...segmenterCache.segmenter.segment(text)].map(s => ({ text: s.segment, start: s.index }))
+  }
   const out: Array<{ text: string; start: number }> = []
   let offset = 0, joined = false, regionalCount = 0
   for (const char of text) {
