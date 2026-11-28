@@ -1,6 +1,6 @@
 # Canvas slide editor — design
 
-> Status: **design + plan**; K0 ✅ ([ADR 0001](adr/0001-canvas-engine.md): option B confirmed, officeview vendored, perf budget), K1 ✅ (drawing core, `src/canvas/`). Nothing else here is built unless marked ✅. It re-platforms slide rendering and the editing surface from DOM/CSS/SVG onto `<canvas>`, following the approach of [officeview](https://github.com/julianshen/officeview), and evaluates [Konva](https://konvajs.org/) as the interaction layer.
+> Status: **design + plan**; K0 ✅ ([ADR 0001](adr/0001-canvas-engine.md): option B confirmed, officeview vendored, perf budget), K1 ✅ (drawing core, `src/canvas/`). K2a–K2c and K3a–K3c/K3d have shipped as an experimental opt-in canvas path; SVG remains the default and whole-slide fallback. This document re-platforms slide rendering and the editing surface from DOM/CSS/SVG onto `<canvas>`, following the approach of [officeview](https://github.com/julianshen/officeview), and evaluates [Konva](https://konvajs.org/) as the interaction layer.
 >
 > Companions:
 > - [`POWERPOINT-SPEC.md`](POWERPOINT-SPEC.md) — feature spec; its §4 delivery plan is revised to include this work as **Phase K**;
@@ -17,6 +17,7 @@ Contents:
 8. Testing strategy
 9. Migration plan (Phase K)
 10. Risks and open questions
+11. K3/K3d native PPTX admission (experimental)
 
 ---
 
@@ -214,3 +215,39 @@ Rough total: 7–10 weeks of focused work. K1–K4 already improve fidelity (pre
 2. Is option C (canvas painter, DOM interaction overlay) acceptable as an interim release if K5 runs long?
 3. Should the import path later switch to officeview's `parsePptx` (masters, themes, 187 presets, rich runs) with a converter to the Stagecraft model, replacing most of `pptxImport.js`?
 4. Is K6 (canvas-native text) required before Phase B content features, or may B3/B4 proceed on the K5 overlay?
+
+---
+
+## 11. K3/K3d native PPTX admission (experimental)
+
+The canvas path is opt-in (`surface="konva"`); SVG remains the default and the whole-slide fallback. K3a/K3b added strict native appearance proofs and proof-backed admission for the supported subset: solid backgrounds/fills, simple centred outlines, supported presets/adjustments, resolved text colours and font slots, and empty inherited layout/master artwork. A missing, stale, or inconsistent proof refuses the whole slide with a fixed diagnostic; there is no partial canvas/DOM mixing.
+
+### Stored-value autofit (K3c)
+
+Native `a:spAutoFit` paints the stored `a:xfrm` geometry unchanged. Native `a:normAutofit` paints the stored `fontScale` and `lnSpcReduction`; it does not re-measure, re-fit, or run OfficeView autofit. The canonical `bodyLayout.fit` retains only attributes actually present in the package.
+
+The schema-default policy is **shipped** (#172): absent `fontScale` resolves to `100000` and absent `lnSpcReduction` to `0` at display/proof time only. Existing exported bytes are unchanged because defaults are never written back. Red tests cover malformed values and the strict-to-default flip; the flip follows PowerPoint 16.115 open/render captures at 1280×720 with the bundled Calibri face.
+
+Fit proofs bind appearance to run text plus width/height, not position; x/y/rotation-only moves preserve the proof. Text, width, or height edits invalidate it in the core transaction; direct mutation is caught by recomputation. Font-size snapping and the text line model are covered below.
+
+### K3d fidelity fixes
+
+- **#169 — real font availability:** `document.fonts.check` is not trusted for native text. A Canvas2D stacked probe compares `"Family", <generic>` with each generic-only face; a native font is admitted only when one pair differs. A missing face falls back to SVG with the existing plain `fonts-unavailable` message. Authored text keeps the previous behavior.
+- **#170 — PowerPoint text line model:** canonical native text bodies use OfficeView's measured PowerPoint baseline model. The flag is set only in the native display adapter, never in authored content or export measurement. Same-Calibri captures moved first-ink rows to within +1 device px on the affected cases.
+- **#171 — whole-point snap:** native shrink font sizes and paragraph `endProperties` snap to the nearest whole point, ties up (`17.5 → 18`, `13.5 → 14`); exact hundredth-point arithmetic avoids floating-point half-point errors. Sub-1-pt snapped faces fail closed instead of clamping. Export shrink measurement remains fractional.
+
+Line-spacing and paragraph before/after changes remain out of scope for native shrink: admitted native shrink uses 100% spacing, where subtractive and multiplicative reduction agree, and non-default spacing/before/after proofs are refused.
+
+### Measured admission
+
+| View | Result |
+|---|---|
+| Node histogram, strict (absent shrink attribute refuses) | **28/100 PPTX slides**, 20 packages |
+| Node histogram, shipped schema defaults | **44/100 PPTX slides**, 24 packages |
+| ODP | **0/60** admitted (`unsupported-format`) |
+| Chromium, browser default fonts (R3 head, shipped defaults) | **2/100** ready, 52 `fonts-unavailable` |
+| Chromium, diagnostic Office Calibri loaded (R3 head, shipped defaults) | **42/100** ready, 4 `fonts-unavailable` |
+
+All 65 K2a package hashes were verified. The evidence is described in PRs #167–#172: native proof admission, stored autofit display, the font gate, the PowerPoint text line model, whole-point snapping, and the approved schema-default flip. The R3 captures were made in PowerPoint 16.115 (open/render, no text edits), exported as 1280×720 PNGs, and compared with the same bundled Calibri face in Chromium; the capture PNGs, diff PNGs and histogram JSON are kept outside the repository.
+
+Not verified: Windows PowerPoint, Windows/Linux font sets, fonts other than Calibri, and per-glyph coverage (the font probe establishes face availability, not glyph coverage). Tiny native sizes that round below 1 pt are refused and tracked as a follow-up.
